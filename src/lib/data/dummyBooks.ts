@@ -218,6 +218,11 @@ export const dummyBooks: Book[] = [
 
 const STARTER_LIST_SIZE = 25;
 
+/** Returns a page of the full list with offset and limit (for popular list pagination). */
+export function getBooksPage(offset: number, limit: number): Book[] {
+	return dummyBooks.slice(offset, offset + limit);
+}
+
 /** Books shown as the initial "Popular books" list on the rate page. */
 export function getStarterBooks(): Book[] {
 	return dummyBooks.slice(0, STARTER_LIST_SIZE);

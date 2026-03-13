@@ -41,7 +41,7 @@ List the 2–3 features that make up your minimum viable app. These are the thin
 - Book rating flow:
     - A initial commonly read book list with Active Recommender Loop
         - the list updates with each rating and new, more relevant book appear (this is to help users rate without having to remember and search each book)
-    - Search books (with Google Book API or Open Books API)
+    - Search books
         - Searching by title/author and retrieving book metadata
     - Rating books from 1-5.
     - The rated books are saved in a list for readers to review, change ratings, remove ratings before submiting. Should be  discoverable but not 'in your face'
