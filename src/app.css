@@ -10,6 +10,12 @@
 	--color-focus: #2563eb;
 	--color-accent: #2563eb;
 	--color-accent-bg: #eff6ff;
+	/* Primitives */
+	--color-white: #ffffff;
+	--color-sand: #e8e4dc;
+	/* Semantic – card */
+	--color-card-bg: var(--color-white);
+	--color-card-placeholder-bg: var(--color-sand);
 	--min-tap: 44px;
 	--radius: 8px;
 	--radius-sm: 6px;
@@ -27,6 +33,9 @@
 		--color-focus: #3b82f6;
 		--color-accent: #60a5fa;
 		--color-accent-bg: #1e3a5f;
+		--color-sand: #2d2a26;
+		--color-card-bg: var(--color-white);
+		--color-card-placeholder-bg: var(--color-sand);
 	}
 }
 

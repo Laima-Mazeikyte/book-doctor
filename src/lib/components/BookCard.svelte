@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { hideCoversStore } from '$lib/stores/hideCovers';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import type { Book, RatingValue } from '$lib/types/book';
 
@@ -11,7 +12,9 @@
 	let hoverRating = $state<number>(0);
 	let coverImageFailed = $state(false);
 
-	const showCoverImage = $derived(Boolean(book.coverUrl) && !coverImageFailed);
+	const showCoverImage = $derived(
+		Boolean(book.coverUrl) && !coverImageFailed && !$hideCoversStore
+	);
 
 	const RATING_OPTIONS: RatingValue[] = [1, 2, 3, 4, 5];
 	const STAR_FILLED = '★';
