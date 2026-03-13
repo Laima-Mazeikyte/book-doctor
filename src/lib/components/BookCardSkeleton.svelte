@@ -12,6 +12,6 @@
 		border-radius: var(--radius);
 		background: var(--color-card-bg);
 		border: 1px solid var(--color-border);
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+		box-shadow: var(--shadow-card);
 	}
 </style>

@@ -26,19 +26,21 @@
 
 <article class="book-card" data-book-id={book.id}>
 	<div class="book-card__media">
-		{#if showCoverImage}
-			<img
-				src={book.coverUrl}
-				alt=""
-				class="book-card__cover"
-				onerror={() => (coverImageFailed = true)}
-			/>
-		{:else}
-			<div class="book-card__cover book-card__cover--no-image">
-				<span class="book-card__placeholder-author">{book.author}{#if book.year}<span class="book-card__year"> · {book.year}</span>{/if}</span>
-				<span class="book-card__placeholder-title">{book.title}</span>
-			</div>
-		{/if}
+		<div class="book-card__media-inner">
+			{#if showCoverImage}
+				<img
+					src={book.coverUrl}
+					alt=""
+					class="book-card__cover"
+					onerror={() => (coverImageFailed = true)}
+				/>
+			{:else}
+				<div class="book-card__cover book-card__cover--no-image">
+					<span class="book-card__placeholder-author">{book.author}{#if book.year}<span class="book-card__year"> · {book.year}</span>{/if}</span>
+					<span class="book-card__placeholder-title">{book.title}</span>
+				</div>
+			{/if}
+		</div>
 	</div>
 	<div class="book-card__body">
 		<div
@@ -76,27 +78,41 @@
 		overflow: hidden;
 		background: var(--color-card-bg);
 		border: 1px solid var(--color-border);
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-		transition: box-shadow 0.2s ease, border-color 0.2s ease;
+		box-shadow: var(--shadow-card);
+		transition: box-shadow var(--duration-normal) var(--ease-default),
+			border-color var(--duration-normal) var(--ease-default);
 	}
 	.book-card:hover {
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-		border-color: var(--color-border-hover, #d0d0d0);
+		box-shadow: var(--shadow-card-hover);
+		border-color: var(--color-border-hover);
 	}
 	.book-card__media {
+		flex: 0 0 auto;
 		aspect-ratio: 2 / 3;
 		width: 100%;
-		overflow: hidden;
+		min-height: 0;
 		background: var(--color-card-bg);
-		padding: 0 0.375rem;
-		padding-top: 0.375rem;
+		padding: 0 var(--space-2);
+		padding-top: var(--space-2);
+	}
+	.book-card__media-inner {
+		position: relative;
+		width: 100%;
+		height: 100%;
+		overflow: hidden;
+		border-radius: var(--radius-sm);
 	}
 	.book-card__cover {
 		display: block;
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
+		object-position: center center;
 		border-radius: var(--radius-sm);
+		transition: transform var(--duration-normal) var(--ease-default);
+	}
+	.book-card:hover .book-card__cover:not(.book-card__cover--no-image) {
+		transform: scale(1.05);
 	}
 	.book-card__cover--no-image {
 		width: 100%;
@@ -105,19 +121,24 @@
 		flex-direction: column;
 		align-items: flex-start;
 		justify-content: center;
-		gap: 0.375rem;
-		padding: 0.75rem;
+		gap: var(--space-2);
+		padding: var(--space-3);
 		background: var(--color-card-placeholder-bg);
 		border-radius: var(--radius-sm);
 		text-align: left;
+		transition: transform var(--duration-normal) var(--ease-default);
+		transform-origin: center center;
+	}
+	.book-card:hover .book-card__cover--no-image {
+		transform: scale(1.03);
 	}
 	.book-card__placeholder-author {
-		font-size: 0.8125rem;
+		font-size: var(--font-size-sm);
 		color: var(--color-text-muted);
 	}
 	.book-card__placeholder-title {
-		font-size: 0.9375rem;
-		font-weight: 600;
+		font-size: var(--font-size-md);
+		font-weight: var(--font-weight-semibold);
 		line-height: 1.35;
 		letter-spacing: -0.01em;
 		color: var(--color-text);
@@ -127,28 +148,35 @@
 		flex-direction: column;
 		flex: 1;
 		min-width: 0;
-		padding: 0.625rem 0.75rem 0.75rem;
-		gap: 0.375rem;
+		height: fit-content;
+		padding: 8px;
+		gap: 0;
+		justify-content: flex-start;
+		align-items: center;
+		vertical-align: top;
 	}
+	/* rating strip: no extra margin so body hugs stars */
 	.book-card__rating {
 		display: flex;
-		gap: 0.125rem;
+		gap: 0;
+		justify-content: flex-start;
+		align-items: center;
 		flex-wrap: nowrap;
 		white-space: nowrap;
 		min-width: min-content;
-		margin-bottom: 0.125rem;
 	}
 	.book-card__star {
-		min-width: 1.75rem;
-		min-height: 1.75rem;
-		padding: 0.2rem;
-		font-size: 1.0625rem;
+		min-width: 2.25rem;
+		min-height: 2.25rem;
+		padding: var(--space-1);
+		font-size: 1.375rem;
 		line-height: 1;
 		border: none;
 		background: transparent;
 		border-radius: var(--radius-sm);
 		cursor: pointer;
-		transition: background 0.15s ease, color 0.15s ease;
+		transition: background var(--duration-fast) var(--ease-default),
+			color var(--duration-fast) var(--ease-default);
 		color: var(--color-text-muted);
 	}
 	.book-card__star:hover {
@@ -160,8 +188,8 @@
 		outline-offset: 2px;
 	}
 	.book-card__star--active {
-		background: var(--color-accent-bg);
-		color: var(--color-accent);
+		background: transparent;
+		color: var(--color-text);
 	}
 	.book-card__year {
 		opacity: 0.75;

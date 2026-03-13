@@ -1,0 +1,148 @@
+<script lang="ts">
+	import type { Snippet } from 'svelte';
+
+	interface Props {
+		children?: Snippet;
+		icon?: Snippet;
+		variant?: 'primary' | 'secondary' | 'tertiary' | 'link';
+		href?: string;
+		type?: 'button' | 'submit';
+		/** Pill shape (full border-radius) for floating CTAs */
+		pill?: boolean;
+		/** Required when using icon-only (no default slot content) for accessibility */
+		'aria-label'?: string;
+		class?: string;
+		onclick?: (e: MouseEvent) => void;
+	}
+
+	let {
+		children,
+		icon,
+		variant = 'primary',
+		href,
+		type = 'button',
+		pill = false,
+		'aria-label': ariaLabel,
+		class: className = '',
+		onclick,
+		...rest
+	}: Props = $props();
+
+	const isLink = $derived(typeof href === 'string' && href.length > 0);
+</script>
+
+{#if isLink}
+	<a
+		class="btn btn--{variant} {pill ? 'btn--pill' : ''} {className}"
+		href={href}
+		aria-label={ariaLabel}
+		{...rest}
+		onclick={onclick}
+	>
+		{#if icon}
+			<span class="btn__icon" aria-hidden="true">{@render icon()}</span>
+		{/if}
+		{#if children}
+			<span class="btn__label">{@render children()}</span>
+		{/if}
+	</a>
+{:else}
+	<button
+		class="btn btn--{variant} {pill ? 'btn--pill' : ''} {className}"
+		{type}
+		aria-label={ariaLabel}
+		{...rest}
+		onclick={onclick}
+	>
+		{#if icon}
+			<span class="btn__icon" aria-hidden="true">{@render icon()}</span>
+		{/if}
+		{#if children}
+			<span class="btn__label">{@render children()}</span>
+		{/if}
+	</button>
+{/if}
+
+<style>
+	.btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-2);
+		min-height: var(--min-tap);
+		padding: var(--space-3) var(--space-6);
+		font-size: var(--font-size-md);
+		font-weight: var(--font-weight-medium);
+		line-height: var(--line-height-normal);
+		border-radius: var(--radius-sm);
+		transition: opacity var(--duration-fast) var(--ease-default),
+			background var(--duration-fast) var(--ease-default),
+			border-color var(--duration-fast) var(--ease-default),
+			color var(--duration-fast) var(--ease-default);
+		cursor: pointer;
+		text-decoration: none;
+		border: none;
+	}
+	.btn:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 2px;
+	}
+
+	/* Primary */
+	.btn--primary {
+		background: var(--color-button-primary-bg);
+		color: var(--color-button-primary-text);
+	}
+	.btn--primary:hover {
+		opacity: 0.92;
+	}
+
+	/* Secondary */
+	.btn--secondary {
+		background: var(--color-button-secondary-bg);
+		color: var(--color-button-secondary-text);
+		border: 1px solid var(--color-button-secondary-border);
+	}
+	.btn--secondary:hover {
+		background: var(--color-button-secondary-hover-bg);
+		border-color: var(--color-button-secondary-hover-border);
+	}
+
+	/* Tertiary */
+	.btn--tertiary {
+		background: var(--color-button-tertiary-bg);
+		color: var(--color-button-tertiary-text);
+	}
+	.btn--tertiary:hover {
+		background: var(--color-button-tertiary-hover-bg);
+	}
+
+	/* Link */
+	.btn--link {
+		background: transparent;
+		color: var(--color-button-link-text);
+		min-height: auto;
+		padding: var(--space-1) var(--space-2);
+	}
+	.btn--link:hover {
+		color: var(--color-button-link-hover-text);
+		text-decoration: underline;
+	}
+
+	/* Icon-only: square padding */
+	.btn:not(:has(.btn__label)) {
+		padding: var(--space-3);
+	}
+	.btn__icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+	.btn__label {
+		display: inline;
+	}
+
+	.btn--pill {
+		border-radius: var(--radius-pill);
+	}
+</style>

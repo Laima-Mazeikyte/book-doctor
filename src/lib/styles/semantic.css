@@ -1,0 +1,95 @@
+/**
+ * Semantic tokens – reference primitives only.
+ * Used by base.css and components.
+ */
+:root {
+	/* ── Background & surface ────────────────────────────────────────────── */
+	--color-bg: var(--primitive-gray-50);
+	--color-bg-muted: var(--primitive-gray-100);
+	--color-bg-hover: var(--primitive-gray-200);
+	--color-card-bg: var(--primitive-white);
+	--color-card-placeholder-bg: var(--primitive-sand);
+
+	/* ── Text ─────────────────────────────────────────────────────────────── */
+	--color-text: var(--primitive-gray-900);
+	--color-text-muted: var(--primitive-gray-500);
+
+	/* ── Border ───────────────────────────────────────────────────────────── */
+	--color-border: var(--primitive-gray-300);
+	--color-border-hover: var(--primitive-gray-400);
+
+	/* ── Accent & focus ───────────────────────────────────────────────────── */
+	--color-accent: var(--primitive-blue-500);
+	--color-accent-bg: var(--primitive-blue-100);
+	--color-focus: var(--primitive-blue-500);
+
+	/* ── Error ───────────────────────────────────────────────────────────── */
+	--color-error-bg: var(--primitive-red-50);
+	--color-error-border: var(--primitive-red-200);
+	--color-error-text: var(--primitive-red-800);
+
+	/* ── Button primary ──────────────────────────────────────────────────── */
+	--color-button-primary-bg: var(--primitive-blue-500);
+	--color-button-primary-text: var(--primitive-white);
+
+	/* ── Button secondary ────────────────────────────────────────────────── */
+	--color-button-secondary-bg: var(--primitive-gray-100);
+	--color-button-secondary-text: var(--primitive-gray-900);
+	--color-button-secondary-border: var(--primitive-gray-300);
+	--color-button-secondary-hover-bg: var(--primitive-gray-200);
+	--color-button-secondary-hover-border: var(--primitive-gray-400);
+
+	/* ── Button tertiary ─────────────────────────────────────────────────── */
+	--color-button-tertiary-bg: transparent;
+	--color-button-tertiary-text: var(--primitive-gray-900);
+	--color-button-tertiary-hover-bg: var(--primitive-gray-200);
+
+	/* ── Button link ──────────────────────────────────────────────────────── */
+	--color-button-link-text: var(--primitive-blue-500);
+	--color-button-link-hover-text: var(--primitive-gray-900);
+
+	/* ── Layout & interaction ─────────────────────────────────────────────── */
+	--min-tap: 44px;
+	--radius: var(--primitive-radius-md);
+	--radius-xs: var(--primitive-radius-xs);
+	--radius-sm: var(--primitive-radius-sm);
+	--radius-md: var(--primitive-radius-md);
+	--radius-pill: var(--primitive-radius-pill);
+	--content-width-narrow: 52rem;
+	--content-width-wide: 85rem;
+
+	/* ── Shadow (semantic: focus ring uses accent) ──────────────────────────── */
+	--shadow-focus-input: 0 2px 12px rgba(0, 0, 0, 0.08), 0 0 0 3px var(--color-accent-bg);
+
+	/* ── Spacing (re-export primitives) ─────────────────────────────────────── */
+	--space-1: var(--primitive-space-1);
+	--space-2: var(--primitive-space-2);
+	--space-3: var(--primitive-space-3);
+	--space-4: var(--primitive-space-4);
+	--space-5: var(--primitive-space-5);
+	--space-6: var(--primitive-space-6);
+	--space-8: var(--primitive-space-8);
+	--space-12: var(--primitive-space-12);
+	--space-24: var(--primitive-space-24);
+	--space-input-icon-left: var(--primitive-space-icon-offset);
+
+	/* ── Typography (re-export primitives) ──────────────────────────────────── */
+	--font-size-xs: var(--primitive-font-size-xs);
+	--font-size-sm: var(--primitive-font-size-sm);
+	--font-size-base: var(--primitive-font-size-base);
+	--font-size-md: var(--primitive-font-size-md);
+	--font-size-lg: var(--primitive-font-size-lg);
+	--font-size-xl: var(--primitive-font-size-xl);
+	--font-size-2xl: var(--primitive-font-size-2xl);
+	--font-size-3xl: var(--primitive-font-size-3xl);
+	--font-weight-normal: var(--primitive-font-weight-normal);
+	--font-weight-medium: var(--primitive-font-weight-medium);
+	--font-weight-semibold: var(--primitive-font-weight-semibold);
+	--line-height-tight: var(--primitive-line-height-tight);
+	--line-height-normal: var(--primitive-line-height-normal);
+	--line-height-relaxed: var(--primitive-line-height-relaxed);
+
+	/* ── Motion ────────────────────────────────────────────────────────────── */
+	--duration-fast: var(--primitive-duration-fast);
+	--duration-normal: var(--primitive-duration-normal);
+}
