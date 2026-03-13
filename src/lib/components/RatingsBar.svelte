@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
+	import { fly } from 'svelte/transition';
 	import { Book as BookIcon } from 'lucide-svelte';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import type { Book, RatingValue } from '$lib/types/book';
@@ -15,51 +16,76 @@
 
 	let { ratedEntries }: Props = $props();
 
-	let modalOpen = $state(false);
+	let open = $state(false);
 	let hoverEntryId = $state<string | null>(null);
 	let hoverRating = $state<number>(0);
-	let modalId = 'ratings-modal';
-	let closeId = 'ratings-modal-close';
-	let triggerId = 'ratings-trigger';
+	let coverFailedIds = $state<Set<string>>(new Set());
+	let closeButtonEl = $state<HTMLButtonElement | null>(null);
+	const panelId = 'ratings-drawer-panel';
+	const triggerId = 'ratings-trigger';
+
+	function setCoverFailed(bookId: string) {
+		coverFailedIds = new Set(coverFailedIds).add(bookId);
+	}
 
 	const RATING_OPTIONS: RatingValue[] = [1, 2, 3, 4, 5];
 	const STAR_FILLED = '★';
 	const STAR_EMPTY = '☆';
 
-	function openModal() {
-		modalOpen = true;
+	/** Portal node to body so it's not inside the bottom bar (pointer-events: none) and can receive clicks. */
+	function portal(node: HTMLElement, target: HTMLElement = document.body) {
+		target.appendChild(node);
+		return {
+			destroy() {
+				node.parentNode?.removeChild(node);
+			}
+		};
 	}
 
-	function closeModal() {
-		modalOpen = false;
+	function openDrawer() {
+		open = true;
+	}
+
+	function closeDrawer() {
+		open = false;
+	}
+
+	function handleOverlayClick(e: MouseEvent) {
+		if (e.target === e.currentTarget) closeDrawer();
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') closeModal();
+		if (e.key === 'Escape') closeDrawer();
 	}
 
 	$effect(() => {
-		if (!modalOpen) return;
-		tick().then(() => {
-			const focusable = document.querySelector(
-				`#${modalId} [data-modal-focus]`
-			) as HTMLElement | null;
-			focusable?.focus();
-		});
+		if (!open) return;
+		tick().then(() => closeButtonEl?.focus());
+	});
+
+	$effect(() => {
+		if (open) {
+			const prev = document.body.style.overflow;
+			document.body.style.overflow = 'hidden';
+			return () => {
+				document.body.style.overflow = prev;
+			};
+		}
 	});
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
 
+<!-- Fragment root so the button is a direct child of the bottom bar and receives pointer-events -->
 <button
 	id={triggerId}
 	type="button"
 	class="ratings-bar__trigger"
-	aria-expanded={modalOpen}
-	aria-controls={modalId}
+	aria-expanded={open}
+	aria-controls={panelId}
 	aria-haspopup="dialog"
 	aria-label="Your ratings"
-	onclick={openModal}
+	onclick={openDrawer}
 >
 	<span class="ratings-bar__icon">
 		<BookIcon size={20} aria-hidden="true" />
@@ -67,89 +93,96 @@
 	<span class="ratings-bar__count" aria-hidden="true">{ratedEntries.length}</span>
 </button>
 
-{#if modalOpen}
-	<div
-		id={modalId}
-		class="ratings-modal"
-		role="dialog"
-		aria-modal="true"
-		aria-labelledby="ratings-modal-title"
-		tabindex="-1"
-		onclick={(e) => e.target === e.currentTarget && closeModal()}
-		onkeydown={(e) => {
-			if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
-				e.preventDefault();
-				closeModal();
-			}
-		}}
-	>
-		<div class="ratings-modal__backdrop" aria-hidden="true"></div>
-		<div class="ratings-modal__panel">
-			<div class="ratings-modal__header">
-				<h2 id="ratings-modal-title" class="ratings-modal__title">
-					Your ratings
-				</h2>
-				<button
-					id={closeId}
-					type="button"
-					class="ratings-modal__close"
-					aria-label="Close"
-					data-modal-focus
-					onclick={closeModal}
-				>
-					Close
-				</button>
-			</div>
-			<div class="ratings-modal__body">
-				{#if ratedEntries.length === 0}
-					<p class="ratings-modal__empty">
-						No books rated yet. Rate at least 10 to get recommendations.
-					</p>
-				{:else}
-					<ul class="ratings-modal__list">
-						{#each ratedEntries as entry (entry.book.id)}
-							<li class="ratings-modal__item">
-								<div class="ratings-modal__item-info">
-									<span class="ratings-modal__item-title">{entry.book.title}</span>
-									<span class="ratings-modal__item-author">{entry.book.author}</span>
-									<span class="ratings-modal__item-stars" aria-hidden="true">
-										{#each RATING_OPTIONS as value}
-											{entry.rating >= value ? STAR_FILLED : STAR_EMPTY}
-										{/each}
-									</span>
-								</div>
-								<div
-									class="ratings-modal__item-actions"
-									role="group"
-									aria-label="Change or remove rating"
-									onmouseleave={() => { hoverEntryId = null; hoverRating = 0; }}
-								>
-									{#each RATING_OPTIONS as value}
-										{@const displayRating = hoverEntryId === entry.book.id && hoverRating > 0 ? hoverRating : entry.rating}
-										<button
-											type="button"
-											class="ratings-modal__star"
-											class:ratings-modal__star--active={displayRating >= value}
-											aria-label="Set rating to {value} out of 5"
-											aria-pressed={entry.rating === value}
-											onmouseenter={() => { hoverEntryId = entry.book.id; hoverRating = value; }}
-											onclick={() => ratingsStore.setRating(entry.book.id, value)}
-										>
-											<span aria-hidden="true">{displayRating >= value ? STAR_FILLED : STAR_EMPTY}</span>
-										</button>
-									{/each}
-									<button
-										type="button"
-										class="ratings-modal__remove"
-										aria-label="Remove rating for {entry.book.title}"
-										onclick={() => ratingsStore.removeRating(entry.book.id)}
-									>
-										Remove
-									</button>
-								</div>
-							</li>
-						{/each}
-					</ul>
+{#if open}
+		<div
+			use:portal
+			id={panelId}
+			class="ratings-drawer-overlay"
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="ratings-drawer-title"
+			onclick={handleOverlayClick}
+		>
+			<div
+				class="ratings-drawer-panel"
+				in:fly={{ x: -320, duration: 200 }}
+				out:fly={{ x: -320, duration: 150 }}
+			>
+				<div class="ratings-drawer__header">
+					<h2 id="ratings-drawer-title" class="ratings-drawer__title">
+						Your ratings
+					</h2>
+					<button
+						bind:this={closeButtonEl}
+						type="button"
+						class="ratings-drawer__close"
+						aria-label="Close"
+						onclick={closeDrawer}
+					>
+						Close
+					</button>
+				</div>
+				<div class="ratings-drawer__body">
+					{#if ratedEntries.length === 0}
+						<p class="ratings-drawer__empty">
+							No books rated yet. Rate at least 10 to get recommendations.
+						</p>
+					{:else}
+						<ul class="ratings-drawer__list">
+							{#each ratedEntries as entry (entry.book.id)}
+								<li class="ratings-drawer__item">
+									<div class="ratings-drawer__item-main">
+										<div class="ratings-drawer__item-cover">
+											{#if entry.book.coverUrl && !coverFailedIds.has(entry.book.id)}
+												<img
+													src={entry.book.coverUrl}
+													alt=""
+													class="ratings-drawer__cover-img"
+													onerror={() => setCoverFailed(entry.book.id)}
+												/>
+											{:else}
+												<div class="ratings-drawer__cover-placeholder">
+													<span class="ratings-drawer__cover-text">{entry.book.title}</span>
+												</div>
+											{/if}
+										</div>
+										<div class="ratings-drawer__item-info">
+											<span class="ratings-drawer__item-title">{entry.book.title}</span>
+											<span class="ratings-drawer__item-author">{entry.book.author}</span>
+											<div
+												class="ratings-drawer__item-actions"
+												role="group"
+												aria-label="Change or remove rating"
+												onmouseleave={() => { hoverEntryId = null; hoverRating = 0; }}
+											>
+												{#each RATING_OPTIONS as value}
+													{@const displayRating = hoverEntryId === entry.book.id && hoverRating > 0 ? hoverRating : entry.rating}
+													<button
+														type="button"
+														class="ratings-drawer__star"
+														class:ratings-drawer__star--active={displayRating >= value}
+														aria-label="Set rating to {value} out of 5"
+														aria-pressed={entry.rating === value}
+														onmouseenter={() => { hoverEntryId = entry.book.id; hoverRating = value; }}
+														onclick={() => ratingsStore.setRating(entry.book.id, value)}
+													>
+														<span aria-hidden="true">{displayRating >= value ? STAR_FILLED : STAR_EMPTY}</span>
+													</button>
+												{/each}
+												<button
+													type="button"
+													class="ratings-drawer__remove"
+													aria-label="Remove rating for {entry.book.title}"
+													onclick={() => ratingsStore.removeRating(entry.book.id)}
+												>
+													Remove
+												</button>
+											</div>
+										</div>
+									</div>
+								</li>
+							{/each}
+						</ul>
 				{/if}
 			</div>
 		</div>
@@ -160,9 +193,9 @@
 	.ratings-bar__trigger {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 4px;
 		min-height: var(--min-tap);
-		padding: 0.5rem 1rem;
+		padding: 0.5rem 12px;
 		font-size: 0.9375rem;
 		font-weight: 500;
 		border: 1px solid var(--color-border);
@@ -170,6 +203,7 @@
 		background: var(--color-bg-muted);
 		color: var(--color-text);
 		cursor: pointer;
+		pointer-events: auto;
 		transition: background 0.15s, border-color 0.15s;
 	}
 	.ratings-bar__trigger:hover {
@@ -190,33 +224,30 @@
 		color: var(--color-text-muted);
 	}
 
-	.ratings-modal {
+	.ratings-drawer-overlay {
 		position: fixed;
 		inset: 0;
 		z-index: 200;
+		background: transparent;
 		display: flex;
 		align-items: stretch;
-		justify-content: center;
-		padding: 0;
+		justify-content: flex-start;
 	}
-	.ratings-modal__backdrop {
-		position: absolute;
-		inset: 0;
-		background: rgba(0, 0, 0, 0.5);
-	}
-	.ratings-modal__panel {
+
+	.ratings-drawer-panel {
 		position: relative;
-		width: 100%;
-		max-width: 36rem;
+		width: min(400px, 85vw);
+		min-width: 320px;
+		max-width: 400px;
 		height: 100%;
-		height: 100dvh;
 		background: var(--color-bg, #fff);
-		box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+		box-shadow: 4px 0 20px rgba(0, 0, 0, 0.15);
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
 	}
-	.ratings-modal__header {
+
+	.ratings-drawer__header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
@@ -224,12 +255,12 @@
 		border-bottom: 1px solid var(--color-border, #e5e5e5);
 		flex-shrink: 0;
 	}
-	.ratings-modal__title {
+	.ratings-drawer__title {
 		font-size: 1.25rem;
 		font-weight: 600;
 		margin: 0;
 	}
-	.ratings-modal__close {
+	.ratings-drawer__close {
 		min-height: 2.5rem;
 		padding: 0.5rem 1rem;
 		font-size: 0.9375rem;
@@ -240,66 +271,102 @@
 		cursor: pointer;
 		color: var(--color-text, #171717);
 	}
-	.ratings-modal__close:hover {
+	.ratings-drawer__close:hover {
 		background: var(--color-bg-hover, #f5f5f5);
 	}
-	.ratings-modal__close:focus-visible {
+	.ratings-drawer__close:focus-visible {
 		outline: 2px solid var(--color-focus, #0066cc);
 		outline-offset: 2px;
 	}
-	.ratings-modal__body {
+
+	.ratings-drawer__body {
 		overflow-y: auto;
 		padding: 1rem 1.25rem;
 		flex: 1;
 		min-height: 0;
 	}
-	.ratings-modal__empty {
+	.ratings-drawer__empty {
 		margin: 0;
 		color: var(--color-text-muted, #555);
 		font-size: 0.9375rem;
 	}
-	.ratings-modal__list {
+	.ratings-drawer__list {
 		list-style: none;
 		margin: 0;
 		padding: 0;
 	}
-	.ratings-modal__item {
-		padding: 1rem 0;
+	.ratings-drawer__item {
+		padding: 0.75rem 0;
 		border-bottom: 1px solid var(--color-border, #e0e0e0);
 	}
-	.ratings-modal__item:last-child {
+	.ratings-drawer__item:last-child {
 		border-bottom: none;
 	}
-	.ratings-modal__item-info {
-		display: block;
-		margin-bottom: 0.5rem;
-	}
-	.ratings-modal__item-title {
-		font-weight: 600;
-		display: block;
-	}
-	.ratings-modal__item-author {
-		font-size: 0.875rem;
-		color: var(--color-text-muted, #555);
-	}
-	.ratings-modal__item-stars {
-		display: block;
-		font-size: 1rem;
-		color: var(--color-accent, #1976d2);
-		margin-top: 0.25rem;
-		letter-spacing: 0.05em;
-	}
-	.ratings-modal__item-actions {
+	.ratings-drawer__item-main {
 		display: flex;
-		flex-wrap: nowrap;
+		gap: 0.75rem;
+		align-items: flex-start;
+	}
+	.ratings-drawer__item-cover {
+		flex-shrink: 0;
+		width: 3.5rem;
+		aspect-ratio: 2 / 3;
+		border-radius: var(--radius-sm, 6px);
+		overflow: hidden;
+		background: var(--color-card-placeholder-bg, #eee);
+	}
+	.ratings-drawer__cover-img {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+	.ratings-drawer__cover-placeholder {
+		width: 100%;
+		height: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0.25rem;
+		text-align: center;
+	}
+	.ratings-drawer__cover-text {
+		font-size: 0.625rem;
+		line-height: 1.2;
+		color: var(--color-text-muted, #555);
+		overflow: hidden;
+		display: -webkit-box;
+		-webkit-line-clamp: 3;
+		-webkit-box-orient: vertical;
+	}
+	.ratings-drawer__item-info {
+		flex: 1;
+		min-width: 0;
+	}
+	.ratings-drawer__item-title {
+		font-weight: 600;
+		font-size: 0.9375rem;
+		display: block;
+		line-height: 1.3;
+	}
+	.ratings-drawer__item-author {
+		font-size: 0.8125rem;
+		color: var(--color-text-muted, #555);
+		display: block;
+		margin-top: 0.125rem;
+	}
+	.ratings-drawer__item-actions {
+		display: flex;
+		flex-wrap: wrap;
 		gap: 0.25rem;
 		align-items: center;
+		margin-top: 0.5rem;
 	}
-	.ratings-modal__star {
-		min-width: 2rem;
-		min-height: 2rem;
-		padding: 0.25rem;
-		font-size: 1.125rem;
+	.ratings-drawer__star {
+		min-width: 1.75rem;
+		min-height: 1.75rem;
+		padding: 0.2rem;
+		font-size: 1rem;
 		line-height: 1;
 		border: none;
 		background: transparent;
@@ -307,32 +374,32 @@
 		cursor: pointer;
 		color: var(--color-text-muted, #888);
 	}
-	.ratings-modal__star:hover {
+	.ratings-drawer__star:hover {
 		background: var(--color-bg-hover, #f5f5f5);
 		color: var(--color-text, #1a1a1a);
 	}
-	.ratings-modal__star:focus-visible {
+	.ratings-drawer__star:focus-visible {
 		outline: 2px solid var(--color-focus, #0066cc);
 		outline-offset: 2px;
 	}
-	.ratings-modal__star--active {
+	.ratings-drawer__star--active {
 		background: transparent;
 		color: var(--color-accent, #1976d2);
 	}
-	.ratings-modal__remove {
-		min-height: 2.75rem;
-		padding: 0.375rem 0.75rem;
-		font-size: 0.875rem;
+	.ratings-drawer__remove {
+		min-height: 2rem;
+		padding: 0.25rem 0.5rem;
+		font-size: 0.8125rem;
 		border: 1px solid var(--color-border, #ccc);
 		background: var(--color-bg, #fff);
 		border-radius: 4px;
 		cursor: pointer;
 		margin-left: 0.25rem;
 	}
-	.ratings-modal__remove:hover {
+	.ratings-drawer__remove:hover {
 		background: var(--color-bg-hover, #f5f5f5);
 	}
-	.ratings-modal__remove:focus-visible {
+	.ratings-drawer__remove:focus-visible {
 		outline: 2px solid var(--color-focus, #0066cc);
 		outline-offset: 2px;
 	}

@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import BookCard from '$lib/components/BookCard.svelte';
+	import BookCardSkeleton from '$lib/components/BookCardSkeleton.svelte';
 	import RatingsBar from '$lib/components/RatingsBar.svelte';
 	import { getBookById } from '$lib/data/dummyBooks';
 	import { ratingsStore } from '$lib/stores/ratings';
@@ -182,23 +183,21 @@
 		class="rate-page__sticky-header"
 		class:rate-page__sticky-header--hidden={!headerVisible}
 	>
-		<h1>Rate books</h1>
-		<p class="rate-page__intro">
-			Search or pick from popular books below. Rate at least 10 to get recommendations.
-		</p>
 		<div class="rate-page__search">
-			<label for="book-search">Search by title or author</label>
+			<span class="rate-page__search-icon" aria-hidden="true">
+				<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<circle cx="11" cy="11" r="8"/>
+					<path d="m21 21-4.35-4.35"/>
+				</svg>
+			</span>
 			<input
 				id="book-search"
 				type="search"
 				autocomplete="off"
-				placeholder="e.g. Tolkien, 1984"
+				placeholder="Search books"
 				bind:value={searchQuery}
-				aria-describedby="search-hint"
+				aria-label="Search books"
 			/>
-			<span id="search-hint" class="rate-page__hint">
-				Type at least 3 characters to search.
-			</span>
 		</div>
 	</header>
 
@@ -220,9 +219,11 @@
 			{/if}
 
 			{#if loadingSearch}
-				<div class="rate-page__spinner-wrap" aria-label="Searching…" aria-live="polite">
-					<span class="rate-page__spinner" aria-hidden="true"></span>
-				</div>
+				<ul class="rate-page__list" aria-label="Searching…" aria-live="polite">
+					{#each Array(6) as _}
+						<li><BookCardSkeleton /></li>
+					{/each}
+				</ul>
 			{:else if searchResults.length === 0 && !searchError}
 				<p class="rate-page__empty">No books found for that search.</p>
 			{:else}
@@ -250,9 +251,11 @@
 			{/if}
 
 			{#if loadingInitial}
-				<div class="rate-page__spinner-wrap" aria-label="Loading books…" aria-live="polite">
-					<span class="rate-page__spinner" aria-hidden="true"></span>
-				</div>
+				<ul class="rate-page__list" aria-label="Loading books…" aria-live="polite">
+					{#each Array(8) as _}
+						<li><BookCardSkeleton /></li>
+					{/each}
+				</ul>
 			{:else}
 				<ul class="rate-page__list">
 					{#each popularBooks as book (book.id)}
@@ -298,7 +301,8 @@
 		position: sticky;
 		top: 0;
 		z-index: 50;
-		background: var(--color-bg);
+		background: transparent;
+		padding-top: 1rem;
 		padding-bottom: 1rem;
 		margin-bottom: 0.5rem;
 		transition: transform 0.25s ease;
@@ -306,48 +310,43 @@
 	.rate-page__sticky-header--hidden {
 		transform: translateY(-100%);
 	}
-	.rate-page__sticky-header h1 {
-		font-size: 1.5rem;
-		font-weight: 600;
-		letter-spacing: -0.02em;
-		margin: 0 0 0.5rem 0;
-	}
-	.rate-page__intro {
-		color: var(--color-text-muted);
-		margin: 0 0 1.5rem 0;
-		font-size: 0.9375rem;
-		line-height: 1.5;
-	}
 	.rate-page__search {
+		position: relative;
 		margin-bottom: 0;
 	}
-	.rate-page__search label {
-		display: block;
-		font-weight: 500;
-		font-size: 0.875rem;
-		margin-bottom: 0.375rem;
+	.rate-page__search-icon {
+		position: absolute;
+		left: 1rem;
+		top: 50%;
+		transform: translateY(-50%);
+		z-index: 1;
+		color: var(--color-text-muted);
+		pointer-events: none;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 	}
 	.rate-page__search input {
 		width: 100%;
 		min-height: var(--min-tap);
-		padding: 0.625rem 0.875rem;
+		padding: 0.625rem 1rem 0.625rem 2.75rem;
 		font-size: 1rem;
 		border: 1px solid var(--color-border);
-		border-radius: var(--radius-sm);
-		background: var(--color-bg);
+		border-radius: 9999px;
+		background: var(--color-card-bg);
 		color: var(--color-text);
+		box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
 		transition: border-color 0.15s ease, box-shadow 0.15s ease;
+	}
+	@media (prefers-color-scheme: dark) {
+		.rate-page__search input {
+			box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+		}
 	}
 	.rate-page__search input:focus {
 		outline: none;
 		border-color: var(--color-focus);
-		box-shadow: 0 0 0 3px var(--color-accent-bg);
-	}
-	.rate-page__hint {
-		display: block;
-		font-size: 0.8125rem;
-		color: var(--color-text-muted);
-		margin-top: 0.25rem;
+		box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08), 0 0 0 3px var(--color-accent-bg);
 	}
 	.rate-page__section-title {
 		font-size: 1.0625rem;
@@ -441,7 +440,7 @@
 		height: 1px;
 	}
 
-	/* ── Bottom bar ── */
+	/* ── Bottom bar (floating, no bg) ── */
 	.rate-page__bottom-bar {
 		position: fixed;
 		bottom: 0;
@@ -450,13 +449,16 @@
 		z-index: 100;
 		padding: 0.75rem 1rem;
 		padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
-		background: var(--color-bg);
-		box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.08);
+		background: transparent;
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.75rem;
 		align-items: center;
 		justify-content: space-between;
+		pointer-events: none;
+	}
+	.rate-page__bottom-bar > * {
+		pointer-events: auto;
 	}
 	.rate-page__cta {
 		min-height: var(--min-tap);

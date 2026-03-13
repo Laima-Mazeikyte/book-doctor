@@ -1,0 +1,12 @@
+{"sessionId":"806b7e","location":"RatingsBar.svelte:openDrawer","message":"openDrawer called","data":{},"timestamp":1773439726499,"hypothesisId":"H2"}
+{"sessionId":"806b7e","location":"RatingsBar.svelte:starClick","message":"Star button clicked in drawer","data":{"bookId":"85b64d2a-aa56-48bc-89bb-7132f6233237","value":4},"timestamp":1773439728417,"hypothesisId":"H4,H5"}
+{"sessionId":"806b7e","location":"RatingsBar.svelte:handleOverlayClick","message":"overlay click","data":{"targetTag":"SPAN","currentTag":"DIV","targetEqualsCurrent":false,"targetClass":"s-Xva6NbWSIuUR"},"timestamp":1773439728417,"hypothesisId":"H1,H3"}
+{"sessionId":"806b7e","location":"RatingsBar.svelte:starClick","message":"Star button clicked in drawer","data":{"bookId":"85b64d2a-aa56-48bc-89bb-7132f6233237","value":3},"timestamp":1773439734655,"hypothesisId":"H4,H5"}
+{"sessionId":"806b7e","location":"RatingsBar.svelte:handleOverlayClick","message":"overlay click","data":{"targetTag":"SPAN","currentTag":"DIV","targetEqualsCurrent":false,"targetClass":"s-Xva6NbWSIuUR"},"timestamp":1773439734656,"hypothesisId":"H1,H3"}
+{"sessionId":"806b7e","location":"RatingsBar.svelte:closeButtonClick","message":"Close button clicked","data":{},"timestamp":1773439736247,"hypothesisId":"H2,H5"}
+{"sessionId":"806b7e","location":"RatingsBar.svelte:closeDrawer","message":"closeDrawer called","data":{},"timestamp":1773439736247,"hypothesisId":"H2"}
+{"sessionId":"806b7e","location":"RatingsBar.svelte:handleOverlayClick","message":"overlay click","data":{"targetTag":"BUTTON","currentTag":"DIV","targetEqualsCurrent":false,"targetClass":"ratings-drawer__close s-Xva6NbWSIuUR"},"timestamp":1773439736248,"hypothesisId":"H1,H3"}
+{"sessionId":"806b7e","location":"RatingsBar.svelte:openDrawer","message":"openDrawer called","data":{},"timestamp":1773439738555,"hypothesisId":"H2"}
+{"sessionId":"806b7e","location":"RatingsBar.svelte:handleOverlayClick","message":"overlay click","data":{"targetTag":"BUTTON","currentTag":"DIV","targetEqualsCurrent":false,"targetClass":"ratings-drawer__remove s-Xva6NbWSIuUR"},"timestamp":1773439739867,"hypothesisId":"H1,H3"}
+{"sessionId":"806b7e","location":"RatingsBar.svelte:handleOverlayClick","message":"overlay click","data":{"targetTag":"DIV","currentTag":"DIV","targetEqualsCurrent":true,"targetClass":"ratings-drawer-overlay s-Xva6NbWSIuUR"},"timestamp":1773439757791,"hypothesisId":"H1,H3"}
+{"sessionId":"806b7e","location":"RatingsBar.svelte:closeDrawer","message":"closeDrawer called","data":{},"timestamp":1773439757791,"hypothesisId":"H2"}
