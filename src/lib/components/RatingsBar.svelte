@@ -61,7 +61,9 @@
 	aria-label="Your ratings"
 	onclick={openModal}
 >
-	<BookIcon class="ratings-bar__icon" size={20} aria-hidden="true" />
+	<span class="ratings-bar__icon">
+		<BookIcon size={20} aria-hidden="true" />
+	</span>
 	<span class="ratings-bar__count" aria-hidden="true">{ratedEntries.length}</span>
 </button>
 
@@ -173,6 +175,7 @@
 		outline-offset: 2px;
 	}
 	.ratings-bar__icon {
+		display: inline-flex;
 		flex-shrink: 0;
 		color: var(--color-text-muted);
 	}
