@@ -3,16 +3,17 @@
 	import { goto } from '$app/navigation';
 	import BookCard from '$lib/components/BookCard.svelte';
 	import RatingsBar from '$lib/components/RatingsBar.svelte';
-	import { getBookById } from '$lib/data/dummyBooks';
+	import { getStarterBooks, searchBooks, getBookById } from '$lib/data/dummyBooks';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import type { Book, RatingValue } from '$lib/types/book';
 
 	const SCROLL_THRESHOLD = 60;
 
-	// ── Search ─────────────────────────────────────────────────────────────────
 	let searchQuery = $state('');
 	let debouncedQuery = $state('');
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+	let lastScrollY = $state(0);
+	let headerVisible = $state(true);
 
 	$effect(() => {
 		const q = searchQuery;
@@ -25,142 +26,7 @@
 		};
 	});
 
-	// Fire search only when 3+ chars; clear results otherwise.
-	$effect(() => {
-		const q = debouncedQuery.trim();
-		if (q.length >= 3) {
-			doSearch(q);
-		} else {
-			searchResults = [];
-			searchError = null;
-		}
-	});
-
-	const isSearching = $derived(debouncedQuery.trim().length >= 3);
-
-	// ── Header visibility on scroll ────────────────────────────────────────────
-	let lastScrollY = $state(0);
-	let headerVisible = $state(true);
-
-	// ── Popular books ──────────────────────────────────────────────────────────
-	let popularBooks = $state<Book[]>([]);
-	let nextOffset = $state(0);
-	let hasMore = $state(true);
-	let loadingInitial = $state(true);
-	let loadingMore = $state(false);
-	let popularError = $state<string | null>(null);
-
-	// ── Search results ─────────────────────────────────────────────────────────
-	let searchResults = $state<Book[]>([]);
-	let loadingSearch = $state(false);
-	let searchError = $state<string | null>(null);
-
-	// ── Sentinel for IntersectionObserver (lazy load) ──────────────────────────
-	let sentinelEl = $state<HTMLDivElement | undefined>(undefined);
-
-	$effect(() => {
-		if (!sentinelEl) return;
-
-		const observer = new IntersectionObserver(
-			(entries) => {
-				if (
-					entries[0].isIntersecting &&
-					!loadingMore &&
-					!loadingInitial &&
-					!isSearching &&
-					hasMore
-				) {
-					loadPopular(nextOffset);
-				}
-			},
-			{ rootMargin: '300px' }
-		);
-
-		observer.observe(sentinelEl);
-		return () => observer.disconnect();
-	});
-
-	// ── Book lookup (popular + search + dummy fallback) ────────────────────────
-	function findBookById(id: string): Book | undefined {
-		return (
-			popularBooks.find((b) => b.id === id) ??
-			searchResults.find((b) => b.id === id) ??
-			getBookById(id)
-		);
-	}
-
-	// ── Ratings ────────────────────────────────────────────────────────────────
-	const ratedEntries = $derived(
-		Array.from($ratingsStore.entries())
-			.map(([bookId, rating]) => {
-				const book = findBookById(bookId);
-				return book ? { book, rating } : null;
-			})
-			.filter((e): e is { book: Book; rating: RatingValue } => e !== null)
-	);
-
-	const ratedCount = $derived($ratingsStore.size);
-	const showBottomBar = $derived(ratedCount >= 1);
-	const canGetRecommendations = $derived(ratedCount >= 10);
-
-	// ── Data fetching ──────────────────────────────────────────────────────────
-	async function loadPopular(offset: number) {
-		if (offset === 0) {
-			loadingInitial = true;
-		} else {
-			loadingMore = true;
-		}
-		popularError = null;
-
-		try {
-			const res = await fetch(`/api/books/popular?offset=${offset}`);
-			if (!res.ok) throw new Error(`HTTP ${res.status}`);
-			const data: { books: Book[]; nextOffset: number; fallback?: boolean } = await res.json();
-
-			if (offset === 0) {
-				popularBooks = data.books;
-			} else {
-				popularBooks = [...popularBooks, ...data.books];
-			}
-			nextOffset = data.nextOffset;
-			hasMore = data.books.length > 0;
-		} catch {
-			popularError = 'Could not load books right now. Showing a default selection.';
-		} finally {
-			if (offset === 0) {
-				loadingInitial = false;
-			} else {
-				loadingMore = false;
-			}
-		}
-	}
-
-	async function doSearch(query: string) {
-		loadingSearch = true;
-		searchError = null;
-
-		try {
-			const res = await fetch(`/api/books/search?q=${encodeURIComponent(query)}`);
-			if (!res.ok) throw new Error(`HTTP ${res.status}`);
-			const data: { books: Book[] } = await res.json();
-			searchResults = data.books;
-		} catch {
-			searchError = 'Search failed. Please try again.';
-			searchResults = [];
-		} finally {
-			loadingSearch = false;
-		}
-	}
-
-	function handleSubmit() {
-		if (canGetRecommendations) {
-			goto('/rate/recommendations');
-		}
-	}
-
 	onMount(() => {
-		loadPopular(0);
-
 		const handleScroll = () => {
 			const y = window.scrollY;
 			if (y <= SCROLL_THRESHOLD) {
@@ -175,6 +41,31 @@
 		window.addEventListener('scroll', handleScroll, { passive: true });
 		return () => window.removeEventListener('scroll', handleScroll);
 	});
+
+	const starterBooks = $derived(getStarterBooks());
+	const searchResults = $derived(
+		debouncedQuery.trim() ? searchBooks(debouncedQuery) : []
+	);
+	const isSearching = $derived(debouncedQuery.trim().length > 0);
+
+	const ratedEntries = $derived(
+		Array.from($ratingsStore.entries())
+			.map(([bookId, rating]) => {
+				const book = getBookById(bookId);
+				return book ? { book, rating } : null;
+			})
+			.filter((e): e is { book: Book; rating: RatingValue } => e !== null)
+	);
+
+	const ratedCount = $derived($ratingsStore.size);
+	const showBottomBar = $derived(ratedCount >= 1);
+	const canGetRecommendations = $derived(ratedCount >= 10);
+
+	function handleSubmit() {
+		if (canGetRecommendations) {
+			goto('/rate/recommendations');
+		}
+	}
 </script>
 
 <div class="rate-page">
@@ -197,81 +88,35 @@
 				aria-describedby="search-hint"
 			/>
 			<span id="search-hint" class="rate-page__hint">
-				Type at least 3 characters to search.
+				Results update as you type.
 			</span>
 		</div>
 	</header>
 
 	<div class="rate-page__content">
-		{#if isSearching}
-			<!-- ── Search results ── -->
-			<h2 class="rate-page__section-title">Search results</h2>
-
-			{#if searchError}
-				<div class="rate-page__error" role="alert">
-					<span>{searchError}</span>
-					<button
-						type="button"
-						class="rate-page__error-dismiss"
-						onclick={() => (searchError = null)}
-						aria-label="Dismiss error"
-					>✕</button>
-				</div>
-			{/if}
-
-			{#if loadingSearch}
-				<div class="rate-page__spinner-wrap" aria-label="Searching…" aria-live="polite">
-					<span class="rate-page__spinner" aria-hidden="true"></span>
-				</div>
-			{:else if searchResults.length === 0 && !searchError}
-				<p class="rate-page__empty">No books found for that search.</p>
-			{:else}
-				<ul class="rate-page__list">
-					{#each searchResults as book (book.id)}
-						<li><BookCard {book} /></li>
-					{/each}
-				</ul>
-			{/if}
-
+	{#if isSearching}
+		<h2 class="rate-page__section-title">Search results</h2>
+		{#if searchResults.length === 0}
+			<p class="rate-page__empty">No books match.</p>
 		{:else}
-			<!-- ── Popular books ── -->
-			<h2 class="rate-page__section-title">Popular books</h2>
-
-			{#if popularError}
-				<div class="rate-page__error" role="alert">
-					<span>{popularError}</span>
-					<button
-						type="button"
-						class="rate-page__error-dismiss"
-						onclick={() => (popularError = null)}
-						aria-label="Dismiss error"
-					>✕</button>
-				</div>
-			{/if}
-
-			{#if loadingInitial}
-				<div class="rate-page__spinner-wrap" aria-label="Loading books…" aria-live="polite">
-					<span class="rate-page__spinner" aria-hidden="true"></span>
-				</div>
-			{:else}
-				<ul class="rate-page__list">
-					{#each popularBooks as book (book.id)}
-						<li><BookCard {book} /></li>
-					{/each}
-				</ul>
-
-				{#if loadingMore}
-					<div class="rate-page__spinner-wrap rate-page__spinner-wrap--bottom" aria-live="polite">
-						<span class="rate-page__spinner" aria-hidden="true"></span>
-					</div>
-				{/if}
-
-				<!-- Sentinel triggers lazy load when scrolled into view -->
-				{#if hasMore}
-					<div bind:this={sentinelEl} class="rate-page__sentinel" aria-hidden="true"></div>
-				{/if}
-			{/if}
+			<ul class="rate-page__list">
+				{#each searchResults as book (book.id)}
+					<li>
+						<BookCard {book} />
+					</li>
+				{/each}
+			</ul>
 		{/if}
+	{:else}
+		<h2 class="rate-page__section-title">Popular books</h2>
+		<ul class="rate-page__list">
+			{#each starterBooks as book (book.id)}
+				<li>
+					<BookCard {book} />
+				</li>
+			{/each}
+		</ul>
+	{/if}
 	</div>
 
 	{#if showBottomBar}
@@ -292,6 +137,7 @@
 
 <style>
 	.rate-page {
+		/* Extra bottom padding for sticky bar + FAB; main.rate-page adds base */
 		padding-bottom: 0;
 	}
 	.rate-page__sticky-header {
@@ -320,6 +166,44 @@
 	}
 	.rate-page__search {
 		margin-bottom: 0;
+	}
+	.rate-page__content {
+		/* scrollable content below header */
+	}
+	.rate-page__bottom-bar {
+		position: fixed;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		z-index: 100;
+		padding: 0.75rem 1rem;
+		padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+		background: var(--color-bg);
+		box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.08);
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+		align-items: center;
+		justify-content: space-between;
+	}
+	.rate-page__cta {
+		min-height: var(--min-tap);
+		padding: 0.75rem 1.5rem;
+		font-size: 0.9375rem;
+		font-weight: 500;
+		background: var(--color-accent);
+		color: #fff;
+		border: none;
+		border-radius: 9999px;
+		cursor: pointer;
+		transition: opacity 0.15s ease;
+	}
+	.rate-page__cta:hover {
+		opacity: 0.92;
+	}
+	.rate-page__cta:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 2px;
 	}
 	.rate-page__search label {
 		display: block;
@@ -360,6 +244,7 @@
 		margin: 0;
 		padding: 0;
 		display: grid;
+		/* Single column when narrow; multi-column only when each card fits stars in one line (~12rem) */
 		grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
 		gap: 0.5rem;
 	}
@@ -375,106 +260,5 @@
 	.rate-page__empty {
 		color: var(--color-text-muted);
 		margin: 1rem 0;
-	}
-
-	/* ── Spinner ── */
-	.rate-page__spinner-wrap {
-		display: flex;
-		justify-content: center;
-		align-items: center;
-		padding: 3rem 1rem;
-	}
-	.rate-page__spinner-wrap--bottom {
-		padding: 1.5rem 1rem;
-	}
-	.rate-page__spinner {
-		display: inline-block;
-		width: 2rem;
-		height: 2rem;
-		border: 3px solid var(--color-border);
-		border-top-color: var(--color-accent);
-		border-radius: 50%;
-		animation: spin 0.7s linear infinite;
-	}
-	@keyframes spin {
-		to { transform: rotate(360deg); }
-	}
-
-	/* ── Error banner ── */
-	.rate-page__error {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.75rem;
-		padding: 0.75rem 1rem;
-		margin-bottom: 1rem;
-		background: #fef2f2;
-		border: 1px solid #fecaca;
-		border-radius: var(--radius-sm);
-		font-size: 0.875rem;
-		color: #991b1b;
-	}
-	@media (prefers-color-scheme: dark) {
-		.rate-page__error {
-			background: #2d1515;
-			border-color: #7f1d1d;
-			color: #fca5a5;
-		}
-	}
-	.rate-page__error-dismiss {
-		flex-shrink: 0;
-		background: none;
-		border: none;
-		cursor: pointer;
-		font-size: 1rem;
-		color: inherit;
-		opacity: 0.7;
-		line-height: 1;
-		padding: 0.125rem;
-	}
-	.rate-page__error-dismiss:hover {
-		opacity: 1;
-	}
-
-	/* ── Sentinel ── */
-	.rate-page__sentinel {
-		height: 1px;
-	}
-
-	/* ── Bottom bar ── */
-	.rate-page__bottom-bar {
-		position: fixed;
-		bottom: 0;
-		left: 0;
-		right: 0;
-		z-index: 100;
-		padding: 0.75rem 1rem;
-		padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
-		background: var(--color-bg);
-		box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.08);
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.75rem;
-		align-items: center;
-		justify-content: space-between;
-	}
-	.rate-page__cta {
-		min-height: var(--min-tap);
-		padding: 0.75rem 1.5rem;
-		font-size: 0.9375rem;
-		font-weight: 500;
-		background: var(--color-accent);
-		color: #fff;
-		border: none;
-		border-radius: 9999px;
-		cursor: pointer;
-		transition: opacity 0.15s ease;
-	}
-	.rate-page__cta:hover {
-		opacity: 0.92;
-	}
-	.rate-page__cta:focus-visible {
-		outline: 2px solid var(--color-focus);
-		outline-offset: 2px;
 	}
 </style>

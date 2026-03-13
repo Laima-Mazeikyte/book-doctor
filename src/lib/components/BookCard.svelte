@@ -56,9 +56,7 @@
 			{/each}
 		</div>
 		<h2 class="book-card__title">{book.title}</h2>
-		<p class="book-card__meta">
-			{book.author}{#if book.year}<span class="book-card__year"> · {book.year}</span>{/if}
-		</p>
+		<p class="book-card__meta">{book.author}</p>
 	</div>
 </article>
 
@@ -161,8 +159,5 @@
 		font-size: 0.8125rem;
 		color: var(--color-text-muted);
 		margin: 0;
-	}
-	.book-card__year {
-		opacity: 0.75;
 	}
 </style>

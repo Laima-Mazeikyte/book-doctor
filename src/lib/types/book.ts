@@ -4,7 +4,6 @@ export interface Book {
 	author: string;
 	coverUrl?: string;
 	summary?: string;
-	year?: string;
 }
 
 export type RatingValue = 1 | 2 | 3 | 4 | 5;
