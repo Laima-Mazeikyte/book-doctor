@@ -9,6 +9,9 @@
 	let { book }: Props = $props();
 
 	let hoverRating = $state<number>(0);
+	let coverImageFailed = $state(false);
+
+	const showCoverImage = $derived(Boolean(book.coverUrl) && !coverImageFailed);
 
 	const RATING_OPTIONS: RatingValue[] = [1, 2, 3, 4, 5];
 	const STAR_FILLED = '★';
@@ -20,15 +23,17 @@
 
 <article class="book-card" data-book-id={book.id}>
 	<div class="book-card__media">
-		{#if book.coverUrl}
+		{#if showCoverImage}
 			<img
 				src={book.coverUrl}
 				alt=""
 				class="book-card__cover"
+				onerror={() => (coverImageFailed = true)}
 			/>
 		{:else}
-			<div class="book-card__cover book-card__cover--placeholder" aria-hidden="true">
-				<span>No cover</span>
+			<div class="book-card__cover book-card__cover--no-image">
+				<span class="book-card__placeholder-author">{book.author}{#if book.year}<span class="book-card__year"> · {book.year}</span>{/if}</span>
+				<span class="book-card__placeholder-title">{book.title}</span>
 			</div>
 		{/if}
 	</div>
@@ -55,10 +60,6 @@
 				</button>
 			{/each}
 		</div>
-		<h2 class="book-card__title">{book.title}</h2>
-		<p class="book-card__meta">
-			{book.author}{#if book.year}<span class="book-card__year"> · {book.year}</span>{/if}
-		</p>
 	</div>
 </article>
 
@@ -70,7 +71,7 @@
 		padding: 0;
 		border-radius: var(--radius);
 		overflow: hidden;
-		background: var(--color-bg);
+		background: var(--color-card-bg);
 		border: 1px solid var(--color-border);
 		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 		transition: box-shadow 0.2s ease, border-color 0.2s ease;
@@ -83,7 +84,7 @@
 		aspect-ratio: 2 / 3;
 		width: 100%;
 		overflow: hidden;
-		background: var(--color-bg-muted);
+		background: var(--color-card-bg);
 		padding: 0 0.375rem;
 		padding-top: 0.375rem;
 	}
@@ -94,15 +95,29 @@
 		object-fit: cover;
 		border-radius: var(--radius-sm);
 	}
-	.book-card__cover--placeholder {
+	.book-card__cover--no-image {
 		width: 100%;
 		height: 100%;
 		display: flex;
-		align-items: center;
+		flex-direction: column;
+		align-items: flex-start;
 		justify-content: center;
-		font-size: 0.75rem;
-		color: var(--color-text-muted);
+		gap: 0.375rem;
+		padding: 0.75rem;
+		background: var(--color-card-placeholder-bg);
 		border-radius: var(--radius-sm);
+		text-align: left;
+	}
+	.book-card__placeholder-author {
+		font-size: 0.8125rem;
+		color: var(--color-text-muted);
+	}
+	.book-card__placeholder-title {
+		font-size: 0.9375rem;
+		font-weight: 600;
+		line-height: 1.35;
+		letter-spacing: -0.01em;
+		color: var(--color-text);
 	}
 	.book-card__body {
 		display: flex;
@@ -144,23 +159,6 @@
 	.book-card__star--active {
 		background: var(--color-accent-bg);
 		color: var(--color-accent);
-	}
-	.book-card__title {
-		font-size: 0.9375rem;
-		font-weight: 600;
-		margin: 0;
-		line-height: 1.35;
-		display: -webkit-box;
-		-webkit-line-clamp: 2;
-		line-clamp: 2;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-		letter-spacing: -0.01em;
-	}
-	.book-card__meta {
-		font-size: 0.8125rem;
-		color: var(--color-text-muted);
-		margin: 0;
 	}
 	.book-card__year {
 		opacity: 0.75;
