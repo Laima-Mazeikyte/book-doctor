@@ -1,0 +1,9 @@
+{"sessionId":"2cac38","location":"api/books/popular/+server.ts:entry","message":"popular API called","data":{"offset":0,"maxResults":30},"timestamp":1773434301983,"hypothesisId":"A"}
+{"sessionId":"2cac38","location":"api/books/popular/+server.ts:after-supabase","message":"popular supabase result","data":{"dbError":null,"rowCount":30},"timestamp":1773434302448,"hypothesisId":"B"}
+{"sessionId":"2cac38","location":"rate/+page.svelte:loadPopular-response","message":"popular fetch result","data":{"ok":true,"status":200,"offset":0},"timestamp":1773434302450,"hypothesisId":"D"}
+{"sessionId":"2cac38","location":"api/books/popular/+server.ts:entry","message":"popular API called","data":{"offset":30,"maxResults":20},"timestamp":1773434310835,"hypothesisId":"A"}
+{"sessionId":"2cac38","location":"api/books/popular/+server.ts:after-supabase","message":"popular supabase result","data":{"dbError":null,"rowCount":20},"timestamp":1773434311228,"hypothesisId":"B"}
+{"sessionId":"2cac38","location":"rate/+page.svelte:loadPopular-response","message":"popular fetch result","data":{"ok":true,"status":200,"offset":30},"timestamp":1773434311230,"hypothesisId":"D"}
+{"sessionId":"2cac38","location":"api/books/popular/+server.ts:entry","message":"popular API called","data":{"offset":50,"maxResults":20},"timestamp":1773434313376,"hypothesisId":"A"}
+{"sessionId":"2cac38","location":"api/books/popular/+server.ts:after-supabase","message":"popular supabase result","data":{"dbError":null,"rowCount":0},"timestamp":1773434313503,"hypothesisId":"B"}
+{"sessionId":"2cac38","location":"rate/+page.svelte:loadPopular-response","message":"popular fetch result","data":{"ok":true,"status":200,"offset":50},"timestamp":1773434313504,"hypothesisId":"D"}

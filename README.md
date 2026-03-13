@@ -18,6 +18,14 @@ To recreate this project with the same configuration:
 pnpm dlx sv@0.12.7 create --template minimal --types ts --add prettier eslint vitest="usages:unit,component" playwright sveltekit-adapter="adapter:netlify" --install pnpm .
 ```
 
+## Environment variables
+
+Copy `.env.example` to `.env` and fill in the values:
+
+- `VITE_SUPABASE_URL` – your Supabase project URL
+- `VITE_SUPABASE_ANON_KEY` – your Supabase anon/public key
+- `PUBLIC_BUNNY_COVERS_BASE` – Bunny.net pull zone base URL for book covers (e.g. `https://your-pullzone.b-cdn.net`). Cover images are requested as `{base}/{book_id}.jpg` (e.g. `12.jpg`). Optional; if unset, only books with a stored `cover_url` in the database will show a cover.
+
 ## Developing
 
 Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
