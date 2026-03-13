@@ -68,16 +68,22 @@
 </button>
 
 {#if modalOpen}
-	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 	<div
 		id={modalId}
 		class="ratings-modal"
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="ratings-modal-title"
+		tabindex="-1"
 		onclick={(e) => e.target === e.currentTarget && closeModal()}
+		onkeydown={(e) => {
+			if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
+				e.preventDefault();
+				closeModal();
+			}
+		}}
 	>
-		<div class="ratings-modal__backdrop" aria-hidden="true" />
+		<div class="ratings-modal__backdrop" aria-hidden="true"></div>
 		<div class="ratings-modal__panel">
 			<div class="ratings-modal__header">
 				<h2 id="ratings-modal-title" class="ratings-modal__title">
