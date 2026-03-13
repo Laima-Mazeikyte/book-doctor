@@ -30,10 +30,12 @@ interface GoogleBooksResponse {
 function mapVolume(vol: GoogleVolume): Book {
 	const info = vol.volumeInfo;
 	const rawCover = info.imageLinks?.thumbnail ?? info.imageLinks?.smallThumbnail;
-	// Force HTTPS and request a slightly larger thumbnail (zoom=1 → zoom=2).
-	const coverUrl = rawCover
-		? rawCover.replace(/^http:/, 'https:').replace('zoom=1', 'zoom=2')
-		: undefined;
+	// Only use the URL if it points to the actual front cover, not a scanned interior page.
+	// Google Books thumbnail URLs for real covers contain "frontcover" in the URL.
+	const coverUrl =
+		rawCover && rawCover.includes('frontcover')
+			? rawCover.replace(/^http:/, 'https:')
+			: undefined;
 
 	return {
 		id: vol.id,
