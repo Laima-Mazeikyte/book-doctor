@@ -16,8 +16,8 @@ export const GET: RequestHandler = async ({ url }) => {
 
 	const { data, error: dbError } = await supabase
 		.from('books')
-		.select('id, book_id, book_name, author, cover_url, summary, year')
-		.or(`book_name.ilike.%${query}%,author.ilike.%${query}%`)
+		.select('id, book_id, "book name", author, cover_url, summary, year')
+		.or(`"book name".ilike.%${query}%,author.ilike.%${query}%`)
 		.limit(MAX_RESULTS);
 
 	if (dbError) {
@@ -28,7 +28,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	const books =
 		data?.map((b) => ({
 			id: String(b.id),
-			title: b.book_name,
+			title: b['book name'],
 			author: b.author,
 			coverUrl: b.cover_url ?? (base ? `${base}/${b.book_id}.jpg` : undefined),
 			summary: b.summary ?? undefined,
