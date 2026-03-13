@@ -41,6 +41,8 @@
 		"vitest-browser-svelte": "^2.0.2"
 	},
 	"dependencies": {
-		"@supabase/supabase-js": "^2.99.1"
+		"@supabase/supabase-js": "^2.99.1",
+		"bits-ui": "^2.16.3",
+		"lucide-svelte": "^0.577.0"
 	}
 }
