@@ -35,9 +35,11 @@
 	$effect(() => {
 		const q = debouncedQuery.trim();
 		if (q.length >= 3) {
-			doSearch(q);
+			doSearch(q, 0);
 		} else {
 			searchResults = [];
+			searchNextOffset = 0;
+			searchHasMore = false;
 			searchError = null;
 		}
 	});
@@ -58,10 +60,13 @@
 
 	// ── Search results ─────────────────────────────────────────────────────────
 	let searchResults = $state<Book[]>([]);
+	let searchNextOffset = $state(0);
+	let searchHasMore = $state(false);
 	let loadingSearch = $state(false);
+	let loadingSearchMore = $state(false);
 	let searchError = $state<string | null>(null);
 
-	// ── Sentinel for IntersectionObserver (lazy load) ──────────────────────────
+	// ── Sentinel for IntersectionObserver (lazy load popular) ───────────────────
 	let sentinelEl = $state<HTMLDivElement | undefined>(undefined);
 
 	$effect(() => {
@@ -83,6 +88,34 @@
 		);
 
 		observer.observe(sentinelEl);
+		return () => observer.disconnect();
+	});
+
+	// ── Sentinel for search results lazy load ───────────────────────────────────
+	let searchSentinelEl = $state<HTMLDivElement | undefined>(undefined);
+
+	$effect(() => {
+		if (!searchSentinelEl || !isSearching) return;
+		const next = searchNextOffset;
+		const more = searchHasMore;
+		const loadingMore = loadingSearchMore;
+		const q = debouncedQuery.trim();
+
+		const observer = new IntersectionObserver(
+			(entries) => {
+				if (
+					entries[0].isIntersecting &&
+					!loadingSearch &&
+					!loadingMore &&
+					more
+				) {
+					doSearch(q, next);
+				}
+			},
+			{ rootMargin: '300px' }
+		);
+
+		observer.observe(searchSentinelEl);
 		return () => observer.disconnect();
 	});
 
@@ -141,20 +174,37 @@
 		}
 	}
 
-	async function doSearch(query: string) {
-		loadingSearch = true;
+	async function doSearch(query: string, offset = 0) {
+		if (offset === 0) {
+			loadingSearch = true;
+		} else {
+			loadingSearchMore = true;
+		}
 		searchError = null;
 
 		try {
-			const res = await fetch(`/api/books/search?q=${encodeURIComponent(query)}`);
+			const res = await fetch(
+				`/api/books/search?q=${encodeURIComponent(query)}&offset=${offset}`
+			);
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
-			const data: { books: Book[] } = await res.json();
-			searchResults = data.books;
+			const data: { books: Book[]; nextOffset: number; hasMore: boolean } = await res.json();
+
+			if (offset === 0) {
+				searchResults = data.books;
+			} else {
+				searchResults = [...searchResults, ...data.books];
+			}
+			searchNextOffset = data.nextOffset;
+			searchHasMore = data.hasMore;
 		} catch {
 			searchError = 'Search failed. Please try again.';
-			searchResults = [];
+			if (offset === 0) searchResults = [];
 		} finally {
-			loadingSearch = false;
+			if (offset === 0) {
+				loadingSearch = false;
+			} else {
+				loadingSearchMore = false;
+			}
 		}
 	}
 
@@ -213,6 +263,16 @@
 						<li><BookCard {book} /></li>
 					{/each}
 				</ul>
+
+				{#if loadingSearchMore}
+					<div class="rate-page__spinner-wrap rate-page__spinner-wrap--bottom" aria-live="polite">
+						<Spinner />
+					</div>
+				{/if}
+
+				{#if searchHasMore}
+					<div bind:this={searchSentinelEl} class="rate-page__sentinel" aria-hidden="true"></div>
+				{/if}
 			{/if}
 
 		{:else}

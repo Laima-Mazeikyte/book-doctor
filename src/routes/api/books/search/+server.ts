@@ -3,13 +3,15 @@ import type { RequestHandler } from './$types';
 import { PUBLIC_BUNNY_COVERS_BASE } from '$env/static/public';
 import { supabase } from '$lib/server/supabase';
 
-const MAX_RESULTS = 10;
+const PAGE_SIZE = 24;
 
 export const GET: RequestHandler = async ({ url }) => {
 	const query = url.searchParams.get('q')?.trim() ?? '';
+	const offsetParam = url.searchParams.get('offset');
+	const offset = offsetParam ? parseInt(offsetParam, 10) : 0;
 
 	if (!query) {
-		return json({ books: [] });
+		return json({ books: [], nextOffset: 0, hasMore: false });
 	}
 
 	const base = (PUBLIC_BUNNY_COVERS_BASE ?? '').replace(/\/$/, '');
@@ -18,7 +20,8 @@ export const GET: RequestHandler = async ({ url }) => {
 		.from('books')
 		.select('id, book_id, book_name, author, cover_url, summary, year')
 		.or(`book_name.ilike.%${query}%,author.ilike.%${query}%`)
-		.limit(MAX_RESULTS);
+		.order('book_name', { ascending: true })
+		.range(offset, offset + PAGE_SIZE - 1);
 
 	if (dbError) {
 		console.error(dbError);
@@ -36,5 +39,8 @@ export const GET: RequestHandler = async ({ url }) => {
 			year: b.year ? String(b.year) : undefined
 		})) ?? [];
 
-	return json({ books });
+	const hasMore = books.length === PAGE_SIZE;
+	const nextOffset = offset + books.length;
+
+	return json({ books, nextOffset, hasMore });
 };
