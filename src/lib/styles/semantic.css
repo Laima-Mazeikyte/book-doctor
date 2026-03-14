@@ -7,8 +7,9 @@
 	--color-bg: var(--primitive-gray-50);
 	--color-bg-muted: var(--primitive-gray-100);
 	--color-bg-hover: var(--primitive-gray-200);
-	--color-card-bg: var(--primitive-white);
+	--color-card-bg: var(--primitive-surface);
 	--color-card-placeholder-bg: var(--primitive-sand);
+	--color-toggle-thumb: var(--primitive-toggle-thumb);
 
 	/* ── Text ─────────────────────────────────────────────────────────────── */
 	--color-text: var(--primitive-gray-900);
@@ -59,7 +60,7 @@
 	--content-width-wide: 85rem;
 
 	/* ── Shadow (semantic: focus ring uses accent) ──────────────────────────── */
-	--shadow-focus-input: 0 2px 12px rgba(0, 0, 0, 0.08), 0 0 0 3px var(--color-accent-bg);
+	--shadow-focus-input: 0 2px 12px rgba(0, 0, 0, var(--primitive-shadow-opacity-focus)), 0 0 0 3px var(--color-accent-bg);
 
 	/* ── Spacing (re-export primitives) ─────────────────────────────────────── */
 	--space-1: var(--primitive-space-1);

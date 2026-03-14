@@ -4,7 +4,12 @@
  */
 :root {
 	/* ── Color palette (light) ───────────────────────────────────────────── */
+	/** On-accent only (e.g. primary button text). Do not use for surfaces. */
 	--primitive-white: #ffffff;
+	/** Elevated surfaces (cards, header, inputs). Light = white; dark = dark gray. */
+	--primitive-surface: #ffffff;
+	/** Toggle/switch thumb; must contrast with track in both modes. */
+	--primitive-toggle-thumb: #ffffff;
 	--primitive-gray-50: #fafafa;
 	--primitive-gray-100: #f5f5f5;
 	--primitive-gray-200: #ebebeb;
@@ -76,6 +81,8 @@
 
 @media (prefers-color-scheme: dark) {
 	:root {
+		--primitive-surface: #171717;
+		--primitive-toggle-thumb: #e5e5e5;
 		--primitive-gray-50: #0a0a0a;
 		--primitive-gray-100: #171717;
 		--primitive-gray-200: #262626;
@@ -91,5 +98,6 @@
 		--primitive-red-800: #fca5a5;
 		--primitive-shadow-opacity-subtle: 0.25;
 		--primitive-shadow-opacity-medium: 0.25;
+		--primitive-shadow-opacity-focus: 0.25;
 	}
 }

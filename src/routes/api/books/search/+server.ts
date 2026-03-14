@@ -28,6 +28,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	const books =
 		data?.map((b) => ({
 			id: String(b.id),
+			book_id: b.book_id,
 			title: b['book name'],
 			author: b.author,
 			coverUrl: b.cover_url ?? (base ? `${base}/${b.book_id}.jpg` : undefined),

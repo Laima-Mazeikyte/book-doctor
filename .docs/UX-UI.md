@@ -46,8 +46,11 @@ Styles are split into three files, loaded in order:
 ## Color system
 
 - **Primitives** define the palette in `src/lib/styles/primitives.css` (e.g. `--primitive-gray-50`, `--primitive-blue-500`).
-- **Semantic** tokens in `src/lib/styles/semantic.css`: `--color-bg`, `--color-text`, `--color-text-muted`, `--color-border`, `--color-accent`, `--color-focus`, `--color-card-bg`, `--color-error-*`, etc.
-- **Dark mode:** `@media (prefers-color-scheme: dark)` overrides primitives in `primitives.css`; no manual toggle.
+- **Surfaces** (cards, header, inputs) use `--primitive-surface` via `--color-card-bg`; it is white in light mode and dark gray in dark mode. Do not use `--primitive-white` for surfaces.
+- **On-accent** content (e.g. primary button text) uses `--primitive-white`; it stays white in both modes.
+- **Semantic** tokens in `src/lib/styles/semantic.css`: `--color-bg`, `--color-text`, `--color-text-muted`, `--color-border`, `--color-accent`, `--color-focus`, `--color-card-bg`, `--color-toggle-thumb`, `--color-error-*`, etc.
+- **Dark mode:** `@media (prefers-color-scheme: dark)` overrides primitives in `primitives.css`; no manual toggle. Follows standard practice: light text on dark backgrounds, no large white surfaces.
+- **Accessibility:** Contrast target is **WCAG 2.1 AA** (4.5:1 for normal text, 3:1 for large text and UI components).
 
 ---
 
@@ -63,7 +66,7 @@ Styles are split into three files, loaded in order:
 
 - All reusable UI lives in **`src/lib/components/`** (flat folder). Use only semantic tokens; no hardcoded colors, spacing, or typography.
 - **Skip link:** `SkipLink.svelte` – “Skip to main content” for keyboard users.
-- **Header:** `AppHeader.svelte` – app header with inner max-width and hide-covers toggle.
+- **Header:** `AppHeader.svelte` – app header with inner max-width.
 - **Buttons:** `Button.svelte` – variants `primary`, `secondary`, `tertiary`, `link`; optional icon slot (icon-only = icon button, `aria-label` required).
 - **Cards / patterns:** `BookCard`, `RatingsBar`, etc.; use `--color-card-bg`, `--radius`, and other semantic tokens.
 
@@ -82,3 +85,4 @@ Styles are split into three files, loaded in order:
 | ---------- | -------- |
 | 2025-03-13 | Scrollbar: use `scrollbar-gutter: stable` on `html` to avoid layout shift when scrollbar appears. |
 | 2025-03-13 | Styles split into primitives.css, semantic.css, and base (app.css). TOKENS.md added. Components in `src/lib/components/` use semantic tokens only. |
+| 2025-03-13 | Color refactor: primitive-surface and primitive-toggle-thumb for dark mode; card-bg uses surface; WCAG AA contrast target documented. |

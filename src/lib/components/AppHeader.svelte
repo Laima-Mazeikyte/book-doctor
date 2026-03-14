@@ -1,31 +1,8 @@
 <script lang="ts">
-	interface Props {
-		hideCovers?: boolean;
-		onHideCoversChange?: (checked: boolean) => void;
-	}
-
-	let { hideCovers = false, onHideCoversChange }: Props = $props();
-
-	function handleChange(e: Event) {
-		const target = e.currentTarget as HTMLInputElement;
-		onHideCoversChange?.(target.checked);
-	}
 </script>
 
 <header class="app-header">
-	<div class="app-header__inner">
-		<label class="app-header__switch">
-			<input
-				type="checkbox"
-				class="app-header__checkbox"
-				checked={hideCovers}
-				onchange={handleChange}
-				aria-checked={hideCovers}
-			/>
-			<span class="app-header__switch-track" aria-hidden="true"></span>
-			<span class="app-header__label">Hide cover images</span>
-		</label>
-	</div>
+	<div class="app-header__inner"></div>
 </header>
 
 <style>
@@ -74,7 +51,7 @@
 		inset: 2px 0 2px 0;
 		width: 1.125rem;
 		border-radius: 50%;
-		background: var(--color-card-bg);
+		background: var(--color-toggle-thumb);
 		box-shadow: var(--shadow-toggle);
 		left: 2px;
 		transition: transform var(--duration-normal) var(--ease-default);

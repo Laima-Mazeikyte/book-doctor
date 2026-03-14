@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { hideCoversStore } from '$lib/stores/hideCovers';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import type { Book, RatingValue } from '$lib/types/book';
 
@@ -12,9 +11,7 @@
 	let hoverRating = $state<number>(0);
 	let coverImageFailed = $state(false);
 
-	const showCoverImage = $derived(
-		Boolean(book.coverUrl) && !coverImageFailed && !$hideCoversStore
-	);
+	const showCoverImage = $derived(Boolean(book.coverUrl) && !coverImageFailed);
 
 	const RATING_OPTIONS: RatingValue[] = [1, 2, 3, 4, 5];
 	const STAR_FILLED = '★';
@@ -57,7 +54,7 @@
 					aria-label="Rate {value} out of 5"
 					aria-pressed={currentRating === value}
 					onmouseenter={() => (hoverRating = value)}
-					onclick={() => ratingsStore.setRating(book.id, value)}
+					onclick={() => ratingsStore.setRating(book.id, value, book.book_id)}
 				>
 					<span aria-hidden="true">
 						{displayRating >= value ? STAR_FILLED : STAR_EMPTY}

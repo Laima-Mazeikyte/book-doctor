@@ -16,7 +16,7 @@ Quick reference for primitives and semantic tokens. Definitions live in `src/lib
 
 | Group | Tokens |
 | ----- | ------ |
-| **Colors** | `--primitive-white`, `--primitive-gray-50` … `--primitive-gray-900`, `--primitive-blue-500`, `--primitive-blue-100`, `--primitive-sand`, `--primitive-red-50`, `--primitive-red-200`, `--primitive-red-800` |
+| **Colors** | `--primitive-white` (on-accent only), `--primitive-surface`, `--primitive-toggle-thumb`, `--primitive-gray-50` … `--primitive-gray-900`, `--primitive-blue-500`, `--primitive-blue-100`, `--primitive-sand`, `--primitive-red-50`, `--primitive-red-200`, `--primitive-red-800` |
 | **Spacing** | `--primitive-space-1` (0.25rem) … `--primitive-space-24` (6rem) |
 | **Typography** | `--primitive-font-size-xs` … `--primitive-font-size-3xl`, `--primitive-font-weight-normal|medium|semibold`, `--primitive-line-height-tight|normal|relaxed`, `--primitive-duration-fast`, `--primitive-duration-normal` |
 | **Radius** | `--primitive-radius-xs`, `--primitive-radius-sm`, `--primitive-radius-md`, `--primitive-radius-lg`, `--primitive-radius-pill` |
@@ -29,7 +29,7 @@ Quick reference for primitives and semantic tokens. Definitions live in `src/lib
 
 | Group | Tokens |
 | ----- | ------ |
-| **Background** | `--color-bg`, `--color-bg-muted`, `--color-bg-hover`, `--color-card-bg`, `--color-card-placeholder-bg` |
+| **Background** | `--color-bg`, `--color-bg-muted`, `--color-bg-hover`, `--color-card-bg`, `--color-card-placeholder-bg`, `--color-toggle-thumb` |
 | **Text** | `--color-text`, `--color-text-muted` |
 | **Border** | `--color-border`, `--color-border-hover` |
 | **Accent / focus** | `--color-accent`, `--color-accent-bg`, `--color-focus` |
@@ -49,3 +49,5 @@ Quick reference for primitives and semantic tokens. Definitions live in `src/lib
 ## Dark mode
 
 Primitives switch via `@media (prefers-color-scheme: dark)` in `primitives.css`. Semantic tokens stay the same; they resolve to the updated primitive colors.
+
+**Primitives that flip in dark mode:** Gray scale (gray-50 … gray-900), `--primitive-surface` (white → dark gray), `--primitive-toggle-thumb` (white → light gray for contrast on dark track), `--primitive-sand`, red and blue palette, shadow opacities (`--primitive-shadow-opacity-*`). **`--primitive-white`** does not flip; use only for “on-accent” content (e.g. primary button text).

@@ -9,8 +9,12 @@
 		type?: 'button' | 'submit';
 		/** Pill shape (full border-radius) for floating CTAs */
 		pill?: boolean;
+		/** Compact size (reduced padding) for drawer/secondary actions */
+		compact?: boolean;
 		/** Required when using icon-only (no default slot content) for accessibility */
 		'aria-label'?: string;
+		/** Optional callback to receive the underlying button or anchor element (e.g. for focus management) */
+		ref?: (el: HTMLButtonElement | HTMLAnchorElement) => void;
 		class?: string;
 		onclick?: (e: MouseEvent) => void;
 	}
@@ -22,18 +26,29 @@
 		href,
 		type = 'button',
 		pill = false,
+		compact = false,
 		'aria-label': ariaLabel,
+		ref,
 		class: className = '',
 		onclick,
 		...rest
 	}: Props = $props();
 
 	const isLink = $derived(typeof href === 'string' && href.length > 0);
+
+	let buttonEl = $state<HTMLButtonElement | undefined>(undefined);
+	let anchorEl = $state<HTMLAnchorElement | undefined>(undefined);
+
+	$effect(() => {
+		const el = isLink ? anchorEl : buttonEl;
+		if (el && ref) ref(el);
+	});
 </script>
 
 {#if isLink}
 	<a
-		class="btn btn--{variant} {pill ? 'btn--pill' : ''} {className}"
+		bind:this={anchorEl}
+		class="btn btn--{variant} {pill ? 'btn--pill' : ''} {compact ? 'btn--compact' : ''} {className}"
 		href={href}
 		aria-label={ariaLabel}
 		{...rest}
@@ -48,7 +63,8 @@
 	</a>
 {:else}
 	<button
-		class="btn btn--{variant} {pill ? 'btn--pill' : ''} {className}"
+		bind:this={buttonEl}
+		class="btn btn--{variant} {pill ? 'btn--pill' : ''} {compact ? 'btn--compact' : ''} {className}"
 		{type}
 		aria-label={ariaLabel}
 		{...rest}
@@ -144,5 +160,13 @@
 
 	.btn--pill {
 		border-radius: var(--radius-pill);
+	}
+	.btn--compact {
+		min-height: 2rem;
+		padding: var(--space-2) var(--space-4);
+		font-size: var(--font-size-sm);
+	}
+	.btn--compact:not(:has(.btn__label)) {
+		padding: var(--space-2);
 	}
 </style>

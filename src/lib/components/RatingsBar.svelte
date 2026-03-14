@@ -2,6 +2,7 @@
 	import { tick } from 'svelte';
 	import { fly } from 'svelte/transition';
 	import { Book as BookIcon } from 'lucide-svelte';
+	import Button from '$lib/components/Button.svelte';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import type { Book, RatingValue } from '$lib/types/book';
 
@@ -20,7 +21,7 @@
 	let hoverEntryId = $state<string | null>(null);
 	let hoverRating = $state<number>(0);
 	let coverFailedIds = $state<Set<string>>(new Set());
-	let closeButtonEl = $state<HTMLButtonElement | null>(null);
+	let closeButtonEl = $state<HTMLButtonElement | HTMLAnchorElement | null>(null);
 	const panelId = 'ratings-drawer-panel';
 	const triggerId = 'ratings-trigger';
 
@@ -121,15 +122,17 @@
 					<h2 id="ratings-drawer-title" class="ratings-drawer__title">
 						Your ratings
 					</h2>
-					<button
-						bind:this={closeButtonEl}
+					<Button
+						variant="secondary"
+						pill
+						compact
 						type="button"
-						class="ratings-drawer__close"
 						aria-label="Close"
+						ref={(el) => (closeButtonEl = el)}
 						onclick={closeDrawer}
 					>
 						Close
-					</button>
+					</Button>
 				</div>
 				<div class="ratings-drawer__body">
 					{#if ratedEntries.length === 0}
@@ -173,19 +176,21 @@
 														aria-label="Set rating to {value} out of 5"
 														aria-pressed={entry.rating === value}
 														onmouseenter={() => { hoverEntryId = entry.book.id; hoverRating = value; }}
-														onclick={() => ratingsStore.setRating(entry.book.id, value)}
+														onclick={() => ratingsStore.setRating(entry.book.id, value, entry.book.book_id)}
 													>
 														<span aria-hidden="true">{displayRating >= value ? STAR_FILLED : STAR_EMPTY}</span>
 													</button>
 												{/each}
-												<button
+												<Button
+													variant="secondary"
+													pill
+													compact
 													type="button"
-													class="ratings-drawer__remove"
 													aria-label="Remove rating for {entry.book.title}"
-													onclick={() => ratingsStore.removeRating(entry.book.id)}
+													onclick={() => ratingsStore.removeRating(entry.book.id, entry.book.book_id)}
 												>
 													Remove
-												</button>
+												</Button>
 											</div>
 										</div>
 									</div>
@@ -269,24 +274,6 @@
 		font-size: var(--font-size-xl);
 		font-weight: var(--font-weight-semibold);
 		margin: 0;
-	}
-	.ratings-drawer__close {
-		min-height: 2.5rem;
-		padding: var(--space-2) var(--space-4);
-		font-size: var(--font-size-md);
-		font-weight: var(--font-weight-medium);
-		border: 1px solid var(--color-border);
-		background: var(--color-bg);
-		border-radius: var(--radius-sm);
-		cursor: pointer;
-		color: var(--color-text);
-	}
-	.ratings-drawer__close:hover {
-		background: var(--color-bg-hover);
-	}
-	.ratings-drawer__close:focus-visible {
-		outline: 2px solid var(--color-focus);
-		outline-offset: 2px;
 	}
 
 	.ratings-drawer__body {
@@ -396,21 +383,7 @@
 		background: transparent;
 		color: var(--color-text);
 	}
-	.ratings-drawer__remove {
-		min-height: var(--space-8);
-		padding: var(--space-1) var(--space-2);
-		font-size: var(--font-size-sm);
-		border: 1px solid var(--color-border);
-		background: var(--color-bg);
-		border-radius: var(--radius-xs);
-		cursor: pointer;
+	.ratings-drawer__item-actions .btn {
 		margin-left: var(--space-1);
-	}
-	.ratings-drawer__remove:hover {
-		background: var(--color-bg-hover);
-	}
-	.ratings-drawer__remove:focus-visible {
-		outline: 2px solid var(--color-focus);
-		outline-offset: 2px;
 	}
 </style>
