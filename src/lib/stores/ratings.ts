@@ -35,18 +35,26 @@ function createRatingsStore() {
 		hydrate(entries: Array<{ bookId: string; rating: RatingValue }>) {
 			set(new Map(entries.map((e) => [e.bookId, e.rating])));
 		},
-		setRating(bookId: string, value: RatingValue, bookIdNum?: number) {
+		setRating(bookId: string, value: RatingValue, bookIdNum?: number, book?: Book) {
 			update((m) => {
 				const next = new Map(m);
 				next.set(bookId, value);
 				return next;
 			});
+			if (book != null) {
+				ratedBooksDetails.update((m) => new Map(m).set(bookId, book));
+			}
 			if (bookIdNum != null && persistence) {
 				void Promise.resolve(persistence.set(bookIdNum, value));
 			}
 		},
 		removeRating(bookId: string, bookIdNum?: number) {
 			update((m) => {
+				const next = new Map(m);
+				next.delete(bookId);
+				return next;
+			});
+			ratedBooksDetails.update((m) => {
 				const next = new Map(m);
 				next.delete(bookId);
 				return next;

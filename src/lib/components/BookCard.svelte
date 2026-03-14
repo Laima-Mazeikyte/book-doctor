@@ -54,7 +54,7 @@
 					aria-label="Rate {value} out of 5"
 					aria-pressed={currentRating === value}
 					onmouseenter={() => (hoverRating = value)}
-					onclick={() => ratingsStore.setRating(book.id, value, book.book_id)}
+					onclick={() => ratingsStore.setRating(book.id, value, book.book_id, book)}
 				>
 					<span aria-hidden="true">
 						{displayRating >= value ? STAR_FILLED : STAR_EMPTY}
