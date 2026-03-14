@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
 	import { goto } from '$app/navigation';
 	import BookCard from '$lib/components/BookCard.svelte';
+	import { getSupabase } from '$lib/supabase';
+	import { authStore } from '$lib/stores/auth';
 	import BookCardSkeleton from '$lib/components/BookCardSkeleton.svelte';
 	import RatingsBar from '$lib/components/RatingsBar.svelte';
 	import SearchBar from '$lib/components/SearchBar.svelte';
@@ -209,10 +212,30 @@
 		}
 	}
 
-	function handleSubmit() {
-		if (canGetRecommendations) {
+	async function handleSubmit() {
+		if (!canGetRecommendations) return;
+		const user = get(authStore).user;
+		if (!user?.id) {
 			goto('/rate/recommendations');
+			return;
 		}
+		const supabase = getSupabase();
+		if (supabase) {
+			try {
+				const { data, error } = await supabase
+					.from('recommendation_requests')
+					.insert({ user_id: user.id })
+					.select('id')
+					.single();
+				if (!error && data?.id != null) {
+					goto(`/rate/recommendations?request_id=${encodeURIComponent(String(data.id))}`);
+					return;
+				}
+			} catch {
+				// fall through to simple navigation
+			}
+		}
+		goto('/rate/recommendations');
 	}
 
 	onMount(() => {

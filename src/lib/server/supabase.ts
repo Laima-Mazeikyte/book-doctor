@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { env } from '$env/dynamic/private';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -19,5 +20,15 @@ export function createSupabaseWithAuth(accessToken: string | null): SupabaseClie
 	return createClient(supabaseUrl, supabaseKey, {
 		global: { headers: { Authorization: `Bearer ${accessToken}` } }
 	});
+}
+
+/**
+ * Create a Supabase client with service role key (bypasses RLS).
+ * Use only in server code (e.g. webhook handler) to read any user's data and write recommendation_log / recommendation_items.
+ */
+export function createSupabaseServiceRole(): SupabaseClient | null {
+	const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
+	if (!supabaseUrl || !serviceRoleKey) return null;
+	return createClient(supabaseUrl, serviceRoleKey);
 }
 
