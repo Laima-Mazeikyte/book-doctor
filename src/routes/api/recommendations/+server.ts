@@ -59,7 +59,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	const base = (PUBLIC_BUNNY_COVERS_BASE ?? '').replace(/\/$/, '');
 	const { data: booksData, error: booksError } = await supabase
 		.from('books')
-		.select('id, book_id, "book name", author, cover_url, summary, year')
+		.select('id, book_id, book_name, author, cover_url, summary, year')
 		.in('book_id', bookIds);
 
 	if (booksError) {
@@ -73,7 +73,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 			{
 				id: String(b.id),
 				book_id: b.book_id,
-				title: b['book name'],
+				title: b.book_name,
 				author: b.author,
 				coverUrl: b.cover_url ?? (base ? `${base}/${b.book_id}.jpg` : undefined),
 				summary: b.summary ?? undefined,

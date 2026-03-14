@@ -15,8 +15,8 @@ export const GET: RequestHandler = async ({ url }) => {
 
 	const { data, error: dbError } = await supabase
 		.from('books')
-		.select('id, book_id, "book name", author, cover_url, summary, year')
-		.order('"book name"', { ascending: true })
+		.select('id, book_id, book_name, author, cover_url, summary, year')
+		.order('book_name', { ascending: true })
 		.range(offset, offset + maxResults - 1);
 
 	if (dbError) {
@@ -28,7 +28,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		data?.map((b) => ({
 			id: String(b.id),
 			book_id: b.book_id,
-			title: b['book name'],
+			title: b.book_name,
 			author: b.author,
 			coverUrl: b.cover_url ?? (base ? `${base}/${b.book_id}.jpg` : undefined),
 			summary: b.summary ?? undefined,
