@@ -1,5 +1,5 @@
-import { writable } from 'svelte/store';
-import type { RatingValue } from '$lib/types/book';
+import { get, writable } from 'svelte/store';
+import type { Book, RatingValue } from '$lib/types/book';
 
 export interface RatingsPersistence {
 	set(bookIdNum: number, value: RatingValue): void | Promise<void>;
@@ -12,13 +12,24 @@ export interface RatingsPersistence {
  */
 function createRatingsStore() {
 	const { subscribe, set, update } = writable<Map<string, RatingValue>>(new Map());
+	const ratedBooksDetails = writable<Map<string, Book>>(new Map());
 	let persistence: RatingsPersistence | null = null;
 
 	return {
 		subscribe,
+		/** Book details loaded with ratings (so the rating list can show all rated books after refresh). */
+		ratedBooksDetails: { subscribe: ratedBooksDetails.subscribe },
 		/** Set callbacks to persist ratings to Supabase (upsert/delete). Called from layout after session exists. */
 		setPersistence(p: RatingsPersistence | null) {
 			persistence = p;
+		},
+		/** Set book details for rated books (from initial load). Used so findBookById can resolve all rated books. */
+		setRatedBooksDetails(books: Map<string, Book>) {
+			ratedBooksDetails.set(books);
+		},
+		/** Get book by id from loaded rated-book details (for rating list). */
+		getRatedBook(bookId: string): Book | undefined {
+			return get(ratedBooksDetails).get(bookId);
 		},
 		/** Hydrate the store from server data (e.g. after loading user_ratings from Supabase). */
 		hydrate(entries: Array<{ bookId: string; rating: RatingValue }>) {
@@ -44,7 +55,10 @@ function createRatingsStore() {
 				void Promise.resolve(persistence.remove(bookIdNum));
 			}
 		},
-		reset: () => set(new Map())
+		reset() {
+			set(new Map());
+			ratedBooksDetails.set(new Map());
+		}
 	};
 }
 

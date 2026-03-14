@@ -119,9 +119,10 @@
 		return () => observer.disconnect();
 	});
 
-	// ── Book lookup (popular + search + dummy fallback) ────────────────────────
+	// ── Book lookup (rated details from DB, then popular + search + dummy) ─────
 	function findBookById(id: string): Book | undefined {
 		return (
+			ratingsStore.getRatedBook(id) ??
 			popularBooks.find((b) => b.id === id) ??
 			searchResults.find((b) => b.id === id) ??
 			getBookById(id)
