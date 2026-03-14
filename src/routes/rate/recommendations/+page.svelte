@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import BookCard from '$lib/components/BookCard.svelte';
 	import BookCardSkeleton from '$lib/components/BookCardSkeleton.svelte';
 	import RecommendationsEmpty from '$lib/components/RecommendationsEmpty.svelte';
 	import { getSupabase } from '$lib/supabase';
+	import { authStore } from '$lib/stores/auth';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import type { Book } from '$lib/types/book';
 
@@ -11,23 +11,21 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
-	async function loadRecommendations() {
+	async function loadRecommendations(accessToken: string | null) {
 		loading = true;
 		error = null;
 		try {
-			const supabase = getSupabase();
 			const requestId =
-				new URLSearchParams(window.location.search).get('request_id')?.trim() ?? null;
+				typeof window !== 'undefined'
+					? new URLSearchParams(window.location.search).get('request_id')?.trim() ?? null
+					: null;
 			const url = requestId
 				? `/api/recommendations?request_id=${encodeURIComponent(requestId)}`
 				: '/api/recommendations';
 
 			const headers: Record<string, string> = {};
-			if (supabase) {
-				const { data } = await supabase.auth.getSession();
-				if (data.session?.access_token) {
-					headers['Authorization'] = `Bearer ${data.session.access_token}`;
-				}
+			if (accessToken) {
+				headers['Authorization'] = `Bearer ${accessToken}`;
 			}
 
 			const res = await fetch(url, { headers });
@@ -42,8 +40,9 @@
 		}
 	}
 
-	onMount(() => {
-		loadRecommendations();
+	$effect(() => {
+		const session = $authStore.session;
+		loadRecommendations(session?.access_token ?? null);
 	});
 </script>
 
