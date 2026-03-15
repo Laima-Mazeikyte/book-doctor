@@ -30,6 +30,7 @@
 			</div>
 		{:else if email}
 			<div class="app-header__auth app-header__auth--signed-in">
+				<Button href="/rate/recommendations" variant="tertiary" compact>My recommendations</Button>
 				<span class="app-header__email" title={email}>{email}</span>
 				<Button variant="tertiary" compact onclick={handleSignOut}>Sign out</Button>
 			</div>
