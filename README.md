@@ -24,7 +24,7 @@ Copy `.env.example` to `.env` and fill in the values:
 
 - `VITE_SUPABASE_URL` – your Supabase project URL
 - `VITE_SUPABASE_ANON_KEY` – your Supabase anon/public key
-- `PUBLIC_BUNNY_COVERS_BASE` – Bunny.net pull zone base URL for book covers (e.g. `https://your-pullzone.b-cdn.net`). Cover images are requested as `{base}/{book_id}.jpg` (e.g. `12.jpg`). Optional; if unset, only books with a stored `cover_url` in the database will show a cover.
+- `PUBLIC_BUNNY_COVERS_BASE` – Bunny.net pull zone base URL for book covers (e.g. `https://your-pullzone.b-cdn.net`). Cover images are requested as `{base}/{book_id}.avif` (e.g. `12.avif`). Optional; if unset, only books with a stored `cover_url` in the database will show a cover.
 
 ## Developing
 

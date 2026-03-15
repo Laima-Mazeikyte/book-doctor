@@ -75,7 +75,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 				book_id: b.book_id,
 				title: b.book_name,
 				author: b.author,
-				coverUrl: b.cover_url ?? (base ? `${base}/${b.book_id}.jpg` : undefined),
+				coverUrl: b.cover_url ?? (base ? `${base}/${b.book_id}.avif` : undefined),
 				summary: b.summary ?? undefined,
 				year: b.year != null ? String(b.year) : undefined
 			}
