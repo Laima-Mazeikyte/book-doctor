@@ -26,3 +26,4 @@ test-results
 
 # Supabase
 .temp
+.make-it-accessible-skill/
