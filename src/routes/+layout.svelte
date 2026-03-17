@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
 	import { page } from '$app/stores';
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
@@ -182,6 +183,19 @@
 
 		hadUserBefore = true;
 		void loadUserRatingsAndPersistence(supabase, user.id);
+	});
+
+	// After anonymous→account migration, ratings are written server-side; reload them.
+	onMount(() => {
+		const handler = () => {
+			const supabase = getSupabase();
+			const user = get(authStore).user;
+			if (supabase && user?.id) {
+				void loadUserRatingsAndPersistence(supabase, user.id);
+			}
+		};
+		window.addEventListener('auth:ratings-migrated', handler);
+		return () => window.removeEventListener('auth:ratings-migrated', handler);
 	});
 </script>
 

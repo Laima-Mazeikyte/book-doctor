@@ -58,6 +58,7 @@
 	let popularBooks = $state<Book[]>([]);
 	let nextOffset = $state(0);
 	let hasMore = $state(true);
+	let popularSeed = $state<string | null>(null); // so top 100 order is stable for this visit but different each time
 	let loadingInitial = $state(true);
 	let loadingMore = $state(false);
 	let popularError = $state<string | null>(null);
@@ -75,17 +76,22 @@
 
 	$effect(() => {
 		if (!sentinelEl) return;
+		const next = nextOffset;
+		const more = hasMore;
+		const loading = loadingMore;
+		const initial = loadingInitial;
+		const searching = isSearching;
 
 		const observer = new IntersectionObserver(
 			(entries) => {
 				if (
 					entries[0].isIntersecting &&
-					!loadingMore &&
-					!loadingInitial &&
-					!isSearching &&
-					hasMore
+					!loading &&
+					!initial &&
+					!searching &&
+					more
 				) {
-					loadPopular(nextOffset);
+					loadPopular(next);
 				}
 			},
 			{ rootMargin: '300px' }
@@ -157,19 +163,30 @@
 		popularError = null;
 
 		try {
-			const res = await fetch(`/api/books/popular?offset=${offset}`);
-			if (!res.ok) throw new Error(`HTTP ${res.status}`);
-			const data: { books: Book[]; nextOffset: number; fallback?: boolean } = await res.json();
+			const params = new URLSearchParams({ offset: String(offset) });
+			if (popularSeed) params.set('seed', popularSeed);
+			if (offset >= 100 && popularBooks.length > 0) {
+				const exclude = popularBooks.map((b) => b.book_id).join(',');
+				params.set('exclude', exclude);
+			}
+			const res = await fetch(`/api/books/popular?${params.toString()}`);
+			if (!res.ok) {
+				if (offset > 0) hasMore = false;
+				throw new Error(`HTTP ${res.status}`);
+			}
+			const data: { books: Book[]; nextOffset: number; hasMore: boolean; seed?: string } = await res.json();
 
 			if (offset === 0) {
 				popularBooks = data.books;
+				if (data.seed) popularSeed = data.seed;
 			} else {
 				popularBooks = [...popularBooks, ...data.books];
 			}
 			nextOffset = data.nextOffset;
-			hasMore = data.books.length > 0;
+			hasMore = data.hasMore ?? data.books.length > 0;
 		} catch {
 			popularError = t('rate.errors.loadBooks');
+			if (offset > 0) hasMore = false;
 		} finally {
 			if (offset === 0) {
 				loadingInitial = false;
@@ -326,6 +343,8 @@
 
 				{#if hasMore}
 					<div bind:this={sentinelEl} class="rate-page__sentinel" aria-hidden="true"></div>
+				{:else if popularBooks.length > 0}
+					<p class="rate-page__end-cta">{t('rate.endOfList')}</p>
 				{/if}
 			{/if}
 		{/if}
@@ -363,7 +382,8 @@
 	.rate-page__content {
 		/* Content flow */
 	}
-	.rate-page__empty {
+	.rate-page__empty,
+	.rate-page__end-cta {
 		color: var(--color-text-muted);
 		margin: var(--space-4) 0;
 	}

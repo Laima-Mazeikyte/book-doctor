@@ -113,6 +113,69 @@
 			return;
 		}
 		loading = true;
+
+		const {
+			data: { session: currentSession }
+		} = await supabase.auth.getSession();
+		const isAnonymous = currentSession?.user?.is_anonymous === true;
+		const anonymousUserId = currentSession?.user?.id ?? null;
+
+		if (isAnonymous && anonymousUserId) {
+			// Prefer converting anonymous user (same ID → data stays). Requires manual linking in Supabase.
+			const { data: updateData, error: updateErr } = await supabase.auth.updateUser({
+				email,
+				password
+			});
+			if (!updateErr) {
+				loading = false;
+				if (updateData?.user && !updateData.session) {
+					successMessage = t('shared.authModal.successCheckEmail');
+					return;
+				}
+				onClose();
+				return;
+			}
+			// updateUser failed (e.g. manual linking disabled or email already exists): create new account and migrate data
+			const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+				email,
+				password
+			});
+			loading = false;
+			if (signUpErr) {
+				error = signUpErr.message ?? t('shared.authModal.errorSignUpFailed');
+				return;
+			}
+			if (signUpData?.user && !signUpData.session) {
+				successMessage = t('shared.authModal.successCheckEmail');
+				return;
+			}
+			// New user created with session: migrate anonymous data to this account
+			const accessToken = signUpData?.session?.access_token;
+			if (accessToken) {
+				try {
+					const base = typeof window !== 'undefined' ? window.location.origin : '';
+					const res = await fetch(`${base}/api/migrate-anonymous-data`, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							Authorization: `Bearer ${accessToken}`
+						},
+						body: JSON.stringify({ anonymousUserId })
+					});
+					if (res.ok) {
+						window.dispatchEvent(new CustomEvent('auth:ratings-migrated'));
+					} else {
+						console.warn('[auth] Migrate anonymous data failed:', res.status, await res.text());
+					}
+				} catch (e) {
+					console.warn('[auth] Migrate anonymous data request failed', e);
+				}
+			}
+			onClose();
+			return;
+		}
+
+		// No anonymous session: create account normally
 		const { data, error: err } = await supabase.auth.signUp({ email, password });
 		loading = false;
 		if (err) {
