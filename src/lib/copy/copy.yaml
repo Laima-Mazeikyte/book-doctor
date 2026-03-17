@@ -1,0 +1,97 @@
+# App microcopy – edit strings here. Use {{variable}} for interpolation in code.
+# To add a locale later, add another top-level key (e.g. es:, fr:) with the same structure.
+en:
+  home:
+    title: "Book Doctor"
+    lead: "Get personalized book recommendations. Rate at least 10 books you've read to get started."
+    startRating: "Start rating"
+
+  rate:
+    search:
+      placeholder: "Search books"
+      ariaLabel: "Search books"
+    sectionTitle: "Search results"
+    errors:
+      loadBooks: "Could not load books right now. Showing a default selection."
+      searchFailed: "Search failed. Please try again."
+    emptySearch: "No books found for that search."
+    aria:
+      searching: "Searching…"
+      loadingBooks: "Loading books…"
+    getRecommendations: "Get Book Recommendations"
+
+  recommendations:
+    title: "Recommendations"
+    myRecommendations: "My recommendations"
+    backToRating: "Back to rating"
+    backToList: "Back to list"
+    emptyRun: "No books in this recommendation run."
+    timeoutMessage: "Taking longer than expected. Please try again later."
+    noRecommendationsYet: "No recommendations yet. Rate more books and try again."
+    failedToLoad: "Failed to load recommendations"
+    failedToLoadHistory: "Failed to load recommendation history"
+    aria:
+      pastRuns: "Past recommendation runs"
+      recommendedBooks: "Recommended books"
+    historyView: "View"
+
+  shared:
+    skipToContent: "Skip to main content"
+    header:
+      myRecommendations: "My recommendations"
+      signOut: "Sign out"
+    errorBanner:
+      dismiss: "Dismiss error"
+    ratingsBar:
+      yourRatings: "Your ratings"
+      close: "Close"
+      empty: "No books rated yet. Rate at least 10 to get recommendations."
+      changeOrRemoveRating: "Change or remove rating"
+      removeRatingFor: "Remove rating for {{title}}"
+      remove: "Remove"
+      rateOutOf5: "Rate {{value}} out of 5"
+      rateOutOf5Clear: "Rate {{value}} out of 5 (click again to clear)"
+      setRatingTo: "Set rating to {{value}} out of 5"
+    bookCard:
+      rateThisBook: "Rate this book 1 to 5 stars"
+      rateOutOf5: "Rate {{value}} out of 5"
+      rateOutOf5Clear: "Rate {{value}} out of 5 (click again to clear)"
+    recommendationCard:
+      seeSummary: "See summary"
+      addToReadingList: "Add to Bookmarks"
+      removeFromReadingList: "Remove from Bookmarks"
+      savedToReadingList: "Saved to bookmarks"
+      bookmark: "Bookmark"
+      markAsRead: "Mark as read"
+      read: "Rate"
+      backToWantToRead: "Back to Bookmark and Rate buttons"
+      back: "Back"
+      bookSummary: "Book summary"
+      closeSummary: "Close summary"
+      genres: "Genres"
+      rateThisBook: "Rate this book 1 to 5 stars"
+      rateOutOf5: "Rate {{value}} out of 5"
+      rateOutOf5Clear: "Rate {{value}} out of 5 (click again to clear)"
+    recommendationsLoading:
+      message: "Getting your recommendations…"
+    recommendationsEmpty:
+      title: "Recommendations"
+      defaultMessage: "Recommendations will appear here once we connect the model."
+      backToRating: "Back to rating"
+      youRatedCount: "You rated {{count}} book"
+      youRatedCountPlural: "s"
+    authModal:
+      signIn: "Sign in"
+      createAccount: "Create account"
+      close: "Close"
+      email: "Email"
+      password: "Password"
+      confirmPassword: "Confirm password"
+      emailPlaceholder: "you@example.com"
+      signingIn: "Signing in…"
+      creatingAccount: "Creating account…"
+      errorUnableToConnect: "Unable to connect. Please try again."
+      errorInvalidCredentials: "Invalid login credentials"
+      errorPasswordsDoNotMatch: "Passwords do not match"
+      errorSignUpFailed: "Sign up failed"
+      successCheckEmail: "Check your email to confirm your account."

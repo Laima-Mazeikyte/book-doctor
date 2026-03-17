@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/copy';
+
 	interface Props {
 		title?: string;
 		message?: string;
@@ -8,11 +10,11 @@
 	}
 
 	let {
-		title = 'Recommendations',
-		message = 'Recommendations will appear here once we connect the model.',
+		title = t('shared.recommendationsEmpty.title'),
+		message = t('shared.recommendationsEmpty.defaultMessage'),
 		ratedCount,
 		backHref = '/rate',
-		backLabel = 'Back to rating',
+		backLabel = t('shared.recommendationsEmpty.backToRating'),
 	}: Props = $props();
 </script>
 
@@ -20,7 +22,7 @@
 	<h1 class="recommendations-empty__title">{title}</h1>
 	<p class="recommendations-empty__message">{message}</p>
 	<p class="recommendations-empty__count">
-		You rated {ratedCount} book{ratedCount === 1 ? '' : 's'}.
+		{t('shared.recommendationsEmpty.youRatedCount', { count: ratedCount })}{ratedCount === 1 ? '' : t('shared.recommendationsEmpty.youRatedCountPlural')}.
 	</p>
 	<p>
 		<a href={backHref} class="recommendations-empty__back">{backLabel}</a>

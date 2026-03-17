@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import { get } from 'svelte/store';
 	import RecommendationCard from '$lib/components/RecommendationCard.svelte';
 	import RecommendationsEmpty from '$lib/components/RecommendationsEmpty.svelte';
 	import { planToReadStore } from '$lib/stores/planToRead';
@@ -7,6 +8,7 @@
 	import { authStore } from '$lib/stores/auth';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import Button from '$lib/components/Button.svelte';
+	import { t } from '$lib/copy';
 	import type { Book } from '$lib/types/book';
 
 	type RecommendationRun = { request_id: string; created_at: string };
@@ -108,7 +110,7 @@
 					})
 					.catch((e) => {
 						if ($page.url.searchParams.get('request_id')?.trim() === requestedId) {
-							error = e instanceof Error ? e.message : 'Failed to load recommendations';
+							error = e instanceof Error ? e.message : t('recommendations.failedToLoad');
 							viewMode = 'error';
 						}
 					})
@@ -141,7 +143,7 @@
 						done = true;
 					}
 				} catch (e) {
-					error = e instanceof Error ? e.message : 'Failed to load recommendations';
+						error = e instanceof Error ? e.message : t('recommendations.failedToLoad');
 					viewMode = 'error';
 					loading = false;
 					done = true;
@@ -174,7 +176,7 @@
 				})
 				.catch((e) => {
 					if (!$page.url.searchParams.get('request_id')?.trim()) {
-						error = e instanceof Error ? e.message : 'Failed to load recommendation history';
+						error = e instanceof Error ? e.message : t('recommendations.failedToLoadHistory');
 						viewMode = 'error';
 					}
 				})
@@ -189,46 +191,46 @@
 
 <div class="recommendations-page">
 	{#if viewMode === 'loading'}
-		<h1 class="recommendations-page__title">Recommendations</h1>
+		<h1 class="recommendations-page__title">{t('recommendations.title')}</h1>
 		<RecommendationsLoading />
 	{:else if viewMode === 'timedOut'}
 		<RecommendationsEmpty
 			ratedCount={$ratingsStore.size}
-			message="Taking longer than expected. Please try again later."
+			message={t('recommendations.timeoutMessage')}
 		/>
 	{:else if viewMode === 'error' || viewMode === 'empty'}
 		<RecommendationsEmpty
 			ratedCount={$ratingsStore.size}
-			message={error ?? 'No recommendations yet. Rate more books and try again.'}
+			message={error ?? t('recommendations.noRecommendationsYet')}
 		/>
 	{:else if viewMode === 'history'}
-		<h1 class="recommendations-page__title">My recommendations</h1>
+		<h1 class="recommendations-page__title">{t('recommendations.myRecommendations')}</h1>
 		<p class="recommendations-page__back">
-			<a href="/rate">Back to rating</a>
+			<a href="/rate">{t('recommendations.backToRating')}</a>
 		</p>
-		<ul class="recommendations-page__history" aria-label="Past recommendation runs">
+		<ul class="recommendations-page__history" aria-label={t('recommendations.aria.pastRuns')}>
 			{#each runs as run (run.request_id)}
 				<li class="recommendations-page__history-item">
 					<span class="recommendations-page__history-date">{formatRunDate(run.created_at)}</span>
 					<a href="/rate/recommendations?request_id={encodeURIComponent(run.request_id)}&from=history" class="recommendations-page__history-link">
-						<Button variant="secondary" compact>View</Button>
+						<Button variant="secondary" compact>{t('recommendations.historyView')}</Button>
 					</a>
 				</li>
 			{/each}
 		</ul>
 	{:else if viewMode === 'single'}
-		<h1 class="recommendations-page__title">Recommendations</h1>
+		<h1 class="recommendations-page__title">{t('recommendations.title')}</h1>
 		<p class="recommendations-page__back">
-			<a href="/rate/recommendations">Back to list</a>
+			<a href="/rate/recommendations">{t('recommendations.backToList')}</a>
 			·
-			<a href="/rate">Back to rating</a>
+			<a href="/rate">{t('recommendations.backToRating')}</a>
 		</p>
 		{#if books.length === 0}
-			<p class="recommendations-page__empty-run">No books in this recommendation run.</p>
+			<p class="recommendations-page__empty-run">{t('recommendations.emptyRun')}</p>
 		{:else}
 			<ul
 				role="grid"
-				aria-label="Recommended books"
+				aria-label={t('recommendations.aria.recommendedBooks')}
 				class="recommendations-page__list book-card-grid"
 				bind:this={gridEl}
 				onkeydown={handleGridKeydown}
@@ -239,6 +241,12 @@
 							{book}
 							bookmarked={$planToReadStore.has(book.id)}
 							onBookmark={(id) => planToReadStore.toggle(id)}
+							currentRating={$ratingsStore.get(book.id)}
+							onRate={(id, value) => {
+								ratingsStore.setRating(id, value, book.book_id, book);
+								if (get(planToReadStore).has(id)) planToReadStore.toggle(id);
+							}}
+							onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id)}
 						/>
 					</li>
 				{/each}

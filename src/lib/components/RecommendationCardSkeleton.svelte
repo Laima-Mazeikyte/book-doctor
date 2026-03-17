@@ -46,7 +46,8 @@
 	}
 	.recommendation-card-skeleton__body {
 		flex: 0 0 auto;
-		min-height: 3.75rem;
+		/* Match RecommendationCard: actions row + optional star row */
+		min-height: 5.25rem;
 		padding: 8px;
 	}
 </style>

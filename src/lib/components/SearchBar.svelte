@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/copy';
+
 	interface Props {
 		value?: string;
 		placeholder?: string;
@@ -8,8 +10,8 @@
 
 	let {
 		value = $bindable(''),
-		placeholder = 'Search books',
-		'aria-label': ariaLabel = 'Search books',
+		placeholder = t('rate.search.placeholder'),
+		'aria-label': ariaLabel = t('rate.search.ariaLabel'),
 		oninput,
 	}: Props = $props();
 </script>

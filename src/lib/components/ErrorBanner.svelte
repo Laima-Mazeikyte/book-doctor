@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Button from '$lib/components/Button.svelte';
+	import { t } from '$lib/copy';
 
 	interface Props {
 		message: string;
@@ -14,7 +15,7 @@
 	{#if onDismiss}
 		<Button
 			variant="tertiary"
-			aria-label="Dismiss error"
+			aria-label={t('shared.errorBanner.dismiss')}
 			onclick={onDismiss}
 			class="error-banner__dismiss"
 		>

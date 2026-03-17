@@ -3,6 +3,7 @@
 	import { authStore, isAnonymousOrSignedOut, signedInEmail } from '$lib/stores/auth';
 	import AuthModal from '$lib/components/AuthModal.svelte';
 	import Button from '$lib/components/Button.svelte';
+	import { t } from '$lib/copy';
 
 	let authModalOpen = $state(false);
 	let showAuthActions = $derived($isAnonymousOrSignedOut);
@@ -25,14 +26,14 @@
 	<div class="app-header__inner">
 		{#if showAuthActions}
 			<div class="app-header__auth">
-				<Button variant="tertiary" compact onclick={openAuthModal}>Create account</Button>
-				<Button variant="secondary" compact onclick={openAuthModal}>Sign in</Button>
+				<Button variant="tertiary" compact onclick={openAuthModal}>{t('shared.authModal.createAccount')}</Button>
+				<Button variant="secondary" compact onclick={openAuthModal}>{t('shared.authModal.signIn')}</Button>
 			</div>
 		{:else if email}
 			<div class="app-header__auth app-header__auth--signed-in">
-				<Button href="/rate/recommendations" variant="tertiary" compact>My recommendations</Button>
+				<Button href="/rate/recommendations" variant="tertiary" compact>{t('shared.header.myRecommendations')}</Button>
 				<span class="app-header__email" title={email}>{email}</span>
-				<Button variant="tertiary" compact onclick={handleSignOut}>Sign out</Button>
+				<Button variant="tertiary" compact onclick={handleSignOut}>{t('shared.header.signOut')}</Button>
 			</div>
 		{/if}
 	</div>

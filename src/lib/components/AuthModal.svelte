@@ -3,6 +3,7 @@
 	import { fade } from 'svelte/transition';
 	import Button from '$lib/components/Button.svelte';
 	import { getSupabase } from '$lib/supabase';
+	import { t } from '$lib/copy';
 
 	interface Props {
 		open: boolean;
@@ -85,14 +86,14 @@
 		successMessage = null;
 		const supabase = getSupabase();
 		if (!supabase) {
-			error = 'Unable to connect. Please try again.';
+			error = t('shared.authModal.errorUnableToConnect');
 			return;
 		}
 		loading = true;
 		const { error: err } = await supabase.auth.signInWithPassword({ email, password });
 		loading = false;
 		if (err) {
-			error = err.message ?? 'Invalid login credentials';
+			error = err.message ?? t('shared.authModal.errorInvalidCredentials');
 			return;
 		}
 		onClose();
@@ -103,23 +104,23 @@
 		error = null;
 		successMessage = null;
 		if (password !== confirmPassword) {
-			error = 'Passwords do not match';
+			error = t('shared.authModal.errorPasswordsDoNotMatch');
 			return;
 		}
 		const supabase = getSupabase();
 		if (!supabase) {
-			error = 'Unable to connect. Please try again.';
+			error = t('shared.authModal.errorUnableToConnect');
 			return;
 		}
 		loading = true;
 		const { data, error: err } = await supabase.auth.signUp({ email, password });
 		loading = false;
 		if (err) {
-			error = err.message ?? 'Sign up failed';
+			error = err.message ?? t('shared.authModal.errorSignUpFailed');
 			return;
 		}
 		if (data?.user && !data.session) {
-			successMessage = 'Check your email to confirm your account.';
+			successMessage = t('shared.authModal.successCheckEmail');
 			return;
 		}
 		onClose();
@@ -149,17 +150,17 @@
 		>
 			<div class="auth-modal__header">
 				<h2 id={titleId} class="auth-modal__title">
-					{tab === 'signin' ? 'Sign in' : 'Create account'}
+					{tab === 'signin' ? t('shared.authModal.signIn') : t('shared.authModal.createAccount')}
 				</h2>
 				<Button
 					variant="secondary"
 					compact
 					type="button"
-					aria-label="Close"
+					aria-label={t('shared.authModal.close')}
 					ref={(el) => (closeButtonEl = el as HTMLButtonElement)}
 					onclick={onClose}
 				>
-					Close
+					{t('shared.authModal.close')}
 				</Button>
 			</div>
 
@@ -170,7 +171,7 @@
 					class:auth-modal__tab--active={tab === 'signin'}
 					onclick={() => { tab = 'signin'; error = null; successMessage = null; }}
 				>
-					Sign in
+					{t('shared.authModal.signIn')}
 				</button>
 				<button
 					type="button"
@@ -178,7 +179,7 @@
 					class:auth-modal__tab--active={tab === 'signup'}
 					onclick={() => { tab = 'signup'; error = null; successMessage = null; }}
 				>
-					Create account
+					{t('shared.authModal.createAccount')}
 				</button>
 			</div>
 
@@ -191,19 +192,19 @@
 
 			{#if tab === 'signin'}
 				<form class="auth-modal__form" onsubmit={handleSignIn}>
-					<label class="auth-modal__label" for="auth-email-signin">Email</label>
+					<label class="auth-modal__label" for="auth-email-signin">{t('shared.authModal.email')}</label>
 					<input
 						bind:this={firstInputEl}
 						id="auth-email-signin"
 						type="email"
 						class="auth-modal__input"
-						placeholder="you@example.com"
+						placeholder={t('shared.authModal.emailPlaceholder')}
 						bind:value={email}
 						required
 						autocomplete="email"
 						disabled={loading}
 					/>
-					<label class="auth-modal__label" for="auth-password-signin">Password</label>
+					<label class="auth-modal__label" for="auth-password-signin">{t('shared.authModal.password')}</label>
 					<input
 						id="auth-password-signin"
 						type="password"
@@ -214,24 +215,24 @@
 						disabled={loading}
 					/>
 					<Button type="submit" variant="primary" disabled={loading}>
-						{loading ? 'Signing in…' : 'Sign in'}
+						{loading ? t('shared.authModal.signingIn') : t('shared.authModal.signIn')}
 					</Button>
 				</form>
 			{:else}
 				<form class="auth-modal__form" onsubmit={handleSignUp}>
-					<label class="auth-modal__label" for="auth-email-signup">Email</label>
+					<label class="auth-modal__label" for="auth-email-signup">{t('shared.authModal.email')}</label>
 					<input
 						bind:this={firstInputEl}
 						id="auth-email-signup"
 						type="email"
 						class="auth-modal__input"
-						placeholder="you@example.com"
+						placeholder={t('shared.authModal.emailPlaceholder')}
 						bind:value={email}
 						required
 						autocomplete="email"
 						disabled={loading}
 					/>
-					<label class="auth-modal__label" for="auth-password-signup">Password</label>
+					<label class="auth-modal__label" for="auth-password-signup">{t('shared.authModal.password')}</label>
 					<input
 						id="auth-password-signup"
 						type="password"
@@ -242,7 +243,7 @@
 						autocomplete="new-password"
 						disabled={loading}
 					/>
-					<label class="auth-modal__label" for="auth-confirm-password">Confirm password</label>
+					<label class="auth-modal__label" for="auth-confirm-password">{t('shared.authModal.confirmPassword')}</label>
 					<input
 						id="auth-confirm-password"
 						type="password"
@@ -253,7 +254,7 @@
 						disabled={loading}
 					/>
 					<Button type="submit" variant="primary" disabled={loading}>
-						{loading ? 'Creating account…' : 'Create account'}
+						{loading ? t('shared.authModal.creatingAccount') : t('shared.authModal.createAccount')}
 					</Button>
 				</form>
 			{/if}

@@ -19,6 +19,7 @@
 	"devDependencies": {
 		"@eslint/compat": "^2.0.2",
 		"@eslint/js": "^9.39.2",
+		"@modyfi/vite-plugin-yaml": "^1.1.1",
 		"@playwright/test": "^1.58.2",
 		"@sveltejs/adapter-netlify": "^5.2.4",
 		"@sveltejs/kit": "^2.50.2",

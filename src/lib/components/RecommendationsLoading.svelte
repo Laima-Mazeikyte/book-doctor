@@ -1,11 +1,12 @@
 <script lang="ts">
 	import Spinner from '$lib/components/Spinner.svelte';
+	import { t } from '$lib/copy';
 
 	interface Props {
 		message?: string;
 	}
 
-	let { message = 'Getting your recommendations…' }: Props = $props();
+	let { message = t('shared.recommendationsLoading.message') }: Props = $props();
 </script>
 
 <div class="recommendations-loading" aria-live="polite" aria-busy="true">

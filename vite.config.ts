@@ -1,9 +1,10 @@
 import { defineConfig } from 'vitest/config';
 import { playwright } from '@vitest/browser-playwright';
 import { sveltekit } from '@sveltejs/kit/vite';
+import ViteYaml from '@modyfi/vite-plugin-yaml';
 
 export default defineConfig({
-	plugins: [sveltekit()],
+	plugins: [sveltekit(), ViteYaml()],
 	test: {
 		expect: { requireAssertions: true },
 		projects: [

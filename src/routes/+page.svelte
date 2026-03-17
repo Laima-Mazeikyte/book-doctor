@@ -1,11 +1,12 @@
 <script lang="ts">
 	import Hero from '$lib/components/Hero.svelte';
 	import Button from '$lib/components/Button.svelte';
+	import { t } from '$lib/copy';
 </script>
 
 <Hero
-	title="Book Doctor"
-	lead="Get personalized book recommendations. Rate at least 10 books you've read to get started."
+	title={t('home.title')}
+	lead={t('home.lead')}
 >
-	<Button href="/rate">Start rating</Button>
+	<Button href="/rate">{t('home.startRating')}</Button>
 </Hero>

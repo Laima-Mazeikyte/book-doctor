@@ -4,6 +4,7 @@
 	import { Book as BookIcon } from 'lucide-svelte';
 	import Button from '$lib/components/Button.svelte';
 	import { ratingsStore } from '$lib/stores/ratings';
+	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
 
 	interface RatedEntry {
@@ -92,7 +93,7 @@
 	aria-expanded={open}
 	aria-controls={panelId}
 	aria-haspopup="dialog"
-	aria-label="Your ratings"
+	aria-label={t('shared.ratingsBar.yourRatings')}
 	onclick={openDrawer}
 >
 	<span class="ratings-bar__icon">
@@ -120,24 +121,24 @@
 			>
 				<div class="ratings-drawer__header">
 					<h2 id="ratings-drawer-title" class="ratings-drawer__title">
-						Your ratings
+						{t('shared.ratingsBar.yourRatings')}
 					</h2>
 					<Button
 						variant="secondary"
 						pill
 						compact
 						type="button"
-						aria-label="Close"
+						aria-label={t('shared.ratingsBar.close')}
 						ref={(el) => (closeButtonEl = el)}
 						onclick={closeDrawer}
 					>
-						Close
+						{t('shared.ratingsBar.close')}
 					</Button>
 				</div>
 				<div class="ratings-drawer__body">
 					{#if ratedEntries.length === 0}
 						<p class="ratings-drawer__empty">
-							No books rated yet. Rate at least 10 to get recommendations.
+							{t('shared.ratingsBar.empty')}
 						</p>
 					{:else}
 						<ul class="ratings-drawer__list">
@@ -164,7 +165,7 @@
 											<div
 												class="ratings-drawer__item-actions"
 												role="group"
-												aria-label="Change or remove rating"
+												aria-label={t('shared.ratingsBar.changeOrRemoveRating')}
 												onmouseleave={() => { hoverEntryId = null; hoverRating = 0; }}
 											>
 												{#each RATING_OPTIONS as value}
@@ -173,10 +174,16 @@
 														type="button"
 														class="ratings-drawer__star"
 														class:ratings-drawer__star--active={displayRating >= value}
-														aria-label="Set rating to {value} out of 5"
+														aria-label={entry.rating === value ? t('shared.ratingsBar.rateOutOf5Clear', { value }) : t('shared.ratingsBar.setRatingTo', { value })}
 														aria-pressed={entry.rating === value}
 														onmouseenter={() => { hoverEntryId = entry.book.id; hoverRating = value; }}
-														onclick={() => ratingsStore.setRating(entry.book.id, value, entry.book.book_id, entry.book)}
+														onclick={() => {
+															if (entry.rating === value) {
+																ratingsStore.removeRating(entry.book.id, entry.book.book_id);
+															} else {
+																ratingsStore.setRating(entry.book.id, value, entry.book.book_id, entry.book);
+															}
+														}}
 													>
 														<span aria-hidden="true">{displayRating >= value ? STAR_FILLED : STAR_EMPTY}</span>
 													</button>
@@ -186,10 +193,10 @@
 													pill
 													compact
 													type="button"
-													aria-label="Remove rating for {entry.book.title}"
+													aria-label={t('shared.ratingsBar.removeRatingFor', { title: entry.book.title })}
 													onclick={() => ratingsStore.removeRating(entry.book.id, entry.book.book_id)}
 												>
-													Remove
+													{t('shared.ratingsBar.remove')}
 												</Button>
 											</div>
 										</div>

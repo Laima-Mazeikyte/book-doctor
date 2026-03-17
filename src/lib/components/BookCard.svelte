@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { ratingsStore } from '$lib/stores/ratings';
+	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
 
 	interface Props {
@@ -43,7 +44,7 @@
 		<div
 			class="book-card__rating"
 			role="group"
-			aria-label="Rate this book 1 to 5 stars"
+			aria-label={t('shared.bookCard.rateThisBook')}
 			onmouseleave={() => (hoverRating = 0)}
 		>
 			{#each RATING_OPTIONS as value}
@@ -51,10 +52,16 @@
 					type="button"
 					class="book-card__star"
 					class:book-card__star--active={displayRating >= value}
-					aria-label="Rate {value} out of 5"
+					aria-label={currentRating === value && currentRating !== 0 ? t('shared.bookCard.rateOutOf5Clear', { value }) : t('shared.bookCard.rateOutOf5', { value })}
 					aria-pressed={currentRating === value}
 					onmouseenter={() => (hoverRating = value)}
-					onclick={() => ratingsStore.setRating(book.id, value, book.book_id, book)}
+					onclick={() => {
+						if (currentRating === value && currentRating !== 0) {
+							ratingsStore.removeRating(book.id, book.book_id);
+						} else {
+							ratingsStore.setRating(book.id, value, book.book_id, book);
+						}
+					}}
 				>
 					<span aria-hidden="true">
 						{displayRating >= value ? STAR_FILLED : STAR_EMPTY}

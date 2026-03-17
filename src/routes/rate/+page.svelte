@@ -14,6 +14,7 @@
 	import Button from '$lib/components/Button.svelte';
 	import { getBookById } from '$lib/data/dummyBooks';
 	import { ratingsStore } from '$lib/stores/ratings';
+	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
 
 	const SCROLL_THRESHOLD = 60;
@@ -168,7 +169,7 @@
 			nextOffset = data.nextOffset;
 			hasMore = data.books.length > 0;
 		} catch {
-			popularError = 'Could not load books right now. Showing a default selection.';
+			popularError = t('rate.errors.loadBooks');
 		} finally {
 			if (offset === 0) {
 				loadingInitial = false;
@@ -201,7 +202,7 @@
 			searchNextOffset = data.nextOffset;
 			searchHasMore = data.hasMore;
 		} catch {
-			searchError = 'Search failed. Please try again.';
+			searchError = t('rate.errors.searchFailed');
 			if (offset === 0) searchResults = [];
 		} finally {
 			if (offset === 0) {
@@ -262,25 +263,25 @@
 		class="rate-page__sticky-header"
 		class:rate-page__sticky-header--hidden={!headerVisible}
 	>
-		<SearchBar bind:value={searchQuery} />
+		<SearchBar bind:value={searchQuery} placeholder={t('rate.search.placeholder')} aria-label={t('rate.search.ariaLabel')} />
 	</header>
 
 	<div class="rate-page__content">
 		{#if isSearching}
-			<SectionTitle>Search results</SectionTitle>
+			<SectionTitle>{t('rate.sectionTitle')}</SectionTitle>
 
 			{#if searchError}
 				<ErrorBanner message={searchError} onDismiss={() => (searchError = null)} />
 			{/if}
 
 			{#if loadingSearch}
-				<ul class="rate-page__list book-card-grid" aria-label="Searching…" aria-live="polite">
+				<ul class="rate-page__list book-card-grid" aria-label={t('rate.aria.searching')} aria-live="polite">
 					{#each Array(6) as _}
 						<li><BookCardSkeleton /></li>
 					{/each}
 				</ul>
 			{:else if searchResults.length === 0 && !searchError}
-				<p class="rate-page__empty">No books found for that search.</p>
+				<p class="rate-page__empty">{t('rate.emptySearch')}</p>
 			{:else}
 				<ul class="rate-page__list book-card-grid">
 					{#each searchResults as book (book.id)}
@@ -305,7 +306,7 @@
 			{/if}
 
 			{#if loadingInitial}
-				<ul class="rate-page__list book-card-grid" aria-label="Loading books…" aria-live="polite">
+				<ul class="rate-page__list book-card-grid" aria-label={t('rate.aria.loadingBooks')} aria-live="polite">
 					{#each Array(8) as _}
 						<li><BookCardSkeleton /></li>
 					{/each}
@@ -335,7 +336,7 @@
 			<RatingsBar {ratedEntries} />
 			{#if canGetRecommendations}
 				<Button pill onclick={handleSubmit}>
-					Get Book Recommendations
+					{t('rate.getRecommendations')}
 				</Button>
 			{/if}
 		</div>

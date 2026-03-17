@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/copy';
 </script>
 
-<a href="#main" class="skip-link">Skip to main content</a>
+<a href="#main" class="skip-link">{t('shared.skipToContent')}</a>
