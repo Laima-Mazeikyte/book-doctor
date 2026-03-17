@@ -191,4 +191,15 @@
 	.book-card__year {
 		opacity: 0.75;
 	}
+	@media (max-width: 479px) {
+		.book-card__rating {
+			min-width: 0;
+		}
+		.book-card__star {
+			min-width: 1.75rem;
+			min-height: 1.75rem;
+			font-size: 1.1rem;
+			padding: 2px;
+		}
+	}
 </style>

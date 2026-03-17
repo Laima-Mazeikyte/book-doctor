@@ -64,8 +64,13 @@ main.rate-page {
 	margin: 0;
 	padding: 0;
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+	grid-template-columns: repeat(2, 1fr);
 	gap: var(--space-2);
+}
+@media (min-width: 480px) {
+	.book-card-grid {
+		grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+	}
 }
 @media (min-width: 640px) {
 	.book-card-grid {
