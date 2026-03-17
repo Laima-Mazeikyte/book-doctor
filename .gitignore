@@ -1,4 +1,6 @@
 node_modules
+.pnpm-store
+.pnpm-store/v10
 
 # Output
 .output
