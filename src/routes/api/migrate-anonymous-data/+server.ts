@@ -115,4 +115,4 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	return json({ ok: true, migrated: true });
-});
+};
