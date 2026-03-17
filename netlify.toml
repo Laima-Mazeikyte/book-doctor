@@ -1,0 +1,5 @@
+[build.environment]
+  # These are intentionally public/publishable values that Vite inlines into the
+  # client bundle at build time. Omit them from secrets scanning so the deploy
+  # is not blocked when the scanner finds them in the compiled output.
+  SECRETS_SCAN_OMIT_KEYS = "PUBLIC_SUPABASE_URL,PUBLIC_SUPABASE_ANON_KEY,VITE_SUPABASE_URL,VITE_SUPABASE_ANON_KEY,PUBLIC_BUNNY_COVERS_BASE"
