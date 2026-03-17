@@ -1,4 +1,6 @@
-# Recommendation card & page — UI exploration
+# Ignore this -> this has already been tried and should not be referenced  
+  
+Recommendation card & page — UI exploration
 
 Design exploration for a **dedicated recommendation card** used on `/rate/recommendations` (and reusable elsewhere). The card is distinct from the rating-list `BookCard`: no star rating, includes summary and genre tags, supports reveal interactions, and has a bookmark action.
 

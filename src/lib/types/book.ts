@@ -7,6 +7,8 @@ export interface Book {
 	coverUrl?: string;
 	summary?: string;
 	year?: string;
+	/** Stub for future; genre data from DB later. */
+	genres?: string[];
 }
 
 export type RatingValue = 1 | 2 | 3 | 4 | 5;

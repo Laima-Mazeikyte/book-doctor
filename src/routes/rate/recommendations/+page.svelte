@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import BookCard from '$lib/components/BookCard.svelte';
+	import RecommendationCard from '$lib/components/RecommendationCard.svelte';
 	import RecommendationsEmpty from '$lib/components/RecommendationsEmpty.svelte';
+	import { planToReadStore } from '$lib/stores/planToRead';
 	import RecommendationsLoading from '$lib/components/RecommendationsLoading.svelte';
 	import { authStore } from '$lib/stores/auth';
 	import { ratingsStore } from '$lib/stores/ratings';
@@ -20,6 +21,27 @@
 	let timedOut = $state(false);
 	let pollTimer: ReturnType<typeof setTimeout> | null = null;
 	let viewMode = $state<'loading' | 'history' | 'empty' | 'single' | 'timedOut' | 'error'>('loading');
+	let gridEl: HTMLUListElement | null = null;
+
+	function handleGridKeydown(e: KeyboardEvent) {
+		const key = e.key;
+		if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'ArrowUp' && key !== 'ArrowDown') return;
+		if (!gridEl || books.length === 0) return;
+
+		const cards = Array.from(gridEl.querySelectorAll<HTMLElement>('.recommendation-card'));
+		const currentCard = cards.find((card) => card.contains(document.activeElement as Node));
+		const currentIndex = currentCard ? cards.indexOf(currentCard) : -1;
+		if (currentIndex === -1) return;
+
+		const prev = key === 'ArrowLeft' || key === 'ArrowUp';
+		const nextIndex = prev ? currentIndex - 1 : currentIndex + 1;
+		if (nextIndex < 0 || nextIndex >= cards.length) return;
+
+		e.preventDefault();
+		const targetCard = cards[nextIndex];
+		const firstFocusable = targetCard.querySelector<HTMLElement>('button, [role="button"]');
+		firstFocusable?.focus();
+	}
 
 	async function fetchRecommendations(
 		accessToken: string | null,
@@ -204,9 +226,21 @@
 		{#if books.length === 0}
 			<p class="recommendations-page__empty-run">No books in this recommendation run.</p>
 		{:else}
-			<ul class="recommendations-page__list" aria-label="Recommended books">
+			<ul
+				role="grid"
+				aria-label="Recommended books"
+				class="recommendations-page__list book-card-grid"
+				bind:this={gridEl}
+				onkeydown={handleGridKeydown}
+			>
 				{#each books as book (book.id)}
-					<li><BookCard {book} /></li>
+					<li role="gridcell">
+						<RecommendationCard
+							{book}
+							bookmarked={$planToReadStore.has(book.id)}
+							onBookmark={(id) => planToReadStore.toggle(id)}
+						/>
+					</li>
 				{/each}
 			</ul>
 		{/if}
@@ -252,22 +286,5 @@
 	}
 	.recommendations-page__history-link {
 		text-decoration: none;
-	}
-	.recommendations-page__list {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
-		gap: var(--space-2);
-	}
-	@media (min-width: 640px) {
-		.recommendations-page__list {
-			gap: var(--space-3);
-		}
-	}
-	.recommendations-page__list li {
-		margin: 0;
-		min-height: 0;
 	}
 </style>

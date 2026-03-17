@@ -274,7 +274,7 @@
 			{/if}
 
 			{#if loadingSearch}
-				<ul class="rate-page__list" aria-label="Searching…" aria-live="polite">
+				<ul class="rate-page__list book-card-grid" aria-label="Searching…" aria-live="polite">
 					{#each Array(6) as _}
 						<li><BookCardSkeleton /></li>
 					{/each}
@@ -282,7 +282,7 @@
 			{:else if searchResults.length === 0 && !searchError}
 				<p class="rate-page__empty">No books found for that search.</p>
 			{:else}
-				<ul class="rate-page__list">
+				<ul class="rate-page__list book-card-grid">
 					{#each searchResults as book (book.id)}
 						<li><BookCard {book} /></li>
 					{/each}
@@ -305,13 +305,13 @@
 			{/if}
 
 			{#if loadingInitial}
-				<ul class="rate-page__list" aria-label="Loading books…" aria-live="polite">
+				<ul class="rate-page__list book-card-grid" aria-label="Loading books…" aria-live="polite">
 					{#each Array(8) as _}
 						<li><BookCardSkeleton /></li>
 					{/each}
 				</ul>
 			{:else}
-				<ul class="rate-page__list">
+				<ul class="rate-page__list book-card-grid">
 					{#each popularBooks as book (book.id)}
 						<li><BookCard {book} /></li>
 					{/each}
@@ -361,23 +361,6 @@
 	}
 	.rate-page__content {
 		/* Content flow */
-	}
-	.rate-page__list {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
-		gap: var(--space-2);
-	}
-	@media (min-width: 640px) {
-		.rate-page__list {
-			gap: var(--space-3);
-		}
-	}
-	.rate-page__list li {
-		margin: 0;
-		min-height: 0;
 	}
 	.rate-page__empty {
 		color: var(--color-text-muted);
