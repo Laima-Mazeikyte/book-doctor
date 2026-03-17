@@ -26,4 +26,7 @@ test-results
 
 # Supabase
 .temp
+
+# Other
 .make-it-accessible-skill/
+.example data
