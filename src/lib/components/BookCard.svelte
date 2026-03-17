@@ -1,13 +1,17 @@
 <script lang="ts">
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { t } from '$lib/copy';
+	import { Search } from 'lucide-svelte';
 	import type { Book, RatingValue } from '$lib/types/book';
 
 	interface Props {
 		book: Book;
+		onSearchAuthor?: (author: string) => void;
 	}
 
-	let { book }: Props = $props();
+	let { book, onSearchAuthor }: Props = $props();
+
+	const showSearchAuthor = $derived(Boolean(onSearchAuthor && book.author?.trim()));
 
 	let hoverRating = $state<number>(0);
 	let coverImageFailed = $state(false);
@@ -25,6 +29,23 @@
 <article class="book-card" data-book-id={book.id}>
 	<div class="book-card__media">
 		<div class="book-card__media-inner">
+			{#if showSearchAuthor}
+				<div class="book-card__author-search">
+					<button
+						type="button"
+						class="book-card__author-search-btn"
+						aria-label={t('shared.bookCard.searchThisAuthorAriaLabel', { author: book.author })}
+						onclick={(e) => {
+							e.preventDefault();
+							e.stopPropagation();
+							onSearchAuthor?.(book.author);
+						}}
+					>
+						<Search size={14} aria-hidden="true" />
+						<span>{t('shared.bookCard.searchThisAuthor')}</span>
+					</button>
+				</div>
+			{/if}
 			{#if showCoverImage}
 				<img
 					src={book.coverUrl}
@@ -105,6 +126,46 @@
 		height: 100%;
 		overflow: hidden;
 		border-radius: var(--radius-sm);
+	}
+	.book-card__author-search {
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		z-index: 1;
+		padding: var(--space-2);
+		display: flex;
+		justify-content: center;
+		opacity: 0;
+		transition: opacity var(--duration-fast) var(--ease-default);
+		pointer-events: none;
+	}
+	.book-card:hover .book-card__author-search {
+		opacity: 1;
+		pointer-events: auto;
+	}
+	.book-card__author-search-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-1);
+		padding: var(--space-1) var(--space-2);
+		font-size: var(--font-size-sm);
+		font-weight: var(--font-weight-medium);
+		color: var(--color-text);
+		background: rgba(255, 255, 255, 0.9);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		box-shadow: var(--shadow-card);
+		transition: background var(--duration-fast) var(--ease-default),
+			color var(--duration-fast) var(--ease-default);
+	}
+	.book-card__author-search-btn:hover {
+		background: var(--color-card-bg);
+	}
+	.book-card__author-search-btn:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 2px;
 	}
 	.book-card__cover {
 		display: block;
@@ -199,6 +260,10 @@
 		opacity: 0.75;
 	}
 	@media (max-width: 479px) {
+		.book-card__author-search {
+			opacity: 1;
+			pointer-events: auto;
+		}
 		.book-card__rating {
 			min-width: 0;
 		}

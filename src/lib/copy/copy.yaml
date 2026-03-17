@@ -57,6 +57,8 @@ en:
       rateThisBook: "Rate this book 1 to 5 stars"
       rateOutOf5: "Rate {{value}} out of 5"
       rateOutOf5Clear: "Rate {{value}} out of 5 (click again to clear)"
+      searchThisAuthor: "Search This Author"
+      searchThisAuthorAriaLabel: "Search for books by {{author}}"
     recommendationCard:
       seeSummary: "See summary"
       addToReadingList: "Add to Bookmarks"

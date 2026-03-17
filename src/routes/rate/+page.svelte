@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import { goto } from '$app/navigation';
 	import BookCard from '$lib/components/BookCard.svelte';
@@ -49,6 +49,35 @@
 	});
 
 	const isSearching = $derived(debouncedQuery.trim().length >= 3);
+
+	// ── Scroll position restore when leaving search ─────────────────────────────
+	let savedScrollY = $state(0);
+	let wasSearching = $state(false);
+
+	function handleSearchAuthor(author: string) {
+		savedScrollY = window.scrollY;
+		searchQuery = author;
+	}
+
+	$effect(() => {
+		if (isSearching) {
+			window.scrollTo(0, 0);
+			wasSearching = true;
+		} else {
+			if (wasSearching) {
+				const y = savedScrollY;
+				wasSearching = false;
+				tick().then(() => {
+					setTimeout(() => {
+						if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
+							document.activeElement.blur();
+						}
+						window.scrollTo({ top: y, left: 0, behavior: 'auto' });
+					}, 50);
+				});
+			}
+		}
+	});
 
 	// ── Header visibility on scroll ────────────────────────────────────────────
 	let lastScrollY = $state(0);
@@ -302,7 +331,7 @@
 			{:else}
 				<ul class="rate-page__list book-card-grid">
 					{#each searchResults as book (book.id)}
-						<li><BookCard {book} /></li>
+						<li><BookCard {book} onSearchAuthor={handleSearchAuthor} /></li>
 					{/each}
 				</ul>
 
@@ -331,7 +360,7 @@
 			{:else}
 				<ul class="rate-page__list book-card-grid">
 					{#each popularBooks as book (book.id)}
-						<li><BookCard {book} /></li>
+						<li><BookCard {book} onSearchAuthor={handleSearchAuthor} /></li>
 					{/each}
 				</ul>
 
