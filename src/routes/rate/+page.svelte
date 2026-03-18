@@ -383,7 +383,7 @@
 		<div class="rate-page__bottom-bar">
 			<RatingsBar {ratedEntries} />
 			{#if canGetRecommendations}
-				<Button pill onclick={handleSubmit}>
+				<Button variant="inverse" pill onclick={handleSubmit}>
 					{t('rate.getRecommendations')}
 				</Button>
 			{/if}

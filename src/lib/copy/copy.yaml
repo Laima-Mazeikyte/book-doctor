@@ -2,14 +2,28 @@
 # To add a locale later, add another top-level key (e.g. es:, fr:) with the same structure.
 en:
   home:
-    title: "Life’s too short for uninspired books"
+    titlePrefix: "Life’s too short for"
+    titleSuffix: "books"
+    adjectives:
+      - uninspired
+      - boring
+      - trivial
+      - dull
+      - banal
+      - cliche
+      - ponderous
+      - shallow
+      - contrived
+      - pretentious
+      - cheesy
+      - serious
     lead: "Discover your next favorite book"
     startRating: "Start rating"
     ratingTipsTitle: "Book rating tips"
     ratingTips: |
-      10 books is enough for a solid recommendation — the more the better of course!
-      It's OK to rate books you have not finished.
-      It's good to rate a variety of different book genres and author.
+      10 books is enough to get a good recommendation.
+      It's okay to rate books you haven't finished.
+      Try to rate a variety of different book genres and authors.
 
   rate:
     search:
@@ -26,6 +40,17 @@ en:
       loadingBooks: "Loading books…"
     getRecommendations: "Get Book Recommendations"
 
+  bookmarks:
+    title: "Bookmarks - WIP, share ideas what you'd expect here"
+    empty: "No bookmarks yet. Save books from recommendations or the rate page."
+  notInterested:
+    title: "Not interested"
+    intro: "Books you've marked as not interested. Click the button again to show them in recommendations."
+    empty: "No books marked as not interested yet."
+  rated:
+    title: "Rated books"
+    empty: "No books rated yet. Rate at least 10 to get recommendations."
+
   recommendations:
     title: "Recommendations"
     myRecommendations: "My recommendations"
@@ -36,6 +61,10 @@ en:
     noRecommendationsYet: "No recommendations yet. Rate more books and try again."
     failedToLoad: "Failed to load recommendations"
     failedToLoadHistory: "Failed to load recommendation history"
+    uniqueBooksCount: "{{count}} unique book"
+    uniqueBooksCountPlural: "s"
+    allUniqueTitles: "All recommended titles"
+    recommendationBatches: "Recommendation batches"
     aria:
       pastRuns: "Past recommendation runs"
       recommendedBooks: "Recommended books"
@@ -44,12 +73,19 @@ en:
   shared:
     skipToContent: "Skip to main content"
     header:
-      myRecommendations: "My recommendations"
+      rateBooks: "Rate books"
+      myRecommendations: "Recommendations"
+      bookmarks: "Bookmarks"
+      notInterested: "Not interested"
+      ratedBooks: "Ratings"
+      account: "Account"
       signOut: "Sign out"
+      openMenu: "Open menu"
+      closeMenu: "Close menu"
     errorBanner:
       dismiss: "Dismiss error"
     ratingsBar:
-      yourRatings: "Your ratings"
+      yourRatings: "Ratings"
       close: "Close"
       empty: "No books rated yet. Rate at least 10 to get recommendations."
       changeOrRemoveRating: "Change or remove rating"
@@ -69,7 +105,8 @@ en:
       addToReadingList: "Add to Bookmarks"
       removeFromReadingList: "Remove from Bookmarks"
       savedToReadingList: "Saved to bookmarks"
-      bookmark: "Bookmark"
+      bookmark: "Save"
+      saved: "Saved"
       markAsRead: "Mark as read"
       read: "Rate"
       backToWantToRead: "Back to Bookmark and Rate buttons"
@@ -80,6 +117,9 @@ en:
       rateThisBook: "Rate this book 1 to 5 stars"
       rateOutOf5: "Rate {{value}} out of 5"
       rateOutOf5Clear: "Rate {{value}} out of 5 (click again to clear)"
+      notInterested: "Not interested"
+      notInterestedFeedback: "Not interested"
+      removeFromNotInterested: "Remove from not interested"
     recommendationsLoading:
       message: "Getting your recommendations…"
     recommendationsEmpty:

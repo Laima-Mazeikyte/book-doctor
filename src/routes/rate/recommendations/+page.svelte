@@ -4,6 +4,8 @@
 	import RecommendationCard from '$lib/components/RecommendationCard.svelte';
 	import RecommendationsEmpty from '$lib/components/RecommendationsEmpty.svelte';
 	import { planToReadStore } from '$lib/stores/planToRead';
+	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
+	import { notInterestedStore } from '$lib/stores/notInterested';
 	import RecommendationsLoading from '$lib/components/RecommendationsLoading.svelte';
 	import { authStore } from '$lib/stores/auth';
 	import { ratingsStore } from '$lib/stores/ratings';
@@ -18,6 +20,8 @@
 
 	let books = $state<Book[]>([]);
 	let runs = $state<RecommendationRun[]>([]);
+	let uniqueBooks = $state<Book[]>([]);
+	let uniqueBooksLoading = $state(false);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let timedOut = $state(false);
@@ -73,12 +77,47 @@
 		return data.runs ?? [];
 	}
 
+	async function fetchUniqueBooks(accessToken: string | null): Promise<Book[]> {
+		const headers: Record<string, string> = {};
+		if (accessToken) {
+			headers['Authorization'] = `Bearer ${accessToken}`;
+		}
+		const res = await fetch('/api/recommendations/unique', { headers });
+		if (!res.ok) return [];
+		const data: { books: Book[] } = await res.json();
+		return data.books ?? [];
+	}
+
 	function formatRunDate(createdAt: string): string {
 		if (!createdAt) return '';
 		const d = new Date(createdAt);
 		return Number.isNaN(d.getTime()) ? createdAt : d.toLocaleDateString(undefined, {
 			dateStyle: 'medium'
 		});
+	}
+
+	function handleNotInterested(book: Book) {
+		const wasNotInterested = notInterestedStore.has(book.book_id);
+		const nowNotInterested = notInterestedStore.toggle(book.book_id);
+		// Mutually exclusive with bookmark: when marking not interested, remove from bookmarks
+		if (!wasNotInterested && planToReadStore.has(book.id)) {
+			planToReadStore.toggle(book.id, book.book_id);
+		}
+		// Keep header count in sync (book stays in list for undo)
+		if (nowNotInterested) {
+			recommendationsCountStore.update((n) => Math.max(0, n - 1));
+		} else {
+			recommendationsCountStore.update((n) => n + 1);
+		}
+	}
+
+	function handleBookmark(book: Book, id: string) {
+		const wasBookmarked = planToReadStore.has(book.id);
+		planToReadStore.toggle(id, book.book_id);
+		// Mutually exclusive with not interested: when adding bookmark, clear not interested
+		if (!wasBookmarked) {
+			notInterestedStore.remove(book.book_id);
+		}
 	}
 
 	// React to URL changes (client-side navigation from history "View" link, etc.)
@@ -172,6 +211,16 @@
 					if (!$page.url.searchParams.get('request_id')?.trim()) {
 						runs = historyRuns;
 						viewMode = historyRuns.length === 0 ? 'empty' : 'history';
+						if (historyRuns.length === 0) {
+							recommendationsCountStore.set(0);
+						} else if (historyRuns.length > 0) {
+							uniqueBooksLoading = true;
+							fetchUniqueBooks(accessToken).then((list) => {
+								uniqueBooks = list;
+								recommendationsCountStore.set(list.length);
+								uniqueBooksLoading = false;
+							});
+						}
 					}
 				})
 				.catch((e) => {
@@ -208,16 +257,53 @@
 		<p class="recommendations-page__back">
 			<a href="/rate">{t('recommendations.backToRating')}</a>
 		</p>
-		<ul class="recommendations-page__history" aria-label={t('recommendations.aria.pastRuns')}>
-			{#each runs as run (run.request_id)}
-				<li class="recommendations-page__history-item">
-					<span class="recommendations-page__history-date">{formatRunDate(run.created_at)}</span>
-					<a href="/rate/recommendations?request_id={encodeURIComponent(run.request_id)}&from=history" class="recommendations-page__history-link">
-						<Button variant="secondary" compact>{t('recommendations.historyView')}</Button>
-					</a>
-				</li>
-			{/each}
-		</ul>
+
+		<section class="recommendations-page__unique" aria-labelledby="unique-books-heading">
+			<h2 id="unique-books-heading" class="recommendations-page__unique-heading">
+				{#if uniqueBooksLoading}
+					{t('recommendations.allUniqueTitles')}
+				{:else}
+					{t('recommendations.uniqueBooksCount', { count: uniqueBooks.length })}{uniqueBooks.length === 1 ? '' : t('recommendations.uniqueBooksCountPlural')}
+				{/if}
+			</h2>
+			{#if uniqueBooksLoading}
+				<p class="recommendations-page__unique-loading">{t('recommendations.title')}…</p>
+			{:else if uniqueBooks.length > 0}
+				<ul class="recommendations-page__unique-grid book-card-grid" aria-label={t('recommendations.allUniqueTitles')}>
+					{#each uniqueBooks as book (book.id)}
+						<li>
+							<RecommendationCard
+								{book}
+								bookmarked={$planToReadStore.has(book.id)}
+								onBookmark={(id) => handleBookmark(book, id)}
+								currentRating={$ratingsStore.get(book.id)}
+								onRate={(id, value) => {
+									ratingsStore.setRating(id, value, book.book_id, book);
+									if (get(planToReadStore).has(id)) planToReadStore.toggle(id, book.book_id);
+								}}
+								onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id)}
+								notInterested={$notInterestedStore.has(book.book_id)}
+								onNotInterested={() => handleNotInterested(book)}
+							/>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</section>
+
+		<section class="recommendations-page__batches" aria-labelledby="batches-heading">
+			<h2 id="batches-heading" class="recommendations-page__batches-title">{t('recommendations.recommendationBatches')}</h2>
+			<ul class="recommendations-page__history" aria-label={t('recommendations.aria.pastRuns')}>
+				{#each runs as run (run.request_id)}
+					<li class="recommendations-page__history-item">
+						<span class="recommendations-page__history-date">{formatRunDate(run.created_at)}</span>
+						<a href="/rate/recommendations?request_id={encodeURIComponent(run.request_id)}&from=history" class="recommendations-page__history-link">
+							<Button variant="secondary" compact>{t('recommendations.historyView')}</Button>
+						</a>
+					</li>
+				{/each}
+			</ul>
+		</section>
 	{:else if viewMode === 'single'}
 		<h1 class="recommendations-page__title">{t('recommendations.title')}</h1>
 		<p class="recommendations-page__back">
@@ -240,13 +326,15 @@
 						<RecommendationCard
 							{book}
 							bookmarked={$planToReadStore.has(book.id)}
-							onBookmark={(id) => planToReadStore.toggle(id)}
+							onBookmark={(id) => handleBookmark(book, id)}
 							currentRating={$ratingsStore.get(book.id)}
 							onRate={(id, value) => {
 								ratingsStore.setRating(id, value, book.book_id, book);
-								if (get(planToReadStore).has(id)) planToReadStore.toggle(id);
+								if (get(planToReadStore).has(id)) planToReadStore.toggle(id, book.book_id);
 							}}
 							onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id)}
+							notInterested={$notInterestedStore.has(book.book_id)}
+							onNotInterested={() => handleNotInterested(book)}
 						/>
 					</li>
 				{/each}
@@ -265,6 +353,32 @@
 	}
 	.recommendations-page__back {
 		margin: 0 0 var(--space-4) 0;
+	}
+	.recommendations-page__unique {
+		margin-bottom: var(--space-8);
+	}
+	.recommendations-page__unique-heading {
+		font-size: var(--font-size-lg);
+		font-weight: var(--font-weight-semibold);
+		margin: 0 0 var(--space-3) 0;
+	}
+	.recommendations-page__unique-loading {
+		color: var(--color-text-muted);
+		margin: 0;
+		font-size: var(--font-size-sm);
+	}
+	.recommendations-page__unique-grid {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	.recommendations-page__batches {
+		margin-bottom: var(--space-8);
+	}
+	.recommendations-page__batches-title {
+		font-size: var(--font-size-lg);
+		font-weight: var(--font-weight-semibold);
+		margin: 0 0 var(--space-3) 0;
 	}
 	.recommendations-page__empty-run {
 		color: var(--color-text-muted);

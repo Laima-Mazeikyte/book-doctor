@@ -124,8 +124,7 @@
 						{t('shared.ratingsBar.yourRatings')}
 					</h2>
 					<Button
-						variant="secondary"
-						pill
+						variant="tertiary"
 						compact
 						type="button"
 						aria-label={t('shared.ratingsBar.close')}
@@ -189,8 +188,7 @@
 													</button>
 												{/each}
 												<Button
-													variant="secondary"
-													pill
+													variant="tertiary"
 													compact
 													type="button"
 													aria-label={t('shared.ratingsBar.removeRatingFor', { title: entry.book.title })}

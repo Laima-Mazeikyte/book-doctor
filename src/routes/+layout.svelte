@@ -2,15 +2,25 @@
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
 	import { page } from '$app/stores';
+	import { PUBLIC_BUNNY_COVERS_BASE } from '$env/static/public';
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import SkipLink from '$lib/components/SkipLink.svelte';
 	import AppHeader from '$lib/components/AppHeader.svelte';
 	import { getSupabase } from '$lib/supabase';
 	import { authStore } from '$lib/stores/auth';
+	import { planToReadStore } from '$lib/stores/planToRead';
 	import { ratingsStore } from '$lib/stores/ratings';
+	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
+	import { notInterestedStore } from '$lib/stores/notInterested';
 	import type { SupabaseClient } from '@supabase/supabase-js';
 	import type { Book, RatingValue } from '$lib/types/book';
+
+	const coversBase = (PUBLIC_BUNNY_COVERS_BASE ?? '').replace(/\/$/, '');
+	function coverUrlFor(cover_url: string | null | undefined, book_id: number | undefined): string | undefined {
+		if (cover_url?.trim()) return cover_url;
+		return coversBase && book_id != null ? `${coversBase}/${book_id}.avif` : undefined;
+	}
 
 	let { children } = $props();
 
@@ -24,7 +34,8 @@
 		const { data: rows, error: ratingsError } = await supabase
 			.from('user_ratings')
 			.select('book_id, book_rating, books(id, book_id, book_name, author, cover_url, year)')
-			.eq('user_id', userId);
+			.eq('user_id', userId)
+			.order('updated_at', { ascending: false });
 
 		if (ratingsError) {
 			console.error('[ratings] Failed to load user ratings:', ratingsError.message);
@@ -77,7 +88,7 @@
 					book_id: b.book_id,
 					title: b.book_name,
 					author: b.author ?? '',
-					coverUrl: b.cover_url ?? undefined,
+					coverUrl: coverUrlFor(b.cover_url, b.book_id),
 					year: b.year != null ? String(b.year) : undefined
 				});
 			} else if (fallbackBooks.length > 0) {
@@ -88,7 +99,7 @@
 						book_id: fb.book_id,
 						title: fb.book_name,
 						author: fb.author,
-						coverUrl: fb.cover_url,
+						coverUrl: coverUrlFor(fb.cover_url, fb.book_id),
 						year: fb.year != null ? String(fb.year) : undefined
 					});
 				}
@@ -127,6 +138,92 @@
 					.eq('book_id', bookIdNum)
 					.then(({ error }) => {
 						if (error) console.error('[ratings] Failed to remove rating:', error.message);
+					});
+			}
+		});
+
+		// Load bookmarks and set persistence
+		const { data: bmRows, error: bmError } = await supabase
+			.from('user_bookmarks')
+			.select('book_id')
+			.eq('user_id', userId);
+		if (bmError) {
+			console.error('[bookmarks] Failed to load bookmarks:', bmError.message);
+		}
+		if (bmRows?.length) {
+			const bmBookIds = bmRows.map((r) => r.book_id).filter((id): id is number => id != null);
+			const { data: bookRows } = await supabase
+				.from('books')
+				.select('id, book_id')
+				.in('book_id', bmBookIds);
+			const ids = (bookRows ?? []).map((b) => String(b.id));
+			const idToNum = new Map((bookRows ?? []).map((b) => [String(b.id), b.book_id]));
+			planToReadStore.hydrate(ids, idToNum);
+		} else {
+			planToReadStore.hydrate([], new Map());
+		}
+		planToReadStore.setPersistence({
+			add(bookIdNum) {
+				supabase
+					.from('user_bookmarks')
+					.upsert({ user_id: userId, book_id: bookIdNum }, { onConflict: 'user_id,book_id' })
+					.then(({ error }) => {
+						if (error) console.error('[bookmarks] Failed to add:', error.message);
+					});
+			},
+			remove(bookIdNum) {
+				supabase
+					.from('user_bookmarks')
+					.delete()
+					.eq('user_id', userId)
+					.eq('book_id', bookIdNum)
+					.then(({ error }) => {
+						if (error) console.error('[bookmarks] Failed to remove:', error.message);
+					});
+			}
+		});
+
+		// Migrate any localStorage not-interested IDs into DB (anonymous → signed-in)
+		const localNiIds: number[] = [];
+		try {
+			const raw = window.localStorage.getItem('book-doctor:not-interested');
+			if (raw) {
+				const arr = JSON.parse(raw) as unknown;
+				if (Array.isArray(arr) && arr.every((x) => typeof x === 'number')) localNiIds.push(...arr);
+			}
+		} catch { /* ignore */ }
+		if (localNiIds.length > 0) {
+			await supabase
+				.from('user_not_interested')
+				.upsert(localNiIds.map((book_id) => ({ user_id: userId, book_id })), { onConflict: 'user_id,book_id' });
+			try { window.localStorage.removeItem('book-doctor:not-interested'); } catch { /* ignore */ }
+		}
+
+		const { data: niRows } = await supabase
+			.from('user_not_interested')
+			.select('book_id')
+			.eq('user_id', userId);
+		notInterestedStore.hydrate(
+			(niRows ?? []).map((r) => r.book_id).filter((id): id is number => id != null)
+		);
+
+		notInterestedStore.setPersistence({
+			add(bookIdNum) {
+				supabase
+					.from('user_not_interested')
+					.upsert({ user_id: userId, book_id: bookIdNum }, { onConflict: 'user_id,book_id' })
+					.then(({ error }) => {
+						if (error) console.error('[not-interested] Failed to add:', error.message);
+					});
+			},
+			remove(bookIdNum) {
+				supabase
+					.from('user_not_interested')
+					.delete()
+					.eq('user_id', userId)
+					.eq('book_id', bookIdNum)
+					.then(({ error }) => {
+						if (error) console.error('[not-interested] Failed to remove:', error.message);
 					});
 			}
 		});
@@ -178,11 +275,29 @@
 			if (hadUserBefore) ratingsStore.reset();
 			hadUserBefore = false;
 			ratingsStore.setPersistence(null);
+			planToReadStore.reset();
+			planToReadStore.setPersistence(null);
+			notInterestedStore.reset();
+			notInterestedStore.setPersistence(null);
+			notInterestedStore.clearLocalStorage();
+			recommendationsCountStore.set(0);
 			return;
 		}
 
 		hadUserBefore = true;
 		void loadUserRatingsAndPersistence(supabase, user.id);
+
+		const token = session.access_token ?? null;
+
+		// Load recommendations count for header
+		if (token) {
+			fetch('/api/recommendations/count', {
+				headers: { Authorization: `Bearer ${token}` }
+			})
+				.then((res) => (res.ok ? res.json() : { count: 0 }))
+				.then((data: { count?: number }) => recommendationsCountStore.set(data.count ?? 0))
+				.catch(() => recommendationsCountStore.set(0));
+		}
 	});
 
 	// After anonymous→account migration, ratings are written server-side; reload them.
@@ -201,10 +316,13 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
+	<link rel="preconnect" href="https://fonts.googleapis.com" />
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+	<link href="https://fonts.googleapis.com/css2?family=Beth+Ellen&display=swap" rel="stylesheet" />
 </svelte:head>
 
 <SkipLink />
 <AppHeader />
-<main id="main" class:rate-page={$page.url.pathname === '/rate'}>
+<main id="main" class:rate-page={$page.url.pathname === '/rate'} class:landing-page={$page.url.pathname === '/'}>
 	{@render children()}
 </main>

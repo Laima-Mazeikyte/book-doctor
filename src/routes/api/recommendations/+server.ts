@@ -48,9 +48,20 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	}
 
 	// Parse book_id to integer for lookup in books (books.book_id is integer)
-	const bookIds = items
+	let bookIds = items
 		.map((i) => parseInt(i.book_id, 10))
 		.filter((id) => !Number.isNaN(id));
+
+	// Exclude not-interested when authenticated and fetching "latest" (no request_id), so batch view can show all for undo
+	if (accessToken && !requestId && bookIds.length > 0) {
+		const { data: notInterestedRows } = await supabase
+			.from('user_not_interested')
+			.select('book_id');
+		const notInterestedSet = new Set(
+			(notInterestedRows ?? []).map((r) => r.book_id).filter((id): id is number => Number.isInteger(id))
+		);
+		bookIds = bookIds.filter((id) => !notInterestedSet.has(id));
+	}
 
 	if (bookIds.length === 0) {
 		return json({ books: [], request_id: targetRequestId });

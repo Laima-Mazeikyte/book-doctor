@@ -152,7 +152,7 @@
 		font-size: var(--font-size-sm);
 		font-weight: var(--font-weight-medium);
 		color: var(--color-text);
-		background: rgba(255, 255, 255, 0.9);
+		background: color-mix(in srgb, var(--color-card-bg) 90%, transparent);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-sm);
 		cursor: pointer;

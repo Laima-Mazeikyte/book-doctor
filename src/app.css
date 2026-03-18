@@ -58,6 +58,10 @@ main.rate-page {
 	padding-bottom: calc(var(--space-24) + env(safe-area-inset-bottom, 0px));
 }
 
+main.landing-page {
+	max-width: var(--content-width-narrow);
+}
+
 /* Shared grid for BookCard and RecommendationCard – ensures identical cover sizes */
 .book-card-grid {
 	list-style: none;

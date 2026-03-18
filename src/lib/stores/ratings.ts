@@ -37,8 +37,12 @@ function createRatingsStore() {
 		},
 		setRating(bookId: string, value: RatingValue, bookIdNum?: number, book?: Book) {
 			update((m) => {
-				const next = new Map(m);
+				// Put this rating first so the side panel shows most recent at the top
+				const next = new Map<string, RatingValue>();
 				next.set(bookId, value);
+				for (const [k, v] of m) {
+					if (k !== bookId) next.set(k, v);
+				}
 				return next;
 			});
 			if (book != null) {

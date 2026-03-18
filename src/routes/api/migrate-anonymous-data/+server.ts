@@ -1,27 +1,10 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { getUserIdFromToken } from '$lib/server/auth';
 import { createSupabaseServiceRole } from '$lib/server/supabase';
 
 const UUID_REGEX =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-const supabaseUrl =
-	typeof import.meta.env?.VITE_SUPABASE_URL === 'string'
-		? import.meta.env.VITE_SUPABASE_URL
-		: '';
-
-/**
- * Resolve user id from access token via Supabase Auth API.
- */
-async function getUserIdFromToken(accessToken: string): Promise<string | null> {
-	if (!supabaseUrl) return null;
-	const res = await fetch(`${supabaseUrl.replace(/\/$/, '')}/auth/v1/user`, {
-		headers: { Authorization: `Bearer ${accessToken}` }
-	});
-	if (!res.ok) return null;
-	const data = await res.json();
-	return data?.id ?? data?.user?.id ?? null;
-}
 
 /**
  * Migrates data from an anonymous user to the currently authenticated user.
@@ -85,6 +68,32 @@ export const POST: RequestHandler = async ({ request }) => {
 			throw error(500, 'Failed to migrate ratings');
 		}
 		await supabaseAdmin.from('user_ratings').delete().eq('user_id', anonymousUserId);
+	}
+
+	// Migrate user_bookmarks: copy rows to new user, then delete anonymous rows
+	const { data: bookmarkRows, error: bookmarksSelectError } = await supabaseAdmin
+		.from('user_bookmarks')
+		.select('book_id')
+		.eq('user_id', anonymousUserId);
+
+	if (bookmarksSelectError) {
+		console.error('[migrate-anonymous] user_bookmarks select:', bookmarksSelectError);
+		throw error(500, 'Failed to read anonymous bookmarks');
+	}
+
+	if (bookmarkRows && bookmarkRows.length > 0) {
+		const toInsert = bookmarkRows.map((b) => ({
+			user_id: newUserId,
+			book_id: b.book_id
+		}));
+		const { error: bookmarksUpsertError } = await supabaseAdmin
+			.from('user_bookmarks')
+			.upsert(toInsert, { onConflict: 'user_id,book_id' });
+		if (bookmarksUpsertError) {
+			console.error('[migrate-anonymous] user_bookmarks upsert:', bookmarksUpsertError);
+			throw error(500, 'Failed to migrate bookmarks');
+		}
+		await supabaseAdmin.from('user_bookmarks').delete().eq('user_id', anonymousUserId);
 	}
 
 	// Reassign recommendation_requests

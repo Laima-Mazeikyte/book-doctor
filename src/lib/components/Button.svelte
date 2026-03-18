@@ -4,7 +4,7 @@
 	interface Props {
 		children?: Snippet;
 		icon?: Snippet;
-		variant?: 'primary' | 'secondary' | 'tertiary' | 'link';
+		variant?: 'primary' | 'secondary' | 'tertiary' | 'inverse' | 'link';
 		href?: string;
 		type?: 'button' | 'submit';
 		/** Pill shape (full border-radius) for floating CTAs */
@@ -131,6 +131,16 @@
 	}
 	.btn--tertiary:hover {
 		background: var(--color-button-tertiary-hover-bg);
+	}
+
+	/* Inverse: dark on light mode, light on dark mode */
+	.btn--inverse {
+		background: var(--color-text);
+		color: var(--color-bg);
+		border: 1px solid var(--color-text);
+	}
+	.btn--inverse:hover {
+		opacity: 0.92;
 	}
 
 	/* Link */

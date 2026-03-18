@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { Eye, X, Bookmark, Check } from 'lucide-svelte';
+	import { Eye, X, Bookmark, Star, Ban } from 'lucide-svelte';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
 
@@ -11,9 +11,11 @@
 		currentRating?: RatingValue | null;
 		onRate?: (bookId: string, value: RatingValue) => void;
 		onRemoveRating?: (bookId: string) => void;
+		notInterested?: boolean;
+		onNotInterested?: (bookId: string) => void;
 	}
 
-	let { book, bookmarked = false, onBookmark, currentRating = null, onRate, onRemoveRating }: Props = $props();
+	let { book, bookmarked = false, onBookmark, currentRating = null, onRate, onRemoveRating, notInterested = false, onNotInterested }: Props = $props();
 
 	let coverImageFailed = $state(false);
 	let summaryOpen = $state(false);
@@ -26,13 +28,13 @@
 	const STAR_FILLED = '★';
 	const STAR_EMPTY = '☆';
 
-	/** Show only stars when rated; only "Saved to read list" when bookmarked; both buttons when neither (and not pending rate) */
+	/** Show only stars when rated */
 	const showOnlyStars = $derived(currentRating != null);
-	const showOnlyBookmark = $derived(bookmarked && currentRating == null);
-	const showBothButtons = $derived(!showOnlyStars && !showOnlyBookmark);
+	/** Show the three buttons (Save, Rate, Not interested) when not in star-only mode and not pending rate */
+	const showThreeButtons = $derived(!showOnlyStars && !pendingRate);
 	const showStarRow = $derived(showOnlyStars || pendingRate);
-	/** Show action buttons only when not in "stars replaced buttons" (pending) state */
-	const showActionButtons = $derived(showOnlyBookmark || (showBothButtons && !pendingRate));
+	/** Show action row when we have the three buttons */
+	const showActionButtons = $derived(!showOnlyStars && showThreeButtons);
 	const displayRating = $derived(
 		hoverRating > 0 ? hoverRating : (currentRating ?? 0)
 	);
@@ -68,6 +70,11 @@
 	function handleBookmarkClick(e: MouseEvent) {
 		e.stopPropagation();
 		onBookmark?.(book.id);
+	}
+
+	function handleNotInterestedClick(e: MouseEvent) {
+		e.stopPropagation();
+		onNotInterested?.(book.id);
 	}
 
 	function handleReadClick(e: MouseEvent) {
@@ -122,37 +129,48 @@
 	<div class="recommendation-card__body">
 		{#if showActionButtons}
 		<div class="recommendation-card__actions">
-			{#if showOnlyBookmark}
-				<button
-					type="button"
-					class="recommendation-card__action recommendation-card__action--saved"
-					aria-pressed="true"
-					aria-label={t('shared.recommendationCard.removeFromReadingList')}
-					onclick={handleBookmarkClick}
-				>
-					<Bookmark size={14} aria-hidden="true" />
-					<span>{t('shared.recommendationCard.savedToReadingList')}</span>
-				</button>
-			{:else if showBothButtons}
-				<button
-					type="button"
-					class="recommendation-card__action recommendation-card__action--fill"
-					aria-pressed="false"
-					aria-label={t('shared.recommendationCard.addToReadingList')}
-					onclick={handleBookmarkClick}
-				>
-					<Bookmark size={14} aria-hidden="true" />
-					<span>{t('shared.recommendationCard.bookmark')}</span>
-				</button>
+			<button
+				type="button"
+				class="recommendation-card__action recommendation-card__action--fill"
+				class:recommendation-card__action--saved={bookmarked}
+				class:recommendation-card__action--icon={notInterested}
+				aria-pressed={bookmarked}
+				aria-label={bookmarked ? t('shared.recommendationCard.removeFromReadingList') : t('shared.recommendationCard.addToReadingList')}
+				onclick={handleBookmarkClick}
+			>
+				<Bookmark size={14} aria-hidden="true" />
+				{#if !notInterested}
+					<span>{bookmarked ? t('shared.recommendationCard.saved') : t('shared.recommendationCard.bookmark')}</span>
+				{/if}
+			</button>
+			<button
+				type="button"
+				class="recommendation-card__action recommendation-card__action--fill"
+				class:recommendation-card__action--icon={notInterested}
+				aria-pressed="false"
+				aria-label={t('shared.recommendationCard.markAsRead')}
+				onclick={handleReadClick}
+			>
+				<Star size={14} aria-hidden="true" />
+				{#if !notInterested}
+					<span>{t('shared.recommendationCard.read')}</span>
+				{/if}
+			</button>
+			{#if onNotInterested}
 				<button
 					type="button"
 					class="recommendation-card__action"
-					aria-pressed="false"
-					aria-label={t('shared.recommendationCard.markAsRead')}
-					onclick={handleReadClick}
+					class:recommendation-card__action--icon={!notInterested}
+					class:recommendation-card__action--fill={notInterested}
+					class:recommendation-card__action--not-interested-active={notInterested}
+					aria-pressed={notInterested}
+					aria-label={notInterested ? t('shared.recommendationCard.removeFromNotInterested') : t('shared.recommendationCard.notInterested')}
+					onclick={handleNotInterestedClick}
 				>
-					<Check size={14} aria-hidden="true" />
-					<span>{t('shared.recommendationCard.read')}</span>
+					<Ban size={14} aria-hidden="true" />
+					{#if notInterested}
+						<span>{t('shared.recommendationCard.notInterested')}</span>
+					{/if}
 				</button>
 			{/if}
 		</div>
@@ -222,37 +240,48 @@
 				<p class="recommendation-card__summary">{displaySummary}</p>
 				{#if showActionButtons}
 				<div class="recommendation-card__actions">
-					{#if showOnlyBookmark}
-						<button
-							type="button"
-							class="recommendation-card__action recommendation-card__action--saved"
-							aria-pressed="true"
-							aria-label={t('shared.recommendationCard.removeFromReadingList')}
-							onclick={handleBookmarkClick}
-						>
-							<Bookmark size={14} aria-hidden="true" />
-							<span>{t('shared.recommendationCard.savedToReadingList')}</span>
-						</button>
-					{:else if showBothButtons}
-						<button
-							type="button"
-							class="recommendation-card__action recommendation-card__action--fill"
-							aria-pressed="false"
-							aria-label={t('shared.recommendationCard.addToReadingList')}
-							onclick={handleBookmarkClick}
-						>
-							<Bookmark size={14} aria-hidden="true" />
-							<span>{t('shared.recommendationCard.bookmark')}</span>
-						</button>
+					<button
+						type="button"
+						class="recommendation-card__action recommendation-card__action--fill"
+						class:recommendation-card__action--saved={bookmarked}
+						class:recommendation-card__action--icon={notInterested}
+						aria-pressed={bookmarked}
+						aria-label={bookmarked ? t('shared.recommendationCard.removeFromReadingList') : t('shared.recommendationCard.addToReadingList')}
+						onclick={handleBookmarkClick}
+					>
+						<Bookmark size={14} aria-hidden="true" />
+						{#if !notInterested}
+							<span>{bookmarked ? t('shared.recommendationCard.saved') : t('shared.recommendationCard.bookmark')}</span>
+						{/if}
+					</button>
+					<button
+						type="button"
+						class="recommendation-card__action recommendation-card__action--fill"
+						class:recommendation-card__action--icon={notInterested}
+						aria-pressed="false"
+						aria-label={t('shared.recommendationCard.markAsRead')}
+						onclick={handleReadClick}
+					>
+						<Star size={14} aria-hidden="true" />
+						{#if !notInterested}
+							<span>{t('shared.recommendationCard.read')}</span>
+						{/if}
+					</button>
+					{#if onNotInterested}
 						<button
 							type="button"
 							class="recommendation-card__action"
-							aria-pressed="false"
-							aria-label={t('shared.recommendationCard.markAsRead')}
-							onclick={handleReadClick}
+							class:recommendation-card__action--icon={!notInterested}
+							class:recommendation-card__action--fill={notInterested}
+							class:recommendation-card__action--not-interested-active={notInterested}
+							aria-pressed={notInterested}
+							aria-label={notInterested ? t('shared.recommendationCard.removeFromNotInterested') : t('shared.recommendationCard.notInterested')}
+							onclick={handleNotInterestedClick}
 						>
-							<Check size={14} aria-hidden="true" />
-							<span>{t('shared.recommendationCard.read')}</span>
+							<Ban size={14} aria-hidden="true" />
+							{#if notInterested}
+								<span>{t('shared.recommendationCard.notInterested')}</span>
+							{/if}
 						</button>
 					{/if}
 				</div>
@@ -458,17 +487,47 @@
 	.recommendation-card__action--fill {
 		flex: 1;
 	}
+	.recommendation-card__action--icon {
+		flex: 0 0 auto;
+		min-width: 0;
+		width: 2.25rem;
+		padding: 0 var(--space-1);
+	}
+	.recommendation-card__action--icon :global(svg) {
+		flex-shrink: 0;
+	}
 	.recommendation-card__action :global(svg) {
 		flex-shrink: 0;
 	}
 	.recommendation-card__action--saved {
-		flex: 1;
 		background: #d1fae5;
 		color: #065f46;
 		border-color: rgba(5, 150, 105, 0.4);
 	}
 	.recommendation-card__action--saved:hover {
 		background: #a7f3d0;
+	}
+	/* Not interested when active: same filled style as Saved, red colorway. Double class for specificity. */
+	.recommendation-card__action.recommendation-card__action--not-interested-active {
+		background: #fef2f2;
+		color: #b91c1c;
+		border-color: rgba(185, 28, 28, 0.4);
+	}
+	.recommendation-card__action.recommendation-card__action--not-interested-active:hover {
+		background: #fee2e2;
+		color: #991b1b;
+		border-color: rgba(185, 28, 28, 0.5);
+	}
+	@media (prefers-color-scheme: dark) {
+		.recommendation-card__action.recommendation-card__action--not-interested-active {
+			background: rgba(239, 68, 68, 0.18);
+			color: #fca5a5;
+			border-color: rgba(239, 68, 68, 0.35);
+		}
+		.recommendation-card__action.recommendation-card__action--not-interested-active:hover {
+			background: rgba(239, 68, 68, 0.28);
+			color: #fecaca;
+		}
 	}
 	@media (prefers-color-scheme: dark) {
 		.recommendation-card__action--saved {
