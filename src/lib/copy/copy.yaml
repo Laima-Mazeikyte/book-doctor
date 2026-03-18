@@ -2,9 +2,14 @@
 # To add a locale later, add another top-level key (e.g. es:, fr:) with the same structure.
 en:
   home:
-    title: "Book Doctor"
-    lead: "Get personalized book recommendations. Rate at least 10 books you've read to get started."
+    title: "Life’s too short for uninspired books"
+    lead: "Discover your next favorite book"
     startRating: "Start rating"
+    ratingTipsTitle: "Book rating tips"
+    ratingTips: |
+      10 books is enough for a solid recommendation — the more the better of course!
+      It's OK to rate books you have not finished.
+      It's good to rate a variety of different book genres and author.
 
   rate:
     search:
@@ -98,3 +103,15 @@ en:
       errorPasswordsDoNotMatch: "Passwords do not match"
       errorSignUpFailed: "Sign up failed"
       successCheckEmail: "Check your email to confirm your account."
+    bugModal:
+      title: "Report a bug or send feedback"
+      description: "Description"
+      descriptionPlaceholder: "What went wrong or what would you like to tell us?"
+      name: "Your name"
+      namePlaceholder: "Your name"
+      submit: "Send feedback"
+      submitting: "Sending…"
+      close: "Close"
+      successMessage: "Thanks for your feedback!"
+      errorSubmit: "Could not send. Please try again."
+      reportBugAriaLabel: "Report a bug or send feedback"
