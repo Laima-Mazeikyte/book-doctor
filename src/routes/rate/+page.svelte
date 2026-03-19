@@ -198,7 +198,10 @@
 				const exclude = popularBooks.map((b) => b.book_id).join(',');
 				params.set('exclude', exclude);
 			}
-			const res = await fetch(`/api/books/popular?${params.toString()}`);
+			const headers: Record<string, string> = {};
+			const accessToken = get(authStore).session?.access_token ?? null;
+			if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
+			const res = await fetch(`/api/books/popular?${params.toString()}`, { headers });
 			if (!res.ok) {
 				if (offset > 0) hasMore = false;
 				throw new Error(`HTTP ${res.status}`);
@@ -206,10 +209,17 @@
 			const data: { books: Book[]; nextOffset: number; hasMore: boolean; seed?: string } = await res.json();
 
 			if (offset === 0) {
-				popularBooks = data.books;
+				const seen = new Set<string>();
+				popularBooks = data.books.filter((b) => {
+					if (seen.has(b.id)) return false;
+					seen.add(b.id);
+					return true;
+				});
 				if (data.seed) popularSeed = data.seed;
 			} else {
-				popularBooks = [...popularBooks, ...data.books];
+				const existingIds = new Set(popularBooks.map((b) => b.id));
+				const newBooks = data.books.filter((b) => !existingIds.has(b.id));
+				popularBooks = [...popularBooks, ...newBooks];
 			}
 			nextOffset = data.nextOffset;
 			hasMore = data.hasMore ?? data.books.length > 0;
@@ -241,9 +251,16 @@
 			const data: { books: Book[]; nextOffset: number; hasMore: boolean } = await res.json();
 
 			if (offset === 0) {
-				searchResults = data.books;
+				const seen = new Set<string>();
+				searchResults = data.books.filter((b) => {
+					if (seen.has(b.id)) return false;
+					seen.add(b.id);
+					return true;
+				});
 			} else {
-				searchResults = [...searchResults, ...data.books];
+				const existingIds = new Set(searchResults.map((b) => b.id));
+				const newBooks = data.books.filter((b) => !existingIds.has(b.id));
+				searchResults = [...searchResults, ...newBooks];
 			}
 			searchNextOffset = data.nextOffset;
 			searchHasMore = data.hasMore;

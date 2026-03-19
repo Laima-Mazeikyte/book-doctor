@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { get } from 'svelte/store';
+	import { goto } from '$app/navigation';
+	import Button from '$lib/components/Button.svelte';
 	import RecommendationCard from '$lib/components/RecommendationCard.svelte';
 	import RecommendationsEmpty from '$lib/components/RecommendationsEmpty.svelte';
 	import { planToReadStore } from '$lib/stores/planToRead';
@@ -9,7 +11,6 @@
 	import RecommendationsLoading from '$lib/components/RecommendationsLoading.svelte';
 	import { authStore } from '$lib/stores/auth';
 	import { ratingsStore } from '$lib/stores/ratings';
-	import Button from '$lib/components/Button.svelte';
 	import { t } from '$lib/copy';
 	import type { Book } from '$lib/types/book';
 
@@ -254,9 +255,6 @@
 		/>
 	{:else if viewMode === 'history'}
 		<h1 class="recommendations-page__title">{t('recommendations.myRecommendations')}</h1>
-		<p class="recommendations-page__back">
-			<a href="/rate">{t('recommendations.backToRating')}</a>
-		</p>
 
 		<section class="recommendations-page__unique" aria-labelledby="unique-books-heading">
 			<h2 id="unique-books-heading" class="recommendations-page__unique-heading">
@@ -297,20 +295,32 @@
 				{#each runs as run (run.request_id)}
 					<li class="recommendations-page__history-item">
 						<span class="recommendations-page__history-date">{formatRunDate(run.created_at)}</span>
-						<a href="/rate/recommendations?request_id={encodeURIComponent(run.request_id)}&from=history" class="recommendations-page__history-link">
-							<Button variant="secondary" compact>{t('recommendations.historyView')}</Button>
-						</a>
+						<Button
+							href="/rate/recommendations?request_id={encodeURIComponent(run.request_id)}&from=history"
+							variant="tertiary"
+							compact
+							aria-label={t('recommendations.historyView') + ' ' + formatRunDate(run.created_at)}
+						>
+							{t('recommendations.historyView')}
+						</Button>
 					</li>
 				{/each}
 			</ul>
 		</section>
 	{:else if viewMode === 'single'}
 		<h1 class="recommendations-page__title">{t('recommendations.title')}</h1>
-		<p class="recommendations-page__back">
-			<a href="/rate/recommendations">{t('recommendations.backToList')}</a>
-			·
-			<a href="/rate">{t('recommendations.backToRating')}</a>
-		</p>
+		{#if $page.url.searchParams.get('from') === 'history'}
+			<p class="recommendations-page__back-wrap">
+				<Button
+					variant="tertiary"
+					compact
+					aria-label={t('recommendations.backToList')}
+					onclick={() => goto('/rate/recommendations')}
+				>
+					{t('recommendations.backToList')}
+				</Button>
+			</p>
+		{/if}
 		{#if books.length === 0}
 			<p class="recommendations-page__empty-run">{t('recommendations.emptyRun')}</p>
 		{:else}
@@ -348,19 +358,20 @@
 		padding-bottom: var(--space-8);
 	}
 	.recommendations-page__title {
-		font-size: var(--font-size-2xl);
-		margin: 0 0 var(--space-4) 0;
-	}
-	.recommendations-page__back {
-		margin: 0 0 var(--space-4) 0;
+		font-family: 'Beth Ellen', cursive;
+		font-size: var(--font-size-3xl);
+		margin: 0 0 var(--space-8) 0;
+		text-align: center;
 	}
 	.recommendations-page__unique {
 		margin-bottom: var(--space-8);
 	}
 	.recommendations-page__unique-heading {
-		font-size: var(--font-size-lg);
-		font-weight: var(--font-weight-semibold);
+		font-size: var(--font-size-base);
+		font-weight: var(--font-weight-normal);
+		line-height: var(--line-height-normal);
 		margin: 0 0 var(--space-3) 0;
+		text-align: center;
 	}
 	.recommendations-page__unique-loading {
 		color: var(--color-text-muted);
@@ -406,7 +417,7 @@
 		font-size: var(--font-size-base);
 		color: var(--color-text);
 	}
-	.recommendations-page__history-link {
-		text-decoration: none;
+	.recommendations-page__back-wrap {
+		margin: 0 0 var(--space-4) 0;
 	}
 </style>

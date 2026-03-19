@@ -420,7 +420,7 @@
 		justify-content: center;
 		padding: 0;
 		border: none;
-		background: var(--color-card-bg);
+		background: var(--color-bg-muted);
 		border-radius: var(--radius-pill);
 		cursor: pointer;
 		color: var(--color-text);

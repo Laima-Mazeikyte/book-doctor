@@ -29,6 +29,7 @@ en:
     search:
       placeholder: "Search books"
       ariaLabel: "Search books"
+      clearAriaLabel: "Clear search"
     sectionTitle: "Search results"
     errors:
       loadBooks: "Could not load books right now. Showing a default selection."
@@ -48,12 +49,12 @@ en:
     intro: "Books you've marked as not interested. Click the button again to show them in recommendations."
     empty: "No books marked as not interested yet."
   rated:
-    title: "Rated books"
+    title: "Books I've rated"
     empty: "No books rated yet. Rate at least 10 to get recommendations."
 
   recommendations:
     title: "Recommendations"
-    myRecommendations: "My recommendations"
+    myRecommendations: "What to read next?"
     backToRating: "Back to rating"
     backToList: "Back to list"
     emptyRun: "No books in this recommendation run."
@@ -61,10 +62,10 @@ en:
     noRecommendationsYet: "No recommendations yet. Rate more books and try again."
     failedToLoad: "Failed to load recommendations"
     failedToLoadHistory: "Failed to load recommendation history"
-    uniqueBooksCount: "{{count}} unique book"
+    uniqueBooksCount: "{{count}} book"
     uniqueBooksCountPlural: "s"
     allUniqueTitles: "All recommended titles"
-    recommendationBatches: "Recommendation batches"
+    recommendationBatches: "Past recommendation runs"
     aria:
       pastRuns: "Past recommendation runs"
       recommendedBooks: "Recommended books"
@@ -73,7 +74,7 @@ en:
   shared:
     skipToContent: "Skip to main content"
     header:
-      rateBooks: "Rate books"
+      rateBooks: "Rate more books"
       myRecommendations: "Recommendations"
       bookmarks: "Bookmarks"
       notInterested: "Not interested"

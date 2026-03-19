@@ -71,14 +71,17 @@
 		padding-bottom: var(--space-8);
 	}
 	.bookmarks-page__title {
-		font-size: var(--font-size-2xl);
-		margin: 0 0 var(--space-4) 0;
+		font-family: 'Beth Ellen', cursive;
+		font-size: var(--font-size-3xl);
+		margin: 0 0 var(--space-8) 0;
+		text-align: center;
 	}
 	.bookmarks-page__muted,
 	.bookmarks-page__empty,
 	.bookmarks-page__error {
 		color: var(--color-text-muted);
 		margin: 0;
+		text-align: center;
 	}
 	.bookmarks-page__error {
 		color: var(--color-error, #c00);

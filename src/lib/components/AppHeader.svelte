@@ -357,7 +357,7 @@
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius);
 		box-shadow: var(--shadow-lg);
-		z-index: 50;
+		z-index: 60;
 	}
 	.app-header__account-item {
 		display: block;

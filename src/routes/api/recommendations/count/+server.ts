@@ -51,5 +51,16 @@ export const GET: RequestHandler = async ({ request }) => {
 		uniqueBookIds = new Set([...uniqueBookIds].filter((id) => !notInterestedSet.has(id)));
 	}
 
+	// Exclude rated books when authenticated
+	if (accessToken && uniqueBookIds.size > 0) {
+		const { data: ratedRows } = await supabase
+			.from('user_ratings')
+			.select('book_id');
+		const ratedSet = new Set(
+			(ratedRows ?? []).map((r) => r.book_id).filter((id): id is number => Number.isInteger(id))
+		);
+		uniqueBookIds = new Set([...uniqueBookIds].filter((id) => !ratedSet.has(id)));
+	}
+
 	return json({ count: uniqueBookIds.size });
 };

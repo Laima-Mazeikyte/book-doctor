@@ -5,29 +5,34 @@
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
 
-	const ratedEntries = $derived(
-		Array.from($ratingsStore.entries())
-			.map(([bookId, rating]) => {
-				const book = ratingsStore.getRatedBook(bookId);
-				return book ? { book, rating } : null;
-			})
-			.filter((e): e is { book: Book; rating: RatingValue } => e !== null)
-	);
+	// Snapshot of rated entries when the page is loaded; unrating does not remove from list until refresh
+	let displayedEntries = $state<Array<{ book: Book; ratingAtLoad: RatingValue }>>([]);
+
+	$effect(() => {
+		if ($ratingsStore.size > 0 && displayedEntries.length === 0) {
+			displayedEntries = Array.from($ratingsStore.entries())
+				.map(([bookId, rating]) => {
+					const book = ratingsStore.getRatedBook(bookId);
+					return book ? { book, ratingAtLoad: rating } : null;
+				})
+				.filter((e): e is { book: Book; ratingAtLoad: RatingValue } => e !== null);
+		}
+	});
 </script>
 
 <div class="rated-page">
 	<h1 class="rated-page__title">{t('rated.title')}</h1>
-	{#if ratedEntries.length === 0}
+	{#if displayedEntries.length === 0}
 		<p class="rated-page__empty">{t('rated.empty')}</p>
 	{:else}
 		<ul class="rated-page__list book-card-grid" aria-label={t('shared.ratingsBar.yourRatings')}>
-			{#each ratedEntries as { book, rating } (book.id)}
+			{#each displayedEntries as { book, ratingAtLoad } (book.id)}
 				<li>
 					<RecommendationCard
 						{book}
 						bookmarked={$planToReadStore.has(book.id)}
 						onBookmark={(id) => planToReadStore.toggle(id, book.book_id)}
-						currentRating={rating}
+						currentRating={$ratingsStore.get(book.id) ?? 0}
 						onRate={(id, value) => ratingsStore.setRating(id, value, book.book_id, book)}
 						onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id)}
 					/>
@@ -42,8 +47,10 @@
 		padding-bottom: var(--space-8);
 	}
 	.rated-page__title {
-		font-size: var(--font-size-2xl);
-		margin: 0 0 var(--space-4) 0;
+		font-family: 'Beth Ellen', cursive;
+		font-size: var(--font-size-3xl);
+		margin: 0 0 var(--space-8) 0;
+		text-align: center;
 	}
 	.rated-page__empty {
 		color: var(--color-text-muted);

@@ -77,6 +77,7 @@
 					aria-pressed={currentRating === value}
 					onmouseenter={() => (hoverRating = value)}
 					onclick={() => {
+						hoverRating = 0; // reset hover so mobile (no mouseleave) shows correct state after tap
 						if (currentRating === value && currentRating !== 0) {
 							ratingsStore.removeRating(book.id, book.book_id);
 						} else {

@@ -1,7 +1,7 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { PUBLIC_BUNNY_COVERS_BASE } from '$env/static/public';
-import { supabase } from '$lib/server/supabase';
+import { supabase, createSupabaseWithAuth } from '$lib/server/supabase';
 
 const PAGE_SIZE = 20;
 const TOP_100_SIZE = 100;
@@ -47,7 +47,7 @@ function mapRowToBook(
 	};
 }
 
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = async ({ url, request }) => {
 	const offsetParam = url.searchParams.get('offset');
 	const offset = offsetParam ? parseInt(offsetParam, 10) : 0;
 	const seedParam = url.searchParams.get('seed'); // session seed so order is stable for this visit but different each time
@@ -58,6 +58,17 @@ export const GET: RequestHandler = async ({ url }) => {
 				.map((s) => parseInt(s.trim(), 10))
 				.filter((n) => !Number.isNaN(n))
 		: [];
+
+	const authHeader = request.headers.get('Authorization');
+	const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+	let ratedSet = new Set<number>();
+	if (accessToken) {
+		const supabaseAuth = createSupabaseWithAuth(accessToken);
+		const { data: ratedRows } = await supabaseAuth.from('user_ratings').select('book_id');
+		ratedSet = new Set(
+			(ratedRows ?? []).map((r) => r.book_id).filter((id): id is number => Number.isInteger(id))
+		);
+	}
 
 	// Batches 1–5 (offset 0–80): 2 per genre per batch; which 2 from each genre is randomised per session
 	if (offset < TOP_100_SIZE) {
@@ -96,7 +107,10 @@ export const GET: RequestHandler = async ({ url }) => {
 		}
 
 		const page = ordered.slice(offset, offset + PAGE_SIZE);
-		const books = page.map((b) => mapRowToBook(b));
+		let books = page.map((b) => mapRowToBook(b));
+		if (ratedSet.size > 0) {
+			books = books.filter((b) => !ratedSet.has(b.book_id));
+		}
 
 		const nextOffset = offset + books.length;
 		const hasMore = nextOffset < TOP_100_SIZE || nextOffset === TOP_100_SIZE;
@@ -144,7 +158,10 @@ export const GET: RequestHandler = async ({ url }) => {
 	};
 	const shuffledHas = shuffleOne(hasCover, 'cover');
 	const shuffledNo = shuffleOne(noCover, 'nocover');
-	const books = [...shuffledHas, ...shuffledNo].slice(0, PAGE_SIZE).map((b) => mapRowToBook(b));
+	let books = [...shuffledHas, ...shuffledNo].slice(0, PAGE_SIZE).map((b) => mapRowToBook(b));
+	if (ratedSet.size > 0) {
+		books = books.filter((b) => !ratedSet.has(b.book_id));
+	}
 
 	const hasMore = books.length === PAGE_SIZE;
 	const nextOffset = offset + books.length;

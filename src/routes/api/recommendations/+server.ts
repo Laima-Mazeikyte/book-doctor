@@ -63,6 +63,17 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		bookIds = bookIds.filter((id) => !notInterestedSet.has(id));
 	}
 
+	// Exclude rated books when authenticated (both latest and single-run views)
+	if (accessToken && bookIds.length > 0) {
+		const { data: ratedRows } = await supabase
+			.from('user_ratings')
+			.select('book_id');
+		const ratedSet = new Set(
+			(ratedRows ?? []).map((r) => r.book_id).filter((id): id is number => Number.isInteger(id))
+		);
+		bookIds = bookIds.filter((id) => !ratedSet.has(id));
+	}
+
 	if (bookIds.length === 0) {
 		return json({ books: [], request_id: targetRequestId });
 	}

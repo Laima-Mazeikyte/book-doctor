@@ -5,16 +5,12 @@
 		title?: string;
 		message?: string;
 		ratedCount: number;
-		backHref?: string;
-		backLabel?: string;
 	}
 
 	let {
 		title = t('shared.recommendationsEmpty.title'),
 		message = t('shared.recommendationsEmpty.defaultMessage'),
 		ratedCount,
-		backHref = '/rate',
-		backLabel = t('shared.recommendationsEmpty.backToRating'),
 	}: Props = $props();
 </script>
 
@@ -23,9 +19,6 @@
 	<p class="recommendations-empty__message">{message}</p>
 	<p class="recommendations-empty__count">
 		{t('shared.recommendationsEmpty.youRatedCount', { count: ratedCount })}{ratedCount === 1 ? '' : t('shared.recommendationsEmpty.youRatedCountPlural')}.
-	</p>
-	<p>
-		<a href={backHref} class="recommendations-empty__back">{backLabel}</a>
 	</p>
 </div>
 
@@ -42,8 +35,5 @@
 		font-size: var(--font-size-md);
 		color: var(--color-text-muted);
 		margin: 0 0 var(--space-6) 0;
-	}
-	.recommendations-empty__back {
-		/* Uses global link styles */
 	}
 </style>
