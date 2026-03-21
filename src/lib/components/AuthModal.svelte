@@ -95,7 +95,7 @@
 	$effect(() => {
 		if (!useHcaptcha) return;
 
-		if (!open || tab !== 'signup') {
+		if (!open || (tab !== 'signup' && tab !== 'forgot')) {
 			if (hcaptchaWidgetId !== null && typeof window !== 'undefined' && window.hcaptcha) {
 				try {
 					window.hcaptcha.remove(hcaptchaWidgetId);
@@ -179,14 +179,26 @@
 			error = t('shared.authModal.errorEmailRequired');
 			return;
 		}
+
+		const captchaToken = getHcaptchaToken();
+		if (useHcaptcha && !captchaToken) {
+			error = t('shared.authModal.errorCaptchaRequired');
+			return;
+		}
+
 		loading = true;
 		const origin = typeof window !== 'undefined' ? window.location.origin : '';
-		const { error: err } = await supabase.auth.resetPasswordForEmail(trimmed, {
-			redirectTo: `${origin}/auth/reset-password`
-		});
+		const resetOptions = captchaToken
+			? {
+					captchaToken,
+					redirectTo: `${origin}/auth/reset-password`
+				}
+			: { redirectTo: `${origin}/auth/reset-password` };
+		const { error: err } = await supabase.auth.resetPasswordForEmail(trimmed, resetOptions);
 		loading = false;
 		if (err) {
 			error = err.message ?? t('shared.authModal.errorResetEmailFailed');
+			resetHcaptcha();
 			return;
 		}
 		successMessage = t('shared.authModal.successResetEmailSent');
@@ -434,6 +446,13 @@
 							disabled={loading}
 						/>
 					</div>
+					{#if useHcaptcha}
+						<div
+							class="auth-modal__hcaptcha"
+							bind:this={hcaptchaContainerEl}
+							aria-hidden="true"
+						></div>
+					{/if}
 					<Button type="submit" variant="primary" pill disabled={loading}>
 						{loading ? t('shared.authModal.sendingResetLink') : t('shared.authModal.sendResetLink')}
 					</Button>
