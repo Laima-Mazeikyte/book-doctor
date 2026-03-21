@@ -46,11 +46,6 @@
 
 	const displaySummary = $derived(DUMMY_SUMMARY);
 
-	const DEFAULT_GENRES = ['Fiction', 'Mystery', 'Romance'];
-	const genres = $derived(
-		book.genres && book.genres.length > 0 ? book.genres : DEFAULT_GENRES
-	);
-
 	async function handleOpenSummary() {
 		summaryOpen = true;
 		await tick();
@@ -230,11 +225,13 @@
 				<X size={18} aria-hidden="true" />
 			</button>
 			<div class="recommendation-card__summary-content">
-				<ul class="recommendation-card__genres" aria-label={t('shared.recommendationCard.genres')}>
-					{#each genres as genre}
-						<li class="recommendation-card__genre">{genre}</li>
-					{/each}
-				</ul>
+				{#if book.genres && book.genres.length > 0}
+					<ul class="recommendation-card__genres" aria-label={t('shared.recommendationCard.genres')}>
+						{#each book.genres as genre}
+							<li class="recommendation-card__genre">{genre}</li>
+						{/each}
+					</ul>
+				{/if}
 				<h3 class="recommendation-card__title">{book.title}</h3>
 				<p class="recommendation-card__author">{book.author}{#if book.year}<span class="recommendation-card__year"> · {book.year}</span>{/if}</p>
 				<p class="recommendation-card__summary">{displaySummary}</p>
