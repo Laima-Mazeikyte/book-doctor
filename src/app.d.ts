@@ -8,6 +8,18 @@ declare global {
 		// interface PageState {}
 		// interface Platform {}
 	}
+
+	interface Window {
+		hcaptcha?: {
+			render: (
+				container: string | HTMLElement,
+				params: { sitekey: string; theme?: 'light' | 'dark' }
+			) => number;
+			getResponse: (widgetId: number) => string;
+			reset: (widgetId: number) => void;
+			remove: (widgetId: number) => void;
+		};
+	}
 }
 
 declare module '*.yaml' {

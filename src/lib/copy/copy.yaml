@@ -143,6 +143,7 @@ en:
       errorInvalidCredentials: "Invalid login credentials"
       errorPasswordsDoNotMatch: "Passwords do not match"
       errorSignUpFailed: "Sign up failed"
+      errorCaptchaRequired: "Please complete the verification challenge."
       successCheckEmail: "Check your email to confirm your account."
     bugModal:
       title: "Report a bug or send feedback"

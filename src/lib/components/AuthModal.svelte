@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { fade } from 'svelte/transition';
+	import { PUBLIC_HCAPTCHA_SITEKEY } from '$env/static/public';
 	import Button from '$lib/components/Button.svelte';
 	import { getSupabase } from '$lib/supabase';
+	import { loadHcaptchaExplicit } from '$lib/hcaptcha-script';
 	import { t } from '$lib/copy';
 
 	interface Props {
@@ -23,6 +25,13 @@
 	let successMessage = $state<string | null>(null);
 	let closeButtonEl = $state<HTMLButtonElement | null>(null);
 	let firstInputEl = $state<HTMLInputElement | null>(null);
+	let hcaptchaContainerEl = $state<HTMLDivElement | null>(null);
+	/** Not $state: assigning inside $effect must not retrigger that effect (would double-render widgets). */
+	let hcaptchaWidgetId: number | null = null;
+
+	const hcaptchaSiteKey =
+		typeof PUBLIC_HCAPTCHA_SITEKEY === 'string' ? PUBLIC_HCAPTCHA_SITEKEY.trim() : '';
+	const useHcaptcha = hcaptchaSiteKey.length > 0;
 
 	const panelId = 'auth-modal-panel';
 	const titleId = 'auth-modal-title';
@@ -80,6 +89,79 @@
 		}
 	});
 
+	$effect(() => {
+		if (!useHcaptcha) return;
+
+		if (!open || tab !== 'signup') {
+			if (hcaptchaWidgetId !== null && typeof window !== 'undefined' && window.hcaptcha) {
+				try {
+					window.hcaptcha.remove(hcaptchaWidgetId);
+				} catch {
+					/* ignore */
+				}
+			}
+			hcaptchaWidgetId = null;
+			return;
+		}
+
+		if (!hcaptchaContainerEl) return;
+
+		let cancelled = false;
+		let createdId: number | null = null;
+
+		void (async () => {
+			try {
+				await loadHcaptchaExplicit();
+				if (cancelled) return;
+				await tick();
+				if (cancelled || !hcaptchaContainerEl || !window.hcaptcha) return;
+				const dark =
+					typeof window.matchMedia === 'function' &&
+					window.matchMedia('(prefers-color-scheme: dark)').matches;
+				createdId = window.hcaptcha.render(hcaptchaContainerEl, {
+					sitekey: hcaptchaSiteKey,
+					theme: dark ? 'dark' : 'light'
+				});
+				if (cancelled) {
+					window.hcaptcha.remove(createdId);
+					return;
+				}
+				hcaptchaWidgetId = createdId;
+			} catch (e) {
+				console.error('[hCaptcha] load/render failed', e);
+			}
+		})();
+
+		return () => {
+			cancelled = true;
+			if (createdId !== null && typeof window !== 'undefined' && window.hcaptcha) {
+				try {
+					window.hcaptcha.remove(createdId);
+				} catch {
+					/* ignore */
+				}
+				if (hcaptchaWidgetId === createdId) hcaptchaWidgetId = null;
+			}
+		};
+	});
+
+	function getHcaptchaToken(): string | undefined {
+		if (!useHcaptcha) return undefined;
+		if (hcaptchaWidgetId === null || !window.hcaptcha) return undefined;
+		const token = window.hcaptcha.getResponse(hcaptchaWidgetId);
+		return token && token.length > 0 ? token : undefined;
+	}
+
+	function resetHcaptcha() {
+		if (hcaptchaWidgetId !== null && typeof window !== 'undefined' && window.hcaptcha) {
+			try {
+				window.hcaptcha.reset(hcaptchaWidgetId);
+			} catch {
+				/* ignore */
+			}
+		}
+	}
+
 	async function handleSignIn(e: SubmitEvent) {
 		e.preventDefault();
 		error = null;
@@ -112,6 +194,15 @@
 			error = t('shared.authModal.errorUnableToConnect');
 			return;
 		}
+
+		const captchaToken = getHcaptchaToken();
+		if (useHcaptcha && !captchaToken) {
+			error = t('shared.authModal.errorCaptchaRequired');
+			return;
+		}
+
+		const signUpOptions = captchaToken ? { captchaToken } : undefined;
+
 		loading = true;
 
 		const {
@@ -138,11 +229,13 @@
 			// updateUser failed (e.g. manual linking disabled or email already exists): create new account and migrate data
 			const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
 				email,
-				password
+				password,
+				options: signUpOptions
 			});
 			loading = false;
 			if (signUpErr) {
 				error = signUpErr.message ?? t('shared.authModal.errorSignUpFailed');
+				resetHcaptcha();
 				return;
 			}
 			if (signUpData?.user && !signUpData.session) {
@@ -176,10 +269,15 @@
 		}
 
 		// No anonymous session: create account normally
-		const { data, error: err } = await supabase.auth.signUp({ email, password });
+		const { data, error: err } = await supabase.auth.signUp({
+			email,
+			password,
+			options: signUpOptions
+		});
 		loading = false;
 		if (err) {
 			error = err.message ?? t('shared.authModal.errorSignUpFailed');
+			resetHcaptcha();
 			return;
 		}
 		if (data?.user && !data.session) {
@@ -316,6 +414,13 @@
 						autocomplete="new-password"
 						disabled={loading}
 					/>
+					{#if useHcaptcha}
+						<div
+							class="auth-modal__hcaptcha"
+							bind:this={hcaptchaContainerEl}
+							aria-hidden="true"
+						></div>
+					{/if}
 					<Button type="submit" variant="primary" disabled={loading}>
 						{loading ? t('shared.authModal.creatingAccount') : t('shared.authModal.createAccount')}
 					</Button>
@@ -445,5 +550,11 @@
 	.auth-modal__input:disabled {
 		opacity: 0.7;
 		cursor: not-allowed;
+	}
+
+	.auth-modal__hcaptcha {
+		display: flex;
+		justify-content: center;
+		min-height: 4.875rem;
 	}
 </style>
