@@ -7,6 +7,7 @@
 		variant?: 'primary' | 'secondary' | 'tertiary' | 'inverse' | 'link';
 		href?: string;
 		type?: 'button' | 'submit';
+		disabled?: boolean;
 		/** Pill shape (full border-radius) for floating CTAs */
 		pill?: boolean;
 		/** Compact size (reduced padding) for drawer/secondary actions */
@@ -25,6 +26,7 @@
 		variant = 'primary',
 		href,
 		type = 'button',
+		disabled = false,
 		pill = false,
 		compact = false,
 		'aria-label': ariaLabel,
@@ -51,8 +53,15 @@
 		class="btn btn--{variant} {pill ? 'btn--pill' : ''} {compact ? 'btn--compact' : ''} {className}"
 		href={href}
 		aria-label={ariaLabel}
+		aria-disabled={disabled ? 'true' : undefined}
+		class:btn--disabled={disabled}
+		tabindex={disabled ? -1 : undefined}
 		{...rest}
-		onclick={onclick}
+		onclick={disabled
+			? (e) => {
+					e.preventDefault();
+				}
+			: onclick}
 	>
 		{#if icon}
 			<span class="btn__icon" aria-hidden="true">{@render icon()}</span>
@@ -66,6 +75,7 @@
 		bind:this={buttonEl}
 		class="btn btn--{variant} {pill ? 'btn--pill' : ''} {compact ? 'btn--compact' : ''} {className}"
 		{type}
+		disabled={disabled}
 		aria-label={ariaLabel}
 		{...rest}
 		onclick={onclick}
@@ -178,5 +188,11 @@
 	}
 	.btn--compact:not(:has(.btn__label)) {
 		padding: var(--space-2);
+	}
+
+	.btn--disabled {
+		opacity: 0.5;
+		pointer-events: none;
+		cursor: not-allowed;
 	}
 </style>

@@ -6,6 +6,7 @@
 	import { getSupabase } from '$lib/supabase';
 	import { loadHcaptchaExplicit } from '$lib/hcaptcha-script';
 	import { t } from '$lib/copy';
+	import { Eye, EyeOff } from 'lucide-svelte';
 
 	interface Props {
 		open: boolean;
@@ -16,10 +17,11 @@
 
 	let { open, onClose, initialTab = 'signin' }: Props = $props();
 
-	let tab = $state<'signin' | 'signup'>('signin');
+	let tab = $state<'signin' | 'signup' | 'forgot'>('signin');
 	let email = $state('');
 	let password = $state('');
-	let confirmPassword = $state('');
+	let revealSignInPassword = $state(false);
+	let revealSignUpPassword = $state(false);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
 	let successMessage = $state<string | null>(null);
@@ -58,7 +60,8 @@
 			tab = initialTab;
 			email = '';
 			password = '';
-			confirmPassword = '';
+			revealSignInPassword = false;
+			revealSignUpPassword = false;
 			error = null;
 			successMessage = null;
 		}
@@ -162,6 +165,33 @@
 		}
 	}
 
+	async function handleForgotPassword(e: SubmitEvent) {
+		e.preventDefault();
+		error = null;
+		successMessage = null;
+		const supabase = getSupabase();
+		if (!supabase) {
+			error = t('shared.authModal.errorUnableToConnect');
+			return;
+		}
+		const trimmed = email.trim();
+		if (!trimmed) {
+			error = t('shared.authModal.errorEmailRequired');
+			return;
+		}
+		loading = true;
+		const origin = typeof window !== 'undefined' ? window.location.origin : '';
+		const { error: err } = await supabase.auth.resetPasswordForEmail(trimmed, {
+			redirectTo: `${origin}/auth/reset-password`
+		});
+		loading = false;
+		if (err) {
+			error = err.message ?? t('shared.authModal.errorResetEmailFailed');
+			return;
+		}
+		successMessage = t('shared.authModal.successResetEmailSent');
+	}
+
 	async function handleSignIn(e: SubmitEvent) {
 		e.preventDefault();
 		error = null;
@@ -185,10 +215,6 @@
 		e.preventDefault();
 		error = null;
 		successMessage = null;
-		if (password !== confirmPassword) {
-			error = t('shared.authModal.errorPasswordsDoNotMatch');
-			return;
-		}
 		const supabase = getSupabase();
 		if (!supabase) {
 			error = t('shared.authModal.errorUnableToConnect');
@@ -309,39 +335,79 @@
 			onclick={(e) => e.stopPropagation()}
 			onkeydown={(e) => e.stopPropagation()}
 		>
+			<h2 id={titleId} class="auth-modal__sr-only">{t('shared.authModal.dialogAccessibleName')}</h2>
+
 			<div class="auth-modal__header">
-				<h2 id={titleId} class="auth-modal__title">
-					{tab === 'signin' ? t('shared.authModal.signIn') : t('shared.authModal.createAccount')}
-				</h2>
+				{#if tab === 'forgot'}
+					<div class="auth-modal__forgot-header">
+						<button
+							type="button"
+							class="auth-modal__text-btn"
+							onclick={() => {
+								tab = 'signin';
+								error = null;
+								successMessage = null;
+							}}
+						>
+							{t('shared.authModal.backToSignIn')}
+						</button>
+						<p class="auth-modal__forgot-title">{t('shared.authModal.resetPasswordTitle')}</p>
+					</div>
+				{:else}
+					<div class="auth-modal__tabs">
+						<button
+							type="button"
+							class="auth-modal__tab"
+							class:auth-modal__tab--active={tab === 'signin'}
+							onclick={() => {
+								tab = 'signin';
+								revealSignUpPassword = false;
+								error = null;
+								successMessage = null;
+							}}
+						>
+							{t('shared.authModal.signIn')}
+						</button>
+						<button
+							type="button"
+							class="auth-modal__tab"
+							class:auth-modal__tab--active={tab === 'signup'}
+							onclick={() => {
+								tab = 'signup';
+								revealSignInPassword = false;
+								error = null;
+								successMessage = null;
+							}}
+						>
+							{t('shared.authModal.createAccount')}
+						</button>
+					</div>
+				{/if}
 				<Button
-					variant="secondary"
+					variant="tertiary"
 					compact
+					pill
 					type="button"
 					aria-label={t('shared.authModal.close')}
 					ref={(el) => (closeButtonEl = el as HTMLButtonElement)}
 					onclick={onClose}
 				>
-					{t('shared.authModal.close')}
+					{#snippet icon()}
+						<svg
+							width="20"
+							height="20"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+						>
+							<path d="M18 6 6 18M6 6l12 12" />
+						</svg>
+					{/snippet}
 				</Button>
-			</div>
-
-			<div class="auth-modal__tabs">
-				<button
-					type="button"
-					class="auth-modal__tab"
-					class:auth-modal__tab--active={tab === 'signin'}
-					onclick={() => { tab = 'signin'; error = null; successMessage = null; }}
-				>
-					{t('shared.authModal.signIn')}
-				</button>
-				<button
-					type="button"
-					class="auth-modal__tab"
-					class:auth-modal__tab--active={tab === 'signup'}
-					onclick={() => { tab = 'signup'; error = null; successMessage = null; }}
-				>
-					{t('shared.authModal.createAccount')}
-				</button>
 			</div>
 
 			{#if error}
@@ -351,69 +417,140 @@
 				<p class="auth-modal__success" role="status">{successMessage}</p>
 			{/if}
 
-			{#if tab === 'signin'}
+			{#if tab === 'forgot'}
+				<p class="auth-modal__forgot-lead">{t('shared.authModal.resetPasswordLead')}</p>
+				<form class="auth-modal__form" onsubmit={handleForgotPassword}>
+					<div class="auth-modal__field">
+						<label class="auth-modal__label" for="auth-email-forgot">{t('shared.authModal.email')}</label>
+						<input
+							bind:this={firstInputEl}
+							id="auth-email-forgot"
+							type="email"
+							class="auth-modal__input"
+							placeholder={t('shared.authModal.emailPlaceholder')}
+							bind:value={email}
+							required
+							autocomplete="email"
+							disabled={loading}
+						/>
+					</div>
+					<Button type="submit" variant="primary" pill disabled={loading}>
+						{loading ? t('shared.authModal.sendingResetLink') : t('shared.authModal.sendResetLink')}
+					</Button>
+				</form>
+			{:else if tab === 'signin'}
 				<form class="auth-modal__form" onsubmit={handleSignIn}>
-					<label class="auth-modal__label" for="auth-email-signin">{t('shared.authModal.email')}</label>
-					<input
-						bind:this={firstInputEl}
-						id="auth-email-signin"
-						type="email"
-						class="auth-modal__input"
-						placeholder={t('shared.authModal.emailPlaceholder')}
-						bind:value={email}
-						required
-						autocomplete="email"
-						disabled={loading}
-					/>
-					<label class="auth-modal__label" for="auth-password-signin">{t('shared.authModal.password')}</label>
-					<input
-						id="auth-password-signin"
-						type="password"
-						class="auth-modal__input"
-						bind:value={password}
-						required
-						autocomplete="current-password"
-						disabled={loading}
-					/>
-					<Button type="submit" variant="primary" disabled={loading}>
+					<div class="auth-modal__field">
+						<label class="auth-modal__label" for="auth-email-signin">{t('shared.authModal.email')}</label>
+						<input
+							bind:this={firstInputEl}
+							id="auth-email-signin"
+							type="email"
+							class="auth-modal__input"
+							placeholder={t('shared.authModal.emailPlaceholder')}
+							bind:value={email}
+							required
+							autocomplete="email"
+							disabled={loading}
+						/>
+					</div>
+					<div class="auth-modal__field">
+						<label class="auth-modal__label" for="auth-password-signin">{t('shared.authModal.password')}</label>
+						<div class="auth-modal__password-wrap">
+							<input
+								id="auth-password-signin"
+								type={revealSignInPassword ? 'text' : 'password'}
+								class="auth-modal__input auth-modal__input--with-toggle"
+								bind:value={password}
+								required
+								autocomplete="current-password"
+								disabled={loading}
+							/>
+							<button
+								type="button"
+								class="auth-modal__password-toggle"
+								aria-label={revealSignInPassword
+									? t('shared.authModal.hidePassword')
+									: t('shared.authModal.showPassword')}
+								aria-pressed={revealSignInPassword}
+								disabled={loading}
+								onclick={() => (revealSignInPassword = !revealSignInPassword)}
+							>
+								{#if revealSignInPassword}
+									<EyeOff size={20} aria-hidden="true" />
+								{:else}
+									<Eye size={20} aria-hidden="true" />
+								{/if}
+							</button>
+						</div>
+						<button
+							type="button"
+							class="auth-modal__text-btn auth-modal__forgot-link"
+							disabled={loading}
+							onclick={() => {
+								tab = 'forgot';
+								error = null;
+								successMessage = null;
+							}}
+						>
+							{t('shared.authModal.forgotPassword')}
+						</button>
+					</div>
+					<Button type="submit" variant="primary" pill disabled={loading}>
 						{loading ? t('shared.authModal.signingIn') : t('shared.authModal.signIn')}
 					</Button>
 				</form>
 			{:else}
 				<form class="auth-modal__form" onsubmit={handleSignUp}>
-					<label class="auth-modal__label" for="auth-email-signup">{t('shared.authModal.email')}</label>
-					<input
-						bind:this={firstInputEl}
-						id="auth-email-signup"
-						type="email"
-						class="auth-modal__input"
-						placeholder={t('shared.authModal.emailPlaceholder')}
-						bind:value={email}
-						required
-						autocomplete="email"
-						disabled={loading}
-					/>
-					<label class="auth-modal__label" for="auth-password-signup">{t('shared.authModal.password')}</label>
-					<input
-						id="auth-password-signup"
-						type="password"
-						class="auth-modal__input"
-						bind:value={password}
-						required
-						minlength="6"
-						autocomplete="new-password"
-						disabled={loading}
-					/>
-					<label class="auth-modal__label" for="auth-confirm-password">{t('shared.authModal.confirmPassword')}</label>
-					<input
-						id="auth-confirm-password"
-						type="password"
-						class="auth-modal__input"
-						bind:value={confirmPassword}
-						required
-						autocomplete="new-password"
-						disabled={loading}
-					/>
+					<div class="auth-modal__field">
+						<label class="auth-modal__label" for="auth-email-signup">{t('shared.authModal.email')}</label>
+						<input
+							bind:this={firstInputEl}
+							id="auth-email-signup"
+							type="email"
+							class="auth-modal__input"
+							placeholder={t('shared.authModal.emailPlaceholder')}
+							bind:value={email}
+							required
+							autocomplete="email"
+							disabled={loading}
+						/>
+					</div>
+					<div class="auth-modal__field">
+						<label class="auth-modal__label" for="auth-password-signup">{t('shared.authModal.password')}</label>
+						<p id="auth-password-signup-hint" class="auth-modal__hint">
+							{t('shared.authModal.passwordRulesSignUp')}
+						</p>
+						<div class="auth-modal__password-wrap">
+							<input
+								id="auth-password-signup"
+								type={revealSignUpPassword ? 'text' : 'password'}
+								class="auth-modal__input auth-modal__input--with-toggle"
+								bind:value={password}
+								required
+								minlength="6"
+								autocomplete="new-password"
+								aria-describedby="auth-password-signup-hint"
+								disabled={loading}
+							/>
+							<button
+								type="button"
+								class="auth-modal__password-toggle"
+								aria-label={revealSignUpPassword
+									? t('shared.authModal.hidePassword')
+									: t('shared.authModal.showPassword')}
+								aria-pressed={revealSignUpPassword}
+								disabled={loading}
+								onclick={() => (revealSignUpPassword = !revealSignUpPassword)}
+							>
+								{#if revealSignUpPassword}
+									<EyeOff size={20} aria-hidden="true" />
+								{:else}
+									<Eye size={20} aria-hidden="true" />
+								{/if}
+							</button>
+						</div>
+					</div>
 					{#if useHcaptcha}
 						<div
 							class="auth-modal__hcaptcha"
@@ -421,7 +558,7 @@
 							aria-hidden="true"
 						></div>
 					{/if}
-					<Button type="submit" variant="primary" disabled={loading}>
+					<Button type="submit" variant="primary" pill disabled={loading}>
 						{loading ? t('shared.authModal.creatingAccount') : t('shared.authModal.createAccount')}
 					</Button>
 				</form>
@@ -439,55 +576,131 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		padding: var(--space-4);
+		padding: var(--space-6) clamp(var(--space-12), 10vw, var(--space-24));
+		box-sizing: border-box;
 	}
 
 	.auth-modal-panel {
+		position: relative;
 		background: var(--color-card-bg);
 		border-radius: var(--radius-md);
-		box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+		box-shadow: var(--shadow-card);
 		width: 100%;
-		max-width: 24rem;
-		padding: var(--space-5);
+		max-width: 26rem;
+		padding: var(--space-6) var(--space-8);
+		text-align: left;
+	}
+
+	.auth-modal__sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
 	}
 
 	.auth-modal__header {
 		display: flex;
-		align-items: center;
+		align-items: flex-end;
 		justify-content: space-between;
-		margin-bottom: var(--space-4);
+		gap: var(--space-4);
+		margin-bottom: var(--space-5);
 	}
 
-	.auth-modal__title {
-		font-size: var(--font-size-xl);
-		font-weight: var(--font-weight-semibold);
+	.auth-modal__forgot-header {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--space-2);
+		padding-bottom: var(--space-1);
+	}
+
+	.auth-modal__forgot-title {
 		margin: 0;
+		font-size: var(--font-size-md);
+		font-weight: var(--font-weight-semibold);
+		color: var(--color-text);
+	}
+
+	.auth-modal__forgot-lead {
+		margin: 0 0 var(--space-4);
+		font-size: var(--font-size-sm);
+		line-height: var(--line-height-normal);
+		color: var(--color-text-muted);
+	}
+
+	.auth-modal__text-btn {
+		padding: 0;
+		font-size: var(--font-size-sm);
+		font-weight: var(--font-weight-medium);
+		color: var(--color-accent);
+		background: none;
+		border: none;
+		cursor: pointer;
+		text-align: left;
+		text-decoration: underline;
+		text-underline-offset: 2px;
+	}
+	.auth-modal__text-btn:hover:not(:disabled) {
+		color: var(--color-text);
+	}
+	.auth-modal__text-btn:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 2px;
+		border-radius: var(--radius-sm);
+	}
+	.auth-modal__text-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.auth-modal__forgot-link {
+		align-self: flex-start;
+		margin-top: var(--space-2);
+		text-decoration: none;
+	}
+	.auth-modal__forgot-link:hover:not(:disabled),
+	.auth-modal__forgot-link:focus-visible {
+		text-decoration: underline;
+	}
+
+	.auth-modal__header :global(.btn) {
+		flex-shrink: 0;
 	}
 
 	.auth-modal__tabs {
 		display: flex;
-		gap: var(--space-2);
-		margin-bottom: var(--space-4);
+		gap: var(--space-5);
+		flex: 1;
+		min-width: 0;
+		border-bottom: 1px solid var(--color-border);
 	}
 
 	.auth-modal__tab {
-		padding: var(--space-2) var(--space-4);
+		padding: var(--space-3) 0 calc(var(--space-3) + 1px);
+		margin-bottom: -1px;
 		font-size: var(--font-size-sm);
 		font-weight: var(--font-weight-medium);
 		color: var(--color-text-muted);
 		background: transparent;
-		border: 1px solid transparent;
-		border-radius: var(--radius-sm);
+		border: none;
+		border-bottom: 2px solid transparent;
+		border-radius: 0;
 		cursor: pointer;
 	}
 	.auth-modal__tab:hover {
 		color: var(--color-text);
-		background: var(--color-bg-muted);
 	}
 	.auth-modal__tab--active {
-		color: var(--color-accent);
-		background: var(--color-accent-bg);
-		border-color: var(--color-border);
+		color: var(--color-text);
+		font-weight: var(--font-weight-semibold);
+		border-bottom-color: var(--color-accent);
 	}
 	.auth-modal__tab:focus-visible {
 		outline: 2px solid var(--color-focus);
@@ -496,8 +709,9 @@
 
 	.auth-modal__error {
 		margin: 0 0 var(--space-4);
-		padding: var(--space-3);
+		padding: var(--space-3) var(--space-4);
 		font-size: var(--font-size-sm);
+		text-align: left;
 		color: var(--color-error-text);
 		background: var(--color-error-bg);
 		border: 1px solid var(--color-error-border);
@@ -506,8 +720,9 @@
 
 	.auth-modal__success {
 		margin: 0 0 var(--space-4);
-		padding: var(--space-3);
+		padding: var(--space-3) var(--space-4);
 		font-size: var(--font-size-sm);
+		text-align: left;
 		color: var(--color-text);
 		background: var(--color-accent-bg);
 		border-radius: var(--radius-sm);
@@ -519,6 +734,25 @@
 		gap: var(--space-4);
 	}
 
+	.auth-modal__field {
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		gap: var(--space-1);
+	}
+
+	.auth-modal__hint {
+		margin: 0;
+		font-size: var(--font-size-xs);
+		line-height: var(--line-height-normal);
+		color: var(--color-text-muted);
+	}
+
+	.auth-modal__form :global(.btn--primary) {
+		align-self: flex-start;
+		margin-top: var(--space-2);
+	}
+
 	.auth-modal__label {
 		font-size: var(--font-size-sm);
 		font-weight: var(--font-weight-medium);
@@ -527,7 +761,7 @@
 
 	.auth-modal__input {
 		width: 100%;
-		padding: var(--space-3) var(--space-4);
+		padding: var(--space-3) var(--space-5);
 		font-size: var(--font-size-md);
 		line-height: var(--line-height-normal);
 		color: var(--color-text);
@@ -552,9 +786,55 @@
 		cursor: not-allowed;
 	}
 
+	.auth-modal__password-wrap {
+		position: relative;
+		display: flex;
+		align-items: stretch;
+	}
+
+	.auth-modal__input--with-toggle {
+		padding-right: var(--space-input-icon-left);
+	}
+
+	.auth-modal__password-toggle {
+		position: absolute;
+		right: var(--space-2);
+		top: 50%;
+		transform: translateY(-50%);
+		z-index: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: var(--min-tap);
+		height: var(--min-tap);
+		min-width: var(--min-tap);
+		min-height: var(--min-tap);
+		padding: 0;
+		margin: 0;
+		background: none;
+		border: none;
+		border-radius: var(--radius-sm);
+		color: var(--color-text-muted);
+		cursor: pointer;
+		transition: color var(--duration-fast) var(--ease-default),
+			background var(--duration-fast) var(--ease-default);
+	}
+	.auth-modal__password-toggle:hover:not(:disabled) {
+		color: var(--color-text);
+		background: var(--color-bg-muted);
+	}
+	.auth-modal__password-toggle:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 2px;
+	}
+	.auth-modal__password-toggle:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
 	.auth-modal__hcaptcha {
 		display: flex;
-		justify-content: center;
+		justify-content: flex-start;
 		min-height: 4.875rem;
 	}
 </style>

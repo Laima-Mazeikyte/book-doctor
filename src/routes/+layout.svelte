@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
+	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { PUBLIC_BUNNY_COVERS_BASE } from '$env/static/public';
 	import '../app.css';
@@ -8,7 +9,7 @@
 	import SkipLink from '$lib/components/SkipLink.svelte';
 	import AppHeader from '$lib/components/AppHeader.svelte';
 	import { getSupabase } from '$lib/supabase';
-	import { authStore } from '$lib/stores/auth';
+	import { authStore, clearPasswordRecoveryFlag, passwordRecoveryActive } from '$lib/stores/auth';
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
@@ -248,36 +249,71 @@
 		});
 	}
 
-	onMount(async () => {
+	async function getSessionAfterUrlTokens(supabase: SupabaseClient) {
+		for (let attempt = 0; attempt < 10; attempt++) {
+			const {
+				data: { session }
+			} = await supabase.auth.getSession();
+			if (session) return session;
+			if (
+				typeof window === 'undefined' ||
+				!window.location.hash.includes('access_token')
+			) {
+				break;
+			}
+			await new Promise((r) => setTimeout(r, 80));
+		}
+		const {
+			data: { session }
+		} = await supabase.auth.getSession();
+		return session;
+	}
+
+	onMount(() => {
 		const supabase = getSupabase();
 		if (!supabase) return;
-		try {
-			const { data: { session } } = await supabase.auth.getSession();
-			if (!session) {
-				const { data: signInData, error } = await supabase.auth.signInAnonymously();
-				if (error) {
-					console.error('[auth] Anonymous sign-in failed:', error.message, error);
-					return;
-				}
-				authStore.setSession(signInData?.session ?? null);
-				if (signInData?.user) {
-					console.debug('[auth] Anonymous sign-in OK, user id:', signInData.user.id);
-				}
-			} else {
-				authStore.setSession(session);
-			}
 
-			const { data: { subscription } } = supabase.auth.onAuthStateChange(
-				(_event, session) => {
+		const {
+			data: { subscription }
+		} = supabase.auth.onAuthStateChange((event, session) => {
+			if (event === 'PASSWORD_RECOVERY') {
+				passwordRecoveryActive.set(true);
+			}
+			authStore.setSession(session);
+		});
+
+		void (async () => {
+			try {
+				const session = await getSessionAfterUrlTokens(supabase);
+				if (!session) {
+					const { data: signInData, error } = await supabase.auth.signInAnonymously();
+					if (error) {
+						console.error('[auth] Anonymous sign-in failed:', error.message, error);
+						return;
+					}
+					authStore.setSession(signInData?.session ?? null);
+					if (signInData?.user) {
+						console.debug('[auth] Anonymous sign-in OK, user id:', signInData.user.id);
+					}
+				} else {
 					authStore.setSession(session);
 				}
-			);
+			} catch (e) {
+				console.error('[auth] Auth setup error', e);
+			}
+		})();
 
-			return () => {
-				subscription.unsubscribe();
-			};
-		} catch (e) {
-			console.error('[auth] Auth setup error', e);
+		return () => {
+			subscription.unsubscribe();
+		};
+	});
+
+	afterNavigate(({ from, to }) => {
+		if (
+			from?.url.pathname === '/auth/reset-password' &&
+			to?.url.pathname !== '/auth/reset-password'
+		) {
+			clearPasswordRecoveryFlag();
 		}
 	});
 

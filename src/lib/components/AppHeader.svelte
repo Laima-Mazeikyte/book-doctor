@@ -13,6 +13,7 @@
 	import { page } from '$app/stores';
 
 	let authModalOpen = $state(false);
+	let authModalInitialTab = $state<'signin' | 'signup'>('signin');
 	let bugModalOpen = $state(false);
 	let accountDropdownOpen = $state(false);
 	let mobileMenuOpen = $state(false);
@@ -28,7 +29,8 @@
 	let ratedCount = $derived($ratingsStore.size ?? 0);
 	let recommendationsCount = $derived($recommendationsCountStore);
 
-	function openAuthModal() {
+	function openAuthModal(tab: 'signin' | 'signup' = 'signin') {
+		authModalInitialTab = tab;
 		authModalOpen = true;
 		closeAccountDropdown();
 		closeMobileMenu();
@@ -153,10 +155,20 @@
 						bind:this={accountPanelEl}
 					>
 						{#if showAuthActions}
-							<button type="button" role="menuitem" class="app-header__account-item" onclick={openAuthModal}>
+							<button
+								type="button"
+								role="menuitem"
+								class="app-header__account-item"
+								onclick={() => openAuthModal('signup')}
+							>
 								{t('shared.authModal.createAccount')}
 							</button>
-							<button type="button" role="menuitem" class="app-header__account-item" onclick={openAuthModal}>
+							<button
+								type="button"
+								role="menuitem"
+								class="app-header__account-item"
+								onclick={() => openAuthModal('signin')}
+							>
 								{t('shared.authModal.signIn')}
 							</button>
 						{:else if email}
@@ -220,8 +232,16 @@
 				</nav>
 				<div class="app-header__mobile-account">
 					{#if showAuthActions}
-						<button type="button" class="app-header__mobile-btn" onclick={openAuthModal}>{t('shared.authModal.createAccount')}</button>
-						<button type="button" class="app-header__mobile-btn app-header__mobile-btn--primary" onclick={openAuthModal}>{t('shared.authModal.signIn')}</button>
+						<button type="button" class="app-header__mobile-btn" onclick={() => openAuthModal('signup')}>
+							{t('shared.authModal.createAccount')}
+						</button>
+						<button
+							type="button"
+							class="app-header__mobile-btn app-header__mobile-btn--primary"
+							onclick={() => openAuthModal('signin')}
+						>
+							{t('shared.authModal.signIn')}
+						</button>
 					{:else if email}
 						<span class="app-header__mobile-email" title={email}>{email}</span>
 						<button type="button" class="app-header__mobile-btn" onclick={handleSignOut}>{t('shared.header.signOut')}</button>
@@ -243,7 +263,7 @@
 	{/if}
 </header>
 
-<AuthModal open={authModalOpen} onClose={closeAuthModal} />
+<AuthModal open={authModalOpen} onClose={closeAuthModal} initialTab={authModalInitialTab} />
 <BugReportModal open={bugModalOpen} onClose={closeBugModal} />
 
 <style>
@@ -485,7 +505,7 @@
 	.app-header__mobile-btn--primary {
 		background: var(--color-accent);
 		border-color: var(--color-accent);
-		color: var(--color-bg);
+		color: var(--color-button-primary-text);
 	}
 	.app-header__mobile-close {
 		position: absolute;

@@ -27,6 +27,16 @@ function createAuthStore() {
 
 export const authStore = createAuthStore();
 
+/**
+ * True after Supabase emits PASSWORD_RECOVERY (user opened an email reset link).
+ * Cleared after a successful password update or when leaving the reset-password page.
+ */
+export const passwordRecoveryActive = writable(false);
+
+export function clearPasswordRecoveryFlag(): void {
+	passwordRecoveryActive.set(false);
+}
+
 /** True when there is no session or the user is anonymous. */
 export const isAnonymousOrSignedOut = derived(authStore, ($auth) => {
 	if (!$auth.session || !$auth.user) return true;

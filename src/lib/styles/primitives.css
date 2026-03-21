@@ -17,8 +17,12 @@
 	--primitive-gray-400: #d4d4d4;
 	--primitive-gray-500: #525252;
 	--primitive-gray-900: #171717;
-	--primitive-blue-500: #2563eb;
-	--primitive-blue-100: #eff6ff;
+	/** Solid CTA / accent (charcoal in light). */
+	--primitive-accent-solid: #171717;
+	/** Text on solid accent surfaces. */
+	--primitive-on-accent-solid: #ffffff;
+	/** Muted accent fills, success chrome, focus halo (warm neutral). */
+	--primitive-accent-muted: #ece9e2;
 	--primitive-sand: #e8e4dc;
 	/* Error */
 	--primitive-red-50: #fef2f2;
@@ -90,8 +94,9 @@
 		--primitive-gray-400: #404040;
 		--primitive-gray-500: #a3a3a3;
 		--primitive-gray-900: #fafafa;
-		--primitive-blue-500: #3b82f6;
-		--primitive-blue-100: #1e3a5f;
+		--primitive-accent-solid: #e5e5e5;
+		--primitive-on-accent-solid: #0a0a0a;
+		--primitive-accent-muted: #404040;
 		--primitive-sand: #2d2a26;
 		--primitive-red-50: #2d1515;
 		--primitive-red-200: #7f1d1d;

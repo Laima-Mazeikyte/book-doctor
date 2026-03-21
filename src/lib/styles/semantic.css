@@ -20,9 +20,9 @@
 	--color-border-hover: var(--primitive-gray-400);
 
 	/* ── Accent & focus ───────────────────────────────────────────────────── */
-	--color-accent: var(--primitive-blue-500);
-	--color-accent-bg: var(--primitive-blue-100);
-	--color-focus: var(--primitive-blue-500);
+	--color-accent: var(--primitive-accent-solid);
+	--color-accent-bg: var(--primitive-accent-muted);
+	--color-focus: var(--primitive-accent-solid);
 
 	/* ── Error ───────────────────────────────────────────────────────────── */
 	--color-error-bg: var(--primitive-red-50);
@@ -30,8 +30,8 @@
 	--color-error-text: var(--primitive-red-800);
 
 	/* ── Button primary ──────────────────────────────────────────────────── */
-	--color-button-primary-bg: var(--primitive-blue-500);
-	--color-button-primary-text: var(--primitive-white);
+	--color-button-primary-bg: var(--primitive-accent-solid);
+	--color-button-primary-text: var(--primitive-on-accent-solid);
 
 	/* ── Button secondary ────────────────────────────────────────────────── */
 	--color-button-secondary-bg: var(--primitive-gray-100);
@@ -46,7 +46,7 @@
 	--color-button-tertiary-hover-bg: var(--primitive-gray-200);
 
 	/* ── Button link ──────────────────────────────────────────────────────── */
-	--color-button-link-text: var(--primitive-blue-500);
+	--color-button-link-text: var(--primitive-accent-solid);
 	--color-button-link-hover-text: var(--primitive-gray-900);
 
 	/* ── Layout & interaction ─────────────────────────────────────────────── */

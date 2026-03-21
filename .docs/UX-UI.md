@@ -45,7 +45,7 @@ Styles are split into three files, loaded in order:
 
 ## Color system
 
-- **Primitives** define the palette in `src/lib/styles/primitives.css` (e.g. `--primitive-gray-50`, `--primitive-blue-500`).
+- **Primitives** define the palette in `src/lib/styles/primitives.css` (e.g. `--primitive-gray-50`, `--primitive-accent-solid`).
 - **Surfaces** (cards, header, inputs) use `--primitive-surface` via `--color-card-bg`; it is white in light mode and dark gray in dark mode. Do not use `--primitive-white` for surfaces.
 - **On-accent** content (e.g. primary button text) uses `--primitive-white`; it stays white in both modes.
 - **Semantic** tokens in `src/lib/styles/semantic.css`: `--color-bg`, `--color-text`, `--color-text-muted`, `--color-border`, `--color-accent`, `--color-focus`, `--color-card-bg`, `--color-toggle-thumb`, `--color-error-*`, etc.

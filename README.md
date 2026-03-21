@@ -26,6 +26,10 @@ Copy `.env.example` to `.env` and fill in the values:
 - `VITE_SUPABASE_ANON_KEY` – your Supabase anon/public key
 - `PUBLIC_BUNNY_COVERS_BASE` – Bunny.net pull zone base URL for book covers (e.g. `https://your-pullzone.b-cdn.net`). Cover images are requested as `{base}/{book_id}.avif` (e.g. `12.avif`). Optional; if unset, only books with a stored `cover_url` in the database will show a cover.
 
+### Password reset (forgot password)
+
+The app sends recovery links to **`/auth/reset-password`** on your site origin. In the [Supabase dashboard](https://supabase.com/dashboard) → **Authentication** → **URL configuration**, add that URL to **Redirect URLs** (e.g. `https://your-domain.netlify.app/auth/reset-password` for production). Local entries are already listed in `supabase/config.toml` for the Supabase CLI stack.
+
 ## Developing
 
 Install dependencies and start the dev server (this project uses [pnpm](https://pnpm.io)):
