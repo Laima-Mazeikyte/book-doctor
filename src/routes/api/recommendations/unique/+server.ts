@@ -1,6 +1,7 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { PUBLIC_BUNNY_COVERS_BASE } from '$env/static/public';
+import { BOOK_GENRE_TYPE_SELECT, catalogTypeFromRow, genresFromGenreColumns, type BookGenreSlotRow } from '$lib/book-catalog-fields';
 import { createSupabaseWithAuth } from '$lib/server/supabase';
 
 export const GET: RequestHandler = async ({ request }) => {
@@ -72,7 +73,7 @@ export const GET: RequestHandler = async ({ request }) => {
 	const base = (PUBLIC_BUNNY_COVERS_BASE ?? '').replace(/\/$/, '');
 	const { data: booksData, error: booksError } = await supabase
 		.from('books')
-		.select('id, book_id, book_name, author, cover_url, summary, year, genres')
+		.select(`id, book_id, book_name, author, cover_url, summary, year, ${BOOK_GENRE_TYPE_SELECT}`)
 		.in('book_id', uniqueBookIds);
 
 	if (booksError) {
@@ -80,16 +81,21 @@ export const GET: RequestHandler = async ({ request }) => {
 		throw error(500, 'Failed to load books');
 	}
 
-	const books = (booksData ?? []).map((b) => ({
-		id: String(b.id),
-		book_id: b.book_id,
-		title: b.book_name,
-		author: b.author,
-		coverUrl: b.cover_url ?? (base ? `${base}/${b.book_id}.avif` : undefined),
-		summary: b.summary ?? undefined,
-		year: b.year != null ? String(b.year) : undefined,
-		genres: b.genres?.length ? b.genres : undefined
-	}));
+	const books = (booksData ?? []).map((b) => {
+		const row = b as typeof b & BookGenreSlotRow & { type?: string | null };
+		const type = catalogTypeFromRow(row);
+		return {
+			id: String(b.id),
+			book_id: b.book_id,
+			title: b.book_name,
+			author: b.author,
+			coverUrl: b.cover_url ?? (base ? `${base}/${b.book_id}.avif` : undefined),
+			summary: b.summary ?? undefined,
+			year: b.year != null ? String(b.year) : undefined,
+			genres: genresFromGenreColumns(row),
+			...(type ? { type } : {})
+		};
+	});
 
 	// Sort by title for consistent list
 	books.sort((a, b) => (a.title ?? '').localeCompare(b.title ?? ''));

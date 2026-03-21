@@ -15,6 +15,13 @@
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
 	import { notInterestedStore } from '$lib/stores/notInterested';
 	import type { SupabaseClient } from '@supabase/supabase-js';
+	import {
+		BOOK_GENRE_TYPE_SELECT,
+		catalogTypeFromRow,
+		genresFromGenreColumns,
+		pickGenreTypeFields,
+		type BookGenreSlotRow
+	} from '$lib/book-catalog-fields';
 	import type { Book, RatingValue } from '$lib/types/book';
 
 	const coversBase = (PUBLIC_BUNNY_COVERS_BASE ?? '').replace(/\/$/, '');
@@ -34,7 +41,7 @@
 	): Promise<void> {
 		const { data: rows, error: ratingsError } = await supabase
 			.from('user_ratings')
-			.select('book_id, book_rating, books(id, book_id, book_name, author, cover_url, year, genres)')
+			.select(`book_id, book_rating, books(id, book_id, book_name, author, cover_url, year, ${BOOK_GENRE_TYPE_SELECT})`)
 			.eq('user_id', userId)
 			.order('updated_at', { ascending: false });
 
@@ -54,13 +61,12 @@
 			author: string;
 			cover_url?: string;
 			year?: number;
-			genres?: string[] | null;
-		}> = [];
+		} & BookGenreSlotRow & { type?: string | null }> = [];
 		if (needBookIds && rawRows.length > 0) {
 			const bookIds = [...new Set(rawRows.map((r) => r.book_id))];
 			const { data: bookRows } = await supabase
 				.from('books')
-				.select('id, book_id, book_name, author, cover_url, year, genres')
+				.select(`id, book_id, book_name, author, cover_url, year, ${BOOK_GENRE_TYPE_SELECT}`)
 				.in('book_id', bookIds);
 			if (bookRows) {
 				bookIdByNum = Object.fromEntries(
@@ -73,7 +79,7 @@
 					author: b.author ?? '',
 					cover_url: b.cover_url ?? undefined,
 					year: b.year,
-					genres: b.genres
+					...pickGenreTypeFields(b as BookGenreSlotRow & { type?: string | null })
 				}));
 			}
 		}
@@ -91,8 +97,7 @@
 					author?: string;
 					cover_url?: string;
 					year?: number;
-					genres?: string[] | null;
-				};
+				} & BookGenreSlotRow & { type?: string | null };
 			};
 			const uuid =
 				rowWithBooks.books?.id != null
@@ -101,6 +106,7 @@
 			// So the rating list can show all rated books, store book details when we have them.
 			if (rowWithBooks.books?.id != null && rowWithBooks.books?.book_name != null) {
 				const b = rowWithBooks.books;
+				const type = catalogTypeFromRow(b);
 				detailsMap.set(uuid, {
 					id: uuid,
 					book_id: b.book_id,
@@ -108,11 +114,13 @@
 					author: b.author ?? '',
 					coverUrl: coverUrlFor(b.cover_url, b.book_id),
 					year: b.year != null ? String(b.year) : undefined,
-					genres: b.genres?.length ? b.genres : undefined
+					genres: genresFromGenreColumns(b),
+					...(type ? { type } : {})
 				});
 			} else if (fallbackBooks.length > 0) {
 				const fb = fallbackBooks.find((f) => f.id === uuid || f.book_id === rowWithBooks.book_id);
 				if (fb) {
+					const type = catalogTypeFromRow(fb);
 					detailsMap.set(uuid, {
 						id: uuid,
 						book_id: fb.book_id,
@@ -120,7 +128,8 @@
 						author: fb.author,
 						coverUrl: coverUrlFor(fb.cover_url, fb.book_id),
 						year: fb.year != null ? String(fb.year) : undefined,
-						genres: fb.genres?.length ? fb.genres : undefined
+						genres: genresFromGenreColumns(fb),
+						...(type ? { type } : {})
 					});
 				}
 			}
