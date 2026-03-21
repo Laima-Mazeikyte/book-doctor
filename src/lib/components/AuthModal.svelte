@@ -95,7 +95,8 @@
 	$effect(() => {
 		if (!useHcaptcha) return;
 
-		if (!open || (tab !== 'signup' && tab !== 'forgot')) {
+		/* Widget mounts on sign-in, sign-up, and forgot (same ref swaps with the active tab). */
+		if (!open) {
 			if (hcaptchaWidgetId !== null && typeof window !== 'undefined' && window.hcaptcha) {
 				try {
 					window.hcaptcha.remove(hcaptchaWidgetId);
@@ -213,11 +214,23 @@
 			error = t('shared.authModal.errorUnableToConnect');
 			return;
 		}
+
+		const captchaToken = getHcaptchaToken();
+		if (useHcaptcha && !captchaToken) {
+			error = t('shared.authModal.errorCaptchaRequired');
+			return;
+		}
+
 		loading = true;
-		const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+		const { error: err } = await supabase.auth.signInWithPassword({
+			email,
+			password,
+			...(captchaToken ? { options: { captchaToken } } : {})
+		});
 		loading = false;
 		if (err) {
 			error = err.message ?? t('shared.authModal.errorInvalidCredentials');
+			resetHcaptcha();
 			return;
 		}
 		onClose();
@@ -515,6 +528,13 @@
 							{t('shared.authModal.forgotPassword')}
 						</button>
 					</div>
+					{#if useHcaptcha}
+						<div
+							class="auth-modal__hcaptcha"
+							bind:this={hcaptchaContainerEl}
+							aria-hidden="true"
+						></div>
+					{/if}
 					<Button type="submit" variant="primary" pill disabled={loading}>
 						{loading ? t('shared.authModal.signingIn') : t('shared.authModal.signIn')}
 					</Button>
