@@ -33,7 +33,7 @@
 	): Promise<void> {
 		const { data: rows, error: ratingsError } = await supabase
 			.from('user_ratings')
-			.select('book_id, book_rating, books(id, book_id, book_name, author, cover_url, year)')
+			.select('book_id, book_rating, books(id, book_id, book_name, author, cover_url, year, genres)')
 			.eq('user_id', userId)
 			.order('updated_at', { ascending: false });
 
@@ -46,12 +46,20 @@
 		// Build bookId (UUID) for each row; app uses books.id (UUID) as key, not book_id (integer).
 		const needBookIds = rawRows.some((row) => !(row as { books?: { id?: string } }).books?.id);
 		let bookIdByNum: Record<number, string> = {};
-		let fallbackBooks: Array<{ id: string; book_id: number; book_name: string; author: string; cover_url?: string; year?: number }> = [];
+		let fallbackBooks: Array<{
+			id: string;
+			book_id: number;
+			book_name: string;
+			author: string;
+			cover_url?: string;
+			year?: number;
+			genres?: string[] | null;
+		}> = [];
 		if (needBookIds && rawRows.length > 0) {
 			const bookIds = [...new Set(rawRows.map((r) => r.book_id))];
 			const { data: bookRows } = await supabase
 				.from('books')
-				.select('id, book_id, book_name, author, cover_url, year')
+				.select('id, book_id, book_name, author, cover_url, year, genres')
 				.in('book_id', bookIds);
 			if (bookRows) {
 				bookIdByNum = Object.fromEntries(
@@ -63,7 +71,8 @@
 					book_name: b.book_name ?? '',
 					author: b.author ?? '',
 					cover_url: b.cover_url ?? undefined,
-					year: b.year
+					year: b.year,
+					genres: b.genres
 				}));
 			}
 		}
@@ -74,7 +83,15 @@
 			const rowWithBooks = row as {
 				book_id: number;
 				book_rating: number;
-				books?: { id?: string; book_id?: number; book_name?: string; author?: string; cover_url?: string; year?: number };
+				books?: {
+					id?: string;
+					book_id?: number;
+					book_name?: string;
+					author?: string;
+					cover_url?: string;
+					year?: number;
+					genres?: string[] | null;
+				};
 			};
 			const uuid =
 				rowWithBooks.books?.id != null
@@ -86,10 +103,11 @@
 				detailsMap.set(uuid, {
 					id: uuid,
 					book_id: b.book_id,
-					title: b.book_name,
+					title: b.book_name ?? '',
 					author: b.author ?? '',
 					coverUrl: coverUrlFor(b.cover_url, b.book_id),
-					year: b.year != null ? String(b.year) : undefined
+					year: b.year != null ? String(b.year) : undefined,
+					genres: b.genres?.length ? b.genres : undefined
 				});
 			} else if (fallbackBooks.length > 0) {
 				const fb = fallbackBooks.find((f) => f.id === uuid || f.book_id === rowWithBooks.book_id);
@@ -100,7 +118,8 @@
 						title: fb.book_name,
 						author: fb.author,
 						coverUrl: coverUrlFor(fb.cover_url, fb.book_id),
-						year: fb.year != null ? String(fb.year) : undefined
+						year: fb.year != null ? String(fb.year) : undefined,
+						genres: fb.genres?.length ? fb.genres : undefined
 					});
 				}
 			}

@@ -18,7 +18,7 @@ export const GET: RequestHandler = async ({ url }) => {
 
 	const { data, error: dbError } = await supabase
 		.from('books')
-		.select('id, book_id, book_name, author, cover_url, summary, year')
+		.select('id, book_id, book_name, author, cover_url, summary, year, genres')
 		.or(`book_name.ilike.%${query}%,author.ilike.%${query}%`)
 		.order('book_name', { ascending: true })
 		.range(offset, offset + PAGE_SIZE - 1);
@@ -36,7 +36,8 @@ export const GET: RequestHandler = async ({ url }) => {
 			author: b.author,
 			coverUrl: b.cover_url ?? (base ? `${base}/${b.book_id}.avif` : undefined),
 			summary: b.summary ?? undefined,
-			year: b.year ? String(b.year) : undefined
+			year: b.year ? String(b.year) : undefined,
+			genres: b.genres?.length ? b.genres : undefined
 		})) ?? [];
 
 	const hasMore = books.length === PAGE_SIZE;

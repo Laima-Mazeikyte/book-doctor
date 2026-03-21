@@ -7,7 +7,7 @@ export interface Book {
 	coverUrl?: string;
 	summary?: string;
 	year?: string;
-	/** Stub for future; genre data from DB later. */
+	/** Genre labels from `books.genres` (catalog); order preserved. */
 	genres?: string[];
 }
 

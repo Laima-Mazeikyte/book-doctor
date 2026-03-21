@@ -32,9 +32,16 @@ function shuffleWithSeed<T>(arr: T[], seedStr: string): T[] {
 	return out;
 }
 
-function mapRowToBook(
-	b: { id: string; book_id: number; book_name: string | null; author: string; cover_url: string | null; summary: string | null; year: number | null }
-) {
+function mapRowToBook(b: {
+	id: string;
+	book_id: number;
+	book_name: string | null;
+	author: string;
+	cover_url: string | null;
+	summary: string | null;
+	year: number | null;
+	genres?: string[] | null;
+}) {
 	const base = (PUBLIC_BUNNY_COVERS_BASE ?? '').replace(/\/$/, '');
 	return {
 		id: String(b.id),
@@ -43,7 +50,8 @@ function mapRowToBook(
 		author: b.author,
 		coverUrl: b.cover_url ?? (base ? `${base}/${b.book_id}.avif` : undefined),
 		summary: b.summary ?? undefined,
-		year: b.year != null ? String(b.year) : undefined
+		year: b.year != null ? String(b.year) : undefined,
+		genres: b.genres?.length ? b.genres : undefined
 	};
 }
 
@@ -74,7 +82,9 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	if (offset < TOP_100_SIZE) {
 		const { data: rows, error: dbError } = await supabase
 			.from('top_100_books')
-			.select('book_id, genre, display_order, books(id, book_id, book_name, author, cover_url, summary, year)')
+			.select(
+				'book_id, genre, display_order, books(id, book_id, book_name, author, cover_url, summary, year, genres)'
+			)
 			.order('display_order', { ascending: true });
 
 		if (dbError) {
@@ -82,7 +92,16 @@ export const GET: RequestHandler = async ({ url, request }) => {
 			throw error(500, 'Failed to load books');
 		}
 
-		type BookRow = { id: string; book_id: number; book_name: string | null; author: string; cover_url: string | null; summary: string | null; year: number | null };
+		type BookRow = {
+			id: string;
+			book_id: number;
+			book_name: string | null;
+			author: string;
+			cover_url: string | null;
+			summary: string | null;
+			year: number | null;
+			genres?: string[] | null;
+		};
 		type Row = { genre: string; books: BookRow | null };
 		const withGenre = (rows ?? []).map((row) => row as unknown as Row).filter((r) => r.books != null) as { genre: string; books: BookRow }[];
 
