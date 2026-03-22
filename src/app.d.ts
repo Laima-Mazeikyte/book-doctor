@@ -13,8 +13,16 @@ declare global {
 		hcaptcha?: {
 			render: (
 				container: string | HTMLElement,
-				params: { sitekey: string; theme?: 'light' | 'dark' }
+				params: Record<string, unknown> & {
+					sitekey: string;
+					size?: 'normal' | 'compact' | 'invisible';
+					theme?: 'light' | 'dark';
+					callback?: (token: string) => void;
+					'error-callback'?: () => void;
+					'expired-callback'?: () => void;
+				}
 			) => number;
+			execute: (widgetId: number) => void;
 			getResponse: (widgetId: number) => string;
 			reset: (widgetId: number) => void;
 			remove: (widgetId: number) => void;

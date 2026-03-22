@@ -8,6 +8,7 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import SkipLink from '$lib/components/SkipLink.svelte';
 	import AppHeader from '$lib/components/AppHeader.svelte';
+	import { getHcaptchaTokenForAnonymousAuth } from '$lib/hcaptcha-anonymous';
 	import { getSupabase } from '$lib/supabase';
 	import { authStore, clearPasswordRecoveryFlag, passwordRecoveryActive } from '$lib/stores/auth';
 	import { planToReadStore } from '$lib/stores/planToRead';
@@ -295,7 +296,15 @@
 			try {
 				const session = await getSessionAfterUrlTokens(supabase);
 				if (!session) {
-					const { data: signInData, error } = await supabase.auth.signInAnonymously();
+					let captchaToken: string | undefined;
+					try {
+						captchaToken = await getHcaptchaTokenForAnonymousAuth();
+					} catch (e) {
+						console.error('[auth] hCaptcha for anonymous sign-in failed:', e);
+					}
+					const { data: signInData, error } = await supabase.auth.signInAnonymously(
+						captchaToken ? { options: { captchaToken } } : undefined
+					);
 					if (error) {
 						console.error('[auth] Anonymous sign-in failed:', error.message, error);
 						return;
