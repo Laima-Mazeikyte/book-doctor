@@ -6,11 +6,24 @@ export function loadHcaptchaExplicit(): Promise<void> {
 	if (window.hcaptcha) return Promise.resolve();
 	if (loadPromise) return loadPromise;
 	loadPromise = new Promise((resolve, reject) => {
+		const callbackName = `__hcaptchaOnLoad_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+		const globalNs = globalThis as unknown as Record<string, () => void>;
+
+		const finish = () => {
+			Reflect.deleteProperty(globalNs, callbackName);
+			resolve();
+		};
+
+		globalNs[callbackName] = () => {
+			finish();
+		};
+
 		const s = document.createElement('script');
-		s.src = 'https://js.hcaptcha.com/1/api.js?render=explicit';
+		s.src = `https://js.hcaptcha.com/1/api.js?onload=${encodeURIComponent(callbackName)}&render=explicit`;
 		s.async = true;
-		s.onload = () => resolve();
+		s.defer = true;
 		s.onerror = () => {
+			Reflect.deleteProperty(globalNs, callbackName);
 			loadPromise = null;
 			reject(new Error('Failed to load hCaptcha'));
 		};
