@@ -17,7 +17,8 @@
 		onRate,
 		onRemoveRating,
 		notInterested = false,
-		onNotInterested
+		onNotInterested,
+		onAfterRate
 	}: BookCardListProps = $props();
 
 	const isRateContext = $derived(context === 'rate');
@@ -96,6 +97,7 @@
 			} else {
 				ratingsStore.setRating(book.id, value, book.book_id, book);
 			}
+			onAfterRate?.(book);
 			return;
 		}
 		if (currentRating === value) {
@@ -246,6 +248,21 @@
 						{t('shared.recommendationCard.back')}
 					</button>
 				{/if}
+				{#if isRateContext && onNotInterested}
+					<button
+						type="button"
+						class="book-card__action book-card__action--rate-not-interested"
+						class:book-card__action--icon={!notInterested}
+						class:book-card__action--fill={notInterested}
+						class:book-card__action--not-interested-active={notInterested}
+						aria-pressed={notInterested}
+						aria-label={notInterested ? t('shared.recommendationCard.removeFromNotInterested') : t('shared.recommendationCard.notInterested')}
+						onclick={handleNotInterestedClick}
+					>
+						<Ban size={14} aria-hidden="true" />
+						<span>{t('shared.recommendationCard.notInterested')}</span>
+					</button>
+				{/if}
 			</div>
 		{/if}
 	</div>
@@ -383,6 +400,21 @@
 								{t('shared.recommendationCard.back')}
 							</button>
 						{/if}
+						{#if isRateContext && onNotInterested}
+							<button
+								type="button"
+								class="book-card__action book-card__action--rate-not-interested"
+								class:book-card__action--icon={!notInterested}
+								class:book-card__action--fill={notInterested}
+								class:book-card__action--not-interested-active={notInterested}
+								aria-pressed={notInterested}
+								aria-label={notInterested ? t('shared.recommendationCard.removeFromNotInterested') : t('shared.recommendationCard.notInterested')}
+								onclick={handleNotInterestedClick}
+							>
+								<Ban size={14} aria-hidden="true" />
+								<span>{t('shared.recommendationCard.notInterested')}</span>
+							</button>
+						{/if}
 					</div>
 				{/if}
 			</div>
@@ -397,6 +429,7 @@
 		display: flex;
 		flex-direction: column;
 		height: 100%;
+		text-align: left;
 		padding: 0;
 		border-radius: var(--book-card-radius, var(--radius));
 		overflow: hidden;
@@ -595,6 +628,14 @@
 		align-items: center;
 		width: 100%;
 		min-width: 0;
+	}
+	.book-card__action--rate-not-interested {
+		margin-top: var(--space-1);
+		align-self: stretch;
+		max-width: 100%;
+	}
+	.book-card[data-context='rate'] .book-card__rating-wrap {
+		align-items: stretch;
 	}
 	.book-card__back {
 		background: none;

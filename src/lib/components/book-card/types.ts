@@ -25,4 +25,6 @@ export type BookCardListProps = {
 	onRemoveRating?: (bookId: string) => void;
 	notInterested?: boolean;
 	onNotInterested?: (bookId: string) => void;
+	/** Rate context: called after star rating is set or cleared (for parent scroll/feed logic). */
+	onAfterRate?: (book: Book) => void;
 };

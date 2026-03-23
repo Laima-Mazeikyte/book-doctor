@@ -15,10 +15,17 @@
 	import { getBookById } from '$lib/data/dummyBooks';
 	import { mobileMenuOpen } from '$lib/stores/mobileMenu';
 	import { ratingsStore } from '$lib/stores/ratings';
+	import { notInterestedStore } from '$lib/stores/notInterested';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
 
 	const SCROLL_THRESHOLD = 60;
+	const FEED_POLL_MS = 3000;
+	const FEED_TIMEOUT_MS = 60000;
+	const FEED_PAGE_SIZE = 20;
+	const EMPTY_PAGE_CHAIN_MAX = 25;
+	/** After a new feed batch mounts, ignore strict “end of list” briefly so a sentinel already at the viewport bottom does not clear `hasMore` before the user can interact. */
+	const STRICT_FEED_END_GRACE_MS = 750;
 
 	// ── Search ─────────────────────────────────────────────────────────────────
 	let searchQuery = $state('');
@@ -36,7 +43,6 @@
 		};
 	});
 
-	// Fire search only when 3+ chars; clear results otherwise.
 	$effect(() => {
 		const q = debouncedQuery.trim();
 		if (q.length >= 3) {
@@ -51,49 +57,106 @@
 
 	const isSearching = $derived(debouncedQuery.trim().length >= 3);
 
-	// ── Scroll position restore when leaving search ─────────────────────────────
 	let savedScrollY = $state(0);
 	let wasSearching = $state(false);
+	let previousIsSearching = false;
+
+	/**
+	 * When `isSearching` flips true, `window.scrollY` is often already ~0 because the browser
+	 * scrolled the focused search field into view. Capture the feed position on the earliest
+	 * interaction with the search UI (before that), and merge on enter with `Math.max`.
+	 */
+	function captureFeedScrollForSearchReturn() {
+		if (debouncedQuery.trim().length >= 3) return;
+		/** `focusin` may run after the browser has already reduced `scrollY`; never clobber a better save. */
+		savedScrollY = Math.max(savedScrollY, window.scrollY);
+	}
 
 	function handleSearchAuthor(author: string) {
-		savedScrollY = window.scrollY;
+		savedScrollY = Math.max(savedScrollY, window.scrollY);
 		searchQuery = author;
 	}
 
 	$effect(() => {
-		if (isSearching) {
+		const now = isSearching;
+		const entering = now && !previousIsSearching;
+		const leaving = !now && previousIsSearching;
+
+		if (entering) {
+			savedScrollY = Math.max(savedScrollY, window.scrollY);
 			window.scrollTo(0, 0);
 			wasSearching = true;
-		} else {
-			if (wasSearching) {
-				const y = savedScrollY;
-				wasSearching = false;
-				tick().then(() => {
-					setTimeout(() => {
-						if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
-							document.activeElement.blur();
-						}
-						window.scrollTo({ top: y, left: 0, behavior: 'auto' });
-					}, 50);
+		} else if (leaving && wasSearching) {
+			const y = savedScrollY;
+			wasSearching = false;
+			/** Feed stays mounted (`display:none` while searching); one frame after show is enough to restore. */
+			void tick().then(() => {
+				requestAnimationFrame(() => {
+					if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
+						document.activeElement.blur();
+					}
+					window.scrollTo({ top: y, left: 0, behavior: 'auto' });
 				});
-			}
+			});
 		}
+
+		previousIsSearching = now;
 	});
 
-	// ── Header visibility on scroll ────────────────────────────────────────────
 	let lastScrollY = $state(0);
 	let headerVisible = $state(true);
 
-	// ── Popular books ──────────────────────────────────────────────────────────
+	// ── Main list ───────────────────────────────────────────────────────────────
 	let popularBooks = $state<Book[]>([]);
 	let nextOffset = $state(0);
 	let hasMore = $state(true);
-	let popularSeed = $state<string | null>(null); // so top 100 order is stable for this visit but different each time
+	let popularSeed = $state<string | null>(null);
+	let popularContinuationOffset = $state(0);
 	let loadingInitial = $state(true);
 	let loadingMore = $state(false);
 	let popularError = $state<string | null>(null);
 
-	// ── Search results ─────────────────────────────────────────────────────────
+	/** Shown book ids this page visit (main list only); avoids repeats from API. */
+	const sessionShownIds = new Set<string>();
+
+	let startedFromLatestFeed = $state(false);
+	let everHadSessionSignal = $state(false);
+	let lastAppendWasFeed = $state(false);
+	let engagedWithPendingBatch = $state(false);
+	let pendingBatchIds = $state<string[]>([]);
+	let pendingBatchNumericIds = $state<number[]>([]);
+	let suppressStrictFeedEndUntil = $state(0);
+
+	let mainListPrefetchPx = $state(600);
+
+	const paginationFeedOnly = $derived(startedFromLatestFeed || everHadSessionSignal);
+
+	function armFeedBatchStrictGrace() {
+		suppressStrictFeedEndUntil = Date.now() + STRICT_FEED_END_GRACE_MS;
+	}
+
+	/**
+	 * After “end of list” (`hasMore` false) — Top 100, latest curated hydrate, or strict feed end —
+	 * re-open the sentinel when the user engages so `loadCuratedFeedBatch` can run (popular path
+	 * switches to feed once `everHadSessionSignal` is set).
+	 */
+	function reviveMainListPaginationAfterEngagement() {
+		if (hasMore) return;
+		if (!(startedFromLatestFeed || everHadSessionSignal)) return;
+		hasMore = true;
+		armFeedBatchStrictGrace();
+	}
+
+	/** Search unlocks feed pagination and revives a ended main list (Top 100, curated, or strict end). */
+	$effect(() => {
+		const q = searchQuery.trim();
+		const searching = isSearching;
+		if (q.length === 0 && !searching) return;
+		everHadSessionSignal = true;
+		if (lastAppendWasFeed) engagedWithPendingBatch = true;
+		reviveMainListPaginationAfterEngagement();
+	});
+
 	let searchResults = $state<Book[]>([]);
 	let searchNextOffset = $state(0);
 	let searchHasMore = $state(false);
@@ -101,44 +164,66 @@
 	let loadingSearchMore = $state(false);
 	let searchError = $state<string | null>(null);
 
-	// ── Sentinel for IntersectionObserver (lazy load popular) ───────────────────
 	let sentinelEl = $state<HTMLDivElement | undefined>(undefined);
+	let searchSentinelEl = $state<HTMLDivElement | undefined>(undefined);
 
+	/**
+	 * Two observers: a large bottom rootMargin prefetches the next page while the user is still
+	 * ~3 viewports away, but that same margin makes the sentinel "intersect" while it is still far
+	 * below the fold — which incorrectly fired `!engaged` and cleared `hasMore` before the user
+	 * could rate. Preload observer only fetches when engagement rules pass; a strict (0px) observer
+	 * alone ends the list when the user actually reaches the viewport bottom without engaging.
+	 */
 	$effect(() => {
 		if (!sentinelEl) return;
+		void suppressStrictFeedEndUntil;
+		const prefetch = mainListPrefetchPx;
 		const next = nextOffset;
 		const more = hasMore;
 		const loading = loadingMore;
 		const initial = loadingInitial;
 		const searching = isSearching;
+		const feedOnly = paginationFeedOnly;
+		const lastFeed = lastAppendWasFeed;
+		const engaged = engagedWithPendingBatch;
 
-		const observer = new IntersectionObserver(
+		const preloadObserver = new IntersectionObserver(
 			(entries) => {
-				if (
-					entries[0].isIntersecting &&
-					!loading &&
-					!initial &&
-					!searching &&
-					more
-				) {
-					loadPopular(next);
+				if (!entries[0].isIntersecting || loading || initial || searching || !more) return;
+				if (!feedOnly) {
+					void loadPopular(next, 0);
+					return;
 				}
+				if (lastFeed && !engaged) return;
+				void loadCuratedFeedBatch();
 			},
-			{ rootMargin: '300px' }
+			{ rootMargin: `0px 0px ${prefetch}px 0px` }
 		);
 
-		observer.observe(sentinelEl);
-		return () => observer.disconnect();
-	});
+		const strictEndObserver = new IntersectionObserver(
+			(entries) => {
+				if (!entries[0].isIntersecting || loading || initial || searching || !more) return;
+				if (Date.now() < suppressStrictFeedEndUntil) return;
+				if (feedOnly && lastFeed && !engaged) {
+					hasMore = false;
+				}
+			},
+			{ rootMargin: '0px' }
+		);
 
-	// ── Sentinel for search results lazy load ───────────────────────────────────
-	let searchSentinelEl = $state<HTMLDivElement | undefined>(undefined);
+		preloadObserver.observe(sentinelEl);
+		strictEndObserver.observe(sentinelEl);
+		return () => {
+			preloadObserver.disconnect();
+			strictEndObserver.disconnect();
+		};
+	});
 
 	$effect(() => {
 		if (!searchSentinelEl || !isSearching) return;
 		const next = searchNextOffset;
 		const more = searchHasMore;
-		const loadingMore = loadingSearchMore;
+		const loadingMoreSearch = loadingSearchMore;
 		const q = debouncedQuery.trim();
 
 		const observer = new IntersectionObserver(
@@ -146,7 +231,7 @@
 				if (
 					entries[0].isIntersecting &&
 					!loadingSearch &&
-					!loadingMore &&
+					!loadingMoreSearch &&
 					more
 				) {
 					doSearch(q, next);
@@ -159,7 +244,6 @@
 		return () => observer.disconnect();
 	});
 
-	// ── Book lookup (rated details from DB, then popular + search + dummy) ─────
 	function findBookById(id: string): Book | undefined {
 		return (
 			ratingsStore.getRatedBook(id) ??
@@ -169,7 +253,6 @@
 		);
 	}
 
-	// ── Ratings ────────────────────────────────────────────────────────────────
 	const ratedEntries = $derived(
 		Array.from($ratingsStore.entries())
 			.map(([bookId, rating]) => {
@@ -195,8 +278,119 @@
 				: t('rate.remainingToRecommend_other', { remaining: ratingsRemainingForRecommendations })
 	);
 
-	// ── Data fetching ──────────────────────────────────────────────────────────
-	async function loadPopular(offset: number) {
+	function mergeMainListBooks(incoming: Book[], mode: 'replace' | 'append'): Book[] {
+		const ratings = get(ratingsStore);
+		const ni = get(notInterestedStore);
+		const seenIncoming = new Set<string>();
+		const out: Book[] = [];
+		for (const b of incoming) {
+			if (seenIncoming.has(b.id)) continue;
+			seenIncoming.add(b.id);
+			if (sessionShownIds.has(b.id)) continue;
+			if (ratings.has(b.id)) continue;
+			if (b.book_id != null && ni.has(b.book_id)) continue;
+			out.push(b);
+		}
+		if (mode === 'replace') {
+			sessionShownIds.clear();
+		}
+		for (const b of out) {
+			sessionShownIds.add(b.id);
+		}
+		if (mode === 'replace') {
+			popularBooks = out;
+		} else {
+			popularBooks = [...popularBooks, ...out];
+		}
+		return out;
+	}
+
+	function setPendingFromAppended(appended: Book[]) {
+		pendingBatchIds = appended.map((b) => b.id);
+		pendingBatchNumericIds = appended
+			.map((b) => b.book_id)
+			.filter((n): n is number => n != null && Number.isInteger(n));
+		engagedWithPendingBatch = false;
+		armFeedBatchStrictGrace();
+	}
+
+	function handleMainListAfterRate(_book: Book) {
+		everHadSessionSignal = true;
+		if (lastAppendWasFeed) engagedWithPendingBatch = true;
+		reviveMainListPaginationAfterEngagement();
+	}
+
+	function handleMainListNotInterested(book: Book) {
+		const bid = book.book_id ?? 0;
+		const now = notInterestedStore.toggle(bid);
+		if (now) {
+			everHadSessionSignal = true;
+			if (lastAppendWasFeed) engagedWithPendingBatch = true;
+			reviveMainListPaginationAfterEngagement();
+		}
+	}
+
+	function handleSearchAfterRate() {
+		everHadSessionSignal = true;
+		if (lastAppendWasFeed) engagedWithPendingBatch = true;
+		reviveMainListPaginationAfterEngagement();
+	}
+
+	function handleSearchNotInterested(book: Book) {
+		const bid = book.book_id ?? 0;
+		const now = notInterestedStore.toggle(bid);
+		if (now) {
+			everHadSessionSignal = true;
+			if (lastAppendWasFeed) engagedWithPendingBatch = true;
+			reviveMainListPaginationAfterEngagement();
+		}
+	}
+
+	async function loadInitialMainList() {
+		loadingInitial = true;
+		popularError = null;
+		sessionShownIds.clear();
+		try {
+			const token = get(authStore).session?.access_token ?? null;
+			if (token) {
+				const res = await fetch('/api/feed/latest', {
+					headers: { Authorization: `Bearer ${token}` }
+				});
+				if (res.ok) {
+					const data: {
+						status: string;
+						books: Book[];
+					} = await res.json();
+					if (data.status === 'completed' && data.books?.length > 0) {
+						startedFromLatestFeed = true;
+						const appended = mergeMainListBooks(data.books, 'replace');
+						if (appended.length === 0) {
+							startedFromLatestFeed = false;
+							await loadPopular(0, 0);
+							return;
+						}
+						lastAppendWasFeed = true;
+						setPendingFromAppended(appended);
+						hasMore = true;
+						return;
+					}
+				}
+			}
+			startedFromLatestFeed = false;
+			await loadPopular(0, 0);
+		} catch {
+			startedFromLatestFeed = false;
+			await loadPopular(0, 0);
+		} finally {
+			loadingInitial = false;
+		}
+	}
+
+	async function loadPopular(offset: number, depth: number) {
+		if (depth > EMPTY_PAGE_CHAIN_MAX) {
+			hasMore = false;
+			return;
+		}
 		if (offset === 0) {
 			loadingInitial = true;
 		} else {
@@ -208,8 +402,11 @@
 			const params = new URLSearchParams({ offset: String(offset) });
 			if (popularSeed) params.set('seed', popularSeed);
 			if (offset >= 100 && popularBooks.length > 0) {
-				const exclude = popularBooks.map((b) => b.book_id).join(',');
-				params.set('exclude', exclude);
+				const exclude = popularBooks
+					.map((b) => b.book_id)
+					.filter((id): id is number => id != null && Number.isInteger(id))
+					.join(',');
+				if (exclude) params.set('exclude', exclude);
 			}
 			const headers: Record<string, string> = {};
 			const accessToken = get(authStore).session?.access_token ?? null;
@@ -221,21 +418,23 @@
 			}
 			const data: { books: Book[]; nextOffset: number; hasMore: boolean; seed?: string } = await res.json();
 
-			if (offset === 0) {
-				const seen = new Set<string>();
-				popularBooks = data.books.filter((b) => {
-					if (seen.has(b.id)) return false;
-					seen.add(b.id);
-					return true;
-				});
-				if (data.seed) popularSeed = data.seed;
-			} else {
-				const existingIds = new Set(popularBooks.map((b) => b.id));
-				const newBooks = data.books.filter((b) => !existingIds.has(b.id));
-				popularBooks = [...popularBooks, ...newBooks];
-			}
+			const mode = offset === 0 ? 'replace' : 'append';
+			const appended = mergeMainListBooks(data.books, mode);
+			if (offset === 0 && data.seed) popularSeed = data.seed;
+
 			nextOffset = data.nextOffset;
+			popularContinuationOffset = data.nextOffset;
+			lastAppendWasFeed = false;
+			pendingBatchIds = [];
+			pendingBatchNumericIds = [];
+			engagedWithPendingBatch = false;
+
 			hasMore = data.hasMore ?? data.books.length > 0;
+
+			if (appended.length === 0 && hasMore) {
+				await loadPopular(data.nextOffset, depth + 1);
+				return;
+			}
 		} catch {
 			popularError = t('rate.errors.loadBooks');
 			if (offset > 0) hasMore = false;
@@ -245,6 +444,87 @@
 			} else {
 				loadingMore = false;
 			}
+		}
+	}
+
+	async function loadCuratedFeedBatch() {
+		if (loadingMore || loadingInitial) return;
+		loadingMore = true;
+		popularError = null;
+		try {
+			const supabase = getSupabase();
+			const token = get(authStore).session?.access_token ?? null;
+			const user = get(authStore).user;
+			if (!supabase || !token || !user?.id) {
+				loadingMore = false;
+				await loadPopular(popularContinuationOffset, 0);
+				return;
+			}
+
+			const { data, error: insertError } = await supabase
+				.from('feed_requests')
+				.insert({ user_id: user.id })
+				.select('id')
+				.single();
+
+			if (insertError || data?.id == null) {
+				console.error('[rate] feed_requests insert:', insertError);
+				loadingMore = false;
+				await loadPopular(popularContinuationOffset, 0);
+				return;
+			}
+
+			const requestId = String(data.id);
+			const started = Date.now();
+
+			while (Date.now() - started < FEED_TIMEOUT_MS) {
+				const res = await fetch(`/api/feed?request_id=${encodeURIComponent(requestId)}`, {
+					headers: { Authorization: `Bearer ${token}` }
+				});
+
+				if (!res.ok) {
+					loadingMore = false;
+					await loadPopular(popularContinuationOffset, 0);
+					return;
+				}
+
+				const payload: {
+					status: string;
+					books: Book[];
+					request_id: string;
+					error_message?: string | null;
+				} = await res.json();
+
+				if (payload.status === 'failed' || payload.status === 'skipped') {
+					loadingMore = false;
+					await loadPopular(popularContinuationOffset, 0);
+					return;
+				}
+
+				if (payload.status === 'completed') {
+					const appended = mergeMainListBooks(payload.books, 'append');
+					if (appended.length === 0) {
+						hasMore = false;
+					} else {
+						hasMore = appended.length >= FEED_PAGE_SIZE;
+						lastAppendWasFeed = true;
+						setPendingFromAppended(appended);
+					}
+					return;
+				}
+
+				await new Promise((r) => setTimeout(r, FEED_POLL_MS));
+			}
+
+			loadingMore = false;
+			await loadPopular(popularContinuationOffset, 0);
+		} catch (e) {
+			console.error('[rate] loadCuratedFeedBatch:', e);
+			popularError = t('rate.errors.loadBooks');
+			loadingMore = false;
+			await loadPopular(popularContinuationOffset, 0);
+		} finally {
+			loadingMore = false;
 		}
 	}
 
@@ -309,14 +589,21 @@
 					return;
 				}
 			} catch {
-				// fall through to simple navigation
+				// fall through
 			}
 		}
 		goto('/rate/recommendations');
 	}
 
 	onMount(() => {
-		loadPopular(0);
+		const syncPrefetch = () => {
+			mainListPrefetchPx = 3 * window.innerHeight;
+		};
+		syncPrefetch();
+		window.addEventListener('resize', syncPrefetch);
+		window.visualViewport?.addEventListener('resize', syncPrefetch);
+
+		void loadInitialMainList();
 
 		const handleScroll = () => {
 			const y = window.scrollY;
@@ -330,7 +617,11 @@
 			lastScrollY = y;
 		};
 		window.addEventListener('scroll', handleScroll, { passive: true });
-		return () => window.removeEventListener('scroll', handleScroll);
+		return () => {
+			window.removeEventListener('scroll', handleScroll);
+			window.removeEventListener('resize', syncPrefetch);
+			window.visualViewport?.removeEventListener('resize', syncPrefetch);
+		};
 	});
 </script>
 
@@ -340,47 +631,23 @@
 		class:rate-page__sticky-header--hidden={!headerVisible}
 	>
 		<div class="rate-page__toolbar">
-			<div class="rate-page__search">
+			<div
+				class="rate-page__search"
+				onpointerdowncapture={captureFeedScrollForSearchReturn}
+				onfocusincapture={captureFeedScrollForSearchReturn}
+			>
 				<SearchBar bind:value={searchQuery} placeholder={t('rate.search.placeholder')} aria-label={t('rate.search.ariaLabel')} />
 			</div>
 		</div>
 	</header>
 
 	<div class="rate-page__content">
-		{#if isSearching}
-			<SectionTitle>{t('rate.sectionTitle')}</SectionTitle>
-
-			{#if searchError}
-				<ErrorBanner message={searchError} onDismiss={() => (searchError = null)} />
-			{/if}
-
-			{#if loadingSearch}
-				<ul class="rate-page__list book-card-grid" aria-label={t('rate.aria.searching')} aria-live="polite">
-					{#each Array(6) as _}
-						<li><BookCardSkeleton /></li>
-					{/each}
-				</ul>
-			{:else if searchResults.length === 0 && !searchError}
-				<p class="rate-page__empty">{t('rate.emptySearch')}</p>
-			{:else}
-				<ul class="rate-page__list book-card-grid">
-					{#each searchResults as book (book.id)}
-						<li><BookCard context="rate" {book} onSearchAuthor={handleSearchAuthor} /></li>
-					{/each}
-				</ul>
-
-				{#if loadingSearchMore}
-					<div class="rate-page__spinner-wrap rate-page__spinner-wrap--bottom" aria-live="polite">
-						<Spinner />
-					</div>
-				{/if}
-
-				{#if searchHasMore}
-					<div bind:this={searchSentinelEl} class="rate-page__sentinel" aria-hidden="true"></div>
-				{/if}
-			{/if}
-
-		{:else}
+		<!-- Feed stays in the DOM while searching (`display: none`) so layout/scroll height is preserved. -->
+		<div
+			class="rate-page__panel"
+			class:rate-page__panel--hidden={isSearching}
+			aria-hidden={isSearching}
+		>
 			{#if popularError}
 				<ErrorBanner message={popularError} onDismiss={() => (popularError = null)} />
 			{/if}
@@ -394,7 +661,16 @@
 			{:else}
 				<ul class="rate-page__list book-card-grid">
 					{#each popularBooks as book (book.id)}
-						<li><BookCard context="rate" {book} onSearchAuthor={handleSearchAuthor} /></li>
+						<li>
+							<BookCard
+								context="rate"
+								{book}
+								onSearchAuthor={handleSearchAuthor}
+								notInterested={$notInterestedStore.has(book.book_id ?? 0)}
+								onNotInterested={() => handleMainListNotInterested(book)}
+								onAfterRate={() => handleMainListAfterRate(book)}
+							/>
+						</li>
 					{/each}
 				</ul>
 
@@ -410,7 +686,56 @@
 					<p class="rate-page__end-cta">{t('rate.endOfList')}</p>
 				{/if}
 			{/if}
-		{/if}
+		</div>
+
+		<div
+			class="rate-page__panel"
+			class:rate-page__panel--hidden={!isSearching}
+			aria-hidden={!isSearching}
+		>
+			{#if isSearching}
+				<SectionTitle>{t('rate.sectionTitle')}</SectionTitle>
+
+				{#if searchError}
+					<ErrorBanner message={searchError} onDismiss={() => (searchError = null)} />
+				{/if}
+
+				{#if loadingSearch}
+					<ul class="rate-page__list book-card-grid" aria-label={t('rate.aria.searching')} aria-live="polite">
+						{#each Array(6) as _}
+							<li><BookCardSkeleton /></li>
+						{/each}
+					</ul>
+				{:else if searchResults.length === 0 && !searchError}
+					<p class="rate-page__empty">{t('rate.emptySearch')}</p>
+				{:else}
+					<ul class="rate-page__list book-card-grid">
+						{#each searchResults as book (book.id)}
+							<li>
+								<BookCard
+									context="rate"
+									{book}
+									onSearchAuthor={handleSearchAuthor}
+									notInterested={$notInterestedStore.has(book.book_id ?? 0)}
+									onNotInterested={() => handleSearchNotInterested(book)}
+									onAfterRate={() => handleSearchAfterRate()}
+								/>
+							</li>
+						{/each}
+					</ul>
+
+					{#if loadingSearchMore}
+						<div class="rate-page__spinner-wrap rate-page__spinner-wrap--bottom" aria-live="polite">
+							<Spinner />
+						</div>
+					{/if}
+
+					{#if searchHasMore}
+						<div bind:this={searchSentinelEl} class="rate-page__sentinel" aria-hidden="true"></div>
+					{/if}
+				{/if}
+			{/if}
+		</div>
 	</div>
 
 	{#if showBottomBar}
@@ -433,7 +758,6 @@
 	.rate-page {
 		padding-bottom: 0;
 	}
-	/* Remove fixed floating chrome from layout/paint while the nav drawer is open (see also AppHeader z-index) */
 	.rate-page--mobile-menu-open .rate-page__bottom-bar {
 		display: none;
 	}
@@ -469,13 +793,14 @@
 			max-width: none;
 		}
 	}
-	.rate-page__content {
-		/* Content flow */
-	}
 	.rate-page__empty,
 	.rate-page__end-cta {
 		color: var(--color-text-muted);
 		margin: var(--space-4) 0;
+	}
+
+	.rate-page__panel--hidden {
+		display: none;
 	}
 
 	.rate-page__spinner-wrap {
@@ -508,14 +833,25 @@
 		justify-content: space-between;
 		pointer-events: none;
 	}
+	@media (min-width: 768px) {
+		.rate-page__bottom-bar {
+			justify-content: flex-start;
+		}
+		:global(.rate-page__bottom-bar > :last-child) {
+			position: absolute;
+			left: 50%;
+			top: 50%;
+			transform: translate(-50%, -50%);
+		}
+	}
 	:global(.rate-page__bottom-bar > *) {
 		pointer-events: auto;
 	}
 
-	/** Countdown copy — compact label, not a pill button */
 	.rate-page__recommendations-hint {
 		margin: 0;
 		max-width: 11rem;
+		text-align: center;
 		padding: var(--space-2) var(--space-3);
 		font-family: var(--typ-caption-font-family);
 		font-size: var(--typ-caption-font-size);
