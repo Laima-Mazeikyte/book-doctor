@@ -179,28 +179,30 @@
 												aria-label={t('shared.ratingsBar.changeOrRemoveRating')}
 												onmouseleave={() => { hoverEntryId = null; hoverRating = 0; }}
 											>
-												{#each RATING_OPTIONS as value}
-													{@const displayRating = hoverEntryId === entry.book.id && hoverRating > 0 ? hoverRating : entry.rating}
-													<button
-														type="button"
-														class="ratings-drawer__star"
-														class:ratings-drawer__star--active={displayRating >= value}
-														aria-label={entry.rating === value ? t('shared.ratingsBar.rateOutOf5Clear', { value }) : t('shared.ratingsBar.setRatingTo', { value })}
-														aria-pressed={entry.rating === value}
-														onmouseenter={() => { hoverEntryId = entry.book.id; hoverRating = value; }}
-														onclick={() => {
-															hoverEntryId = null;
-															hoverRating = 0; // reset hover so mobile (no mouseleave) shows correct state after tap
-															if (entry.rating === value) {
-																ratingsStore.removeRating(entry.book.id, entry.book.book_id);
-															} else {
-																ratingsStore.setRating(entry.book.id, value, entry.book.book_id, entry.book);
-															}
-														}}
-													>
-														<span aria-hidden="true">{displayRating >= value ? STAR_FILLED : STAR_EMPTY}</span>
-													</button>
-												{/each}
+												<div class="ratings-drawer__stars">
+													{#each RATING_OPTIONS as value}
+														{@const displayRating = hoverEntryId === entry.book.id && hoverRating > 0 ? hoverRating : entry.rating}
+														<button
+															type="button"
+															class="ratings-drawer__star"
+															class:ratings-drawer__star--active={displayRating >= value}
+															aria-label={entry.rating === value ? t('shared.ratingsBar.rateOutOf5Clear', { value }) : t('shared.ratingsBar.setRatingTo', { value })}
+															aria-pressed={entry.rating === value}
+															onmouseenter={() => { hoverEntryId = entry.book.id; hoverRating = value; }}
+															onclick={() => {
+																hoverEntryId = null;
+																hoverRating = 0; // reset hover so mobile (no mouseleave) shows correct state after tap
+																if (entry.rating === value) {
+																	ratingsStore.removeRating(entry.book.id, entry.book.book_id);
+																} else {
+																	ratingsStore.setRating(entry.book.id, value, entry.book.book_id, entry.book);
+																}
+															}}
+														>
+															<span aria-hidden="true">{displayRating >= value ? STAR_FILLED : STAR_EMPTY}</span>
+														</button>
+													{/each}
+												</div>
 												<Button
 													variant="tertiary"
 													compact
@@ -403,19 +405,31 @@
 	.ratings-drawer__item-actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--space-1);
+		gap: var(--space-2);
 		align-items: center;
 		margin-top: var(--space-2);
 	}
+	.ratings-drawer__stars {
+		display: flex;
+		flex-wrap: nowrap;
+		align-items: center;
+		gap: 0;
+	}
 	.ratings-drawer__star {
-		min-width: 1.75rem;
-		min-height: 1.75rem;
-		padding: var(--space-1);
+		box-sizing: border-box;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		min-width: 32px;
+		min-height: 32px;
+		padding: 0;
 		font-family: var(--typ-interactive-1-font-family);
-		font-size: var(--typ-interactive-1-font-size);
+		font-size: 1.125rem;
 		font-weight: var(--typ-interactive-1-font-weight);
 		line-height: 1;
-		letter-spacing: var(--typ-interactive-1-letter-spacing);
+		letter-spacing: 0;
 		border: none;
 		background: transparent;
 		border-radius: var(--radius-sm);
@@ -434,7 +448,12 @@
 		background: transparent;
 		color: var(--color-text);
 	}
-	.ratings-drawer__item-actions .btn {
-		margin-left: var(--space-1);
+	/* Button is a child component — :global so compact height applies to Remove */
+	.ratings-drawer__item-actions :global(.btn.btn--compact) {
+		box-sizing: border-box;
+		min-height: 32px;
+		height: 32px;
+		padding-block: 0;
+		padding-inline: var(--space-4);
 	}
 </style>
