@@ -15,16 +15,15 @@
 </script>
 
 <div class="recommendations-empty">
-	<h1 class="recommendations-empty__title">{title}</h1>
-	<p class="recommendations-empty__message">{message}</p>
-	<p class="recommendations-empty__count">
+	<h1 class="recommendations-empty__title typ-display2">{title}</h1>
+	<p class="recommendations-empty__message typ-body">{message}</p>
+	<p class="recommendations-empty__count typ-caption">
 		{t('shared.recommendationsEmpty.youRatedCount', { count: ratedCount })}{ratedCount === 1 ? '' : t('shared.recommendationsEmpty.youRatedCountPlural')}.
 	</p>
 </div>
 
 <style>
 	.recommendations-empty__title {
-		font-size: var(--font-size-2xl);
 		margin: 0 0 var(--space-4) 0;
 	}
 	.recommendations-empty__message {
@@ -32,7 +31,6 @@
 		margin: 0 0 var(--space-2) 0;
 	}
 	.recommendations-empty__count {
-		font-size: var(--font-size-md);
 		color: var(--color-text-muted);
 		margin: 0 0 var(--space-6) 0;
 	}

@@ -69,7 +69,7 @@
 
 <div class="reset-password">
 	<div class="reset-password__panel">
-		<h1 class="reset-password__title">{t('shared.resetPasswordPage.title')}</h1>
+		<h1 class="reset-password__title typ-h3">{t('shared.resetPasswordPage.title')}</h1>
 
 		{#if error}
 			<p class="reset-password__error" role="alert">{error}</p>
@@ -168,22 +168,27 @@
 
 	.reset-password__title {
 		margin: 0 0 var(--space-5);
-		font-size: var(--font-size-lg);
-		font-weight: var(--font-weight-semibold);
 		color: var(--color-text);
 	}
 
 	.reset-password__message {
 		margin: 0 0 var(--space-5);
-		font-size: var(--font-size-sm);
-		line-height: var(--line-height-normal);
+		font-family: var(--typ-caption-font-family);
+		font-size: var(--typ-caption-font-size);
+		font-weight: var(--typ-caption-font-weight);
+		line-height: var(--typ-caption-line-height);
+		letter-spacing: var(--typ-caption-letter-spacing);
 		color: var(--color-text-muted);
 	}
 
 	.reset-password__error {
 		margin: 0 0 var(--space-4);
 		padding: var(--space-3) var(--space-4);
-		font-size: var(--font-size-sm);
+		font-family: var(--typ-caption-font-family);
+		font-size: var(--typ-caption-font-size);
+		font-weight: var(--typ-caption-font-weight);
+		line-height: var(--typ-caption-line-height);
+		letter-spacing: var(--typ-caption-letter-spacing);
 		color: var(--color-error-text);
 		background: var(--color-error-bg);
 		border: 1px solid var(--color-error-border);
@@ -204,20 +209,31 @@
 
 	.reset-password__hint {
 		margin: 0;
-		font-size: var(--font-size-xs);
+		font-family: var(--typ-interactive-2-font-family);
+		font-size: var(--typ-interactive-2-font-size);
+		font-weight: var(--typ-interactive-2-font-weight);
+		line-height: var(--typ-interactive-2-line-height);
+		letter-spacing: var(--typ-interactive-2-letter-spacing);
 		color: var(--color-text-muted);
 	}
 
 	.reset-password__label {
-		font-size: var(--font-size-sm);
-		font-weight: var(--font-weight-medium);
+		font-family: var(--typ-interactive-2-font-family);
+		font-size: var(--typ-interactive-2-font-size);
+		font-weight: var(--typ-interactive-2-font-weight);
+		line-height: var(--typ-interactive-2-line-height);
+		letter-spacing: var(--typ-interactive-2-letter-spacing);
 		color: var(--color-text);
 	}
 
 	.reset-password__input {
 		width: 100%;
 		padding: var(--space-3) var(--space-5);
-		font-size: var(--font-size-md);
+		font-family: var(--typ-interactive-1-font-family);
+		font-size: var(--typ-interactive-1-font-size);
+		font-weight: var(--typ-interactive-1-font-weight);
+		line-height: var(--typ-interactive-1-line-height);
+		letter-spacing: var(--typ-interactive-1-letter-spacing);
 		color: var(--color-text);
 		background: var(--color-card-bg);
 		border: 1px solid var(--color-border);

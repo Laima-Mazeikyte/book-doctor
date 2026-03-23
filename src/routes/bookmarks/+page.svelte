@@ -2,7 +2,8 @@
 	import { authStore } from '$lib/stores/auth';
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { ratingsStore } from '$lib/stores/ratings';
-	import RecommendationCard from '$lib/components/RecommendationCard.svelte';
+	import BookCard from '$lib/components/BookCard.svelte';
+	import BookCardSkeleton from '$lib/components/BookCardSkeleton.svelte';
 	import { t } from '$lib/copy';
 	import type { Book } from '$lib/types/book';
 
@@ -41,9 +42,13 @@
 </script>
 
 <div class="bookmarks-page">
-	<h1 class="bookmarks-page__title">{t('bookmarks.title')}</h1>
+	<h1 class="bookmarks-page__title typ-display2">{t('bookmarks.title')}</h1>
 	{#if loading}
-		<p class="bookmarks-page__muted">{t('shared.recommendationsLoading.message')}</p>
+		<ul class="bookmarks-page__list book-card-grid" aria-busy="true" aria-label={t('bookmarks.title')}>
+			{#each Array(6) as _}
+				<li><BookCardSkeleton /></li>
+			{/each}
+		</ul>
 	{:else if error}
 		<p class="bookmarks-page__error" role="alert">{error}</p>
 	{:else if books.length === 0}
@@ -52,7 +57,8 @@
 		<ul class="bookmarks-page__list book-card-grid" aria-label={t('shared.recommendationCard.bookmark')}>
 			{#each books as book (book.id)}
 				<li>
-					<RecommendationCard
+					<BookCard
+						context="bookmarks"
 						{book}
 						bookmarked={true}
 						onBookmark={(id) => planToReadStore.toggle(id, book.book_id)}
@@ -71,12 +77,9 @@
 		padding-bottom: var(--space-8);
 	}
 	.bookmarks-page__title {
-		font-family: 'Beth Ellen', cursive;
-		font-size: var(--font-size-3xl);
-		margin: 0 0 var(--space-8) 0;
+		margin: 0 0 var(--space-3) 0;
 		text-align: center;
 	}
-	.bookmarks-page__muted,
 	.bookmarks-page__empty,
 	.bookmarks-page__error {
 		color: var(--color-text-muted);
@@ -84,14 +87,11 @@
 		text-align: center;
 	}
 	.bookmarks-page__error {
-		color: var(--color-error, #c00);
+		color: var(--color-error-text);
 	}
 	.bookmarks-page__list {
 		list-style: none;
 		margin: 0;
 		padding: 0;
-		display: grid;
-		gap: var(--space-4);
-		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
 	}
 </style>

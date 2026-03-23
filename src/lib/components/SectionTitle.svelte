@@ -8,7 +8,7 @@
 	let { children }: Props = $props();
 </script>
 
-<h2 class="section-title">
+<h2 class="section-title typ-h3">
 	{#if children}
 		{@render children()}
 	{/if}
@@ -16,8 +16,6 @@
 
 <style>
 	.section-title {
-		font-size: var(--font-size-lg);
-		font-weight: var(--font-weight-semibold);
 		margin: 0 0 var(--space-3) 0;
 		color: var(--color-text-muted);
 	}

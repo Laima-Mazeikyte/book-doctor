@@ -19,24 +19,28 @@
 	});
 </script>
 
-<div class="landing">
+<!--
+	Landing typography exception (spec): Beth Ellen display + Crimson headings/body in one hero.
+	Tokens: typ-h1 + typ-display1--inherit-size on the adjective; no one-off font-family outside semantic.css utilities.
+-->
+<div class="landing landing-typography">
 	<div class="landing__hero">
-		<h1 class="landing__title">
+		<h1 class="landing__title typ-h1">
 			{t('home.titlePrefix')}<br />
 			<span class="landing__adjective-clip">
 				{#key currentAdjective}
-					<span class="landing__adjective">{currentAdjective}</span>
+					<span class="landing__adjective typ-display1 typ-display1--inherit-size">{currentAdjective}</span>
 				{/key}
 			</span>
 			{t('home.titleSuffix')}
 		</h1>
-		<p class="landing__lead">{t('home.lead')}</p>
+		<p class="landing__lead typ-body">{t('home.lead')}</p>
 
 		<div class="landing__tips">
-			<p class="landing__tips-label">{t('home.ratingTipsTitle')}</p>
+			<p class="landing__tips-label typ-caption">{t('home.ratingTipsTitle')}</p>
 			<ul class="landing__tips-list">
 				{#each t('home.ratingTips').split('\n').filter((line) => line.trim()) as tip}
-					<li class="landing__tips-item">{tip.trim()}</li>
+					<li class="landing__tips-item typ-caption">{tip.trim()}</li>
 				{/each}
 			</ul>
 		</div>
@@ -65,11 +69,8 @@
 	}
 
 	.landing__title {
-		font-size: var(--font-size-3xl);
-		font-weight: var(--font-weight-semibold);
-		letter-spacing: -0.02em;
-		line-height: var(--line-height-tight);
 		margin: 0;
+		font-size: clamp(var(--primitive-type-size-36), 5vw, var(--primitive-type-size-72));
 	}
 
 	.landing__adjective-clip {
@@ -82,8 +83,6 @@
 
 	.landing__adjective {
 		display: inline-block;
-		font-family: 'Beth Ellen', cursive;
-		font-weight: normal;
 		animation: slideIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
 	}
 
@@ -97,9 +96,7 @@
 	}
 
 	.landing__lead {
-		font-size: var(--font-size-base);
 		color: var(--color-text-muted);
-		line-height: var(--line-height-relaxed);
 		margin: 0;
 	}
 
@@ -114,10 +111,7 @@
 	}
 
 	.landing__tips-label {
-		font-size: var(--font-size-xs);
-		font-weight: var(--font-weight-medium);
 		text-transform: uppercase;
-		letter-spacing: 0.08em;
 		color: var(--color-text-muted);
 		opacity: 0.55;
 		margin: 0;
@@ -134,9 +128,7 @@
 	}
 
 	.landing__tips-item {
-		font-size: var(--font-size-xs);
 		color: var(--color-text-muted);
-		line-height: var(--line-height-relaxed);
 		background: var(--color-bg-muted);
 		border-radius: var(--radius-sm);
 		padding: var(--space-2) var(--space-3);
@@ -154,8 +146,5 @@
 			padding-top: var(--space-24);
 		}
 
-		.landing__title {
-			font-size: clamp(var(--font-size-3xl), 5vw, 2.5rem);
-		}
 	}
 </style>

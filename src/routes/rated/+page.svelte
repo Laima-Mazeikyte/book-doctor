@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { planToReadStore } from '$lib/stores/planToRead';
-	import RecommendationCard from '$lib/components/RecommendationCard.svelte';
+	import BookCard from '$lib/components/BookCard.svelte';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
 
@@ -21,18 +21,19 @@
 </script>
 
 <div class="rated-page">
-	<h1 class="rated-page__title">{t('rated.title')}</h1>
+	<h1 class="rated-page__title typ-display2">{t('rated.title')}</h1>
 	{#if displayedEntries.length === 0}
 		<p class="rated-page__empty">{t('rated.empty')}</p>
 	{:else}
 		<ul class="rated-page__list book-card-grid" aria-label={t('shared.ratingsBar.yourRatings')}>
 			{#each displayedEntries as { book, ratingAtLoad } (book.id)}
 				<li>
-					<RecommendationCard
+					<BookCard
+						context="rated"
 						{book}
 						bookmarked={$planToReadStore.has(book.id)}
 						onBookmark={(id) => planToReadStore.toggle(id, book.book_id)}
-						currentRating={$ratingsStore.get(book.id) ?? 0}
+						currentRating={$ratingsStore.get(book.id) ?? null}
 						onRate={(id, value) => ratingsStore.setRating(id, value, book.book_id, book)}
 						onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id)}
 					/>
@@ -47,10 +48,9 @@
 		padding-bottom: var(--space-8);
 	}
 	.rated-page__title {
-		font-family: 'Beth Ellen', cursive;
-		font-size: var(--font-size-3xl);
-		margin: 0 0 var(--space-8) 0;
+		margin: 0 0 var(--space-3) 0;
 		text-align: center;
+		font-size: 32px;
 	}
 	.rated-page__empty {
 		color: var(--color-text-muted);
@@ -60,8 +60,5 @@
 		list-style: none;
 		margin: 0;
 		padding: 0;
-		display: grid;
-		gap: var(--space-4);
-		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
 	}
 </style>

@@ -5,7 +5,8 @@
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
-	import RecommendationCard from '$lib/components/RecommendationCard.svelte';
+	import BookCard from '$lib/components/BookCard.svelte';
+	import BookCardSkeleton from '$lib/components/BookCardSkeleton.svelte';
 	import { t } from '$lib/copy';
 	import type { Book } from '$lib/types/book';
 
@@ -71,10 +72,14 @@
 </script>
 
 <div class="not-interested-page">
-	<h1 class="not-interested-page__title">{t('notInterested.title')}</h1>
+	<h1 class="not-interested-page__title typ-display2">{t('notInterested.title')}</h1>
 	<p class="not-interested-page__intro">{t('notInterested.intro')}</p>
 	{#if loading}
-		<p class="not-interested-page__muted">{t('shared.recommendationsLoading.message')}</p>
+		<ul class="not-interested-page__list book-card-grid" aria-busy="true" aria-label={t('notInterested.title')}>
+			{#each Array(6) as _}
+				<li><BookCardSkeleton /></li>
+			{/each}
+		</ul>
 	{:else if error}
 		<p class="not-interested-page__error" role="alert">{error}</p>
 	{:else if books.length === 0}
@@ -83,7 +88,8 @@
 		<ul class="not-interested-page__list book-card-grid" aria-label={t('notInterested.title')}>
 			{#each books as book (book.id)}
 				<li>
-					<RecommendationCard
+					<BookCard
+						context="not-interested"
 						{book}
 						bookmarked={$planToReadStore.has(book.id)}
 						onBookmark={(id) => handleBookmark(book, id)}
@@ -104,29 +110,28 @@
 		padding-bottom: var(--space-8);
 	}
 	.not-interested-page__title {
-		font-size: var(--font-size-2xl);
 		margin: 0 0 var(--space-2) 0;
 	}
 	.not-interested-page__intro {
 		color: var(--color-text-muted);
-		font-size: var(--font-size-sm);
-		margin: 0 0 var(--space-4) 0;
+		font-family: var(--typ-caption-font-family);
+		font-size: var(--typ-caption-font-size);
+		font-weight: var(--typ-caption-font-weight);
+		line-height: var(--typ-caption-line-height);
+		letter-spacing: var(--typ-caption-letter-spacing);
+		margin: 0 0 var(--space-3) 0;
 	}
-	.not-interested-page__muted,
 	.not-interested-page__empty,
 	.not-interested-page__error {
 		color: var(--color-text-muted);
 		margin: 0;
 	}
 	.not-interested-page__error {
-		color: var(--color-error, #c00);
+		color: var(--color-error-text);
 	}
 	.not-interested-page__list {
 		list-style: none;
 		margin: 0;
 		padding: 0;
-		display: grid;
-		gap: var(--space-4);
-		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
 	}
 </style>

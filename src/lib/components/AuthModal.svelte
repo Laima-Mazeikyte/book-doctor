@@ -611,7 +611,7 @@
 		position: fixed;
 		inset: 0;
 		z-index: 200;
-		background: rgba(0, 0, 0, 0.4);
+		background: var(--color-overlay-scrim);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -662,22 +662,31 @@
 
 	.auth-modal__forgot-title {
 		margin: 0;
-		font-size: var(--font-size-md);
-		font-weight: var(--font-weight-semibold);
+		font-family: var(--typ-h3-font-family);
+		font-size: var(--typ-h3-font-size);
+		font-weight: var(--typ-h3-font-weight);
+		line-height: var(--typ-h3-line-height);
+		letter-spacing: var(--typ-h3-letter-spacing);
 		color: var(--color-text);
 	}
 
 	.auth-modal__forgot-lead {
 		margin: 0 0 var(--space-4);
-		font-size: var(--font-size-sm);
-		line-height: var(--line-height-normal);
+		font-family: var(--typ-caption-font-family);
+		font-size: var(--typ-caption-font-size);
+		font-weight: var(--typ-caption-font-weight);
+		line-height: var(--typ-caption-line-height);
+		letter-spacing: var(--typ-caption-letter-spacing);
 		color: var(--color-text-muted);
 	}
 
 	.auth-modal__text-btn {
 		padding: 0;
-		font-size: var(--font-size-sm);
-		font-weight: var(--font-weight-medium);
+		font-family: var(--typ-interactive-2-font-family);
+		font-size: var(--typ-interactive-2-font-size);
+		font-weight: var(--typ-interactive-2-font-weight);
+		line-height: var(--typ-interactive-2-line-height);
+		letter-spacing: var(--typ-interactive-2-letter-spacing);
 		color: var(--color-accent);
 		background: none;
 		border: none;
@@ -724,8 +733,11 @@
 	.auth-modal__tab {
 		padding: var(--space-3) 0 calc(var(--space-3) + 1px);
 		margin-bottom: -1px;
-		font-size: var(--font-size-sm);
-		font-weight: var(--font-weight-medium);
+		font-family: var(--typ-interactive-2-font-family);
+		font-size: var(--typ-interactive-2-font-size);
+		font-weight: var(--typ-interactive-2-font-weight);
+		line-height: var(--typ-interactive-2-line-height);
+		letter-spacing: var(--typ-interactive-2-letter-spacing);
 		color: var(--color-text-muted);
 		background: transparent;
 		border: none;
@@ -749,7 +761,11 @@
 	.auth-modal__error {
 		margin: 0 0 var(--space-4);
 		padding: var(--space-3) var(--space-4);
-		font-size: var(--font-size-sm);
+		font-family: var(--typ-caption-font-family);
+		font-size: var(--typ-caption-font-size);
+		font-weight: var(--typ-caption-font-weight);
+		line-height: var(--typ-caption-line-height);
+		letter-spacing: var(--typ-caption-letter-spacing);
 		text-align: left;
 		color: var(--color-error-text);
 		background: var(--color-error-bg);
@@ -760,7 +776,11 @@
 	.auth-modal__success {
 		margin: 0 0 var(--space-4);
 		padding: var(--space-3) var(--space-4);
-		font-size: var(--font-size-sm);
+		font-family: var(--typ-caption-font-family);
+		font-size: var(--typ-caption-font-size);
+		font-weight: var(--typ-caption-font-weight);
+		line-height: var(--typ-caption-line-height);
+		letter-spacing: var(--typ-caption-letter-spacing);
 		text-align: left;
 		color: var(--color-text);
 		background: var(--color-accent-bg);
@@ -782,8 +802,11 @@
 
 	.auth-modal__hint {
 		margin: 0;
-		font-size: var(--font-size-xs);
-		line-height: var(--line-height-normal);
+		font-family: var(--typ-interactive-2-font-family);
+		font-size: var(--typ-interactive-2-font-size);
+		font-weight: var(--typ-interactive-2-font-weight);
+		line-height: var(--typ-interactive-2-line-height);
+		letter-spacing: var(--typ-interactive-2-letter-spacing);
 		color: var(--color-text-muted);
 	}
 
@@ -793,16 +816,22 @@
 	}
 
 	.auth-modal__label {
-		font-size: var(--font-size-sm);
-		font-weight: var(--font-weight-medium);
+		font-family: var(--typ-interactive-2-font-family);
+		font-size: var(--typ-interactive-2-font-size);
+		font-weight: var(--typ-interactive-2-font-weight);
+		line-height: var(--typ-interactive-2-line-height);
+		letter-spacing: var(--typ-interactive-2-letter-spacing);
 		color: var(--color-text);
 	}
 
 	.auth-modal__input {
 		width: 100%;
 		padding: var(--space-3) var(--space-5);
-		font-size: var(--font-size-md);
-		line-height: var(--line-height-normal);
+		font-family: var(--typ-interactive-1-font-family);
+		font-size: var(--typ-interactive-1-font-size);
+		font-weight: var(--typ-interactive-1-font-weight);
+		line-height: var(--typ-interactive-1-line-height);
+		letter-spacing: var(--typ-interactive-1-letter-spacing);
 		color: var(--color-text);
 		background: var(--color-card-bg);
 		border: 1px solid var(--color-border);

@@ -68,7 +68,7 @@ Styles are split into three files, loaded in order:
 - **Skip link:** `SkipLink.svelte` – “Skip to main content” for keyboard users.
 - **Header:** `AppHeader.svelte` – app header with inner max-width.
 - **Buttons:** `Button.svelte` – variants `primary`, `secondary`, `tertiary`, `link`; optional icon slot (icon-only = icon button, `aria-label` required).
-- **Cards / patterns:** `BookCard`, `RatingsBar`, etc.; use `--color-card-bg`, `--radius`, and other semantic tokens.
+- **Cards / patterns:** `BookCard` (route `context` prop; helpers in `book-card/`), `RatingsBar`, etc.; use `--color-card-bg`, `--book-card-*` grid tokens in `app.css`, `--radius`, and other semantic tokens.
 
 ---
 

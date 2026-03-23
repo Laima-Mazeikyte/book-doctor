@@ -125,7 +125,7 @@
 			onkeydown={(e) => e.stopPropagation()}
 		>
 			<div class="bug-modal__header">
-				<h2 id={titleId} class="bug-modal__title">
+				<h2 id={titleId} class="bug-modal__title typ-h3">
 					{t('shared.bugModal.title')}
 				</h2>
 				<Button
@@ -189,7 +189,7 @@
 		position: fixed;
 		inset: 0;
 		z-index: 200;
-		background: rgba(0, 0, 0, 0.4);
+		background: var(--color-overlay-scrim);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -199,7 +199,7 @@
 	.bug-modal-panel {
 		background: var(--color-card-bg);
 		border-radius: var(--radius-md);
-		box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+		box-shadow: var(--shadow-modal-elevated);
 		width: 100%;
 		max-width: 24rem;
 		padding: var(--space-5);
@@ -213,15 +213,17 @@
 	}
 
 	.bug-modal__title {
-		font-size: var(--font-size-xl);
-		font-weight: var(--font-weight-semibold);
 		margin: 0;
 	}
 
 	.bug-modal__error {
 		margin: 0 0 var(--space-4);
 		padding: var(--space-3);
-		font-size: var(--font-size-sm);
+		font-family: var(--typ-caption-font-family);
+		font-size: var(--typ-caption-font-size);
+		font-weight: var(--typ-caption-font-weight);
+		line-height: var(--typ-caption-line-height);
+		letter-spacing: var(--typ-caption-letter-spacing);
 		color: var(--color-error-text);
 		background: var(--color-error-bg);
 		border: 1px solid var(--color-error-border);
@@ -231,7 +233,11 @@
 	.bug-modal__success {
 		margin: 0;
 		padding: var(--space-3);
-		font-size: var(--font-size-sm);
+		font-family: var(--typ-caption-font-family);
+		font-size: var(--typ-caption-font-size);
+		font-weight: var(--typ-caption-font-weight);
+		line-height: var(--typ-caption-line-height);
+		letter-spacing: var(--typ-caption-letter-spacing);
 		color: var(--color-text);
 		background: var(--color-accent-bg);
 		border-radius: var(--radius-sm);
@@ -244,8 +250,11 @@
 	}
 
 	.bug-modal__label {
-		font-size: var(--font-size-sm);
-		font-weight: var(--font-weight-medium);
+		font-family: var(--typ-interactive-2-font-family);
+		font-size: var(--typ-interactive-2-font-size);
+		font-weight: var(--typ-interactive-2-font-weight);
+		line-height: var(--typ-interactive-2-line-height);
+		letter-spacing: var(--typ-interactive-2-letter-spacing);
 		color: var(--color-text);
 	}
 
@@ -253,14 +262,16 @@
 	.bug-modal__input {
 		width: 100%;
 		padding: var(--space-3) var(--space-4);
-		font-size: var(--font-size-md);
-		line-height: var(--line-height-normal);
+		font-family: var(--typ-interactive-1-font-family);
+		font-size: var(--typ-interactive-1-font-size);
+		font-weight: var(--typ-interactive-1-font-weight);
+		line-height: var(--typ-interactive-1-line-height);
+		letter-spacing: var(--typ-interactive-1-letter-spacing);
 		color: var(--color-text);
 		background: var(--color-card-bg);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-sm);
 		box-shadow: var(--shadow-input);
-		font-family: inherit;
 	}
 	.bug-modal__textarea::placeholder,
 	.bug-modal__input::placeholder {

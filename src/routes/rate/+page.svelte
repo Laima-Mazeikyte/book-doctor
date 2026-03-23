@@ -13,6 +13,7 @@
 	import SectionTitle from '$lib/components/SectionTitle.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import { getBookById } from '$lib/data/dummyBooks';
+	import { mobileMenuOpen } from '$lib/stores/mobileMenu';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
@@ -178,9 +179,21 @@
 			.filter((e): e is { book: Book; rating: RatingValue } => e !== null)
 	);
 
+	const MIN_RATINGS_FOR_RECOMMENDATIONS = 10;
+
 	const ratedCount = $derived($ratingsStore.size);
 	const showBottomBar = $derived(ratedCount >= 1);
-	const canGetRecommendations = $derived(ratedCount >= 10);
+	const canGetRecommendations = $derived(ratedCount >= MIN_RATINGS_FOR_RECOMMENDATIONS);
+	const ratingsRemainingForRecommendations = $derived(
+		Math.max(0, MIN_RATINGS_FOR_RECOMMENDATIONS - ratedCount)
+	);
+	const recommendationsCtaLabel = $derived(
+		ratingsRemainingForRecommendations === 0
+			? t('rate.getRecommendations')
+			: ratingsRemainingForRecommendations === 1
+				? t('rate.remainingToRecommend_one')
+				: t('rate.remainingToRecommend_other', { remaining: ratingsRemainingForRecommendations })
+	);
 
 	// ── Data fetching ──────────────────────────────────────────────────────────
 	async function loadPopular(offset: number) {
@@ -321,12 +334,16 @@
 	});
 </script>
 
-<div class="rate-page">
+<div class="rate-page" class:rate-page--mobile-menu-open={$mobileMenuOpen}>
 	<header
 		class="rate-page__sticky-header"
 		class:rate-page__sticky-header--hidden={!headerVisible}
 	>
-		<SearchBar bind:value={searchQuery} placeholder={t('rate.search.placeholder')} aria-label={t('rate.search.ariaLabel')} />
+		<div class="rate-page__toolbar">
+			<div class="rate-page__search">
+				<SearchBar bind:value={searchQuery} placeholder={t('rate.search.placeholder')} aria-label={t('rate.search.ariaLabel')} />
+			</div>
+		</div>
 	</header>
 
 	<div class="rate-page__content">
@@ -348,7 +365,7 @@
 			{:else}
 				<ul class="rate-page__list book-card-grid">
 					{#each searchResults as book (book.id)}
-						<li><BookCard {book} onSearchAuthor={handleSearchAuthor} /></li>
+						<li><BookCard context="rate" {book} onSearchAuthor={handleSearchAuthor} /></li>
 					{/each}
 				</ul>
 
@@ -377,7 +394,7 @@
 			{:else}
 				<ul class="rate-page__list book-card-grid">
 					{#each popularBooks as book (book.id)}
-						<li><BookCard {book} onSearchAuthor={handleSearchAuthor} /></li>
+						<li><BookCard context="rate" {book} onSearchAuthor={handleSearchAuthor} /></li>
 					{/each}
 				</ul>
 
@@ -400,9 +417,13 @@
 		<div class="rate-page__bottom-bar">
 			<RatingsBar {ratedEntries} />
 			{#if canGetRecommendations}
-				<Button variant="inverse" pill onclick={handleSubmit}>
-					{t('rate.getRecommendations')}
+				<Button variant="primary" pill onclick={handleSubmit}>
+					{recommendationsCtaLabel}
 				</Button>
+			{:else}
+				<p class="rate-page__recommendations-hint" role="status" aria-live="polite">
+					{recommendationsCtaLabel}
+				</p>
 			{/if}
 		</div>
 	{/if}
@@ -411,6 +432,10 @@
 <style>
 	.rate-page {
 		padding-bottom: 0;
+	}
+	/* Remove fixed floating chrome from layout/paint while the nav drawer is open (see also AppHeader z-index) */
+	.rate-page--mobile-menu-open .rate-page__bottom-bar {
+		display: none;
 	}
 	.rate-page__sticky-header {
 		position: sticky;
@@ -424,6 +449,25 @@
 	}
 	.rate-page__sticky-header--hidden {
 		transform: translateY(-100%);
+		pointer-events: none;
+	}
+	.rate-page__toolbar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-3);
+		width: 100%;
+		min-height: var(--min-tap);
+	}
+	.rate-page__search {
+		flex: 1 1 auto;
+		min-width: 0;
+		max-width: min(48rem, 100%);
+	}
+	@media (max-width: 767px) {
+		.rate-page__search {
+			max-width: none;
+		}
 	}
 	.rate-page__content {
 		/* Content flow */
@@ -466,5 +510,22 @@
 	}
 	:global(.rate-page__bottom-bar > *) {
 		pointer-events: auto;
+	}
+
+	/** Countdown copy — compact label, not a pill button */
+	.rate-page__recommendations-hint {
+		margin: 0;
+		max-width: 11rem;
+		padding: var(--space-2) var(--space-3);
+		font-family: var(--typ-caption-font-family);
+		font-size: var(--typ-caption-font-size);
+		font-weight: var(--typ-caption-font-weight);
+		line-height: var(--typ-caption-line-height);
+		letter-spacing: var(--typ-caption-letter-spacing);
+		color: var(--color-text);
+		background: var(--color-card-bg);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-xs);
+		box-shadow: var(--shadow-card);
 	}
 </style>

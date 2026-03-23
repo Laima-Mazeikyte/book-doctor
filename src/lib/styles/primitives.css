@@ -17,22 +17,41 @@
 	--primitive-gray-400: #d4d4d4;
 	--primitive-gray-500: #525252;
 	--primitive-gray-900: #171717;
-	/** Solid CTA / accent (charcoal in light). */
-	--primitive-accent-solid: #171717;
+	/** Brand CTA fill — does not flip in dark mode (pair with `--primitive-white` on-button). */
+	--primitive-accent-brand: #8C2006;
+	/** Solid accent for links, focus, chrome — flips in dark mode for contrast. */
+	--primitive-accent-solid: var(--primitive-accent-brand);
 	/** Text on solid accent surfaces. */
 	--primitive-on-accent-solid: #ffffff;
 	/** Muted accent fills, success chrome, focus halo (warm neutral). */
 	--primitive-accent-muted: #ece9e2;
 	--primitive-sand: #e8e4dc;
-	/* Error */
+	/* Error & danger */
 	--primitive-red-50: #fef2f2;
+	--primitive-red-100: #fee2e2;
 	--primitive-red-200: #fecaca;
+	--primitive-red-500: #ef4444;
+	--primitive-red-700: #b91c1c;
 	--primitive-red-800: #991b1b;
+	/** Light pink/red for text on dark danger surfaces (constant across color schemes). */
+	--primitive-red-foreground-200: #fecaca;
+
+	/* Success (emerald) */
+	--primitive-emerald-100: #d1fae5;
+	--primitive-emerald-200: #a7f3d0;
+	--primitive-emerald-300: #6ee7b7;
+	--primitive-emerald-500: #10b981;
+	--primitive-emerald-600: #059669;
+	--primitive-emerald-800: #065f46;
 	/* Shadow (opacity only; color from theme) */
 	--primitive-shadow-opacity-subtle: 0.06;
+	--primitive-shadow-opacity-hairline: 0.04;
 	--primitive-shadow-opacity-medium: 0.08;
 	--primitive-shadow-opacity-strong: 0.15;
 	--primitive-shadow-opacity-focus: 0.12;
+	/** Modal / overlay scrims (black + alpha). */
+	--primitive-overlay-scrim-opacity: 0.4;
+	--primitive-overlay-scrim-opacity-soft: 0.3;
 
 	/* ── Spacing ──────────────────────────────────────────────────────────── */
 	--primitive-space-1: 0.25rem;
@@ -48,20 +67,39 @@
 	--primitive-space-icon-offset: 2.75rem;
 
 	/* ── Typography ───────────────────────────────────────────────────────── */
-	--primitive-font-size-xs: 0.75rem;
-	--primitive-font-size-sm: 0.8125rem;
-	--primitive-font-size-base: 1rem;
-	--primitive-font-size-md: 0.9375rem;
-	--primitive-font-size-lg: 1.0625rem;
-	--primitive-font-size-xl: 1.25rem;
-	--primitive-font-size-2xl: 1.5rem;
-	--primitive-font-size-3xl: 1.875rem;
+	--primitive-font-family-content: 'Crimson Text', Georgia, 'Times New Roman', serif;
+	--primitive-font-family-display: 'Beth Ellen', cursive;
+	--primitive-font-family-interactive: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+
+	/** Canonical type sizes (16px root → rem). Design spec px: 72, 48, 36, 32, 20, 16, 14 */
+	--primitive-type-size-72: 4.5rem;
+	--primitive-type-size-48: 3rem;
+	--primitive-type-size-36: 2.25rem;
+	--primitive-type-size-32: 2rem;
+	--primitive-type-size-20: 1.25rem;
+	--primitive-type-size-16: 1rem;
+	--primitive-type-size-14: 0.875rem;
+
 	--primitive-font-weight-normal: 400;
 	--primitive-font-weight-medium: 500;
 	--primitive-font-weight-semibold: 600;
-	--primitive-line-height-tight: 1.25;
-	--primitive-line-height-normal: 1.5;
-	--primitive-line-height-relaxed: 1.6;
+	--primitive-font-weight-bold: 700;
+
+	/** 120% — H1, display1, H2, display2 */
+	--primitive-line-height-display: 1.2;
+	/** 100% — H3 */
+	--primitive-line-height-h3: 1;
+	/** 150% — body, caption */
+	--primitive-line-height-body: 1.5;
+	/**
+	 * Interactive UI line-height (cap-height / vertical trim intent).
+	 * Used for Inter controls; documented fixed value 1.2.
+	 */
+	--primitive-line-height-interactive: 1.2;
+
+	--primitive-line-height-tight: var(--primitive-line-height-interactive);
+	--primitive-line-height-normal: var(--primitive-line-height-body);
+	--primitive-line-height-relaxed: var(--primitive-line-height-body);
 	--primitive-duration-fast: 0.15s;
 	--primitive-duration-normal: 0.2s;
 
@@ -99,6 +137,7 @@
 		--primitive-accent-muted: #404040;
 		--primitive-sand: #2d2a26;
 		--primitive-red-50: #2d1515;
+		--primitive-red-100: #450a0a;
 		--primitive-red-200: #7f1d1d;
 		--primitive-red-800: #fca5a5;
 		--primitive-shadow-opacity-subtle: 0.25;

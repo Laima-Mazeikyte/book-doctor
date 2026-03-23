@@ -1,0 +1,12 @@
+---
+description: Use pnpm for all installs and scripts (not npm or yarn)
+alwaysApply: true
+---
+
+# Package manager
+
+This repo uses **pnpm** only (`package.json` → `packageManager`, `pnpm-lock.yaml`).
+
+- Install: `pnpm install`
+- Scripts: `pnpm run <script>` (e.g. `pnpm run build`, `pnpm run check`, `pnpm run dev`)
+- Do not use `npm run` or `npx` for project workflows unless there is no pnpm equivalent.

@@ -25,6 +25,17 @@
 	let closeButtonEl = $state<HTMLButtonElement | HTMLAnchorElement | null>(null);
 	const panelId = 'ratings-drawer-panel';
 	const triggerId = 'ratings-trigger';
+	/** Slide distance in px; negative x → panel flies in from the left (desktop and mobile). */
+	const DRAWER_SLIDE_PX_DESKTOP = 420;
+
+	function drawerSlidePx(): number {
+		if (typeof window === 'undefined') return -DRAWER_SLIDE_PX_DESKTOP;
+		return window.matchMedia('(min-width: 768px)').matches
+			? -DRAWER_SLIDE_PX_DESKTOP
+			: -window.innerWidth;
+	}
+
+	let flyX = $state(-DRAWER_SLIDE_PX_DESKTOP);
 
 	function setCoverFailed(bookId: string) {
 		coverFailedIds = new Set(coverFailedIds).add(bookId);
@@ -45,6 +56,7 @@
 	}
 
 	function openDrawer() {
+		flyX = drawerSlidePx();
 		open = true;
 	}
 
@@ -116,11 +128,11 @@
 		>
 			<div
 				class="ratings-drawer-panel"
-				in:fly={{ x: -320, duration: 200 }}
-				out:fly={{ x: -320, duration: 150 }}
+				in:fly={{ x: flyX, duration: 200 }}
+				out:fly={{ x: flyX, duration: 150 }}
 			>
 				<div class="ratings-drawer__header">
-					<h2 id="ratings-drawer-title" class="ratings-drawer__title">
+					<h2 id="ratings-drawer-title" class="ratings-drawer__title typ-h3">
 						{t('shared.ratingsBar.yourRatings')}
 					</h2>
 					<Button
@@ -217,8 +229,11 @@
 		gap: var(--space-1);
 		min-height: var(--min-tap);
 		padding: var(--space-2) var(--space-3);
-		font-size: var(--font-size-md);
-		font-weight: var(--font-weight-medium);
+		font-family: var(--typ-interactive-1-font-family);
+		font-size: var(--typ-interactive-1-font-size);
+		font-weight: var(--typ-interactive-1-font-weight);
+		line-height: var(--typ-interactive-1-line-height);
+		letter-spacing: var(--typ-interactive-1-letter-spacing);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-pill);
 		background: var(--color-bg-muted);
@@ -250,7 +265,7 @@
 		position: fixed;
 		inset: 0;
 		z-index: 200;
-		background: transparent;
+		background: var(--color-overlay-scrim-soft);
 		display: flex;
 		align-items: stretch;
 		justify-content: flex-start;
@@ -258,6 +273,7 @@
 
 	.ratings-drawer-panel {
 		position: relative;
+		z-index: 1;
 		width: min(400px, 85vw);
 		min-width: 320px;
 		max-width: 400px;
@@ -269,6 +285,20 @@
 		overflow: hidden;
 	}
 
+	@media (max-width: 767px) {
+		.ratings-drawer-overlay {
+			background: var(--color-bg);
+		}
+		.ratings-drawer-panel {
+			width: 100%;
+			max-width: none;
+			min-width: 0;
+			min-height: 100dvh;
+			height: 100dvh;
+			box-shadow: none;
+		}
+	}
+
 	.ratings-drawer__header {
 		display: flex;
 		align-items: center;
@@ -278,8 +308,6 @@
 		flex-shrink: 0;
 	}
 	.ratings-drawer__title {
-		font-size: var(--font-size-xl);
-		font-weight: var(--font-weight-semibold);
 		margin: 0;
 	}
 
@@ -292,7 +320,11 @@
 	.ratings-drawer__empty {
 		margin: 0;
 		color: var(--color-text-muted);
-		font-size: var(--font-size-md);
+		font-family: var(--typ-caption-font-family);
+		font-size: var(--typ-caption-font-size);
+		font-weight: var(--typ-caption-font-weight);
+		line-height: var(--typ-caption-line-height);
+		letter-spacing: var(--typ-caption-letter-spacing);
 	}
 	.ratings-drawer__list {
 		list-style: none;
@@ -335,8 +367,11 @@
 		text-align: center;
 	}
 	.ratings-drawer__cover-text {
-		font-size: var(--font-size-xs);
-		line-height: 1.2;
+		font-family: var(--typ-caption-font-family);
+		font-size: var(--typ-caption-font-size);
+		font-weight: var(--typ-caption-font-weight);
+		line-height: var(--typ-caption-line-height);
+		letter-spacing: var(--typ-caption-letter-spacing);
 		color: var(--color-text-muted);
 		overflow: hidden;
 		display: -webkit-box;
@@ -348,13 +383,19 @@
 		min-width: 0;
 	}
 	.ratings-drawer__item-title {
+		font-family: var(--typ-caption-font-family);
+		font-size: var(--typ-caption-font-size);
 		font-weight: var(--font-weight-semibold);
-		font-size: var(--font-size-md);
+		line-height: var(--typ-caption-line-height);
+		letter-spacing: var(--typ-caption-letter-spacing);
 		display: block;
-		line-height: 1.3;
 	}
 	.ratings-drawer__item-author {
-		font-size: var(--font-size-sm);
+		font-family: var(--typ-caption-font-family);
+		font-size: var(--typ-caption-font-size);
+		font-weight: var(--typ-caption-font-weight);
+		line-height: var(--typ-caption-line-height);
+		letter-spacing: var(--typ-caption-letter-spacing);
 		color: var(--color-text-muted);
 		display: block;
 		margin-top: var(--space-1);
@@ -370,8 +411,11 @@
 		min-width: 1.75rem;
 		min-height: 1.75rem;
 		padding: var(--space-1);
-		font-size: var(--font-size-base);
+		font-family: var(--typ-interactive-1-font-family);
+		font-size: var(--typ-interactive-1-font-size);
+		font-weight: var(--typ-interactive-1-font-weight);
 		line-height: 1;
+		letter-spacing: var(--typ-interactive-1-letter-spacing);
 		border: none;
 		background: transparent;
 		border-radius: var(--radius-sm);

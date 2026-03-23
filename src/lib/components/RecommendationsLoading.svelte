@@ -28,6 +28,10 @@
 	.recommendations-loading__message {
 		margin: 0;
 		color: var(--color-text-muted);
-		font-size: var(--font-size-md);
+		font-family: var(--typ-body-font-family);
+		font-size: var(--typ-body-font-size);
+		font-weight: var(--typ-body-font-weight);
+		line-height: var(--typ-body-line-height);
+		letter-spacing: var(--typ-body-letter-spacing);
 	}
 </style>

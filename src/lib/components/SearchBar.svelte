@@ -110,7 +110,11 @@
 		width: 100%;
 		min-height: var(--min-tap);
 		padding: var(--space-3) var(--space-4) var(--space-3) var(--space-input-icon-left);
-		font-size: var(--font-size-base);
+		font-family: var(--typ-interactive-1-font-family);
+		font-size: var(--typ-interactive-1-font-size);
+		font-weight: var(--typ-interactive-1-font-weight);
+		line-height: var(--typ-interactive-1-line-height);
+		letter-spacing: var(--typ-interactive-1-letter-spacing);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-pill);
 		background: var(--color-card-bg);

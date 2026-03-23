@@ -76,6 +76,7 @@
 		class="btn btn--{variant} {pill ? 'btn--pill' : ''} {compact ? 'btn--compact' : ''} {className}"
 		{type}
 		disabled={disabled}
+		class:btn--disabled={disabled}
 		aria-label={ariaLabel}
 		{...rest}
 		onclick={onclick}
@@ -97,14 +98,16 @@
 		gap: var(--space-2);
 		min-height: var(--min-tap);
 		padding: var(--space-3) var(--space-6);
-		font-size: var(--font-size-md);
-		font-weight: var(--font-weight-medium);
-		line-height: var(--line-height-normal);
+		font-family: var(--typ-interactive-1-font-family);
+		font-size: var(--typ-interactive-1-font-size);
+		font-weight: var(--typ-interactive-1-font-weight);
+		line-height: var(--typ-interactive-1-line-height);
+		letter-spacing: var(--typ-interactive-1-letter-spacing);
 		border-radius: var(--radius-sm);
-		transition: opacity var(--duration-fast) var(--ease-default),
-			background var(--duration-fast) var(--ease-default),
+		transition: background var(--duration-fast) var(--ease-default),
 			border-color var(--duration-fast) var(--ease-default),
-			color var(--duration-fast) var(--ease-default);
+			color var(--duration-fast) var(--ease-default),
+			opacity var(--duration-fast) var(--ease-default);
 		cursor: pointer;
 		text-decoration: none;
 		border: none;
@@ -119,8 +122,8 @@
 		background: var(--color-button-primary-bg);
 		color: var(--color-button-primary-text);
 	}
-	.btn--primary:hover {
-		opacity: 0.92;
+	.btn--primary:hover:not(.btn--disabled) {
+		background: var(--color-button-primary-hover-bg);
 	}
 
 	/* Secondary */
@@ -184,7 +187,11 @@
 	.btn--compact {
 		min-height: 2rem;
 		padding: var(--space-2) var(--space-4);
-		font-size: var(--font-size-sm);
+		font-family: var(--typ-interactive-2-font-family);
+		font-size: var(--typ-interactive-2-font-size);
+		font-weight: var(--typ-interactive-2-font-weight);
+		line-height: var(--typ-interactive-2-line-height);
+		letter-spacing: var(--typ-interactive-2-letter-spacing);
 	}
 	.btn--compact:not(:has(.btn__label)) {
 		padding: var(--space-2);

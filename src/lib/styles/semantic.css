@@ -29,9 +29,35 @@
 	--color-error-border: var(--primitive-red-200);
 	--color-error-text: var(--primitive-red-800);
 
+	/* ── Success (e.g. bookmark saved on book card) ─────────────────────── */
+	--color-success-bg: var(--primitive-emerald-100);
+	--color-success-bg-hover: var(--primitive-emerald-200);
+	--color-success-text: var(--primitive-emerald-800);
+	--color-success-border: color-mix(in srgb, var(--primitive-emerald-600) 40%, transparent);
+
+	/* ── Danger tonal (e.g. not-interested on book card) ─────────────────── */
+	--color-danger-tonal-bg: var(--color-error-bg);
+	--color-danger-tonal-bg-hover: var(--primitive-red-100);
+	--color-danger-tonal-text: var(--primitive-red-700);
+	--color-danger-tonal-text-hover: var(--color-error-text);
+	--color-danger-tonal-border: color-mix(in srgb, var(--primitive-red-700) 40%, transparent);
+	--color-danger-tonal-border-hover: color-mix(in srgb, var(--primitive-red-700) 50%, transparent);
+
+	/* ── Overlays & scrims ───────────────────────────────────────────────── */
+	--color-overlay-scrim: rgba(0, 0, 0, var(--primitive-overlay-scrim-opacity));
+	--color-overlay-scrim-soft: rgba(0, 0, 0, var(--primitive-overlay-scrim-opacity-soft));
+	/** Floating icon/button on top of cards (e.g. summary close). */
+	--color-floating-control-bg: color-mix(in srgb, var(--color-bg-muted) 85%, transparent);
+	--color-floating-control-bg-hover: color-mix(in srgb, var(--color-bg-hover) 90%, transparent);
+
 	/* ── Button primary ──────────────────────────────────────────────────── */
-	--color-button-primary-bg: var(--primitive-accent-solid);
-	--color-button-primary-text: var(--primitive-on-accent-solid);
+	--color-button-primary-bg: var(--primitive-accent-brand);
+	--color-button-primary-hover-bg: color-mix(
+		in srgb,
+		var(--color-button-primary-bg) 88%,
+		var(--primitive-white)
+	);
+	--color-button-primary-text: var(--primitive-white);
 
 	/* ── Button secondary ────────────────────────────────────────────────── */
 	--color-button-secondary-bg: var(--primitive-gray-100);
@@ -61,6 +87,9 @@
 
 	/* ── Shadow (semantic: focus ring uses accent) ──────────────────────────── */
 	--shadow-focus-input: 0 2px 12px rgba(0, 0, 0, var(--primitive-shadow-opacity-focus)), 0 0 0 3px var(--color-accent-bg);
+	--shadow-header-line: 0 1px 0 0 rgba(0, 0, 0, var(--primitive-shadow-opacity-hairline));
+	--shadow-panel-edge: -4px 0 20px rgba(0, 0, 0, var(--primitive-shadow-opacity-strong));
+	--shadow-modal-elevated: 0 20px 40px rgba(0, 0, 0, var(--primitive-shadow-opacity-strong));
 
 	/* ── Spacing (re-export primitives) ─────────────────────────────────────── */
 	--space-1: var(--primitive-space-1);
@@ -74,18 +103,74 @@
 	--space-24: var(--primitive-space-24);
 	--space-input-icon-left: var(--primitive-space-icon-offset);
 
-	/* ── Typography (re-export primitives) ──────────────────────────────────── */
-	--font-size-xs: var(--primitive-font-size-xs);
-	--font-size-sm: var(--primitive-font-size-sm);
-	--font-size-base: var(--primitive-font-size-base);
-	--font-size-md: var(--primitive-font-size-md);
-	--font-size-lg: var(--primitive-font-size-lg);
-	--font-size-xl: var(--primitive-font-size-xl);
-	--font-size-2xl: var(--primitive-font-size-2xl);
-	--font-size-3xl: var(--primitive-font-size-3xl);
+	/* ── Typography — families ─────────────────────────────────────────────── */
+	--font-family-content: var(--primitive-font-family-content);
+	--font-family-display: var(--primitive-font-family-display);
+	--font-family-interactive: var(--primitive-font-family-interactive);
+
+	/*
+	 * Named tokens (design spec). Maintenance scale:
+	 * 72px → H1, display1 | 48px → H2 | 32px → display2 | 36px → H3 | 20px → body | 16px → caption
+	 * All interactive UI: Inter 14px (--typ-interactive-1; --typ-interactive-2 aliases same size for compact/dense slots).
+	 */
+	--typ-h1-font-family: var(--font-family-content);
+	--typ-h1-font-weight: var(--primitive-font-weight-bold);
+	--typ-h1-font-size: var(--primitive-type-size-72);
+	--typ-h1-line-height: var(--primitive-line-height-display);
+	--typ-h1-letter-spacing: 0;
+
+	--typ-display1-font-family: var(--font-family-display);
+	--typ-display1-font-weight: var(--primitive-font-weight-normal);
+	--typ-display1-font-size: var(--primitive-type-size-72);
+	--typ-display1-line-height: var(--primitive-line-height-display);
+	--typ-display1-letter-spacing: 0.05em;
+
+	--typ-h2-font-family: var(--font-family-content);
+	--typ-h2-font-weight: var(--primitive-font-weight-bold);
+	--typ-h2-font-size: var(--primitive-type-size-48);
+	--typ-h2-line-height: var(--primitive-line-height-display);
+	--typ-h2-letter-spacing: 0;
+
+	--typ-display2-font-family: var(--font-family-display);
+	--typ-display2-font-weight: var(--primitive-font-weight-normal);
+	--typ-display2-font-size: var(--primitive-type-size-32);
+	--typ-display2-line-height: var(--primitive-line-height-display);
+	--typ-display2-letter-spacing: 0.05em;
+
+	--typ-h3-font-family: var(--font-family-content);
+	--typ-h3-font-weight: var(--primitive-font-weight-semibold);
+	--typ-h3-font-size: var(--primitive-type-size-36);
+	--typ-h3-line-height: var(--primitive-line-height-h3);
+	--typ-h3-letter-spacing: 0;
+
+	--typ-body-font-family: var(--font-family-content);
+	--typ-body-font-weight: var(--primitive-font-weight-normal);
+	--typ-body-font-size: var(--primitive-type-size-20);
+	--typ-body-line-height: var(--primitive-line-height-body);
+	--typ-body-letter-spacing: 0;
+
+	--typ-caption-font-family: var(--font-family-content);
+	--typ-caption-font-weight: var(--primitive-font-weight-normal);
+	--typ-caption-font-size: var(--primitive-type-size-16);
+	--typ-caption-line-height: var(--primitive-line-height-body);
+	--typ-caption-letter-spacing: 0;
+
+	--typ-interactive-1-font-family: var(--font-family-interactive);
+	--typ-interactive-1-font-weight: var(--primitive-font-weight-medium);
+	--typ-interactive-1-font-size: var(--primitive-type-size-14);
+	--typ-interactive-1-line-height: var(--primitive-line-height-interactive);
+	--typ-interactive-1-letter-spacing: 0;
+
+	--typ-interactive-2-font-family: var(--font-family-interactive);
+	--typ-interactive-2-font-weight: var(--primitive-font-weight-medium);
+	--typ-interactive-2-font-size: var(--typ-interactive-1-font-size);
+	--typ-interactive-2-line-height: var(--primitive-line-height-interactive);
+	--typ-interactive-2-letter-spacing: 0;
+
 	--font-weight-normal: var(--primitive-font-weight-normal);
 	--font-weight-medium: var(--primitive-font-weight-medium);
 	--font-weight-semibold: var(--primitive-font-weight-semibold);
+	--font-weight-bold: var(--primitive-font-weight-bold);
 	--line-height-tight: var(--primitive-line-height-tight);
 	--line-height-normal: var(--primitive-line-height-normal);
 	--line-height-relaxed: var(--primitive-line-height-relaxed);
@@ -93,4 +178,101 @@
 	/* ── Motion ────────────────────────────────────────────────────────────── */
 	--duration-fast: var(--primitive-duration-fast);
 	--duration-normal: var(--primitive-duration-normal);
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--color-success-bg: color-mix(in srgb, var(--primitive-emerald-500) 18%, transparent);
+		--color-success-bg-hover: color-mix(in srgb, var(--primitive-emerald-500) 28%, transparent);
+		--color-success-text: var(--primitive-emerald-300);
+		--color-success-border: color-mix(in srgb, var(--primitive-emerald-500) 35%, transparent);
+
+		--color-danger-tonal-bg: color-mix(in srgb, var(--primitive-red-500) 18%, transparent);
+		--color-danger-tonal-bg-hover: color-mix(in srgb, var(--primitive-red-500) 28%, transparent);
+		--color-danger-tonal-text: var(--color-error-text);
+		--color-danger-tonal-text-hover: var(--primitive-red-foreground-200);
+		--color-danger-tonal-border: color-mix(in srgb, var(--primitive-red-500) 35%, transparent);
+		--color-danger-tonal-border-hover: color-mix(in srgb, var(--primitive-red-500) 45%, transparent);
+	}
+}
+
+/**
+ * Typography utilities — prefer these or --typ-* variables over ad-hoc font rules.
+ * Landing: `routes/+page.svelte` uses `.landing-typography` + typ-h1 + typ-display1--inherit-size for the Beth Ellen + Crimson exception (see that file).
+ */
+.typ-h1 {
+	font-family: var(--typ-h1-font-family);
+	font-weight: var(--typ-h1-font-weight);
+	font-size: var(--typ-h1-font-size);
+	line-height: var(--typ-h1-line-height);
+	letter-spacing: var(--typ-h1-letter-spacing);
+}
+
+.typ-display1 {
+	font-family: var(--typ-display1-font-family);
+	font-weight: var(--typ-display1-font-weight);
+	font-size: var(--typ-display1-font-size);
+	line-height: var(--typ-display1-line-height);
+	letter-spacing: var(--typ-display1-letter-spacing);
+}
+
+.typ-display1--inherit-size {
+	font-size: inherit;
+	line-height: inherit;
+}
+
+.typ-h2 {
+	font-family: var(--typ-h2-font-family);
+	font-weight: var(--typ-h2-font-weight);
+	font-size: var(--typ-h2-font-size);
+	line-height: var(--typ-h2-line-height);
+	letter-spacing: var(--typ-h2-letter-spacing);
+}
+
+.typ-display2 {
+	font-family: var(--typ-display2-font-family);
+	font-weight: var(--typ-display2-font-weight);
+	font-size: var(--typ-display2-font-size);
+	line-height: var(--typ-display2-line-height);
+	letter-spacing: var(--typ-display2-letter-spacing);
+}
+
+.typ-h3 {
+	font-family: var(--typ-h3-font-family);
+	font-weight: var(--typ-h3-font-weight);
+	font-size: var(--typ-h3-font-size);
+	line-height: var(--typ-h3-line-height);
+	letter-spacing: var(--typ-h3-letter-spacing);
+}
+
+.typ-body {
+	font-family: var(--typ-body-font-family);
+	font-weight: var(--typ-body-font-weight);
+	font-size: var(--typ-body-font-size);
+	line-height: var(--typ-body-line-height);
+	letter-spacing: var(--typ-body-letter-spacing);
+}
+
+.typ-caption {
+	font-family: var(--typ-caption-font-family);
+	font-weight: var(--typ-caption-font-weight);
+	font-size: var(--typ-caption-font-size);
+	line-height: var(--typ-caption-line-height);
+	letter-spacing: var(--typ-caption-letter-spacing);
+}
+
+.typ-interactive-1 {
+	font-family: var(--typ-interactive-1-font-family);
+	font-weight: var(--typ-interactive-1-font-weight);
+	font-size: var(--typ-interactive-1-font-size);
+	line-height: var(--typ-interactive-1-line-height);
+	letter-spacing: var(--typ-interactive-1-letter-spacing);
+}
+
+.typ-interactive-2 {
+	font-family: var(--typ-interactive-2-font-family);
+	font-weight: var(--typ-interactive-2-font-weight);
+	font-size: var(--typ-interactive-2-font-size);
+	line-height: var(--typ-interactive-2-line-height);
+	letter-spacing: var(--typ-interactive-2-letter-spacing);
 }

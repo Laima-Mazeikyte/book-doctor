@@ -11,9 +11,9 @@
 </script>
 
 <div class="hero">
-	<h1 class="hero__title">{title}</h1>
+	<h1 class="hero__title typ-display1">{title}</h1>
 	{#if lead}
-		<p class="hero__lead">{lead}</p>
+		<p class="hero__lead typ-body">{lead}</p>
 	{/if}
 	{#if children}
 		<div class="hero__actions">
@@ -24,16 +24,11 @@
 
 <style>
 	.hero__title {
-		font-size: var(--font-size-3xl);
-		font-weight: var(--font-weight-semibold);
-		letter-spacing: -0.02em;
 		margin: 0 0 var(--space-3) 0;
 	}
 	.hero__lead {
 		margin: 0 0 var(--space-6) 0;
 		color: var(--color-text-muted);
-		font-size: var(--font-size-base);
-		line-height: var(--line-height-relaxed);
 		max-width: 36ch;
 	}
 	.hero__actions {

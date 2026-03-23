@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { get } from 'svelte/store';
 	import { getSupabase } from '$lib/supabase';
 	import { authStore, isAnonymousOrSignedOut, signedInEmail } from '$lib/stores/auth';
+	import { mobileMenuOpen } from '$lib/stores/mobileMenu';
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
@@ -16,7 +18,6 @@
 	let authModalInitialTab = $state<'signin' | 'signup'>('signin');
 	let bugModalOpen = $state(false);
 	let accountDropdownOpen = $state(false);
-	let mobileMenuOpen = $state(false);
 	let accountTriggerEl = $state<HTMLButtonElement | null>(null);
 	let accountPanelEl = $state<HTMLDivElement | null>(null);
 	let mobileMenuEl = $state<HTMLDivElement | null>(null);
@@ -56,7 +57,7 @@
 
 	function toggleAccountDropdown() {
 		accountDropdownOpen = !accountDropdownOpen;
-		if (accountDropdownOpen) mobileMenuOpen = false;
+		if (accountDropdownOpen) mobileMenuOpen.set(false);
 	}
 
 	function closeAccountDropdown() {
@@ -64,12 +65,12 @@
 	}
 
 	function toggleMobileMenu() {
-		mobileMenuOpen = !mobileMenuOpen;
-		if (mobileMenuOpen) accountDropdownOpen = false;
+		mobileMenuOpen.update((v) => !v);
+		if (get(mobileMenuOpen)) accountDropdownOpen = false;
 	}
 
 	function closeMobileMenu() {
-		mobileMenuOpen = false;
+		mobileMenuOpen.set(false);
 	}
 
 	function handleClickOutsideAccount(e: MouseEvent) {
@@ -92,9 +93,16 @@
 	}
 
 	onMount(() => {
+		const mq = window.matchMedia('(min-width: 768px)');
+		const closeMenuIfDesktop = () => {
+			if (mq.matches) mobileMenuOpen.set(false);
+		};
+		mq.addEventListener('change', closeMenuIfDesktop);
+
 		document.addEventListener('click', handleClickOutsideAccount);
 		document.addEventListener('keydown', handleKeydown);
 		return () => {
+			mq.removeEventListener('change', closeMenuIfDesktop);
 			document.removeEventListener('click', handleClickOutsideAccount);
 			document.removeEventListener('keydown', handleKeydown);
 		};
@@ -107,7 +115,7 @@
 			<button
 				type="button"
 				class="app-header__hamburger"
-				aria-expanded={mobileMenuOpen}
+				aria-expanded={$mobileMenuOpen}
 				aria-label={t('shared.header.openMenu')}
 				aria-controls="app-header-mobile-menu"
 				onclick={toggleMobileMenu}
@@ -207,7 +215,7 @@
 		</div>
 	</div>
 
-	{#if mobileMenuOpen}
+	{#if $mobileMenuOpen}
 		<div
 			id="app-header-mobile-menu"
 			class="app-header__mobile-menu"
@@ -271,7 +279,7 @@
 		background: var(--color-card-bg);
 		border-bottom: 1px solid var(--color-border);
 		position: relative;
-		box-shadow: 0 1px 0 0 rgba(0, 0, 0, 0.04);
+		box-shadow: var(--shadow-header-line);
 	}
 	.app-header__inner {
 		max-width: var(--content-width-narrow);
@@ -295,8 +303,11 @@
 		flex-shrink: 0;
 	}
 	.app-header__cta {
-		font-size: var(--font-size-sm);
-		font-weight: var(--font-weight-medium);
+		font-family: var(--typ-interactive-2-font-family);
+		font-size: var(--typ-interactive-2-font-size);
+		font-weight: var(--typ-interactive-2-font-weight);
+		line-height: var(--typ-interactive-2-line-height);
+		letter-spacing: var(--typ-interactive-2-letter-spacing);
 		color: var(--color-bg);
 		text-decoration: none;
 		white-space: nowrap;
@@ -312,8 +323,11 @@
 		color: var(--color-bg);
 	}
 	.app-header__nav-link {
-		font-size: var(--font-size-sm);
-		font-weight: var(--font-weight-medium);
+		font-family: var(--typ-interactive-2-font-family);
+		font-size: var(--typ-interactive-2-font-size);
+		font-weight: var(--typ-interactive-2-font-weight);
+		line-height: var(--typ-interactive-2-line-height);
+		letter-spacing: var(--typ-interactive-2-letter-spacing);
 		color: var(--color-text-muted);
 		text-decoration: none;
 		white-space: nowrap;
@@ -384,7 +398,11 @@
 		width: 100%;
 		padding: var(--space-2) var(--space-3);
 		text-align: left;
-		font-size: var(--font-size-sm);
+		font-family: var(--typ-interactive-2-font-family);
+		font-size: var(--typ-interactive-2-font-size);
+		font-weight: var(--typ-interactive-2-font-weight);
+		line-height: var(--typ-interactive-2-line-height);
+		letter-spacing: var(--typ-interactive-2-letter-spacing);
 		color: var(--color-text);
 		background: none;
 		border: none;
@@ -396,7 +414,11 @@
 	}
 	.app-header__account-email {
 		padding: var(--space-2) var(--space-3);
-		font-size: var(--font-size-sm);
+		font-family: var(--typ-interactive-2-font-family);
+		font-size: var(--typ-interactive-2-font-size);
+		font-weight: var(--typ-interactive-2-font-weight);
+		line-height: var(--typ-interactive-2-line-height);
+		letter-spacing: var(--typ-interactive-2-letter-spacing);
 		color: var(--color-text-muted);
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -408,8 +430,11 @@
 		display: block;
 		text-align: center;
 		padding: var(--space-1) var(--space-3);
-		font-size: var(--font-size-sm);
-		font-weight: var(--font-weight-medium);
+		font-family: var(--typ-interactive-2-font-family);
+		font-size: var(--typ-interactive-2-font-size);
+		font-weight: var(--typ-interactive-2-font-weight);
+		line-height: var(--typ-interactive-2-line-height);
+		letter-spacing: var(--typ-interactive-2-letter-spacing);
 		color: var(--color-bg);
 		text-decoration: none;
 		border-radius: var(--radius-pill);
@@ -447,15 +472,19 @@
 	.app-header__mobile-menu {
 		position: fixed;
 		top: 0;
+		left: 0;
 		right: 0;
 		bottom: 0;
-		width: min(20rem, 85vw);
+		width: 100%;
+		max-width: 100vw;
+		min-height: 100dvh;
 		background: var(--color-card-bg);
-		border-left: 1px solid var(--color-border);
-		z-index: 100;
+		border: none;
+		/* Above rate page fixed bottom bar (z-index 100); below modal overlays / ratings drawer (200+) */
+		z-index: 180;
 		overflow: auto;
 		padding: var(--space-6) var(--space-4);
-		box-shadow: -4px 0 20px rgba(0, 0, 0, 0.1);
+		box-shadow: var(--shadow-panel-edge);
 	}
 	.app-header__mobile-menu-inner {
 		display: flex;
@@ -468,7 +497,11 @@
 		gap: var(--space-2);
 	}
 	.app-header__mobile-link {
-		font-size: var(--font-size-base);
+		font-family: var(--typ-interactive-1-font-family);
+		font-size: var(--typ-interactive-1-font-size);
+		font-weight: var(--typ-interactive-1-font-weight);
+		line-height: var(--typ-interactive-1-line-height);
+		letter-spacing: var(--typ-interactive-1-letter-spacing);
 		color: var(--color-text);
 		text-decoration: none;
 		padding: var(--space-3);
@@ -486,7 +519,11 @@
 		border-top: 1px solid var(--color-border);
 	}
 	.app-header__mobile-email {
-		font-size: var(--font-size-sm);
+		font-family: var(--typ-interactive-2-font-family);
+		font-size: var(--typ-interactive-2-font-size);
+		font-weight: var(--typ-interactive-2-font-weight);
+		line-height: var(--typ-interactive-2-line-height);
+		letter-spacing: var(--typ-interactive-2-letter-spacing);
 		color: var(--color-text-muted);
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -494,7 +531,11 @@
 	}
 	.app-header__mobile-btn {
 		padding: var(--space-3) var(--space-4);
-		font-size: var(--font-size-sm);
+		font-family: var(--typ-interactive-2-font-family);
+		font-size: var(--typ-interactive-2-font-size);
+		font-weight: var(--typ-interactive-2-font-weight);
+		line-height: var(--typ-interactive-2-line-height);
+		letter-spacing: var(--typ-interactive-2-letter-spacing);
 		background: var(--color-bg-muted);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius);
@@ -503,8 +544,8 @@
 		text-align: left;
 	}
 	.app-header__mobile-btn--primary {
-		background: var(--color-accent);
-		border-color: var(--color-accent);
+		background: var(--color-button-primary-bg);
+		border-color: var(--color-button-primary-bg);
 		color: var(--color-button-primary-text);
 	}
 	.app-header__mobile-close {
@@ -524,8 +565,8 @@
 	.app-header__mobile-backdrop {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.3);
-		z-index: 99;
+		background: var(--color-overlay-scrim-soft);
+		z-index: 179;
 	}
 
 	@media (min-width: 768px) {

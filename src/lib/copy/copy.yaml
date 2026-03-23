@@ -40,6 +40,8 @@ en:
       searching: "Searching…"
       loadingBooks: "Loading books…"
     getRecommendations: "Get Book Recommendations"
+    remainingToRecommend_one: "Rate 1 more book"
+    remainingToRecommend_other: "Rate {{remaining}} more books"
 
   bookmarks:
     title: "Bookmarks"

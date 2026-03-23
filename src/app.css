@@ -9,18 +9,41 @@
 }
 
 html {
-	font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
 	font-size: 100%;
-	line-height: var(--line-height-normal);
-	color: var(--color-text);
-	background: var(--color-bg);
 	-webkit-text-size-adjust: 100%;
 	scrollbar-gutter: stable;
+	color: var(--color-text);
+	background: var(--color-bg);
 }
 
 body {
 	margin: 0;
 	min-height: 100vh;
+	font-family: var(--font-family-content);
+	font-size: var(--typ-body-font-size);
+	line-height: var(--typ-body-line-height);
+	font-weight: var(--typ-body-font-weight);
+	letter-spacing: var(--typ-body-letter-spacing);
+}
+
+/* :where() keeps specificity at 0 so .typ-display1/2, .typ-h1–h3, etc. always win */
+:where(h1, h2, h3, h4, h5, h6) {
+	font-family: var(--font-family-content);
+	font-size: inherit;
+	font-weight: inherit;
+	line-height: inherit;
+	letter-spacing: inherit;
+	margin: 0;
+}
+
+button,
+input,
+select,
+textarea,
+a,
+summary,
+label {
+	font-family: var(--font-family-interactive);
 }
 
 .skip-link {
@@ -33,7 +56,11 @@ body {
 	color: var(--color-focus);
 	border: 2px solid var(--color-focus);
 	border-radius: var(--radius-sm);
-	font-size: var(--font-size-base);
+	font-family: var(--typ-interactive-1-font-family);
+	font-size: var(--typ-interactive-1-font-size);
+	font-weight: var(--typ-interactive-1-font-weight);
+	line-height: var(--typ-interactive-1-line-height);
+	letter-spacing: var(--typ-interactive-1-letter-spacing);
 	text-decoration: none;
 	transition: top var(--duration-normal) var(--ease-default);
 }
@@ -62,23 +89,49 @@ main.landing-page {
 	max-width: var(--content-width-narrow);
 }
 
-/* Shared grid for BookCard and RecommendationCard – ensures identical cover sizes */
+/* Book-list routes: use viewport width so the card grid can show more columns */
+main.main-book-grid-shell {
+	max-width: none;
+}
+
+/*
+ * Book card layout tokens — tweak shell, stars, and body in one place.
+ * Component: src/lib/components/BookCard.svelte
+ */
+:root {
+	--book-card-radius: var(--radius);
+	--book-card-body-padding: 8px;
+	--book-card-action-height: 2.25rem;
+	--book-card-star-min: 2.25rem;
+	--book-card-star-font: 1.375rem;
+	--book-card-star-min-sm: 1.75rem;
+	--book-card-star-font-sm: 1.1rem;
+	/* Min column width for `.book-card-grid` (480px+) */
+	--book-card-grid-min: 200px;
+}
+@media (min-width: 768px) {
+	:root {
+		--book-card-grid-min: 220px;
+	}
+}
+@media (min-width: 1280px) {
+	:root {
+		--book-card-grid-min: 240px;
+	}
+}
+
+/* Shared grid for book cards — single definition app-wide (no per-route overrides) */
 .book-card-grid {
 	list-style: none;
 	margin: 0;
 	padding: 0;
 	display: grid;
 	grid-template-columns: repeat(2, 1fr);
-	gap: var(--space-2);
+	gap: 8px;
 }
 @media (min-width: 480px) {
 	.book-card-grid {
-		grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
-	}
-}
-@media (min-width: 640px) {
-	.book-card-grid {
-		gap: var(--space-3);
+		grid-template-columns: repeat(auto-fill, minmax(var(--book-card-grid-min), 1fr));
 	}
 }
 .book-card-grid li {

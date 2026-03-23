@@ -35,7 +35,11 @@
 		background: var(--color-error-bg);
 		border: 1px solid var(--color-error-border);
 		border-radius: var(--radius-sm);
-		font-size: var(--font-size-sm);
+		font-family: var(--typ-caption-font-family);
+		font-size: var(--typ-caption-font-size);
+		font-weight: var(--typ-caption-font-weight);
+		line-height: var(--typ-caption-line-height);
+		letter-spacing: var(--typ-caption-letter-spacing);
 		color: var(--color-error-text);
 	}
 	.error-banner__message {

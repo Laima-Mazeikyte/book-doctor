@@ -33,6 +33,18 @@
 
 	let { children } = $props();
 
+	/** Routes with `.book-card-grid` — drop main max-width so more columns fit on large screens */
+	const isBookGridShell = $derived.by(() => {
+		const pathname = $page.url.pathname;
+		return (
+			pathname === '/bookmarks' ||
+			pathname === '/rated' ||
+			pathname === '/not-interested' ||
+			pathname === '/rate' ||
+			pathname.startsWith('/rate/')
+		);
+	});
+
 	/** Track if we had a user so we only reset ratings when they sign out, not on initial load. */
 	let hadUserBefore = $state(false);
 
@@ -391,11 +403,19 @@
 	<link rel="icon" href={favicon} />
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-	<link href="https://fonts.googleapis.com/css2?family=Beth+Ellen&display=swap" rel="stylesheet" />
+	<link
+		href="https://fonts.googleapis.com/css2?family=Beth+Ellen&family=Crimson+Text:ital,wght@0,400;0,600;0,700&family=Inter:wght@400;500;600&display=swap"
+		rel="stylesheet"
+	/>
 </svelte:head>
 
 <SkipLink />
 <AppHeader />
-<main id="main" class:rate-page={$page.url.pathname === '/rate'} class:landing-page={$page.url.pathname === '/'}>
+<main
+	id="main"
+	class:rate-page={$page.url.pathname === '/rate'}
+	class:landing-page={$page.url.pathname === '/'}
+	class:main-book-grid-shell={isBookGridShell}
+>
 	{@render children()}
 </main>

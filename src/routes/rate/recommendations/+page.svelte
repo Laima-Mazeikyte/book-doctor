@@ -3,7 +3,8 @@
 	import { get } from 'svelte/store';
 	import { goto } from '$app/navigation';
 	import Button from '$lib/components/Button.svelte';
-	import RecommendationCard from '$lib/components/RecommendationCard.svelte';
+	import BookCard from '$lib/components/BookCard.svelte';
+	import BookCardSkeleton from '$lib/components/BookCardSkeleton.svelte';
 	import RecommendationsEmpty from '$lib/components/RecommendationsEmpty.svelte';
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
@@ -35,7 +36,7 @@
 		if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'ArrowUp' && key !== 'ArrowDown') return;
 		if (!gridEl || books.length === 0) return;
 
-		const cards = Array.from(gridEl.querySelectorAll<HTMLElement>('.recommendation-card'));
+		const cards = Array.from(gridEl.querySelectorAll<HTMLElement>('.book-card'));
 		const currentCard = cards.find((card) => card.contains(document.activeElement as Node));
 		const currentIndex = currentCard ? cards.indexOf(currentCard) : -1;
 		if (currentIndex === -1) return;
@@ -98,8 +99,9 @@
 	}
 
 	function handleNotInterested(book: Book) {
-		const wasNotInterested = notInterestedStore.has(book.book_id);
-		const nowNotInterested = notInterestedStore.toggle(book.book_id);
+		const bid = book.book_id ?? 0;
+		const wasNotInterested = notInterestedStore.has(bid);
+		const nowNotInterested = notInterestedStore.toggle(bid);
 		// Mutually exclusive with bookmark: when marking not interested, remove from bookmarks
 		if (!wasNotInterested && planToReadStore.has(book.id)) {
 			planToReadStore.toggle(book.id, book.book_id);
@@ -116,7 +118,7 @@
 		const wasBookmarked = planToReadStore.has(book.id);
 		planToReadStore.toggle(id, book.book_id);
 		// Mutually exclusive with not interested: when adding bookmark, clear not interested
-		if (!wasBookmarked) {
+		if (!wasBookmarked && book.book_id != null) {
 			notInterestedStore.remove(book.book_id);
 		}
 	}
@@ -241,7 +243,7 @@
 
 <div class="recommendations-page">
 	{#if viewMode === 'loading'}
-		<h1 class="recommendations-page__title">{t('recommendations.title')}</h1>
+		<h1 class="recommendations-page__title recommendations-page__title--spaced typ-display2">{t('recommendations.title')}</h1>
 		<RecommendationsLoading />
 	{:else if viewMode === 'timedOut'}
 		<RecommendationsEmpty
@@ -254,10 +256,10 @@
 			message={error ?? t('recommendations.noRecommendationsYet')}
 		/>
 	{:else if viewMode === 'history'}
-		<h1 class="recommendations-page__title">{t('recommendations.myRecommendations')}</h1>
+		<h1 class="recommendations-page__title typ-display2">{t('recommendations.myRecommendations')}</h1>
 
 		<section class="recommendations-page__unique" aria-labelledby="unique-books-heading">
-			<h2 id="unique-books-heading" class="recommendations-page__unique-heading">
+			<h2 id="unique-books-heading" class="recommendations-page__unique-heading typ-body">
 				{#if uniqueBooksLoading}
 					{t('recommendations.allUniqueTitles')}
 				{:else}
@@ -265,22 +267,27 @@
 				{/if}
 			</h2>
 			{#if uniqueBooksLoading}
-				<p class="recommendations-page__unique-loading">{t('recommendations.title')}…</p>
+				<ul class="recommendations-page__unique-grid book-card-grid" aria-busy="true" aria-label={t('recommendations.allUniqueTitles')}>
+					{#each Array(6) as _}
+						<li><BookCardSkeleton /></li>
+					{/each}
+				</ul>
 			{:else if uniqueBooks.length > 0}
 				<ul class="recommendations-page__unique-grid book-card-grid" aria-label={t('recommendations.allUniqueTitles')}>
 					{#each uniqueBooks as book (book.id)}
 						<li>
-							<RecommendationCard
+							<BookCard
+								context="recommendations"
 								{book}
 								bookmarked={$planToReadStore.has(book.id)}
 								onBookmark={(id) => handleBookmark(book, id)}
-								currentRating={$ratingsStore.get(book.id)}
+								currentRating={$ratingsStore.get(book.id) ?? null}
 								onRate={(id, value) => {
 									ratingsStore.setRating(id, value, book.book_id, book);
 									if (get(planToReadStore).has(id)) planToReadStore.toggle(id, book.book_id);
 								}}
 								onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id)}
-								notInterested={$notInterestedStore.has(book.book_id)}
+								notInterested={$notInterestedStore.has(book.book_id ?? 0)}
 								onNotInterested={() => handleNotInterested(book)}
 							/>
 						</li>
@@ -290,7 +297,7 @@
 		</section>
 
 		<section class="recommendations-page__batches" aria-labelledby="batches-heading">
-			<h2 id="batches-heading" class="recommendations-page__batches-title">{t('recommendations.recommendationBatches')}</h2>
+			<h2 id="batches-heading" class="recommendations-page__batches-title typ-h3">{t('recommendations.recommendationBatches')}</h2>
 			<ul class="recommendations-page__history" aria-label={t('recommendations.aria.pastRuns')}>
 				{#each runs as run (run.request_id)}
 					<li class="recommendations-page__history-item">
@@ -308,7 +315,7 @@
 			</ul>
 		</section>
 	{:else if viewMode === 'single'}
-		<h1 class="recommendations-page__title">{t('recommendations.title')}</h1>
+		<h1 class="recommendations-page__title typ-display2">{t('recommendations.title')}</h1>
 		{#if $page.url.searchParams.get('from') === 'history'}
 			<p class="recommendations-page__back-wrap">
 				<Button
@@ -333,17 +340,18 @@
 			>
 				{#each books as book (book.id)}
 					<li role="gridcell">
-						<RecommendationCard
+						<BookCard
+							context="recommendations"
 							{book}
 							bookmarked={$planToReadStore.has(book.id)}
 							onBookmark={(id) => handleBookmark(book, id)}
-							currentRating={$ratingsStore.get(book.id)}
+							currentRating={$ratingsStore.get(book.id) ?? null}
 							onRate={(id, value) => {
 								ratingsStore.setRating(id, value, book.book_id, book);
 								if (get(planToReadStore).has(id)) planToReadStore.toggle(id, book.book_id);
 							}}
 							onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id)}
-							notInterested={$notInterestedStore.has(book.book_id)}
+							notInterested={$notInterestedStore.has(book.book_id ?? 0)}
 							onNotInterested={() => handleNotInterested(book)}
 						/>
 					</li>
@@ -356,27 +364,22 @@
 <style>
 	.recommendations-page {
 		padding-bottom: var(--space-8);
+		text-align: center;
 	}
 	.recommendations-page__title {
-		font-family: 'Beth Ellen', cursive;
-		font-size: var(--font-size-3xl);
-		margin: 0 0 var(--space-8) 0;
+		margin: 0 0 var(--space-3) 0;
 		text-align: center;
+	}
+	.recommendations-page__title--spaced {
+		margin-bottom: var(--space-8);
 	}
 	.recommendations-page__unique {
 		margin-bottom: var(--space-8);
 	}
 	.recommendations-page__unique-heading {
-		font-size: var(--font-size-base);
 		font-weight: var(--font-weight-normal);
-		line-height: var(--line-height-normal);
 		margin: 0 0 var(--space-3) 0;
 		text-align: center;
-	}
-	.recommendations-page__unique-loading {
-		color: var(--color-text-muted);
-		margin: 0;
-		font-size: var(--font-size-sm);
 	}
 	.recommendations-page__unique-grid {
 		list-style: none;
@@ -387,8 +390,6 @@
 		margin-bottom: var(--space-8);
 	}
 	.recommendations-page__batches-title {
-		font-size: var(--font-size-lg);
-		font-weight: var(--font-weight-semibold);
 		margin: 0 0 var(--space-3) 0;
 	}
 	.recommendations-page__empty-run {
@@ -414,7 +415,11 @@
 		border-radius: var(--radius);
 	}
 	.recommendations-page__history-date {
-		font-size: var(--font-size-base);
+		font-family: var(--typ-caption-font-family);
+		font-size: var(--typ-caption-font-size);
+		font-weight: var(--typ-caption-font-weight);
+		line-height: var(--typ-caption-line-height);
+		letter-spacing: var(--typ-caption-letter-spacing);
 		color: var(--color-text);
 	}
 	.recommendations-page__back-wrap {
