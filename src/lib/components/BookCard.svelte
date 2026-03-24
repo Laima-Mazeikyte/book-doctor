@@ -1096,13 +1096,14 @@
 	.book-card__genres {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--space-1);
+		gap: var(--space-2);
 		list-style: none;
 		margin: 0;
 		padding: 0;
 	}
 	.book-card__genre {
-		padding: var(--space-1) var(--space-2);
+		padding-block: var(--space-2);
+		padding-inline: var(--space-4);
 		font-family: var(--typ-interactive-1-font-family);
 		font-size: var(--typ-interactive-1-font-size);
 		font-weight: var(--typ-interactive-1-font-weight);
@@ -1111,6 +1112,6 @@
 		background: var(--color-book-card-tag-bg);
 		border-radius: var(--radius-pill);
 		color: var(--color-book-card-tag-text);
-		border: 1px solid var(--color-book-card-tag-border, var(--color-border));
+		border: none;
 	}
 </style>
