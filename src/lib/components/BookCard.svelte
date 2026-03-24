@@ -739,7 +739,7 @@
 
 	.book-card__actions {
 		display: flex;
-		flex-wrap: wrap;
+		flex-wrap: nowrap;
 		gap: var(--space-2);
 		align-items: center;
 		justify-content: center;

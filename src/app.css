@@ -93,6 +93,11 @@ main.landing-page {
 main.main-book-grid-shell {
 	max-width: none;
 }
+@media (max-width: 479px) {
+	main.main-book-grid-shell {
+		padding-inline: 8px;
+	}
+}
 
 /*
  * Book card layout tokens — tweak shell, stars, and body in one place.
