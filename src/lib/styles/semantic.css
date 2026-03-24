@@ -43,6 +43,14 @@
 	--color-danger-tonal-border: color-mix(in srgb, var(--primitive-red-700) 40%, transparent);
 	--color-danger-tonal-border-hover: color-mix(in srgb, var(--primitive-red-700) 50%, transparent);
 
+	/* ── Book card: pill actions (Save / Read / Summary / back / stars, etc.) ─ */
+	/** Softer than global `--color-bg-hover` so light-mode hovers stay airy on covers. */
+	--color-book-card-action-hover-bg: color-mix(
+		in srgb,
+		var(--color-bg-muted) 62%,
+		var(--color-bg-hover) 38%
+	);
+
 	/* ── Book card: active action chips (neutral; bookmark / not interested) ─ */
 	/** Inverted fill reads clearly as “selected” vs muted default buttons. */
 	--color-book-card-chip-on-bg: var(--primitive-gray-900);
@@ -51,7 +59,7 @@
 	--color-book-card-chip-on-border: var(--primitive-gray-900);
 
 	/* ── Book card: genre tag pills (neutral contrast vs card surface) ─────── */
-	--color-book-card-tag-bg: color-mix(in srgb, var(--primitive-gray-900) 6%, var(--primitive-gray-100));
+	--color-book-card-tag-bg: var(--primitive-pale-aqua);
 	--color-book-card-tag-text: var(--color-text);
 	--color-book-card-tag-border: var(--primitive-gray-400);
 
@@ -211,9 +219,11 @@
 		--color-book-card-chip-on-text: var(--primitive-gray-900);
 		--color-book-card-chip-on-border: var(--primitive-gray-500);
 
-		--color-book-card-tag-bg: color-mix(in srgb, var(--primitive-gray-500) 22%, transparent);
+		--color-book-card-tag-bg: var(--primitive-deep-aqua);
 		--color-book-card-tag-text: var(--color-text);
 		--color-book-card-tag-border: color-mix(in srgb, var(--primitive-gray-500) 55%, transparent);
+
+		--color-book-card-action-hover-bg: var(--color-bg-hover);
 	}
 }
 

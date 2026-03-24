@@ -26,6 +26,10 @@
 	/** Muted accent fills, success chrome, focus halo (warm neutral). */
 	--primitive-accent-muted: #ece9e2;
 	--primitive-sand: #e8e4dc;
+	/** Cool muted surface (e.g. book card genre pills, light). */
+	--primitive-pale-aqua: #d3e0e0;
+	/** Deep cool fill (e.g. book card genre pills, dark). */
+	--primitive-deep-aqua: #243333;
 	/* Error & danger */
 	--primitive-red-50: #fef2f2;
 	--primitive-red-100: #fee2e2;

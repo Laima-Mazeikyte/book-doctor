@@ -838,7 +838,7 @@
 			border-color var(--duration-fast) var(--ease-default);
 	}
 	.book-card__action:hover {
-		background: var(--color-bg-hover);
+		background: var(--color-book-card-action-hover-bg);
 	}
 	.book-card__action:focus-visible {
 		outline: 2px solid var(--color-focus);
@@ -978,7 +978,7 @@
 			border-color var(--duration-fast) var(--ease-default);
 	}
 	.book-card__back:hover {
-		background: var(--color-bg-hover);
+		background: var(--color-book-card-action-hover-bg);
 		color: var(--color-text);
 	}
 	.book-card__back:focus-visible {
@@ -1022,7 +1022,7 @@
 		color: var(--color-text-muted);
 	}
 	.book-card__star:hover {
-		background: var(--color-bg-hover);
+		background: var(--color-book-card-action-hover-bg);
 		color: var(--color-text);
 	}
 	.book-card__star:focus-visible {
@@ -1183,7 +1183,7 @@
 		transition: background var(--duration-fast) var(--ease-default);
 	}
 	.book-card__summary-search-btn:hover {
-		background: var(--color-bg-hover);
+		background: var(--color-book-card-action-hover-bg);
 	}
 	.book-card__summary-search-btn:focus-visible {
 		outline: 2px solid var(--color-focus);
