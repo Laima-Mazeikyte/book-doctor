@@ -1,6 +1,6 @@
   <script lang="ts">
 	import { tick } from 'svelte';
-	import { Eye, X, Bookmark, Star, Ban, Search, ArrowLeft } from 'lucide-svelte';
+	import { BookOpenText, X, Bookmark, Star, Ban, Search, ArrowLeft } from 'lucide-svelte';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
@@ -265,12 +265,15 @@
 			<button
 				bind:this={summaryBtnRef}
 				type="button"
-				class="book-card__summary-btn"
+				class="book-card__action book-card__action--reco-hoverable book-card__summary-action"
 				aria-label={t('shared.recommendationCard.seeSummary')}
 				aria-expanded={summaryOpen}
 				onclick={handleOpenSummary}
 			>
-				<Eye size={20} aria-hidden="true" />
+				<BookOpenText size={14} aria-hidden="true" />
+				<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">
+					{t('shared.recommendationCard.summary')}
+				</span>
 			</button>
 		</div>
 	</div>
@@ -577,30 +580,11 @@
 		opacity: 0.75;
 	}
 
-	.book-card__summary-btn {
+	.book-card__summary-action {
 		position: absolute;
 		top: var(--space-2);
 		right: var(--space-2);
 		z-index: 2;
-		width: var(--min-tap);
-		height: var(--min-tap);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 0;
-		border: none;
-		background: var(--color-bg-muted);
-		border-radius: var(--radius-pill);
-		cursor: pointer;
-		color: var(--color-text);
-		transition: background var(--duration-fast) var(--ease-default);
-	}
-	.book-card__summary-btn:hover {
-		background: var(--color-bg-hover);
-	}
-	.book-card__summary-btn:focus-visible {
-		outline: 2px solid var(--color-focus);
-		outline-offset: 2px;
 	}
 
 	.book-card__body {
@@ -743,7 +727,9 @@
 			transition-delay: 0ms !important;
 		}
 		.book-card__reco-layer--actions .book-card__action--reco-hoverable,
-		.book-card__reco-layer--actions .book-card__action--reco-hoverable .book-card__action-label--reco-hover-hint {
+		.book-card__reco-layer--actions .book-card__action--reco-hoverable .book-card__action-label--reco-hover-hint,
+		.book-card__media-inner .book-card__action--reco-hoverable,
+		.book-card__media-inner .book-card__action--reco-hoverable .book-card__action-label--reco-hover-hint {
 			transition-duration: 0.01ms !important;
 			transition-delay: 0ms !important;
 		}
@@ -771,7 +757,7 @@
 		padding: 0;
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-pill);
-		background: transparent;
+		background: var(--color-bg-muted);
 		color: var(--color-text);
 		cursor: pointer;
 		transition: background var(--duration-fast) var(--ease-default),
@@ -821,7 +807,8 @@
 	 * Collapsed rules apply from 480px up so touch tablets don’t show hint text without animation layout.
 	 */
 	@media (min-width: 480px) {
-		.book-card__reco-layer--actions .book-card__action--reco-hoverable {
+		.book-card__reco-layer--actions .book-card__action--reco-hoverable,
+		.book-card__media-inner .book-card__action--reco-hoverable {
 			width: auto;
 			min-width: var(--book-card-action-height, 2.25rem);
 			max-width: 100%;
@@ -834,7 +821,8 @@
 				color var(--duration-fast) var(--ease-default),
 				border-color var(--duration-fast) var(--ease-default);
 		}
-		.book-card__reco-layer--actions .book-card__action--reco-hoverable .book-card__action-label--reco-hover-hint {
+		.book-card__reco-layer--actions .book-card__action--reco-hoverable .book-card__action-label--reco-hover-hint,
+		.book-card__media-inner .book-card__action--reco-hoverable .book-card__action-label--reco-hover-hint {
 			display: inline-block;
 			max-width: 0;
 			opacity: 0;
@@ -847,12 +835,18 @@
 		.book-card__reco-layer--actions .book-card__action--reco-hoverable:hover .book-card__action-label--reco-hover-hint,
 		.book-card__reco-layer--actions
 			.book-card__action--reco-hoverable:focus-visible
+			.book-card__action-label--reco-hover-hint,
+		.book-card__media-inner .book-card__action--reco-hoverable:hover .book-card__action-label--reco-hover-hint,
+		.book-card__media-inner
+			.book-card__action--reco-hoverable:focus-visible
 			.book-card__action-label--reco-hover-hint {
 			max-width: 12rem;
 			opacity: 1;
 		}
 		.book-card__reco-layer--actions .book-card__action--reco-hoverable:hover,
-		.book-card__reco-layer--actions .book-card__action--reco-hoverable:focus-visible {
+		.book-card__reco-layer--actions .book-card__action--reco-hoverable:focus-visible,
+		.book-card__media-inner .book-card__action--reco-hoverable:hover,
+		.book-card__media-inner .book-card__action--reco-hoverable:focus-visible {
 			padding-inline-start: var(--space-2);
 			padding-inline-end: var(--space-3);
 			gap: var(--space-1);
@@ -903,7 +897,7 @@
 		padding: 0;
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-pill);
-		background: transparent;
+		background: var(--color-bg-muted);
 		color: var(--color-text-muted);
 		cursor: pointer;
 		transition: background var(--duration-fast) var(--ease-default),
