@@ -1,6 +1,6 @@
   <script lang="ts">
 	import { tick } from 'svelte';
-	import { Eye, X, Bookmark, Star, Ban, Search } from 'lucide-svelte';
+	import { Eye, X, Bookmark, Star, Ban, Search, ArrowLeft } from 'lucide-svelte';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
@@ -135,7 +135,7 @@
 	aria-label="{book.title} by {book.author}"
 >
 	<div class="book-card__media">
-		<div class="book-card__media-inner">
+		<div class="book-card__media-inner" class:book-card__media-inner--not-interested={notInterested}>
 			{#if showCoverImage}
 				<img
 					src={book.coverUrl}
@@ -167,46 +167,33 @@
 			<div class="book-card__actions">
 				<button
 					type="button"
-					class="book-card__action book-card__action--fill"
+					class="book-card__action"
 					class:book-card__action--saved={bookmarked}
-					class:book-card__action--icon={notInterested}
 					aria-pressed={bookmarked}
 					aria-label={bookmarked ? t('shared.recommendationCard.removeFromReadingList') : t('shared.recommendationCard.addToReadingList')}
 					onclick={handleBookmarkClick}
 				>
 					<Bookmark size={14} aria-hidden="true" />
-					{#if !notInterested}
-						<span>{bookmarked ? t('shared.recommendationCard.saved') : t('shared.recommendationCard.bookmark')}</span>
-					{/if}
 				</button>
 				<button
 					type="button"
-					class="book-card__action book-card__action--fill"
-					class:book-card__action--icon={notInterested}
+					class="book-card__action"
 					aria-pressed="false"
 					aria-label={t('shared.recommendationCard.markAsRead')}
 					onclick={handleReadClick}
 				>
 					<Star size={14} aria-hidden="true" />
-					{#if !notInterested}
-						<span>{t('shared.recommendationCard.read')}</span>
-					{/if}
 				</button>
 				{#if onNotInterested}
 					<button
 						type="button"
 						class="book-card__action"
-						class:book-card__action--icon={!notInterested}
-						class:book-card__action--fill={notInterested}
 						class:book-card__action--not-interested-active={notInterested}
 						aria-pressed={notInterested}
 						aria-label={notInterested ? t('shared.recommendationCard.removeFromNotInterested') : t('shared.recommendationCard.notInterested')}
 						onclick={handleNotInterestedClick}
 					>
 						<Ban size={14} aria-hidden="true" />
-						{#if notInterested}
-							<span>{t('shared.recommendationCard.notInterested')}</span>
-						{/if}
 					</button>
 				{/if}
 			</div>
@@ -245,22 +232,19 @@
 						aria-label={t('shared.recommendationCard.backToWantToRead')}
 						onclick={() => (pendingRate = false)}
 					>
-						{t('shared.recommendationCard.back')}
+						<ArrowLeft size={14} aria-hidden="true" />
 					</button>
 				{/if}
 				{#if isRateContext && onNotInterested}
 					<button
 						type="button"
 						class="book-card__action book-card__action--rate-not-interested"
-						class:book-card__action--icon={!notInterested}
-						class:book-card__action--fill={notInterested}
 						class:book-card__action--not-interested-active={notInterested}
 						aria-pressed={notInterested}
 						aria-label={notInterested ? t('shared.recommendationCard.removeFromNotInterested') : t('shared.recommendationCard.notInterested')}
 						onclick={handleNotInterestedClick}
 					>
 						<Ban size={14} aria-hidden="true" />
-						<span>{t('shared.recommendationCard.notInterested')}</span>
 					</button>
 				{/if}
 			</div>
@@ -319,46 +303,33 @@
 					<div class="book-card__actions">
 						<button
 							type="button"
-							class="book-card__action book-card__action--fill"
+							class="book-card__action"
 							class:book-card__action--saved={bookmarked}
-							class:book-card__action--icon={notInterested}
 							aria-pressed={bookmarked}
 							aria-label={bookmarked ? t('shared.recommendationCard.removeFromReadingList') : t('shared.recommendationCard.addToReadingList')}
 							onclick={handleBookmarkClick}
 						>
 							<Bookmark size={14} aria-hidden="true" />
-							{#if !notInterested}
-								<span>{bookmarked ? t('shared.recommendationCard.saved') : t('shared.recommendationCard.bookmark')}</span>
-							{/if}
 						</button>
 						<button
 							type="button"
-							class="book-card__action book-card__action--fill"
-							class:book-card__action--icon={notInterested}
+							class="book-card__action"
 							aria-pressed="false"
 							aria-label={t('shared.recommendationCard.markAsRead')}
 							onclick={handleReadClick}
 						>
 							<Star size={14} aria-hidden="true" />
-							{#if !notInterested}
-								<span>{t('shared.recommendationCard.read')}</span>
-							{/if}
 						</button>
 						{#if onNotInterested}
 							<button
 								type="button"
 								class="book-card__action"
-								class:book-card__action--icon={!notInterested}
-								class:book-card__action--fill={notInterested}
 								class:book-card__action--not-interested-active={notInterested}
 								aria-pressed={notInterested}
 								aria-label={notInterested ? t('shared.recommendationCard.removeFromNotInterested') : t('shared.recommendationCard.notInterested')}
 								onclick={handleNotInterestedClick}
 							>
 								<Ban size={14} aria-hidden="true" />
-								{#if notInterested}
-									<span>{t('shared.recommendationCard.notInterested')}</span>
-								{/if}
 							</button>
 						{/if}
 					</div>
@@ -397,22 +368,19 @@
 								aria-label={t('shared.recommendationCard.backToWantToRead')}
 								onclick={() => (pendingRate = false)}
 							>
-								{t('shared.recommendationCard.back')}
+								<ArrowLeft size={14} aria-hidden="true" />
 							</button>
 						{/if}
 						{#if isRateContext && onNotInterested}
 							<button
 								type="button"
 								class="book-card__action book-card__action--rate-not-interested"
-								class:book-card__action--icon={!notInterested}
-								class:book-card__action--fill={notInterested}
 								class:book-card__action--not-interested-active={notInterested}
 								aria-pressed={notInterested}
 								aria-label={notInterested ? t('shared.recommendationCard.removeFromNotInterested') : t('shared.recommendationCard.notInterested')}
 								onclick={handleNotInterestedClick}
 							>
 								<Ban size={14} aria-hidden="true" />
-								<span>{t('shared.recommendationCard.notInterested')}</span>
 							</button>
 						{/if}
 					</div>
@@ -467,7 +435,11 @@
 		object-fit: cover;
 		object-position: center center;
 		border-radius: var(--radius-sm);
-		transition: transform var(--duration-normal) var(--ease-default);
+		transition: transform var(--duration-normal) var(--ease-default),
+			opacity var(--duration-fast) var(--ease-default);
+	}
+	.book-card__media-inner--not-interested .book-card__cover {
+		opacity: 0.3;
 	}
 	.book-card:hover .book-card__cover:not(.book-card__cover--no-image) {
 		transform: scale(1.05);
@@ -552,7 +524,8 @@
 		display: flex;
 		flex-wrap: nowrap;
 		gap: var(--space-2);
-		align-items: stretch;
+		align-items: center;
+		justify-content: center;
 		width: 100%;
 		min-width: 0;
 	}
@@ -561,24 +534,20 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		gap: var(--space-1);
-		padding: 0 var(--space-3);
-		min-height: var(--book-card-action-height, 2.25rem);
+		flex: 0 0 auto;
+		box-sizing: border-box;
+		width: var(--book-card-action-height, 2.25rem);
+		height: var(--book-card-action-height, 2.25rem);
+		min-width: var(--book-card-action-height, 2.25rem);
+		padding: 0;
 		border: 1px solid var(--color-border);
-		border-radius: var(--radius-sm);
+		border-radius: var(--radius-pill);
 		background: transparent;
 		color: var(--color-text);
-		font-family: var(--typ-interactive-2-font-family);
-		font-size: var(--typ-interactive-2-font-size);
-		font-weight: var(--typ-interactive-2-font-weight);
-		line-height: var(--typ-interactive-2-line-height);
-		letter-spacing: var(--typ-interactive-2-letter-spacing);
 		cursor: pointer;
 		transition: background var(--duration-fast) var(--ease-default),
 			color var(--duration-fast) var(--ease-default),
 			border-color var(--duration-fast) var(--ease-default);
-		white-space: nowrap;
-		min-width: 0;
 	}
 	.book-card__action:hover {
 		background: var(--color-bg-hover);
@@ -587,38 +556,26 @@
 		outline: 2px solid var(--color-focus);
 		outline-offset: 2px;
 	}
-	.book-card__action--fill {
-		flex: 1;
-	}
-	.book-card__action--icon {
-		flex: 0 0 auto;
-		min-width: 0;
-		width: var(--book-card-action-height, 2.25rem);
-		padding: 0 var(--space-1);
-	}
-	.book-card__action--icon :global(svg) {
-		flex-shrink: 0;
-	}
 	.book-card__action :global(svg) {
 		flex-shrink: 0;
 	}
 	.book-card__action--saved {
-		background: var(--color-success-bg);
-		color: var(--color-success-text);
-		border-color: var(--color-success-border);
+		background: var(--color-book-card-chip-on-bg);
+		color: var(--color-book-card-chip-on-text);
+		border-color: var(--color-book-card-chip-on-border);
 	}
 	.book-card__action--saved:hover {
-		background: var(--color-success-bg-hover);
+		background: var(--color-book-card-chip-on-bg-hover);
 	}
 	.book-card__action.book-card__action--not-interested-active {
-		background: var(--color-danger-tonal-bg);
-		color: var(--color-danger-tonal-text);
-		border-color: var(--color-danger-tonal-border);
+		background: var(--color-book-card-chip-on-bg);
+		color: var(--color-book-card-chip-on-text);
+		border-color: var(--color-book-card-chip-on-border);
 	}
 	.book-card__action.book-card__action--not-interested-active:hover {
-		background: var(--color-danger-tonal-bg-hover);
-		color: var(--color-danger-tonal-text-hover);
-		border-color: var(--color-danger-tonal-border-hover);
+		background: var(--color-book-card-chip-on-bg-hover);
+		color: var(--color-book-card-chip-on-text);
+		border-color: var(--color-book-card-chip-on-border);
 	}
 
 	.book-card__rating-wrap {
@@ -631,27 +588,31 @@
 	}
 	.book-card__action--rate-not-interested {
 		margin-top: var(--space-1);
-		align-self: stretch;
-		max-width: 100%;
+		align-self: center;
 	}
 	.book-card[data-context='rate'] .book-card__rating-wrap {
 		align-items: stretch;
 	}
 	.book-card__back {
-		background: none;
-		border: none;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex: 0 0 auto;
+		box-sizing: border-box;
+		width: var(--book-card-action-height, 2.25rem);
+		height: var(--book-card-action-height, 2.25rem);
 		padding: 0;
-		font-family: var(--typ-interactive-2-font-family);
-		font-size: var(--typ-interactive-2-font-size);
-		font-weight: var(--typ-interactive-2-font-weight);
-		line-height: var(--typ-interactive-2-line-height);
-		letter-spacing: var(--typ-interactive-2-letter-spacing);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-pill);
+		background: transparent;
 		color: var(--color-text-muted);
 		cursor: pointer;
-		text-decoration: underline;
-		text-underline-offset: 2px;
+		transition: background var(--duration-fast) var(--ease-default),
+			color var(--duration-fast) var(--ease-default),
+			border-color var(--duration-fast) var(--ease-default);
 	}
 	.book-card__back:hover {
+		background: var(--color-bg-hover);
 		color: var(--color-text);
 	}
 	.book-card__back:focus-visible {
@@ -841,14 +802,9 @@
 		font-weight: var(--typ-interactive-1-font-weight);
 		line-height: var(--typ-interactive-1-line-height);
 		letter-spacing: var(--typ-interactive-1-letter-spacing);
-		background: var(--color-bg-muted);
+		background: var(--color-book-card-tag-bg);
 		border-radius: var(--radius-pill);
-		color: var(--color-text);
-	}
-	@media (prefers-color-scheme: dark) {
-		.book-card__genre {
-			background: var(--color-bg-hover);
-			color: var(--color-text);
-		}
+		color: var(--color-book-card-tag-text);
+		border: 1px solid var(--color-book-card-tag-border, var(--color-border));
 	}
 </style>
