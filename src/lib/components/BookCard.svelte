@@ -147,6 +147,7 @@
 						class="book-card__action"
 						class:book-card__action--saved={bm}
 						class:book-card__action--labeled={bm}
+						class:book-card__action--reco-hoverable={!bm}
 						aria-pressed={bm}
 						aria-label={bm
 							? t('shared.recommendationCard.removeFromReadingList')
@@ -156,16 +157,19 @@
 						<Bookmark size={14} aria-hidden="true" />
 						{#if bm}
 							<span class="book-card__action-label">{t('shared.recommendationCard.saved')}</span>
+						{:else}
+							<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">{t('shared.recommendationCard.bookmark')}</span>
 						{/if}
 					</button>
 					<button
 						type="button"
-						class="book-card__action"
+						class="book-card__action book-card__action--reco-hoverable"
 						aria-pressed="false"
 						aria-label={t('shared.recommendationCard.markAsRead')}
 						onclick={handleReadClick}
 					>
 						<Star size={14} aria-hidden="true" />
+						<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">{t('shared.recommendationCard.read')}</span>
 					</button>
 				{/if}
 				{#if onNotInterested}
@@ -174,6 +178,7 @@
 						class="book-card__action"
 						class:book-card__action--not-interested-active={ni}
 						class:book-card__action--labeled={ni}
+						class:book-card__action--reco-hoverable={!ni}
 						aria-pressed={ni}
 						aria-label={ni
 							? t('shared.recommendationCard.removeFromNotInterested')
@@ -183,6 +188,8 @@
 						<Ban size={14} aria-hidden="true" />
 						{#if ni}
 							<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span>
+						{:else}
+							<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">{t('shared.recommendationCard.notInterested')}</span>
 						{/if}
 					</button>
 				{/if}
@@ -735,6 +742,11 @@
 			transition-duration: 0.01ms !important;
 			transition-delay: 0ms !important;
 		}
+		.book-card__reco-layer--actions .book-card__action--reco-hoverable,
+		.book-card__reco-layer--actions .book-card__action--reco-hoverable .book-card__action-label--reco-hover-hint {
+			transition-duration: 0.01ms !important;
+			transition-delay: 0ms !important;
+		}
 	}
 
 	.book-card__actions {
@@ -796,6 +808,55 @@
 		max-width: 12rem;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+
+	@media (max-width: 479px) {
+		.book-card__action-label--reco-hover-hint {
+			display: none;
+		}
+	}
+
+	/*
+	 * Wide viewports: inactive Save / Not interested stay icon-only until :hover or :focus-visible.
+	 * Collapsed rules apply from 480px up so touch tablets don’t show hint text without animation layout.
+	 */
+	@media (min-width: 480px) {
+		.book-card__reco-layer--actions .book-card__action--reco-hoverable {
+			width: auto;
+			min-width: var(--book-card-action-height, 2.25rem);
+			max-width: 100%;
+			padding-inline: 0;
+			gap: 0;
+			transition:
+				padding-inline 0.3s var(--ease-default),
+				gap 0.3s var(--ease-default),
+				background var(--duration-fast) var(--ease-default),
+				color var(--duration-fast) var(--ease-default),
+				border-color var(--duration-fast) var(--ease-default);
+		}
+		.book-card__reco-layer--actions .book-card__action--reco-hoverable .book-card__action-label--reco-hover-hint {
+			display: inline-block;
+			max-width: 0;
+			opacity: 0;
+			overflow: hidden;
+			vertical-align: middle;
+			transition:
+				max-width 0.32s var(--ease-default),
+				opacity 0.22s var(--ease-default);
+		}
+		.book-card__reco-layer--actions .book-card__action--reco-hoverable:hover .book-card__action-label--reco-hover-hint,
+		.book-card__reco-layer--actions
+			.book-card__action--reco-hoverable:focus-visible
+			.book-card__action-label--reco-hover-hint {
+			max-width: 12rem;
+			opacity: 1;
+		}
+		.book-card__reco-layer--actions .book-card__action--reco-hoverable:hover,
+		.book-card__reco-layer--actions .book-card__action--reco-hoverable:focus-visible {
+			padding-inline-start: var(--space-2);
+			padding-inline-end: var(--space-3);
+			gap: var(--space-1);
+		}
 	}
 	.book-card__action--saved {
 		background: var(--color-book-card-chip-on-bg);

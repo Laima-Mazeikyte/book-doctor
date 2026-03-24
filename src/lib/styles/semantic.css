@@ -168,13 +168,13 @@
 	--typ-caption-letter-spacing: 0;
 
 	--typ-interactive-1-font-family: var(--font-family-interactive);
-	--typ-interactive-1-font-weight: var(--primitive-font-weight-medium);
+	--typ-interactive-1-font-weight: var(--primitive-font-weight-normal);
 	--typ-interactive-1-font-size: var(--primitive-type-size-14);
 	--typ-interactive-1-line-height: var(--primitive-line-height-interactive);
 	--typ-interactive-1-letter-spacing: 0;
 
 	--typ-interactive-2-font-family: var(--font-family-interactive);
-	--typ-interactive-2-font-weight: var(--primitive-font-weight-medium);
+	--typ-interactive-2-font-weight: var(--primitive-font-weight-normal);
 	--typ-interactive-2-font-size: var(--typ-interactive-1-font-size);
 	--typ-interactive-2-line-height: var(--primitive-line-height-interactive);
 	--typ-interactive-2-letter-spacing: 0;
