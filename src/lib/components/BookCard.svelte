@@ -40,9 +40,6 @@
 	);
 
 	const showOnlyStars = $derived(!isRateContext && currentRating != null);
-	const showThreeButtons = $derived(!isRateContext && !showOnlyStars && !pendingRate);
-	const showStarRow = $derived(isRateContext || showOnlyStars || pendingRate);
-	const showActionButtons = $derived(!isRateContext && !showOnlyStars && showThreeButtons);
 
 	const displayRating = $derived(
 		hoverRating > 0
@@ -128,6 +125,101 @@
 	}
 </script>
 
+{#snippet recommendationRateMorph()}
+	<div
+		class="book-card__recommendation-controls"
+		class:book-card__recommendation-controls--rating-open={pendingRate}
+		aria-live="polite"
+	>
+		<div
+			class="book-card__reco-layer book-card__reco-layer--actions"
+			inert={pendingRate}
+			aria-hidden={pendingRate ? true : undefined}
+		>
+			<div class="book-card__actions">
+				<button
+					type="button"
+					class="book-card__action"
+					class:book-card__action--saved={bookmarked}
+					aria-pressed={bookmarked}
+					aria-label={bookmarked
+						? t('shared.recommendationCard.removeFromReadingList')
+						: t('shared.recommendationCard.addToReadingList')}
+					onclick={handleBookmarkClick}
+				>
+					<Bookmark size={14} aria-hidden="true" />
+				</button>
+				<button
+					type="button"
+					class="book-card__action"
+					aria-pressed="false"
+					aria-label={t('shared.recommendationCard.markAsRead')}
+					onclick={handleReadClick}
+				>
+					<Star size={14} aria-hidden="true" />
+				</button>
+				{#if onNotInterested}
+					<button
+						type="button"
+						class="book-card__action"
+						class:book-card__action--not-interested-active={notInterested}
+						aria-pressed={notInterested}
+						aria-label={notInterested
+							? t('shared.recommendationCard.removeFromNotInterested')
+							: t('shared.recommendationCard.notInterested')}
+						onclick={handleNotInterestedClick}
+					>
+						<Ban size={14} aria-hidden="true" />
+					</button>
+				{/if}
+			</div>
+		</div>
+		<div
+			class="book-card__reco-layer book-card__reco-layer--rating"
+			inert={!pendingRate}
+			aria-hidden={!pendingRate ? true : undefined}
+		>
+			<div class="book-card__rating-wrap book-card__rating-wrap--reco-morph">
+				<div
+					class="book-card__rating"
+					role="group"
+					aria-label={t('shared.recommendationCard.rateThisBook')}
+					onmouseleave={() => (hoverRating = 0)}
+				>
+					{#each RATING_OPTIONS as value}
+						<button
+							type="button"
+							class="book-card__star book-card__star--reco-morph"
+							class:book-card__star--active={displayRating >= value}
+							aria-label={starAriaLabel(value)}
+							aria-pressed={starAriaPressed(value)}
+							onmouseenter={() => (hoverRating = value)}
+							onclick={() => {
+								hoverRating = 0;
+								handleStarClick(value);
+							}}
+						>
+							<span aria-hidden="true">
+								{displayRating >= value ? STAR_FILLED : STAR_EMPTY}
+							</span>
+						</button>
+					{/each}
+				</div>
+				<div class="book-card__back-slot">
+					<button
+						type="button"
+						class="book-card__back"
+						aria-label={t('shared.recommendationCard.backToWantToRead')}
+						onclick={() => (pendingRate = false)}
+					>
+						<ArrowLeft size={14} aria-hidden="true" />
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+{/snippet}
+
 <article
 	class="book-card"
 	data-book-id={book.id}
@@ -163,47 +255,12 @@
 	</div>
 
 	<div class="book-card__body">
-		{#if showActionButtons}
-			<div class="book-card__actions">
-				<button
-					type="button"
-					class="book-card__action"
-					class:book-card__action--saved={bookmarked}
-					aria-pressed={bookmarked}
-					aria-label={bookmarked ? t('shared.recommendationCard.removeFromReadingList') : t('shared.recommendationCard.addToReadingList')}
-					onclick={handleBookmarkClick}
-				>
-					<Bookmark size={14} aria-hidden="true" />
-				</button>
-				<button
-					type="button"
-					class="book-card__action"
-					aria-pressed="false"
-					aria-label={t('shared.recommendationCard.markAsRead')}
-					onclick={handleReadClick}
-				>
-					<Star size={14} aria-hidden="true" />
-				</button>
-				{#if onNotInterested}
-					<button
-						type="button"
-						class="book-card__action"
-						class:book-card__action--not-interested-active={notInterested}
-						aria-pressed={notInterested}
-						aria-label={notInterested ? t('shared.recommendationCard.removeFromNotInterested') : t('shared.recommendationCard.notInterested')}
-						onclick={handleNotInterestedClick}
-					>
-						<Ban size={14} aria-hidden="true" />
-					</button>
-				{/if}
-			</div>
-		{/if}
-		{#if showStarRow}
+		{#if isRateContext}
 			<div class="book-card__rating-wrap">
 				<div
 					class="book-card__rating"
 					role="group"
-					aria-label={isRateContext ? t('shared.bookCard.rateThisBook') : t('shared.recommendationCard.rateThisBook')}
+					aria-label={t('shared.bookCard.rateThisBook')}
 					onmouseleave={() => (hoverRating = 0)}
 				>
 					{#each RATING_OPTIONS as value}
@@ -215,7 +272,7 @@
 							aria-pressed={starAriaPressed(value)}
 							onmouseenter={() => (hoverRating = value)}
 							onclick={() => {
-								if (isRateContext) hoverRating = 0;
+								hoverRating = 0;
 								handleStarClick(value);
 							}}
 						>
@@ -225,29 +282,51 @@
 						</button>
 					{/each}
 				</div>
-				{#if pendingRate}
-					<button
-						type="button"
-						class="book-card__back"
-						aria-label={t('shared.recommendationCard.backToWantToRead')}
-						onclick={() => (pendingRate = false)}
-					>
-						<ArrowLeft size={14} aria-hidden="true" />
-					</button>
-				{/if}
-				{#if isRateContext && onNotInterested}
+				{#if onNotInterested}
 					<button
 						type="button"
 						class="book-card__action book-card__action--rate-not-interested"
 						class:book-card__action--not-interested-active={notInterested}
 						aria-pressed={notInterested}
-						aria-label={notInterested ? t('shared.recommendationCard.removeFromNotInterested') : t('shared.recommendationCard.notInterested')}
+						aria-label={notInterested
+							? t('shared.recommendationCard.removeFromNotInterested')
+							: t('shared.recommendationCard.notInterested')}
 						onclick={handleNotInterestedClick}
 					>
 						<Ban size={14} aria-hidden="true" />
 					</button>
 				{/if}
 			</div>
+		{:else if showOnlyStars}
+			<div class="book-card__rating-wrap">
+				<div
+					class="book-card__rating"
+					role="group"
+					aria-label={t('shared.recommendationCard.rateThisBook')}
+					onmouseleave={() => (hoverRating = 0)}
+				>
+					{#each RATING_OPTIONS as value}
+						<button
+							type="button"
+							class="book-card__star"
+							class:book-card__star--active={displayRating >= value}
+							aria-label={starAriaLabel(value)}
+							aria-pressed={starAriaPressed(value)}
+							onmouseenter={() => (hoverRating = value)}
+							onclick={() => {
+								hoverRating = 0;
+								handleStarClick(value);
+							}}
+						>
+							<span aria-hidden="true">
+								{displayRating >= value ? STAR_FILLED : STAR_EMPTY}
+							</span>
+						</button>
+					{/each}
+				</div>
+			</div>
+		{:else}
+			{@render recommendationRateMorph()}
 		{/if}
 	</div>
 
@@ -299,47 +378,12 @@
 					</div>
 				{/if}
 
-				{#if showActionButtons}
-					<div class="book-card__actions">
-						<button
-							type="button"
-							class="book-card__action"
-							class:book-card__action--saved={bookmarked}
-							aria-pressed={bookmarked}
-							aria-label={bookmarked ? t('shared.recommendationCard.removeFromReadingList') : t('shared.recommendationCard.addToReadingList')}
-							onclick={handleBookmarkClick}
-						>
-							<Bookmark size={14} aria-hidden="true" />
-						</button>
-						<button
-							type="button"
-							class="book-card__action"
-							aria-pressed="false"
-							aria-label={t('shared.recommendationCard.markAsRead')}
-							onclick={handleReadClick}
-						>
-							<Star size={14} aria-hidden="true" />
-						</button>
-						{#if onNotInterested}
-							<button
-								type="button"
-								class="book-card__action"
-								class:book-card__action--not-interested-active={notInterested}
-								aria-pressed={notInterested}
-								aria-label={notInterested ? t('shared.recommendationCard.removeFromNotInterested') : t('shared.recommendationCard.notInterested')}
-								onclick={handleNotInterestedClick}
-							>
-								<Ban size={14} aria-hidden="true" />
-							</button>
-						{/if}
-					</div>
-				{/if}
-				{#if showStarRow}
+				{#if isRateContext}
 					<div class="book-card__rating-wrap">
 						<div
 							class="book-card__rating"
 							role="group"
-							aria-label={isRateContext ? t('shared.bookCard.rateThisBook') : t('shared.recommendationCard.rateThisBook')}
+							aria-label={t('shared.bookCard.rateThisBook')}
 							onmouseleave={() => (hoverRating = 0)}
 						>
 							{#each RATING_OPTIONS as value}
@@ -351,7 +395,7 @@
 									aria-pressed={starAriaPressed(value)}
 									onmouseenter={() => (hoverRating = value)}
 									onclick={() => {
-										if (isRateContext) hoverRating = 0;
+										hoverRating = 0;
 										handleStarClick(value);
 									}}
 								>
@@ -361,29 +405,51 @@
 								</button>
 							{/each}
 						</div>
-						{#if pendingRate}
-							<button
-								type="button"
-								class="book-card__back"
-								aria-label={t('shared.recommendationCard.backToWantToRead')}
-								onclick={() => (pendingRate = false)}
-							>
-								<ArrowLeft size={14} aria-hidden="true" />
-							</button>
-						{/if}
-						{#if isRateContext && onNotInterested}
+						{#if onNotInterested}
 							<button
 								type="button"
 								class="book-card__action book-card__action--rate-not-interested"
 								class:book-card__action--not-interested-active={notInterested}
 								aria-pressed={notInterested}
-								aria-label={notInterested ? t('shared.recommendationCard.removeFromNotInterested') : t('shared.recommendationCard.notInterested')}
+								aria-label={notInterested
+									? t('shared.recommendationCard.removeFromNotInterested')
+									: t('shared.recommendationCard.notInterested')}
 								onclick={handleNotInterestedClick}
 							>
 								<Ban size={14} aria-hidden="true" />
 							</button>
 						{/if}
 					</div>
+				{:else if showOnlyStars}
+					<div class="book-card__rating-wrap">
+						<div
+							class="book-card__rating"
+							role="group"
+							aria-label={t('shared.recommendationCard.rateThisBook')}
+							onmouseleave={() => (hoverRating = 0)}
+						>
+							{#each RATING_OPTIONS as value}
+								<button
+									type="button"
+									class="book-card__star"
+									class:book-card__star--active={displayRating >= value}
+									aria-label={starAriaLabel(value)}
+									aria-pressed={starAriaPressed(value)}
+									onmouseenter={() => (hoverRating = value)}
+									onclick={() => {
+										hoverRating = 0;
+										handleStarClick(value);
+									}}
+								>
+									<span aria-hidden="true">
+										{displayRating >= value ? STAR_FILLED : STAR_EMPTY}
+									</span>
+								</button>
+							{/each}
+						</div>
+					</div>
+				{:else}
+					{@render recommendationRateMorph()}
 				{/if}
 			</div>
 		</div>
@@ -520,6 +586,135 @@
 		gap: var(--space-2);
 	}
 
+	/* Recommendations (unrated): crossfade + scale; active layer in-flow so height hugs content */
+	.book-card__recommendation-controls {
+		--book-card-reco-dur: 0.34s;
+		--book-card-reco-ease: cubic-bezier(0.33, 1, 0.68, 1);
+		position: relative;
+		width: 100%;
+		overflow: hidden;
+	}
+	.book-card__reco-layer {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--space-2);
+		width: 100%;
+		transition:
+			opacity var(--book-card-reco-dur) var(--book-card-reco-ease),
+			transform var(--book-card-reco-dur) var(--book-card-reco-ease);
+		transform-origin: 50% 0;
+	}
+	.book-card__reco-layer--actions {
+		position: relative;
+		z-index: 2;
+		opacity: 1;
+		transform: scale(1);
+		pointer-events: auto;
+	}
+	.book-card__reco-layer--rating {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 0;
+		z-index: 1;
+		opacity: 0;
+		transform: scale(0.92);
+		pointer-events: none;
+	}
+	.book-card__recommendation-controls--rating-open .book-card__reco-layer--actions {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 0;
+		z-index: 1;
+		opacity: 0;
+		transform: scale(0.88);
+		pointer-events: none;
+	}
+	.book-card__recommendation-controls--rating-open .book-card__reco-layer--rating {
+		position: relative;
+		left: auto;
+		right: auto;
+		top: auto;
+		z-index: 2;
+		opacity: 1;
+		transform: scale(1);
+		pointer-events: auto;
+	}
+	.book-card__rating-wrap--reco-morph {
+		width: 100%;
+		align-items: center;
+	}
+	.book-card__reco-layer--rating .book-card__star--reco-morph {
+		transition-property: transform, opacity;
+		transition-duration: 0.3s;
+		transition-timing-function: cubic-bezier(0.34, 1.12, 0.64, 1);
+		transition-delay: 0s;
+		transform: scale(0.58);
+		opacity: 0;
+	}
+	.book-card__recommendation-controls--rating-open
+		.book-card__reco-layer--rating
+		.book-card__star--reco-morph:nth-child(1) {
+		transition-delay: 0.04s;
+	}
+	.book-card__recommendation-controls--rating-open
+		.book-card__reco-layer--rating
+		.book-card__star--reco-morph:nth-child(2) {
+		transition-delay: 0.07s;
+	}
+	.book-card__recommendation-controls--rating-open
+		.book-card__reco-layer--rating
+		.book-card__star--reco-morph:nth-child(3) {
+		transition-delay: 0.1s;
+	}
+	.book-card__recommendation-controls--rating-open
+		.book-card__reco-layer--rating
+		.book-card__star--reco-morph:nth-child(4) {
+		transition-delay: 0.13s;
+	}
+	.book-card__recommendation-controls--rating-open
+		.book-card__reco-layer--rating
+		.book-card__star--reco-morph:nth-child(5) {
+		transition-delay: 0.16s;
+	}
+	.book-card__recommendation-controls--rating-open .book-card__reco-layer--rating .book-card__star--reco-morph {
+		transform: scale(1);
+		opacity: 1;
+	}
+	.book-card__back-slot {
+		display: flex;
+		justify-content: center;
+		width: 100%;
+		transition:
+			opacity 0.26s ease,
+			transform 0.28s var(--book-card-reco-ease);
+	}
+	.book-card__recommendation-controls:not(.book-card__recommendation-controls--rating-open) .book-card__back-slot {
+		opacity: 0;
+		transform: translateY(0.45rem);
+		transition-delay: 0s;
+		pointer-events: none;
+	}
+	.book-card__recommendation-controls--rating-open .book-card__back-slot {
+		opacity: 1;
+		transform: translateY(0);
+		transition-delay: 0.14s;
+		pointer-events: auto;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.book-card__recommendation-controls {
+			--book-card-reco-dur: 0.01ms;
+		}
+		.book-card__reco-layer,
+		.book-card__reco-layer--rating .book-card__star--reco-morph,
+		.book-card__back-slot {
+			transition-duration: 0.01ms !important;
+			transition-delay: 0ms !important;
+		}
+	}
+
 	.book-card__actions {
 		display: flex;
 		flex-wrap: nowrap;
@@ -634,16 +829,22 @@
 	}
 
 	.book-card__star {
+		box-sizing: border-box;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: var(--book-card-star-min, 2.25rem);
+		height: var(--book-card-star-min, 2.25rem);
 		min-width: var(--book-card-star-min, 2.25rem);
 		min-height: var(--book-card-star-min, 2.25rem);
-		padding: var(--space-1);
+		padding: 0;
 		font-family: var(--typ-interactive-1-font-family);
 		font-size: var(--book-card-star-font, 1.375rem);
 		line-height: 1;
 		letter-spacing: var(--typ-interactive-1-letter-spacing);
 		border: none;
 		background: transparent;
-		border-radius: var(--radius-sm);
+		border-radius: var(--radius-pill);
 		cursor: pointer;
 		transition: background var(--duration-fast) var(--ease-default),
 			color var(--duration-fast) var(--ease-default);
@@ -667,10 +868,11 @@
 			min-width: 0;
 		}
 		.book-card__star {
+			width: var(--book-card-star-min-sm, 1.75rem);
+			height: var(--book-card-star-min-sm, 1.75rem);
 			min-width: var(--book-card-star-min-sm, 1.75rem);
 			min-height: var(--book-card-star-min-sm, 1.75rem);
 			font-size: var(--book-card-star-font-sm, 1.1rem);
-			padding: 2px;
 		}
 	}
 
