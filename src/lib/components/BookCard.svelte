@@ -1,5 +1,6 @@
   <script lang="ts">
 	import { tick } from 'svelte';
+	import { fly } from 'svelte/transition';
 	import { BookOpenText, X, Bookmark, Star, Ban, Search, ArrowLeft } from 'lucide-svelte';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { t } from '$lib/copy';
@@ -59,7 +60,70 @@
 		Boolean(onSearchAuthor && book.author?.trim())
 	);
 
+	const summaryPanelId = $derived(`book-summary-panel-${book.id}`);
+	const summaryTitleId = $derived(`book-summary-title-${book.id}`);
+
+	const SUMMARY_DRAWER_DESKTOP_PX = 400;
+	const SUMMARY_SHEET_SLIDE_MAX_PX = 900;
+
+	let flySlideX = $state(0);
+	let flySlideY = $state(0);
+
+	function portal(node: HTMLElement, target: HTMLElement = document.body) {
+		target.appendChild(node);
+		return {
+			destroy() {
+				node.parentNode?.removeChild(node);
+			}
+		};
+	}
+
+	function setSummaryFlyDistance() {
+		if (typeof window === 'undefined') {
+			flySlideX = -SUMMARY_DRAWER_DESKTOP_PX;
+			flySlideY = 0;
+			return;
+		}
+		if (window.matchMedia('(min-width: 768px)').matches) {
+			flySlideX = -SUMMARY_DRAWER_DESKTOP_PX;
+			flySlideY = 0;
+		} else {
+			flySlideX = 0;
+			flySlideY = Math.min(window.innerHeight, SUMMARY_SHEET_SLIDE_MAX_PX);
+		}
+	}
+
+	$effect(() => {
+		if (!summaryOpen) return;
+		const prev = document.body.style.overflow;
+		document.body.style.overflow = 'hidden';
+		return () => {
+			document.body.style.overflow = prev;
+		};
+	});
+
+	function handleSummaryWindowKeydown(e: KeyboardEvent) {
+		if (!summaryOpen) return;
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			handleCloseSummary();
+		}
+	}
+
+	function handleSummaryOverlayClick(e: MouseEvent) {
+		if (e.target === e.currentTarget) handleCloseSummary();
+	}
+
+	function handleSummaryOverlayKeydown(e: KeyboardEvent) {
+		if (e.target !== e.currentTarget) return;
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			handleCloseSummary();
+		}
+	}
+
 	async function handleOpenSummary() {
+		setSummaryFlyDistance();
 		summaryOpen = true;
 		await tick();
 		closeBtnRef?.focus();
@@ -69,10 +133,6 @@
 		summaryOpen = false;
 		await tick();
 		summaryBtnRef?.focus();
-	}
-
-	function handleSummaryKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') handleCloseSummary();
 	}
 
 	function handleBookmarkClick(e: MouseEvent) {
@@ -268,6 +328,7 @@
 				class="book-card__action book-card__action--reco-hoverable book-card__summary-action"
 				aria-label={t('shared.recommendationCard.seeSummary')}
 				aria-expanded={summaryOpen}
+				aria-controls={summaryOpen ? summaryPanelId : undefined}
 				onclick={handleOpenSummary}
 			>
 				<BookOpenText size={14} aria-hidden="true" />
@@ -357,14 +418,26 @@
 			{@render recommendationRateMorph(bookmarked, notInterested)}
 		{/if}
 	</div>
+</article>
 
-	{#if summaryOpen}
-		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<svelte:window onkeydown={handleSummaryWindowKeydown} />
+
+{#if summaryOpen}
+	<div
+		use:portal
+		class="book-card__summary-dialog-overlay"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby={summaryTitleId}
+		tabindex="-1"
+		onclick={handleSummaryOverlayClick}
+		onkeydown={handleSummaryOverlayKeydown}
+	>
 		<div
-			class="book-card__summary-overlay"
-			role="region"
-			aria-label={t('shared.recommendationCard.bookSummary')}
-			onkeydown={handleSummaryKeydown}
+			id={summaryPanelId}
+			class="book-card__summary-dialog-panel"
+			in:fly={{ x: flySlideX, y: flySlideY, duration: 200 }}
+			out:fly={{ x: flySlideX, y: flySlideY, duration: 150 }}
 		>
 			<button
 				bind:this={closeBtnRef}
@@ -383,7 +456,7 @@
 						{/each}
 					</ul>
 				{/if}
-				<h3 class="book-card__title">{book.title}</h3>
+				<h3 class="book-card__title" id={summaryTitleId}>{book.title}</h3>
 				<p class="book-card__author">{book.author}{#if book.year}<span class="book-card__year"> · {book.year}</span>{/if}</p>
 				<p class="book-card__summary">{displaySummary}</p>
 
@@ -485,8 +558,8 @@
 				{/if}
 			</div>
 		</div>
-	{/if}
-</article>
+	</div>
+{/if}
 
 <style>
 	/* Shell + media: tokens in app.css (--book-card-*) */
@@ -974,15 +1047,44 @@
 		}
 	}
 
-	.book-card__summary-overlay {
-		position: absolute;
+	.book-card__summary-dialog-overlay {
+		position: fixed;
 		inset: 0;
-		z-index: 10;
-		background: var(--color-card-bg);
+		z-index: 200;
+		background: var(--color-overlay-scrim-soft);
+		display: flex;
+		align-items: flex-end;
+		justify-content: center;
+	}
+	.book-card__summary-dialog-panel {
+		position: relative;
+		z-index: 1;
+		width: 100%;
+		max-width: 100%;
+		max-height: min(85vh, 85dvh);
+		background: var(--color-bg);
+		box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.12);
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
-		border-radius: var(--book-card-radius, var(--radius));
+		border-radius: var(--radius) var(--radius) 0 0;
+		padding-bottom: env(safe-area-inset-bottom, 0px);
+	}
+	@media (min-width: 768px) {
+		.book-card__summary-dialog-overlay {
+			align-items: stretch;
+			justify-content: flex-start;
+		}
+		.book-card__summary-dialog-panel {
+			width: min(400px, 85vw);
+			min-width: 320px;
+			max-width: 400px;
+			height: 100%;
+			max-height: none;
+			border-radius: 0;
+			box-shadow: var(--shadow-drawer);
+			padding-bottom: 0;
+		}
 	}
 	.book-card__summary-close {
 		position: absolute;
