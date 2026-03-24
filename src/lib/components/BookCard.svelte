@@ -30,6 +30,10 @@
 	let pendingRate = $state(false);
 	let hoverRating = $state<number>(0);
 
+	$effect(() => {
+		if (notInterested) pendingRate = false;
+	});
+
 	const RATING_OPTIONS: RatingValue[] = [1, 2, 3, 4, 5];
 	const STAR_FILLED = '★';
 	const STAR_EMPTY = '☆';
@@ -125,7 +129,7 @@
 	}
 </script>
 
-{#snippet recommendationRateMorph()}
+{#snippet recommendationRateMorph(bm: boolean, ni: boolean)}
 	<div
 		class="book-card__recommendation-controls"
 		class:book-card__recommendation-controls--rating-open={pendingRate}
@@ -137,39 +141,49 @@
 			aria-hidden={pendingRate ? true : undefined}
 		>
 			<div class="book-card__actions">
-				<button
-					type="button"
-					class="book-card__action"
-					class:book-card__action--saved={bookmarked}
-					aria-pressed={bookmarked}
-					aria-label={bookmarked
-						? t('shared.recommendationCard.removeFromReadingList')
-						: t('shared.recommendationCard.addToReadingList')}
-					onclick={handleBookmarkClick}
-				>
-					<Bookmark size={14} aria-hidden="true" />
-				</button>
-				<button
-					type="button"
-					class="book-card__action"
-					aria-pressed="false"
-					aria-label={t('shared.recommendationCard.markAsRead')}
-					onclick={handleReadClick}
-				>
-					<Star size={14} aria-hidden="true" />
-				</button>
+				{#if !ni}
+					<button
+						type="button"
+						class="book-card__action"
+						class:book-card__action--saved={bm}
+						class:book-card__action--labeled={bm}
+						aria-pressed={bm}
+						aria-label={bm
+							? t('shared.recommendationCard.removeFromReadingList')
+							: t('shared.recommendationCard.addToReadingList')}
+						onclick={handleBookmarkClick}
+					>
+						<Bookmark size={14} aria-hidden="true" />
+						{#if bm}
+							<span class="book-card__action-label">{t('shared.recommendationCard.saved')}</span>
+						{/if}
+					</button>
+					<button
+						type="button"
+						class="book-card__action"
+						aria-pressed="false"
+						aria-label={t('shared.recommendationCard.markAsRead')}
+						onclick={handleReadClick}
+					>
+						<Star size={14} aria-hidden="true" />
+					</button>
+				{/if}
 				{#if onNotInterested}
 					<button
 						type="button"
 						class="book-card__action"
-						class:book-card__action--not-interested-active={notInterested}
-						aria-pressed={notInterested}
-						aria-label={notInterested
+						class:book-card__action--not-interested-active={ni}
+						class:book-card__action--labeled={ni}
+						aria-pressed={ni}
+						aria-label={ni
 							? t('shared.recommendationCard.removeFromNotInterested')
 							: t('shared.recommendationCard.notInterested')}
 						onclick={handleNotInterestedClick}
 					>
 						<Ban size={14} aria-hidden="true" />
+						{#if ni}
+							<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span>
+						{/if}
 					</button>
 				{/if}
 			</div>
@@ -287,6 +301,7 @@
 						type="button"
 						class="book-card__action book-card__action--rate-not-interested"
 						class:book-card__action--not-interested-active={notInterested}
+						class:book-card__action--labeled={notInterested}
 						aria-pressed={notInterested}
 						aria-label={notInterested
 							? t('shared.recommendationCard.removeFromNotInterested')
@@ -294,6 +309,9 @@
 						onclick={handleNotInterestedClick}
 					>
 						<Ban size={14} aria-hidden="true" />
+						{#if notInterested}
+							<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span>
+						{/if}
 					</button>
 				{/if}
 			</div>
@@ -326,7 +344,7 @@
 				</div>
 			</div>
 		{:else}
-			{@render recommendationRateMorph()}
+			{@render recommendationRateMorph(bookmarked, notInterested)}
 		{/if}
 	</div>
 
@@ -410,6 +428,7 @@
 								type="button"
 								class="book-card__action book-card__action--rate-not-interested"
 								class:book-card__action--not-interested-active={notInterested}
+								class:book-card__action--labeled={notInterested}
 								aria-pressed={notInterested}
 								aria-label={notInterested
 									? t('shared.recommendationCard.removeFromNotInterested')
@@ -417,6 +436,9 @@
 								onclick={handleNotInterestedClick}
 							>
 								<Ban size={14} aria-hidden="true" />
+								{#if notInterested}
+									<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span>
+								{/if}
 							</button>
 						{/if}
 					</div>
@@ -449,7 +471,7 @@
 						</div>
 					</div>
 				{:else}
-					{@render recommendationRateMorph()}
+					{@render recommendationRateMorph(bookmarked, notInterested)}
 				{/if}
 			</div>
 		</div>
@@ -717,7 +739,7 @@
 
 	.book-card__actions {
 		display: flex;
-		flex-wrap: nowrap;
+		flex-wrap: wrap;
 		gap: var(--space-2);
 		align-items: center;
 		justify-content: center;
@@ -753,6 +775,27 @@
 	}
 	.book-card__action :global(svg) {
 		flex-shrink: 0;
+	}
+	.book-card__action.book-card__action--labeled {
+		width: max-content;
+		max-width: 100%;
+		min-width: var(--book-card-action-height, 2.25rem);
+		padding-block: 0;
+		padding-inline-start: var(--space-2);
+		padding-inline-end: var(--space-3);
+		gap: var(--space-1);
+		flex-shrink: 0;
+	}
+	.book-card__action-label {
+		font-family: var(--typ-interactive-2-font-family);
+		font-size: var(--typ-interactive-2-font-size);
+		font-weight: var(--typ-interactive-2-font-weight);
+		line-height: 1;
+		letter-spacing: var(--typ-interactive-2-letter-spacing);
+		white-space: nowrap;
+		max-width: 12rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.book-card__action--saved {
 		background: var(--color-book-card-chip-on-bg);
