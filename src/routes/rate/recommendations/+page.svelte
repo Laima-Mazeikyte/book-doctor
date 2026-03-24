@@ -364,7 +364,6 @@
 <style>
 	.recommendations-page {
 		padding-bottom: var(--space-8);
-		text-align: center;
 	}
 	.recommendations-page__title {
 		margin: 0 0 var(--space-3) 0;
@@ -391,10 +390,12 @@
 	}
 	.recommendations-page__batches-title {
 		margin: 0 0 var(--space-3) 0;
+		text-align: center;
 	}
 	.recommendations-page__empty-run {
 		color: var(--color-text-muted);
 		margin: 0;
+		text-align: center;
 	}
 	.recommendations-page__history {
 		list-style: none;
@@ -424,5 +425,6 @@
 	}
 	.recommendations-page__back-wrap {
 		margin: 0 0 var(--space-4) 0;
+		text-align: center;
 	}
 </style>

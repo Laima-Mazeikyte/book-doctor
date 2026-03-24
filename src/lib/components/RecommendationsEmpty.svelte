@@ -23,6 +23,9 @@
 </div>
 
 <style>
+	.recommendations-empty {
+		text-align: center;
+	}
 	.recommendations-empty__title {
 		margin: 0 0 var(--space-4) 0;
 	}
