@@ -16,7 +16,10 @@ export type BookCardContext = 'rate' | 'bookmarks' | 'rated' | 'not-interested' 
 export type BookCardListProps = {
 	book: Book;
 	context: BookCardContext;
-	/** Rate + overlay: fills search when user searches by author from summary */
+	/**
+	 * Summary sheet: search by author. When omitted, navigates to `/rate?q=…`.
+	 * Pass this on the rate page to fill search in-page (avoids URL round-trip; preserves scroll helpers).
+	 */
 	onSearchAuthor?: (author: string) => void;
 	bookmarked?: boolean;
 	onBookmark?: (bookId: string) => void;

@@ -1,5 +1,7 @@
   <script lang="ts">
 	import { tick } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { fly } from 'svelte/transition';
 	import { BookOpenText, X, Bookmark, Star, Ban, Search, ArrowLeft } from 'lucide-svelte';
 	import { ratingsStore } from '$lib/stores/ratings';
@@ -54,9 +56,7 @@
 
 	const showCoverImage = $derived(Boolean(book.coverUrl) && !coverImageFailed);
 	const displaySummary = $derived(getBookDisplaySummary(book));
-	const showSearchAuthorInOverlay = $derived(
-		Boolean(onSearchAuthor && book.author?.trim())
-	);
+	const showSearchAuthorInOverlay = $derived(Boolean(book.author?.trim()));
 	const showAuthorInSheetMeta = $derived(Boolean(book.author?.trim()));
 	const canRemoveRatingInSheet = $derived(
 		isRateContext ? ratingFromStore != null : currentRating != null
@@ -509,7 +509,12 @@
 										onclick={(e) => {
 											e.preventDefault();
 											e.stopPropagation();
-											onSearchAuthor?.(book.author);
+											const author = book.author.trim();
+											if (onSearchAuthor) {
+												onSearchAuthor(book.author);
+											} else {
+												void goto(resolve(`/rate?q=${encodeURIComponent(author)}`));
+											}
 											handleCloseSummary();
 										}}
 									>

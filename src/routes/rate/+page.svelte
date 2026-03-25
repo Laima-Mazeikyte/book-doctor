@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { get } from 'svelte/store';
-	import { goto } from '$app/navigation';
+	import { afterNavigate, goto } from '$app/navigation';
 	import BookCard from '$lib/components/BookCard.svelte';
 	import { getSupabase } from '$lib/supabase';
 	import { authStore } from '$lib/stores/auth';
@@ -77,6 +77,12 @@
 		savedScrollY = Math.max(savedScrollY, window.scrollY);
 		searchQuery = author;
 	}
+
+	afterNavigate(({ to }) => {
+		if (to?.url.pathname !== '/rate') return;
+		const q = to.url.searchParams.get('q')?.trim();
+		if (q) searchQuery = q;
+	});
 
 	$effect(() => {
 		const now = isSearching;
