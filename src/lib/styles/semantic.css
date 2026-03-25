@@ -232,10 +232,19 @@
 		--color-danger-tonal-border: color-mix(in srgb, var(--primitive-red-500) 35%, transparent);
 		--color-danger-tonal-border-hover: color-mix(in srgb, var(--primitive-red-500) 45%, transparent);
 
-		--color-book-card-chip-on-bg: var(--primitive-gray-400);
-		--color-book-card-chip-on-bg-hover: color-mix(in srgb, var(--primitive-gray-400) 82%, var(--primitive-white));
-		--color-book-card-chip-on-text: var(--primitive-gray-900);
-		--color-book-card-chip-on-border: var(--primitive-gray-500);
+		/**
+		 * Active Save / Not interested: mirror light mode’s inverted pill (dark fill + white label)
+		 * with the same relationship reversed — light fill + dark label. Uses constant white / on-accent
+		 * ink so flipped gray primitives don’t collapse contrast.
+		 */
+		--color-book-card-chip-on-bg: var(--primitive-white);
+		--color-book-card-chip-on-bg-hover: color-mix(
+			in srgb,
+			var(--primitive-white) 88%,
+			var(--primitive-on-accent-solid)
+		);
+		--color-book-card-chip-on-text: var(--primitive-on-accent-solid);
+		--color-book-card-chip-on-border: var(--primitive-white);
 
 		--color-book-card-tag-bg: var(--primitive-deep-aqua);
 		--color-book-card-tag-text: var(--color-text);
