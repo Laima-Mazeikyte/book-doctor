@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { fly } from 'svelte/transition';
-	import { Book as BookIcon } from 'lucide-svelte';
+	import { Book as BookIcon, Star } from 'lucide-svelte';
 	import Button from '$lib/components/Button.svelte';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { t } from '$lib/copy';
@@ -42,8 +42,6 @@
 	}
 
 	const RATING_OPTIONS: RatingValue[] = [1, 2, 3, 4, 5];
-	const STAR_FILLED = '★';
-	const STAR_EMPTY = '☆';
 
 	/** Portal node to body so it's not inside the bottom bar (pointer-events: none) and can receive clicks. */
 	function portal(node: HTMLElement, target: HTMLElement = document.body) {
@@ -94,6 +92,12 @@
 		}
 	});
 </script>
+
+{#snippet ratingsDrawerStarGlyph(filled: boolean)}
+	<span class="ratings-drawer__star-icon" aria-hidden="true">
+		<Star fill={filled ? 'currentColor' : 'none'} aria-hidden="true" />
+	</span>
+{/snippet}
 
 <svelte:window onkeydown={handleKeydown} />
 
@@ -199,7 +203,7 @@
 																}
 															}}
 														>
-															<span aria-hidden="true">{displayRating >= value ? STAR_FILLED : STAR_EMPTY}</span>
+															{@render ratingsDrawerStarGlyph(displayRating >= value)}
 														</button>
 													{/each}
 												</div>
@@ -426,7 +430,6 @@
 		min-height: 32px;
 		padding: 0;
 		font-family: var(--typ-interactive-1-font-family);
-		font-size: 1.125rem;
 		font-weight: var(--typ-interactive-1-font-weight);
 		line-height: 1;
 		letter-spacing: 0;
@@ -435,6 +438,19 @@
 		border-radius: var(--radius-sm);
 		cursor: pointer;
 		color: var(--color-text-muted);
+	}
+	/* Match BookCard star icon size. */
+	.ratings-drawer__star-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		width: 20px;
+		height: 20px;
+	}
+	.ratings-drawer__star-icon :global(svg) {
+		width: 100%;
+		height: 100%;
 	}
 	.ratings-drawer__star:hover {
 		background: var(--color-bg-hover);

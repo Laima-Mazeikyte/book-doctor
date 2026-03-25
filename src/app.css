@@ -101,16 +101,14 @@ main.main-book-grid-shell {
 
 /*
  * Book card layout tokens — tweak shell, stars, and body in one place.
- * Component: src/lib/components/BookCard.svelte
+ * Star glyph size follows summary close (18/44 of star button); component: BookCard.svelte
  */
 :root {
 	--book-card-radius: var(--radius);
 	--book-card-body-padding: 8px;
 	--book-card-action-height: 2.25rem;
 	--book-card-star-min: 2.25rem;
-	--book-card-star-font: 1.375rem;
 	--book-card-star-min-sm: 1.75rem;
-	--book-card-star-font-sm: 1.1rem;
 	/* Min column width for `.book-card-grid` (480px+) */
 	--book-card-grid-min: 200px;
 }

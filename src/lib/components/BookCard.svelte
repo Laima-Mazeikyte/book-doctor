@@ -36,8 +36,6 @@
 	});
 
 	const RATING_OPTIONS: RatingValue[] = [1, 2, 3, 4, 5];
-	const STAR_FILLED = '★';
-	const STAR_EMPTY = '☆';
 
 	const ratingFromStore = $derived($ratingsStore.get(book.id));
 	const currentRating = $derived(
@@ -59,6 +57,12 @@
 	const showSearchAuthorInOverlay = $derived(
 		Boolean(onSearchAuthor && book.author?.trim())
 	);
+	const showAuthorInSheetMeta = $derived(Boolean(book.author?.trim()));
+	const canRemoveRatingInSheet = $derived(
+		isRateContext ? ratingFromStore != null : currentRating != null
+	);
+	const showSummaryBookmarkAction = $derived(Boolean(onBookmark && !notInterested));
+	const showSummaryNotInterestedAction = $derived(Boolean(onNotInterested));
 
 	const summaryPanelId = $derived(`book-summary-panel-${book.id}`);
 	const summaryTitleId = $derived(`book-summary-title-${book.id}`);
@@ -145,6 +149,18 @@
 		onNotInterested?.(book.id);
 	}
 
+	function handleSheetRemoveRating(e: MouseEvent) {
+		e.stopPropagation();
+		hoverRating = 0;
+		if (isRateContext) {
+			ratingsStore.removeRating(book.id, book.book_id);
+			onAfterRate?.(book);
+		} else {
+			onRemoveRating?.(book.id);
+			pendingRate = false;
+		}
+	}
+
 	function handleReadClick(e: MouseEvent) {
 		e.stopPropagation();
 		pendingRate = !pendingRate;
@@ -188,6 +204,12 @@
 		return currentRating === value;
 	}
 </script>
+
+{#snippet bookCardStarGlyph(filled: boolean)}
+	<span class="book-card__star-icon" aria-hidden="true">
+		<Star fill={filled ? 'currentColor' : 'none'} aria-hidden="true" />
+	</span>
+{/snippet}
 
 {#snippet recommendationRateMorph(bm: boolean, ni: boolean)}
 	<div
@@ -280,9 +302,7 @@
 								handleStarClick(value);
 							}}
 						>
-							<span aria-hidden="true">
-								{displayRating >= value ? STAR_FILLED : STAR_EMPTY}
-							</span>
+							{@render bookCardStarGlyph(displayRating >= value)}
 						</button>
 					{/each}
 				</div>
@@ -361,9 +381,7 @@
 								handleStarClick(value);
 							}}
 						>
-							<span aria-hidden="true">
-								{displayRating >= value ? STAR_FILLED : STAR_EMPTY}
-							</span>
+							{@render bookCardStarGlyph(displayRating >= value)}
 						</button>
 					{/each}
 				</div>
@@ -407,9 +425,7 @@
 								handleStarClick(value);
 							}}
 						>
-							<span aria-hidden="true">
-								{displayRating >= value ? STAR_FILLED : STAR_EMPTY}
-							</span>
+							{@render bookCardStarGlyph(displayRating >= value)}
 						</button>
 					{/each}
 				</div>
@@ -449,69 +465,117 @@
 				<X size={18} aria-hidden="true" />
 			</button>
 			<div class="book-card__summary-content">
+				<div class="book-card__summary-sheet-handle" aria-hidden="true"></div>
+
+				<h3 class="book-card__summary-sheet-title typ-h2" id={summaryTitleId}>{book.title}</h3>
+
+				{#if showAuthorInSheetMeta || book.year}
+					<div class="book-card__summary-meta-row">
+						{#if showAuthorInSheetMeta}
+							{#if showSearchAuthorInOverlay}
+								<button
+									type="button"
+									class="book-card__summary-author-pill"
+									aria-label={t('shared.bookCard.searchThisAuthorAriaLabel', { author: book.author })}
+									onclick={(e) => {
+										e.preventDefault();
+										e.stopPropagation();
+										onSearchAuthor?.(book.author);
+										handleCloseSummary();
+									}}
+								>
+									<Search size={14} aria-hidden="true" />
+									<span>{book.author}</span>
+								</button>
+							{:else}
+								<span class="book-card__summary-author-pill book-card__summary-author-pill--text">
+									{book.author}
+								</span>
+							{/if}
+						{/if}
+						{#if book.year}
+							<span class="book-card__summary-year typ-caption">{book.year}</span>
+						{/if}
+					</div>
+				{/if}
+
+				<div class="book-card__rating-wrap book-card__rating-wrap--summary-sheet">
+					<div
+						class="book-card__rating"
+						role="group"
+						aria-label={isRateContext
+							? t('shared.bookCard.rateThisBook')
+							: t('shared.recommendationCard.rateThisBook')}
+						onmouseleave={() => (hoverRating = 0)}
+					>
+						{#each RATING_OPTIONS as value}
+							<button
+								type="button"
+								class="book-card__star"
+								class:book-card__star--active={displayRating >= value}
+								aria-label={starAriaLabel(value)}
+								aria-pressed={starAriaPressed(value)}
+								onmouseenter={() => (hoverRating = value)}
+								onclick={() => {
+									hoverRating = 0;
+									handleStarClick(value);
+								}}
+							>
+								{@render bookCardStarGlyph(displayRating >= value)}
+							</button>
+						{/each}
+					</div>
+					{#if canRemoveRatingInSheet}
+						<button
+							type="button"
+							class="book-card__summary-remove-rating"
+							aria-label={t('shared.ratingsBar.removeRatingFor', { title: book.title })}
+							onclick={handleSheetRemoveRating}
+						>
+							{t('shared.ratingsBar.remove')}
+						</button>
+					{/if}
+				</div>
+
 				{#if book.genres && book.genres.length > 0}
-					<ul class="book-card__genres" aria-label={t('shared.recommendationCard.genres')}>
+					<ul class="book-card__genres book-card__genres--summary-sheet" aria-label={t('shared.recommendationCard.genres')}>
 						{#each book.genres as genre}
 							<li class="book-card__genre">{genre}</li>
 						{/each}
 					</ul>
 				{/if}
-				<h3 class="book-card__title" id={summaryTitleId}>{book.title}</h3>
-				<p class="book-card__author">{book.author}{#if book.year}<span class="book-card__year"> · {book.year}</span>{/if}</p>
+
 				<p class="book-card__summary">{displaySummary}</p>
 
-				{#if showSearchAuthorInOverlay}
-					<div class="book-card__summary-search">
-						<button
-							type="button"
-							class="book-card__summary-search-btn"
-							aria-label={t('shared.bookCard.searchThisAuthorAriaLabel', { author: book.author })}
-							onclick={(e) => {
-								e.preventDefault();
-								e.stopPropagation();
-								onSearchAuthor?.(book.author);
-								handleCloseSummary();
-							}}
-						>
-							<Search size={14} aria-hidden="true" />
-							<span>{t('shared.bookCard.searchThisAuthor')}</span>
-						</button>
-					</div>
-				{/if}
-
-				{#if isRateContext}
-					<div class="book-card__rating-wrap">
-						<div
-							class="book-card__rating"
-							role="group"
-							aria-label={t('shared.bookCard.rateThisBook')}
-							onmouseleave={() => (hoverRating = 0)}
-						>
-							{#each RATING_OPTIONS as value}
-								<button
-									type="button"
-									class="book-card__star"
-									class:book-card__star--active={displayRating >= value}
-									aria-label={starAriaLabel(value)}
-									aria-pressed={starAriaPressed(value)}
-									onmouseenter={() => (hoverRating = value)}
-									onclick={() => {
-										hoverRating = 0;
-										handleStarClick(value);
-									}}
-								>
-									<span aria-hidden="true">
-										{displayRating >= value ? STAR_FILLED : STAR_EMPTY}
-									</span>
-								</button>
-							{/each}
-						</div>
-						{#if onNotInterested}
+				{#if showSummaryBookmarkAction || showSummaryNotInterestedAction}
+					<div
+						class="book-card__summary-actions"
+						class:book-card__summary-actions--single={showSummaryBookmarkAction !== showSummaryNotInterestedAction}
+					>
+						{#if showSummaryBookmarkAction}
 							<button
 								type="button"
-								class="book-card__action book-card__action--rate-not-interested"
+								class="book-card__action book-card__action--labeled"
+								class:book-card__action--saved={bookmarked}
+								aria-pressed={bookmarked}
+								aria-label={bookmarked
+									? t('shared.recommendationCard.removeFromReadingList')
+									: t('shared.recommendationCard.addToReadingList')}
+								onclick={handleBookmarkClick}
+							>
+								<Bookmark size={14} aria-hidden="true" />
+								<span class="book-card__action-label">
+									{bookmarked
+										? t('shared.recommendationCard.saved')
+										: t('shared.recommendationCard.bookmark')}
+								</span>
+							</button>
+						{/if}
+						{#if showSummaryNotInterestedAction}
+							<button
+								type="button"
+								class="book-card__action book-card__action--labeled"
 								class:book-card__action--not-interested-active={notInterested}
-								class:book-card__action--labeled={notInterested}
 								aria-pressed={notInterested}
 								aria-label={notInterested
 									? t('shared.recommendationCard.removeFromNotInterested')
@@ -519,42 +583,10 @@
 								onclick={handleNotInterestedClick}
 							>
 								<Ban size={14} aria-hidden="true" />
-								{#if notInterested}
-									<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span>
-								{/if}
+								<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span>
 							</button>
 						{/if}
 					</div>
-				{:else if showOnlyStars}
-					<div class="book-card__rating-wrap">
-						<div
-							class="book-card__rating"
-							role="group"
-							aria-label={t('shared.recommendationCard.rateThisBook')}
-							onmouseleave={() => (hoverRating = 0)}
-						>
-							{#each RATING_OPTIONS as value}
-								<button
-									type="button"
-									class="book-card__star"
-									class:book-card__star--active={displayRating >= value}
-									aria-label={starAriaLabel(value)}
-									aria-pressed={starAriaPressed(value)}
-									onmouseenter={() => (hoverRating = value)}
-									onclick={() => {
-										hoverRating = 0;
-										handleStarClick(value);
-									}}
-								>
-									<span aria-hidden="true">
-										{displayRating >= value ? STAR_FILLED : STAR_EMPTY}
-									</span>
-								</button>
-							{/each}
-						</div>
-					</div>
-				{:else}
-					{@render recommendationRateMorph(bookmarked, notInterested)}
 				{/if}
 			</div>
 		</div>
@@ -1010,7 +1042,6 @@
 		min-height: var(--book-card-star-min, 2.25rem);
 		padding: 0;
 		font-family: var(--typ-interactive-1-font-family);
-		font-size: var(--book-card-star-font, 1.375rem);
 		line-height: 1;
 		letter-spacing: var(--typ-interactive-1-letter-spacing);
 		border: none;
@@ -1020,6 +1051,19 @@
 		transition: background var(--duration-fast) var(--ease-default),
 			color var(--duration-fast) var(--ease-default);
 		color: var(--color-text-muted);
+	}
+	/* Star glyph size inside tap target (summary sheet overrides to 24px). */
+	.book-card__star-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		width: 20px;
+		height: 20px;
+	}
+	.book-card__star-icon :global(svg) {
+		width: 100%;
+		height: 100%;
 	}
 	.book-card__star:hover {
 		background: var(--color-book-card-action-hover-bg);
@@ -1043,7 +1087,6 @@
 			height: var(--book-card-star-min-sm, 1.75rem);
 			min-width: var(--book-card-star-min-sm, 1.75rem);
 			min-height: var(--book-card-star-min-sm, 1.75rem);
-			font-size: var(--book-card-star-font-sm, 1.1rem);
 		}
 	}
 
@@ -1062,12 +1105,12 @@
 		width: 100%;
 		max-width: 100%;
 		max-height: min(85vh, 85dvh);
-		background: var(--color-bg);
+		background: var(--color-card-bg);
 		box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.12);
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
-		border-radius: var(--radius) var(--radius) 0 0;
+		border-radius: var(--space-4) var(--space-4) 0 0;
 		padding-bottom: env(safe-area-inset-bottom, 0px);
 	}
 	@media (min-width: 768px) {
@@ -1084,6 +1127,7 @@
 			border-radius: 0;
 			box-shadow: var(--shadow-drawer);
 			padding-bottom: 0;
+			background: var(--color-card-bg);
 		}
 	}
 	.book-card__summary-close {
@@ -1115,12 +1159,31 @@
 		flex: 1;
 		min-height: 0;
 		overflow-y: auto;
-		padding: 12px var(--space-3) var(--space-3);
+		padding: var(--space-6);
+		padding-top: calc(var(--space-6) + env(safe-area-inset-top, 0px));
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-2);
+		gap: var(--space-4);
 		scrollbar-width: thin;
 		scrollbar-color: var(--color-border) transparent;
+	}
+	@media (min-width: 768px) {
+		.book-card__summary-content {
+			padding: var(--space-6);
+		}
+	}
+	.book-card__summary-sheet-handle {
+		flex-shrink: 0;
+		width: 2.25rem;
+		height: 0.25rem;
+		margin-inline: auto;
+		border-radius: var(--radius-pill);
+		background: var(--color-border);
+	}
+	@media (min-width: 768px) {
+		.book-card__summary-sheet-handle {
+			display: none;
+		}
 	}
 	.book-card__summary-content::-webkit-scrollbar {
 		width: 3px;
@@ -1135,23 +1198,104 @@
 	.book-card__summary-content::-webkit-scrollbar-thumb:hover {
 		background: var(--color-border-hover);
 	}
-	.book-card__title {
-		font-family: var(--typ-h3-font-family);
-		font-size: var(--typ-h3-font-size);
-		font-weight: var(--typ-h3-font-weight);
-		line-height: var(--typ-h3-line-height);
-		letter-spacing: var(--typ-h3-letter-spacing);
+	.book-card__summary-sheet-title {
 		margin: 0;
 		color: var(--color-text);
+		text-align: left;
 	}
-	.book-card__author {
-		font-family: var(--typ-caption-font-family);
-		font-size: var(--typ-caption-font-size);
-		font-weight: var(--typ-caption-font-weight);
-		line-height: var(--typ-caption-line-height);
-		letter-spacing: var(--typ-caption-letter-spacing);
+	.book-card__summary-meta-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
+		width: 100%;
+	}
+	.book-card__summary-author-pill {
+		box-sizing: border-box;
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		max-width: 100%;
+		padding: var(--space-2) var(--space-3);
+		font-family: var(--typ-interactive-1-font-family);
+		font-size: var(--typ-interactive-1-font-size);
+		font-weight: var(--typ-interactive-1-font-weight);
+		line-height: var(--typ-interactive-1-line-height);
+		letter-spacing: var(--typ-interactive-1-letter-spacing);
+		color: var(--color-text);
+		background: transparent;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-pill);
+		cursor: pointer;
+		text-align: left;
+		transition:
+			background var(--duration-fast) var(--ease-default),
+			border-color var(--duration-fast) var(--ease-default);
+	}
+	.book-card__summary-author-pill:hover {
+		background: var(--color-bg-muted);
+		border-color: var(--color-border-hover);
+	}
+	.book-card__summary-author-pill:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 2px;
+	}
+	.book-card__summary-author-pill--text {
+		cursor: default;
+		pointer-events: none;
+	}
+	.book-card__summary-author-pill--text:hover {
+		background: transparent;
+		border-color: var(--color-border);
+	}
+	.book-card__summary-year {
 		color: var(--color-text-muted);
+	}
+	.book-card__rating-wrap--summary-sheet {
+		flex-direction: row;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2) var(--space-3);
+	}
+	.book-card__rating-wrap--summary-sheet .book-card__rating {
+		flex: 0 0 auto;
+		gap: 0;
+		justify-content: flex-start;
+	}
+	/* Summary drawer + bottom sheet: larger stars (override narrow-viewport card star shrink) */
+	.book-card__rating-wrap--summary-sheet .book-card__star {
+		width: 40px;
+		height: 40px;
+		min-width: 40px;
+		min-height: 40px;
+	}
+	.book-card__rating-wrap--summary-sheet .book-card__star-icon {
+		width: 24px;
+		height: 24px;
+	}
+	.book-card__summary-remove-rating {
+		padding: var(--space-2) var(--space-1);
 		margin: 0;
+		border: none;
+		background: none;
+		font-family: var(--typ-interactive-1-font-family);
+		font-size: var(--typ-interactive-1-font-size);
+		font-weight: var(--typ-interactive-1-font-weight);
+		line-height: var(--typ-interactive-1-line-height);
+		letter-spacing: var(--typ-interactive-1-letter-spacing);
+		color: var(--color-text-muted);
+		text-decoration: underline;
+		text-underline-offset: 0.2em;
+		cursor: pointer;
+		transition: color var(--duration-fast) var(--ease-default);
+	}
+	.book-card__summary-remove-rating:hover {
+		color: var(--color-text);
+	}
+	.book-card__summary-remove-rating:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 2px;
+		border-radius: var(--radius-xs);
 	}
 	.book-card__summary {
 		font-family: var(--typ-body-font-family);
@@ -1162,33 +1306,6 @@
 		color: var(--color-text);
 		margin: 0;
 	}
-	.book-card__summary-search {
-		padding-top: var(--space-1);
-	}
-	.book-card__summary-search-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-2);
-		padding: var(--space-2) var(--space-3);
-		font-family: var(--typ-interactive-2-font-family);
-		font-size: var(--typ-interactive-2-font-size);
-		font-weight: var(--typ-interactive-2-font-weight);
-		line-height: var(--typ-interactive-2-line-height);
-		letter-spacing: var(--typ-interactive-2-letter-spacing);
-		color: var(--color-text);
-		background: var(--color-bg-muted);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-sm);
-		cursor: pointer;
-		transition: background var(--duration-fast) var(--ease-default);
-	}
-	.book-card__summary-search-btn:hover {
-		background: var(--color-book-card-action-hover-bg);
-	}
-	.book-card__summary-search-btn:focus-visible {
-		outline: 2px solid var(--color-focus);
-		outline-offset: 2px;
-	}
 	.book-card__genres {
 		display: flex;
 		flex-wrap: wrap;
@@ -1196,6 +1313,9 @@
 		list-style: none;
 		margin: 0;
 		padding: 0;
+	}
+	.book-card__genres--summary-sheet {
+		gap: var(--space-2);
 	}
 	.book-card__genre {
 		padding-block: var(--space-2);
@@ -1209,5 +1329,30 @@
 		border-radius: var(--radius-pill);
 		color: var(--color-book-card-tag-text);
 		border: none;
+	}
+	.book-card__genres--summary-sheet .book-card__genre {
+		padding-block: var(--space-1);
+		padding-inline: var(--space-3);
+		font-size: var(--typ-interactive-1-font-size);
+	}
+	.book-card__summary-actions {
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+		margin-top: var(--space-2);
+		padding-bottom: var(--space-1);
+	}
+	/* Summary sheet: same pill chips as card actions, labels always visible, equal-width row */
+	.book-card__summary-actions .book-card__action--labeled {
+		flex: 1 1 0;
+		min-width: 0;
+		width: auto;
+		max-width: none;
+		justify-content: center;
+		min-height: var(--book-card-action-height, 2.25rem);
+	}
+	.book-card__summary-actions--single .book-card__action--labeled {
+		flex: 1 1 100%;
 	}
 </style>
