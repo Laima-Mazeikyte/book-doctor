@@ -718,7 +718,7 @@
 		font-weight: var(--font-weight-semibold);
 		line-height: var(--line-height-tight);
 		letter-spacing: var(--typ-caption-letter-spacing);
-		color: var(--color-text);
+		color: var(--color-book-title);
 	}
 	.book-card__year {
 		opacity: 0.75;
@@ -1089,7 +1089,7 @@
 		cursor: pointer;
 		transition: background var(--duration-fast) var(--ease-default),
 			color var(--duration-fast) var(--ease-default);
-		color: var(--color-text-muted);
+		color: var(--color-book-rating-star-muted);
 	}
 	/* Star glyph size inside tap target (summary sheet overrides to 24px). */
 	.book-card__star-icon {
@@ -1106,7 +1106,7 @@
 	}
 	.book-card__star:hover {
 		background: var(--color-book-card-action-hover-bg);
-		color: var(--color-text);
+		color: var(--color-book-rating-star);
 	}
 	.book-card__star:focus-visible {
 		outline: 2px solid var(--color-focus);
@@ -1114,7 +1114,7 @@
 	}
 	.book-card__star--active {
 		background: transparent;
-		color: var(--color-text);
+		color: var(--color-book-rating-star);
 	}
 
 	@media (max-width: 479px) {
@@ -1242,7 +1242,7 @@
 	}
 	.book-card__summary-sheet-title {
 		margin: 0;
-		color: var(--color-text);
+		color: var(--color-book-title);
 		text-align: left;
 	}
 	.book-card__summary-meta-row {
@@ -1386,6 +1386,50 @@
 		padding-bottom: var(--space-1);
 	}
 	/* Summary sheet: same pill chips as card actions, labels always visible, equal-width row */
+	/* Cover + sheet: inactive action pills use elevated surface (light = white), not page-muted gray */
+	.book-card__summary-actions
+		.book-card__action--labeled:not(.book-card__action--saved):not(
+			.book-card__action--not-interested-active
+		),
+	.book-card__reco-layer--actions
+		.book-card__action:not(.book-card__action--saved):not(
+			.book-card__action--not-interested-active
+		),
+	.book-card__media-inner
+		.book-card__action:not(.book-card__action--saved):not(
+			.book-card__action--not-interested-active
+		) {
+		background: var(--color-book-card-pill-surface-bg);
+	}
+	.book-card__summary-actions
+		.book-card__action--labeled:not(.book-card__action--saved):not(
+			.book-card__action--not-interested-active
+		):hover,
+	.book-card__reco-layer--actions
+		.book-card__action:not(.book-card__action--saved):not(
+			.book-card__action--not-interested-active
+		):hover,
+	.book-card__media-inner
+		.book-card__action:not(.book-card__action--saved):not(
+			.book-card__action--not-interested-active
+		):hover {
+		background: var(--color-book-card-pill-surface-bg-hover);
+	}
+
+	.book-card__reco-layer--rating .book-card__back {
+		background: var(--color-book-card-pill-surface-bg);
+	}
+	.book-card__reco-layer--rating .book-card__back:hover {
+		background: var(--color-book-card-pill-surface-bg-hover);
+	}
+
+	.book-card__reco-layer--rating .book-card__star:not(.book-card__star--active) {
+		background: var(--color-book-card-pill-surface-bg);
+	}
+	.book-card__reco-layer--rating .book-card__star:not(.book-card__star--active):hover {
+		background: var(--color-book-card-pill-surface-bg-hover);
+		color: var(--color-book-rating-star);
+	}
 	.book-card__summary-actions .book-card__action--labeled {
 		flex: 1 1 0;
 		min-width: 0;

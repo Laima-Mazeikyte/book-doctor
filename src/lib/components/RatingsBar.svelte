@@ -378,7 +378,7 @@
 		font-weight: var(--typ-caption-font-weight);
 		line-height: var(--typ-caption-line-height);
 		letter-spacing: var(--typ-caption-letter-spacing);
-		color: var(--color-text-muted);
+		color: var(--color-book-title);
 		overflow: hidden;
 		display: -webkit-box;
 		-webkit-line-clamp: 3;
@@ -394,6 +394,7 @@
 		font-weight: var(--font-weight-semibold);
 		line-height: var(--typ-caption-line-height);
 		letter-spacing: var(--typ-caption-letter-spacing);
+		color: var(--color-book-title);
 		display: block;
 	}
 	.ratings-drawer__item-author {
@@ -437,7 +438,7 @@
 		background: transparent;
 		border-radius: var(--radius-sm);
 		cursor: pointer;
-		color: var(--color-text-muted);
+		color: var(--color-book-rating-star-muted);
 	}
 	/* Match BookCard star icon size. */
 	.ratings-drawer__star-icon {
@@ -454,7 +455,7 @@
 	}
 	.ratings-drawer__star:hover {
 		background: var(--color-bg-hover);
-		color: var(--color-text);
+		color: var(--color-book-rating-star);
 	}
 	.ratings-drawer__star:focus-visible {
 		outline: 2px solid var(--color-focus);
@@ -462,7 +463,7 @@
 	}
 	.ratings-drawer__star--active {
 		background: transparent;
-		color: var(--color-text);
+		color: var(--color-book-rating-star);
 	}
 	/* Button is a child component — :global so compact height applies to Remove */
 	.ratings-drawer__item-actions :global(.btn.btn--compact) {

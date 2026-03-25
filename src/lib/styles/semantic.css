@@ -51,6 +51,13 @@
 		var(--color-bg-hover) 38%
 	);
 
+	/**
+	 * Inactive pill actions on cover imagery + summary sheet (Save / Read / Summary / NI, rating row, back).
+	 * Light: `--primitive-surface` + gray hover (vs `--color-bg-muted` used on solid card chrome).
+	 */
+	--color-book-card-pill-surface-bg: var(--primitive-surface);
+	--color-book-card-pill-surface-bg-hover: var(--primitive-gray-100);
+
 	/* ── Book card: active action chips (neutral; bookmark / not interested) ─ */
 	/** Inverted fill reads clearly as “selected” vs muted default buttons. */
 	--color-book-card-chip-on-bg: var(--primitive-gray-900);
@@ -62,6 +69,17 @@
 	--color-book-card-tag-bg: var(--primitive-pale-aqua);
 	--color-book-card-tag-text: var(--color-text);
 	--color-book-card-tag-border: var(--primitive-gray-400);
+
+	/** Book title copy (placeholder cover, summary heading, ratings drawer list). Light = deep aqua; dark = pale aqua. */
+	--color-book-title: var(--primitive-deep-aqua);
+	/** Star rating controls (stroke/fill via currentColor). Same flip as title. */
+	--color-book-rating-star: var(--primitive-deep-aqua);
+	/** Empty / inactive stars — tint of rating star mixed with muted text. */
+	--color-book-rating-star-muted: color-mix(
+		in srgb,
+		var(--color-book-rating-star) 40%,
+		var(--color-text-muted)
+	);
 
 	/* ── Overlays & scrims ───────────────────────────────────────────────── */
 	--color-overlay-scrim: rgba(0, 0, 0, var(--primitive-overlay-scrim-opacity));
@@ -224,6 +242,12 @@
 		--color-book-card-tag-border: color-mix(in srgb, var(--primitive-gray-500) 55%, transparent);
 
 		--color-book-card-action-hover-bg: var(--color-bg-hover);
+
+		--color-book-card-pill-surface-bg: var(--primitive-gray-100);
+		--color-book-card-pill-surface-bg-hover: var(--primitive-gray-200);
+
+		--color-book-title: var(--primitive-pale-aqua);
+		--color-book-rating-star: var(--primitive-pale-aqua);
 	}
 }
 
