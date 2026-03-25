@@ -1471,4 +1471,55 @@
 	.book-card__summary-actions--single .book-card__action--labeled {
 		flex: 1 1 100%;
 	}
+
+	/* Cover overlay actions only: frosted glass (overrides pill-surface rules above) */
+	.book-card__media-inner .book-card__cover-actions .book-card__action,
+	.book-card__media-inner .book-card__cover-rate-not-interested .book-card__action {
+		border: none;
+		color: var(--primitive-white);
+		-webkit-backdrop-filter: blur(12px);
+		backdrop-filter: blur(12px);
+	}
+
+	.book-card__media-inner .book-card__cover-actions
+		.book-card__action:not(.book-card__action--saved):not(.book-card__action--not-interested-active),
+	.book-card__media-inner .book-card__cover-rate-not-interested
+		.book-card__action:not(.book-card__action--saved):not(.book-card__action--not-interested-active) {
+		background: color-mix(in srgb, var(--color-book-card-pill-surface-bg) 12%, transparent);
+	}
+
+	.book-card__media-inner .book-card__cover-actions
+		.book-card__action:not(.book-card__action--saved):not(
+			.book-card__action--not-interested-active
+		):hover,
+	.book-card__media-inner .book-card__cover-actions
+		.book-card__action:not(.book-card__action--saved):not(
+			.book-card__action--not-interested-active
+		):focus-visible,
+	.book-card__media-inner .book-card__cover-rate-not-interested
+		.book-card__action:not(.book-card__action--saved):not(
+			.book-card__action--not-interested-active
+		):hover,
+	.book-card__media-inner .book-card__cover-rate-not-interested
+		.book-card__action:not(.book-card__action--saved):not(
+			.book-card__action--not-interested-active
+		):focus-visible {
+		background: color-mix(in srgb, var(--color-book-card-pill-surface-bg-hover) 18%, transparent);
+	}
+
+	.book-card__media-inner
+		.book-card__cover-rate-not-interested
+		.book-card__action.book-card__action--not-interested-active {
+		background: color-mix(in srgb, var(--color-book-card-chip-on-bg) 18%, transparent);
+		color: var(--primitive-white);
+		border-color: transparent;
+	}
+
+	.book-card__media-inner
+		.book-card__cover-rate-not-interested
+		.book-card__action.book-card__action--not-interested-active:hover {
+		background: color-mix(in srgb, var(--color-book-card-chip-on-bg-hover) 24%, transparent);
+		color: var(--primitive-white);
+		border-color: transparent;
+	}
 </style>
