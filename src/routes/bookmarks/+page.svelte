@@ -1,7 +1,9 @@
 <script lang="ts">
+	import { get } from 'svelte/store';
 	import { authStore } from '$lib/stores/auth';
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { ratingsStore } from '$lib/stores/ratings';
+	import { notInterestedStore } from '$lib/stores/notInterested';
 	import BookCard from '$lib/components/BookCard.svelte';
 	import BookCardSkeleton from '$lib/components/BookCardSkeleton.svelte';
 	import { t } from '$lib/copy';
@@ -39,6 +41,31 @@
 				loading = false;
 			});
 	});
+
+	function handleBookmark(book: Book, id: string) {
+		const wasBookmarked = planToReadStore.has(book.id);
+		planToReadStore.toggle(id, book.book_id);
+		if (!wasBookmarked && book.book_id != null) {
+			notInterestedStore.remove(book.book_id);
+		}
+		if (wasBookmarked) {
+			books = books.filter((b) => b.id !== book.id);
+		}
+	}
+
+	function handleNotInterested(book: Book) {
+		const bid = book.book_id ?? 0;
+		const wasNotInterested = notInterestedStore.has(bid);
+		const nowNotInterested = notInterestedStore.toggle(bid);
+		if (nowNotInterested && !wasNotInterested) {
+			if (planToReadStore.has(book.id)) {
+				planToReadStore.toggle(book.id, book.book_id);
+			}
+			if (get(ratingsStore).has(book.id)) {
+				ratingsStore.removeRating(book.id, book.book_id);
+			}
+		}
+	}
 </script>
 
 <div class="bookmarks-page">
@@ -60,11 +87,13 @@
 					<BookCard
 						context="bookmarks"
 						{book}
-						bookmarked={true}
-						onBookmark={(id) => planToReadStore.toggle(id, book.book_id)}
+						bookmarked={$planToReadStore.has(book.id)}
+						onBookmark={(id) => handleBookmark(book, id)}
 						currentRating={$ratingsStore.get(book.id) ?? null}
 						onRate={(id, value) => ratingsStore.setRating(id, value, book.book_id, book)}
 						onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id)}
+						notInterested={$notInterestedStore.has(book.book_id ?? 0)}
+						onNotInterested={() => handleNotInterested(book)}
 					/>
 				</li>
 			{/each}

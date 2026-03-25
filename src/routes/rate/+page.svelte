@@ -16,6 +16,7 @@
 	import { mobileMenuOpen } from '$lib/stores/mobileMenu';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { notInterestedStore } from '$lib/stores/notInterested';
+	import { planToReadStore } from '$lib/stores/planToRead';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
 
@@ -320,10 +321,21 @@
 		reviveMainListPaginationAfterEngagement();
 	}
 
+	function handleRateBookmark(book: Book, id: string) {
+		const wasBookmarked = planToReadStore.has(book.id);
+		planToReadStore.toggle(id, book.book_id);
+		if (!wasBookmarked && book.book_id != null) {
+			notInterestedStore.remove(book.book_id);
+		}
+	}
+
 	function handleMainListNotInterested(book: Book) {
 		const bid = book.book_id ?? 0;
 		const now = notInterestedStore.toggle(bid);
 		if (now) {
+			if (planToReadStore.has(book.id)) {
+				planToReadStore.toggle(book.id, book.book_id);
+			}
 			if (get(ratingsStore).has(book.id)) {
 				ratingsStore.removeRating(book.id, book.book_id);
 			}
@@ -343,6 +355,9 @@
 		const bid = book.book_id ?? 0;
 		const now = notInterestedStore.toggle(bid);
 		if (now) {
+			if (planToReadStore.has(book.id)) {
+				planToReadStore.toggle(book.id, book.book_id);
+			}
 			if (get(ratingsStore).has(book.id)) {
 				ratingsStore.removeRating(book.id, book.book_id);
 			}
@@ -672,6 +687,8 @@
 								context="rate"
 								{book}
 								onSearchAuthor={handleSearchAuthor}
+								bookmarked={$planToReadStore.has(book.id)}
+								onBookmark={(id) => handleRateBookmark(book, id)}
 								notInterested={$notInterestedStore.has(book.book_id ?? 0)}
 								onNotInterested={() => handleMainListNotInterested(book)}
 								onAfterRate={() => handleMainListAfterRate(book)}
@@ -722,6 +739,8 @@
 									context="rate"
 									{book}
 									onSearchAuthor={handleSearchAuthor}
+									bookmarked={$planToReadStore.has(book.id)}
+									onBookmark={(id) => handleRateBookmark(book, id)}
 									notInterested={$notInterestedStore.has(book.book_id ?? 0)}
 									onNotInterested={() => handleSearchNotInterested(book)}
 									onAfterRate={() => handleSearchAfterRate()}

@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { get } from 'svelte/store';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { planToReadStore } from '$lib/stores/planToRead';
+	import { notInterestedStore } from '$lib/stores/notInterested';
 	import BookCard from '$lib/components/BookCard.svelte';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
@@ -18,6 +20,20 @@
 				.filter((e): e is { book: Book; ratingAtLoad: RatingValue } => e !== null);
 		}
 	});
+
+	function handleNotInterested(book: Book) {
+		const bid = book.book_id ?? 0;
+		const wasNotInterested = notInterestedStore.has(bid);
+		const nowNotInterested = notInterestedStore.toggle(bid);
+		if (nowNotInterested && !wasNotInterested) {
+			if (planToReadStore.has(book.id)) {
+				planToReadStore.toggle(book.id, book.book_id);
+			}
+			if (get(ratingsStore).has(book.id)) {
+				ratingsStore.removeRating(book.id, book.book_id);
+			}
+		}
+	}
 </script>
 
 <div class="rated-page">
@@ -36,6 +52,8 @@
 						currentRating={$ratingsStore.get(book.id) ?? null}
 						onRate={(id, value) => ratingsStore.setRating(id, value, book.book_id, book)}
 						onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id)}
+						notInterested={$notInterestedStore.has(book.book_id ?? 0)}
+						onNotInterested={() => handleNotInterested(book)}
 					/>
 				</li>
 			{/each}
