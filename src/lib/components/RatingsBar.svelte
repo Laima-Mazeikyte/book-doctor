@@ -113,7 +113,7 @@
 	onclick={openDrawer}
 >
 	<span class="ratings-bar__icon">
-		<BookIcon size={20} aria-hidden="true" />
+		<BookIcon size={14} aria-hidden="true" />
 	</span>
 	<span class="ratings-bar__count" aria-hidden="true">{ratedEntries.length}</span>
 </button>
@@ -232,14 +232,17 @@
 	.ratings-bar__trigger {
 		display: inline-flex;
 		align-items: center;
+		justify-content: center;
+		flex: 0 0 auto;
+		box-sizing: border-box;
+		width: max-content;
+		max-width: 100%;
+		min-width: var(--book-card-action-height, 2.25rem);
+		height: var(--book-card-action-height, 2.25rem);
+		padding-block: 0;
+		padding-inline-start: var(--space-2);
+		padding-inline-end: var(--space-3);
 		gap: var(--space-1);
-		min-height: var(--min-tap);
-		padding: var(--space-2) var(--space-3);
-		font-family: var(--typ-interactive-1-font-family);
-		font-size: var(--typ-interactive-1-font-size);
-		font-weight: var(--typ-interactive-1-font-weight);
-		line-height: var(--typ-interactive-1-line-height);
-		letter-spacing: var(--typ-interactive-1-letter-spacing);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-pill);
 		background: var(--color-bg-muted);
@@ -247,11 +250,11 @@
 		cursor: pointer;
 		pointer-events: auto;
 		transition: background var(--duration-fast) var(--ease-default),
+			color var(--duration-fast) var(--ease-default),
 			border-color var(--duration-fast) var(--ease-default);
 	}
 	.ratings-bar__trigger:hover {
-		background: var(--color-bg-hover);
-		border-color: var(--color-border-hover);
+		background: var(--color-book-card-action-hover-bg);
 	}
 	.ratings-bar__trigger:focus-visible {
 		outline: 2px solid var(--color-focus);
@@ -260,11 +263,19 @@
 	.ratings-bar__icon {
 		display: inline-flex;
 		flex-shrink: 0;
-		color: var(--color-text-muted);
+		color: inherit;
+	}
+	.ratings-bar__icon :global(svg) {
+		flex-shrink: 0;
 	}
 	.ratings-bar__count {
+		font-family: var(--typ-interactive-2-font-family);
+		font-size: var(--typ-interactive-2-font-size);
+		font-weight: var(--typ-interactive-2-font-weight);
+		line-height: 1;
+		letter-spacing: var(--typ-interactive-2-letter-spacing);
 		font-variant-numeric: tabular-nums;
-		color: var(--color-text-muted);
+		color: inherit;
 	}
 
 	.ratings-drawer-overlay {

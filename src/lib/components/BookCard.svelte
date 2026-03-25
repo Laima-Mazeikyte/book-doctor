@@ -342,77 +342,91 @@
 					<span class="book-card__placeholder-title">{book.title}</span>
 				</div>
 			{/if}
-			<button
-				bind:this={summaryBtnRef}
-				type="button"
-				class="book-card__action book-card__action--reco-hoverable book-card__summary-action"
-				aria-label={t('shared.recommendationCard.seeSummary')}
-				aria-expanded={summaryOpen}
-				aria-controls={summaryOpen ? summaryPanelId : undefined}
-				onclick={handleOpenSummary}
-			>
-				<BookOpenText size={14} aria-hidden="true" />
-				<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">
-					{t('shared.recommendationCard.summary')}
-				</span>
-			</button>
+			<div class="book-card__cover-actions">
+				<button
+					bind:this={summaryBtnRef}
+					type="button"
+					class="book-card__action book-card__action--reco-hoverable"
+					aria-label={t('shared.recommendationCard.seeSummary')}
+					aria-expanded={summaryOpen}
+					aria-controls={summaryOpen ? summaryPanelId : undefined}
+					onclick={handleOpenSummary}
+				>
+					<BookOpenText size={14} aria-hidden="true" />
+					<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">
+						{t('shared.recommendationCard.summary')}
+					</span>
+				</button>
+				{#if isRateContext && showSummaryBookmarkAction}
+					<button
+						type="button"
+						class="book-card__action"
+						class:book-card__action--saved={bookmarked}
+						class:book-card__action--reco-hoverable={!bookmarked}
+						aria-pressed={bookmarked}
+						aria-label={bookmarked
+							? t('shared.recommendationCard.removeFromReadingList')
+							: t('shared.recommendationCard.addToReadingList')}
+						onclick={handleBookmarkClick}
+					>
+						<Bookmark size={14} aria-hidden="true" />
+						{#if !bookmarked}
+							<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">
+								{t('shared.recommendationCard.bookmark')}
+							</span>
+						{/if}
+					</button>
+				{/if}
+				{#if isRateContext && showSummaryNotInterestedAction}
+					<button
+						type="button"
+						class="book-card__action"
+						class:book-card__action--not-interested-active={notInterested}
+						class:book-card__action--reco-hoverable={!notInterested}
+						aria-pressed={notInterested}
+						aria-label={notInterested
+							? t('shared.recommendationCard.removeFromNotInterested')
+							: t('shared.recommendationCard.notInterested')}
+						onclick={handleNotInterestedClick}
+					>
+						<Ban size={14} aria-hidden="true" />
+						{#if !notInterested}
+							<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">
+								{t('shared.recommendationCard.notInterested')}
+							</span>
+						{/if}
+					</button>
+				{/if}
+			</div>
 		</div>
 	</div>
 
 	<div class="book-card__body">
 		{#if isRateContext}
 			<div class="book-card__rating-wrap">
-				{#if notInterested}
-					{#if onNotInterested}
+				<div
+					class="book-card__rating"
+					role="group"
+					aria-label={t('shared.bookCard.rateThisBook')}
+					onmouseleave={() => (hoverRating = 0)}
+				>
+					{#each RATING_OPTIONS as value}
 						<button
 							type="button"
-							class="book-card__action book-card__action--rate-not-interested"
-							class:book-card__action--not-interested-active={true}
-							class:book-card__action--labeled={true}
-							aria-pressed={true}
-							aria-label={t('shared.recommendationCard.removeFromNotInterested')}
-							onclick={handleNotInterestedClick}
+							class="book-card__star"
+							class:book-card__star--active={displayRating >= value}
+							aria-label={starAriaLabel(value)}
+							aria-pressed={starAriaPressed(value)}
+							onmouseenter={() => (hoverRating = value)}
+							onclick={() => {
+								hoverRating = 0;
+								handleStarClick(value);
+							}}
 						>
-							<Ban size={14} aria-hidden="true" />
-							<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span>
+							{@render bookCardStarGlyph(displayRating >= value)}
 						</button>
-					{/if}
-				{:else}
-					<div
-						class="book-card__rating"
-						role="group"
-						aria-label={t('shared.bookCard.rateThisBook')}
-						onmouseleave={() => (hoverRating = 0)}
-					>
-						{#each RATING_OPTIONS as value}
-							<button
-								type="button"
-								class="book-card__star"
-								class:book-card__star--active={displayRating >= value}
-								aria-label={starAriaLabel(value)}
-								aria-pressed={starAriaPressed(value)}
-								onmouseenter={() => (hoverRating = value)}
-								onclick={() => {
-									hoverRating = 0;
-									handleStarClick(value);
-								}}
-							>
-								{@render bookCardStarGlyph(displayRating >= value)}
-							</button>
-						{/each}
-					</div>
-					{#if onNotInterested}
-						<button
-							type="button"
-							class="book-card__action book-card__action--rate-not-interested"
-							aria-pressed={false}
-							aria-label={t('shared.recommendationCard.notInterested')}
-							onclick={handleNotInterestedClick}
-						>
-							<Ban size={14} aria-hidden="true" />
-						</button>
-					{/if}
-				{/if}
+					{/each}
+				</div>
 			</div>
 		{:else if showOnlyStars}
 			<div class="book-card__rating-wrap">
@@ -729,11 +743,15 @@
 		opacity: 0.75;
 	}
 
-	.book-card__summary-action {
+	.book-card__cover-actions {
 		position: absolute;
 		top: var(--space-2);
 		right: var(--space-2);
 		z-index: 2;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: var(--space-2);
 	}
 
 	.book-card__body {
@@ -746,6 +764,11 @@
 		justify-content: flex-start;
 		align-items: stretch;
 		gap: var(--space-2);
+	}
+
+	.book-card[data-context='rate'] .book-card__body {
+		justify-content: center;
+		align-items: center;
 	}
 
 	/* Recommendations (unrated): crossfade + scale; active layer in-flow so height hugs content */
@@ -1033,7 +1056,8 @@
 		align-self: center;
 	}
 	.book-card[data-context='rate'] .book-card__rating-wrap {
-		align-items: stretch;
+		align-items: center;
+		width: auto;
 	}
 	.book-card__back {
 		display: inline-flex;
@@ -1072,7 +1096,7 @@
 		min-width: min-content;
 	}
 	.book-card[data-context='rate'] .book-card__rating {
-		justify-content: flex-start;
+		justify-content: center;
 	}
 
 	.book-card__star {

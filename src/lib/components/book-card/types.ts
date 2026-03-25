@@ -5,7 +5,7 @@ import type { Book, RatingValue } from '$lib/types/book';
  *
  * | context | Rating source | Body UI |
  * |---------|---------------|---------|
- * | `rate` | `ratingsStore` inside component | Cover + stars only; summary overlay |
+ * | `rate` | `ratingsStore` inside component | Cover: summary + (when callbacks exist) save & not-interested stack; body stars only; summary overlay |
  * | `bookmarks` | Parent props + callbacks | Actions + optional rate flow + overlay |
  * | `rated` | Parent props + callbacks | Typically stars-only when rated |
  * | `not-interested` | Parent props + callbacks | Actions + `notInterested` styling |
