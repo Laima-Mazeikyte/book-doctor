@@ -1240,6 +1240,12 @@
 	.book-card__summary-muted--not-interested {
 		opacity: 0.3;
 	}
+	/* Title ↔ author/year and tags ↔ description (children had margin: 0 with no stack gap) */
+	.book-card__summary-content > .book-card__summary-muted {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-4);
+	}
 	.book-card__summary-sheet-title {
 		margin: 0;
 		color: var(--color-book-title);
@@ -1265,18 +1271,17 @@
 		line-height: var(--typ-interactive-1-line-height);
 		letter-spacing: var(--typ-interactive-1-letter-spacing);
 		color: var(--color-text);
-		background: transparent;
+		background: var(--color-book-card-pill-surface-bg);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-pill);
 		cursor: pointer;
 		text-align: left;
-		transition:
-			background var(--duration-fast) var(--ease-default),
+		transition: background var(--duration-fast) var(--ease-default),
+			color var(--duration-fast) var(--ease-default),
 			border-color var(--duration-fast) var(--ease-default);
 	}
 	.book-card__summary-author-pill:hover {
-		background: var(--color-bg-muted);
-		border-color: var(--color-border-hover);
+		background: var(--color-book-card-pill-surface-bg-hover);
 	}
 	.book-card__summary-author-pill:focus-visible {
 		outline: 2px solid var(--color-focus);
@@ -1287,7 +1292,7 @@
 		pointer-events: none;
 	}
 	.book-card__summary-author-pill--text:hover {
-		background: transparent;
+		background: var(--color-book-card-pill-surface-bg);
 		border-color: var(--color-border);
 	}
 	.book-card__summary-year {
