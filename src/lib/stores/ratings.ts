@@ -1,5 +1,6 @@
 import { get, writable } from 'svelte/store';
 import type { Book, RatingValue } from '$lib/types/book';
+import { notInterestedStore } from './notInterested';
 
 export interface RatingsPersistence {
 	set(bookIdNum: number, value: RatingValue): void | Promise<void>;
@@ -50,6 +51,9 @@ function createRatingsStore() {
 			}
 			if (bookIdNum != null && persistence) {
 				void Promise.resolve(persistence.set(bookIdNum, value));
+			}
+			if (bookIdNum != null && bookIdNum !== 0) {
+				notInterestedStore.remove(bookIdNum);
 			}
 		},
 		removeRating(bookId: string, bookIdNum?: number) {

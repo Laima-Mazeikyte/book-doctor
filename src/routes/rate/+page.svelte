@@ -324,6 +324,9 @@
 		const bid = book.book_id ?? 0;
 		const now = notInterestedStore.toggle(bid);
 		if (now) {
+			if (get(ratingsStore).has(book.id)) {
+				ratingsStore.removeRating(book.id, book.book_id);
+			}
 			everHadSessionSignal = true;
 			if (lastAppendWasFeed) engagedWithPendingBatch = true;
 			reviveMainListPaginationAfterEngagement();
@@ -340,6 +343,9 @@
 		const bid = book.book_id ?? 0;
 		const now = notInterestedStore.toggle(bid);
 		if (now) {
+			if (get(ratingsStore).has(book.id)) {
+				ratingsStore.removeRating(book.id, book.book_id);
+			}
 			everHadSessionSignal = true;
 			if (lastAppendWasFeed) engagedWithPendingBatch = true;
 			reviveMainListPaginationAfterEngagement();

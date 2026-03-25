@@ -102,9 +102,14 @@
 		const bid = book.book_id ?? 0;
 		const wasNotInterested = notInterestedStore.has(bid);
 		const nowNotInterested = notInterestedStore.toggle(bid);
-		// Mutually exclusive with bookmark: when marking not interested, remove from bookmarks
-		if (!wasNotInterested && planToReadStore.has(book.id)) {
-			planToReadStore.toggle(book.id, book.book_id);
+		// Not interested clears save and rating (rate + save may coexist with each other)
+		if (nowNotInterested && !wasNotInterested) {
+			if (planToReadStore.has(book.id)) {
+				planToReadStore.toggle(book.id, book.book_id);
+			}
+			if (get(ratingsStore).has(book.id)) {
+				ratingsStore.removeRating(book.id, book.book_id);
+			}
 		}
 		// Keep header count in sync (book stays in list for undo)
 		if (nowNotInterested) {
@@ -284,7 +289,6 @@
 								currentRating={$ratingsStore.get(book.id) ?? null}
 								onRate={(id, value) => {
 									ratingsStore.setRating(id, value, book.book_id, book);
-									if (get(planToReadStore).has(id)) planToReadStore.toggle(id, book.book_id);
 								}}
 								onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id)}
 								notInterested={$notInterestedStore.has(book.book_id ?? 0)}
@@ -348,7 +352,6 @@
 							currentRating={$ratingsStore.get(book.id) ?? null}
 							onRate={(id, value) => {
 								ratingsStore.setRating(id, value, book.book_id, book);
-								if (get(planToReadStore).has(id)) planToReadStore.toggle(id, book.book_id);
 							}}
 							onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id)}
 							notInterested={$notInterestedStore.has(book.book_id ?? 0)}

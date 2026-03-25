@@ -8,7 +8,7 @@
 	import BookCard from '$lib/components/BookCard.svelte';
 	import BookCardSkeleton from '$lib/components/BookCardSkeleton.svelte';
 	import { t } from '$lib/copy';
-	import type { Book } from '$lib/types/book';
+	import type { Book, RatingValue } from '$lib/types/book';
 
 	let books = $state<Book[]>([]);
 	let loading = $state(true);
@@ -69,6 +69,12 @@
 			recommendationsCountStore.update((n) => n + 1);
 		}
 	}
+
+	function handleRate(book: Book, id: string, value: RatingValue) {
+		ratingsStore.setRating(id, value, book.book_id ?? 0, book);
+		books = books.filter((b) => b.book_id !== book.book_id);
+		recommendationsCountStore.update((n) => n + 1);
+	}
 </script>
 
 <div class="not-interested-page">
@@ -94,7 +100,7 @@
 						bookmarked={$planToReadStore.has(book.id)}
 						onBookmark={(id) => handleBookmark(book, id)}
 						currentRating={$ratingsStore.get(book.id) ?? null}
-						onRate={(id, value) => ratingsStore.setRating(id, value, book.book_id ?? 0, book)}
+						onRate={(id, value) => handleRate(book, id, value)}
 						onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id ?? 0)}
 						notInterested={true}
 						onNotInterested={() => handleNotInterested(book)}

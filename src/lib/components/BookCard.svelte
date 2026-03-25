@@ -61,7 +61,7 @@
 	const canRemoveRatingInSheet = $derived(
 		isRateContext ? ratingFromStore != null : currentRating != null
 	);
-	const showSummaryBookmarkAction = $derived(Boolean(onBookmark && !notInterested));
+	const showSummaryBookmarkAction = $derived(Boolean(onBookmark));
 	const showSummaryNotInterestedAction = $derived(Boolean(onNotInterested));
 
 	const summaryPanelId = $derived(`book-summary-panel-${book.id}`);
@@ -362,73 +362,98 @@
 	<div class="book-card__body">
 		{#if isRateContext}
 			<div class="book-card__rating-wrap">
-				<div
-					class="book-card__rating"
-					role="group"
-					aria-label={t('shared.bookCard.rateThisBook')}
-					onmouseleave={() => (hoverRating = 0)}
-				>
-					{#each RATING_OPTIONS as value}
+				{#if notInterested}
+					{#if onNotInterested}
 						<button
 							type="button"
-							class="book-card__star"
-							class:book-card__star--active={displayRating >= value}
-							aria-label={starAriaLabel(value)}
-							aria-pressed={starAriaPressed(value)}
-							onmouseenter={() => (hoverRating = value)}
-							onclick={() => {
-								hoverRating = 0;
-								handleStarClick(value);
-							}}
+							class="book-card__action book-card__action--rate-not-interested"
+							class:book-card__action--not-interested-active={true}
+							class:book-card__action--labeled={true}
+							aria-pressed={true}
+							aria-label={t('shared.recommendationCard.removeFromNotInterested')}
+							onclick={handleNotInterestedClick}
 						>
-							{@render bookCardStarGlyph(displayRating >= value)}
-						</button>
-					{/each}
-				</div>
-				{#if onNotInterested}
-					<button
-						type="button"
-						class="book-card__action book-card__action--rate-not-interested"
-						class:book-card__action--not-interested-active={notInterested}
-						class:book-card__action--labeled={notInterested}
-						aria-pressed={notInterested}
-						aria-label={notInterested
-							? t('shared.recommendationCard.removeFromNotInterested')
-							: t('shared.recommendationCard.notInterested')}
-						onclick={handleNotInterestedClick}
-					>
-						<Ban size={14} aria-hidden="true" />
-						{#if notInterested}
+							<Ban size={14} aria-hidden="true" />
 							<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span>
-						{/if}
-					</button>
+						</button>
+					{/if}
+				{:else}
+					<div
+						class="book-card__rating"
+						role="group"
+						aria-label={t('shared.bookCard.rateThisBook')}
+						onmouseleave={() => (hoverRating = 0)}
+					>
+						{#each RATING_OPTIONS as value}
+							<button
+								type="button"
+								class="book-card__star"
+								class:book-card__star--active={displayRating >= value}
+								aria-label={starAriaLabel(value)}
+								aria-pressed={starAriaPressed(value)}
+								onmouseenter={() => (hoverRating = value)}
+								onclick={() => {
+									hoverRating = 0;
+									handleStarClick(value);
+								}}
+							>
+								{@render bookCardStarGlyph(displayRating >= value)}
+							</button>
+						{/each}
+					</div>
+					{#if onNotInterested}
+						<button
+							type="button"
+							class="book-card__action book-card__action--rate-not-interested"
+							aria-pressed={false}
+							aria-label={t('shared.recommendationCard.notInterested')}
+							onclick={handleNotInterestedClick}
+						>
+							<Ban size={14} aria-hidden="true" />
+						</button>
+					{/if}
 				{/if}
 			</div>
 		{:else if showOnlyStars}
 			<div class="book-card__rating-wrap">
-				<div
-					class="book-card__rating"
-					role="group"
-					aria-label={t('shared.recommendationCard.rateThisBook')}
-					onmouseleave={() => (hoverRating = 0)}
-				>
-					{#each RATING_OPTIONS as value}
-						<button
-							type="button"
-							class="book-card__star"
-							class:book-card__star--active={displayRating >= value}
-							aria-label={starAriaLabel(value)}
-							aria-pressed={starAriaPressed(value)}
-							onmouseenter={() => (hoverRating = value)}
-							onclick={() => {
-								hoverRating = 0;
-								handleStarClick(value);
-							}}
-						>
-							{@render bookCardStarGlyph(displayRating >= value)}
-						</button>
-					{/each}
-				</div>
+				{#if notInterested && onNotInterested}
+					<button
+						type="button"
+						class="book-card__action book-card__action--rate-not-interested"
+						class:book-card__action--not-interested-active={true}
+						class:book-card__action--labeled={true}
+						aria-pressed={true}
+						aria-label={t('shared.recommendationCard.removeFromNotInterested')}
+						onclick={handleNotInterestedClick}
+					>
+						<Ban size={14} aria-hidden="true" />
+						<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span>
+					</button>
+				{:else}
+					<div
+						class="book-card__rating"
+						role="group"
+						aria-label={t('shared.recommendationCard.rateThisBook')}
+						onmouseleave={() => (hoverRating = 0)}
+					>
+						{#each RATING_OPTIONS as value}
+							<button
+								type="button"
+								class="book-card__star"
+								class:book-card__star--active={displayRating >= value}
+								aria-label={starAriaLabel(value)}
+								aria-pressed={starAriaPressed(value)}
+								onmouseenter={() => (hoverRating = value)}
+								onclick={() => {
+									hoverRating = 0;
+									handleStarClick(value);
+								}}
+							>
+								{@render bookCardStarGlyph(displayRating >= value)}
+							</button>
+						{/each}
+					</div>
+				{/if}
 			</div>
 		{:else}
 			{@render recommendationRateMorph(bookmarked, notInterested)}
@@ -467,37 +492,42 @@
 			<div class="book-card__summary-content">
 				<div class="book-card__summary-sheet-handle" aria-hidden="true"></div>
 
-				<h3 class="book-card__summary-sheet-title typ-h2" id={summaryTitleId}>{book.title}</h3>
+				<div
+					class="book-card__summary-muted"
+					class:book-card__summary-muted--not-interested={notInterested}
+				>
+					<h3 class="book-card__summary-sheet-title typ-h2" id={summaryTitleId}>{book.title}</h3>
 
-				{#if showAuthorInSheetMeta || book.year}
-					<div class="book-card__summary-meta-row">
-						{#if showAuthorInSheetMeta}
-							{#if showSearchAuthorInOverlay}
-								<button
-									type="button"
-									class="book-card__summary-author-pill"
-									aria-label={t('shared.bookCard.searchThisAuthorAriaLabel', { author: book.author })}
-									onclick={(e) => {
-										e.preventDefault();
-										e.stopPropagation();
-										onSearchAuthor?.(book.author);
-										handleCloseSummary();
-									}}
-								>
-									<Search size={14} aria-hidden="true" />
-									<span>{book.author}</span>
-								</button>
-							{:else}
-								<span class="book-card__summary-author-pill book-card__summary-author-pill--text">
-									{book.author}
-								</span>
+					{#if showAuthorInSheetMeta || book.year}
+						<div class="book-card__summary-meta-row">
+							{#if showAuthorInSheetMeta}
+								{#if showSearchAuthorInOverlay}
+									<button
+										type="button"
+										class="book-card__summary-author-pill"
+										aria-label={t('shared.bookCard.searchThisAuthorAriaLabel', { author: book.author })}
+										onclick={(e) => {
+											e.preventDefault();
+											e.stopPropagation();
+											onSearchAuthor?.(book.author);
+											handleCloseSummary();
+										}}
+									>
+										<Search size={14} aria-hidden="true" />
+										<span>{book.author}</span>
+									</button>
+								{:else}
+									<span class="book-card__summary-author-pill book-card__summary-author-pill--text">
+										{book.author}
+									</span>
+								{/if}
 							{/if}
-						{/if}
-						{#if book.year}
-							<span class="book-card__summary-year typ-caption">{book.year}</span>
-						{/if}
-					</div>
-				{/if}
+							{#if book.year}
+								<span class="book-card__summary-year typ-caption">{book.year}</span>
+							{/if}
+						</div>
+					{/if}
+				</div>
 
 				<div class="book-card__rating-wrap book-card__rating-wrap--summary-sheet">
 					<div
@@ -537,15 +567,20 @@
 					{/if}
 				</div>
 
-				{#if book.genres && book.genres.length > 0}
-					<ul class="book-card__genres book-card__genres--summary-sheet" aria-label={t('shared.recommendationCard.genres')}>
-						{#each book.genres as genre}
-							<li class="book-card__genre">{genre}</li>
-						{/each}
-					</ul>
-				{/if}
+				<div
+					class="book-card__summary-muted"
+					class:book-card__summary-muted--not-interested={notInterested}
+				>
+					{#if book.genres && book.genres.length > 0}
+						<ul class="book-card__genres book-card__genres--summary-sheet" aria-label={t('shared.recommendationCard.genres')}>
+							{#each book.genres as genre}
+								<li class="book-card__genre">{genre}</li>
+							{/each}
+						</ul>
+					{/if}
 
-				<p class="book-card__summary">{displaySummary}</p>
+					<p class="book-card__summary">{displaySummary}</p>
+				</div>
 
 				{#if showSummaryBookmarkAction || showSummaryNotInterestedAction}
 					<div
@@ -641,7 +676,11 @@
 		transition: transform var(--duration-normal) var(--ease-default),
 			opacity var(--duration-fast) var(--ease-default);
 	}
-	.book-card__media-inner--not-interested .book-card__cover {
+	.book-card__media-inner--not-interested .book-card__cover:not(.book-card__cover--no-image) {
+		opacity: 0.3;
+	}
+	.book-card__media-inner--not-interested .book-card__cover--no-image .book-card__placeholder-author,
+	.book-card__media-inner--not-interested .book-card__cover--no-image .book-card__placeholder-title {
 		opacity: 0.3;
 	}
 	.book-card:hover .book-card__cover:not(.book-card__cover--no-image) {
@@ -1197,6 +1236,9 @@
 	}
 	.book-card__summary-content::-webkit-scrollbar-thumb:hover {
 		background: var(--color-border-hover);
+	}
+	.book-card__summary-muted--not-interested {
+		opacity: 0.3;
 	}
 	.book-card__summary-sheet-title {
 		margin: 0;
