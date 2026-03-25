@@ -357,31 +357,14 @@
 						{t('shared.recommendationCard.summary')}
 					</span>
 				</button>
-				{#if isRateContext && showSummaryBookmarkAction}
-					<button
-						type="button"
-						class="book-card__action"
-						class:book-card__action--saved={bookmarked}
-						class:book-card__action--reco-hoverable={!bookmarked}
-						aria-pressed={bookmarked}
-						aria-label={bookmarked
-							? t('shared.recommendationCard.removeFromReadingList')
-							: t('shared.recommendationCard.addToReadingList')}
-						onclick={handleBookmarkClick}
-					>
-						<Bookmark size={14} aria-hidden="true" />
-						{#if !bookmarked}
-							<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">
-								{t('shared.recommendationCard.bookmark')}
-							</span>
-						{/if}
-					</button>
-				{/if}
-				{#if isRateContext && showSummaryNotInterestedAction}
+			</div>
+			{#if isRateContext && showSummaryNotInterestedAction}
+				<div class="book-card__cover-rate-not-interested">
 					<button
 						type="button"
 						class="book-card__action"
 						class:book-card__action--not-interested-active={notInterested}
+						class:book-card__action--labeled={notInterested}
 						class:book-card__action--reco-hoverable={!notInterested}
 						aria-pressed={notInterested}
 						aria-label={notInterested
@@ -390,14 +373,16 @@
 						onclick={handleNotInterestedClick}
 					>
 						<Ban size={14} aria-hidden="true" />
-						{#if !notInterested}
+						{#if notInterested}
+							<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span>
+						{:else}
 							<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">
 								{t('shared.recommendationCard.notInterested')}
 							</span>
 						{/if}
 					</button>
-				{/if}
-			</div>
+				</div>
+			{/if}
 		</div>
 	</div>
 
@@ -752,6 +737,17 @@
 		flex-direction: column;
 		align-items: flex-end;
 		gap: var(--space-2);
+	}
+
+	.book-card__cover-rate-not-interested {
+		position: absolute;
+		bottom: var(--space-2);
+		right: var(--space-2);
+		z-index: 2;
+		display: flex;
+		align-items: flex-end;
+		justify-content: flex-end;
+		max-width: calc(100% - var(--space-2) * 2);
 	}
 
 	.book-card__body {
