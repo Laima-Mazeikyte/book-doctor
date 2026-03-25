@@ -1472,6 +1472,17 @@
 		flex: 1 1 100%;
 	}
 
+	/* Cover tint: deep aqua (does not remap in dark like --primitive-gray-900). */
+	.book-card__media-inner .book-card__cover-actions,
+	.book-card__media-inner .book-card__cover-rate-not-interested {
+		--book-card-cover-tint: var(--primitive-deep-aqua);
+		--book-card-cover-chip-hover-solid: color-mix(
+			in srgb,
+			var(--primitive-deep-aqua) 88%,
+			var(--primitive-white)
+		);
+	}
+
 	/* Cover overlay actions only: frosted glass (overrides pill-surface rules above) */
 	.book-card__media-inner .book-card__cover-actions .book-card__action,
 	.book-card__media-inner .book-card__cover-rate-not-interested .book-card__action {
@@ -1485,7 +1496,7 @@
 		.book-card__action:not(.book-card__action--saved):not(.book-card__action--not-interested-active),
 	.book-card__media-inner .book-card__cover-rate-not-interested
 		.book-card__action:not(.book-card__action--saved):not(.book-card__action--not-interested-active) {
-		background: color-mix(in srgb, var(--color-book-card-pill-surface-bg) 12%, transparent);
+		background: color-mix(in srgb, var(--book-card-cover-tint) 12%, transparent);
 	}
 
 	.book-card__media-inner .book-card__cover-actions
@@ -1504,13 +1515,13 @@
 		.book-card__action:not(.book-card__action--saved):not(
 			.book-card__action--not-interested-active
 		):focus-visible {
-		background: color-mix(in srgb, var(--color-book-card-pill-surface-bg-hover) 18%, transparent);
+		background: color-mix(in srgb, var(--book-card-cover-tint) 30%, transparent);
 	}
 
 	.book-card__media-inner
 		.book-card__cover-rate-not-interested
 		.book-card__action.book-card__action--not-interested-active {
-		background: color-mix(in srgb, var(--color-book-card-chip-on-bg) 18%, transparent);
+		background: color-mix(in srgb, var(--book-card-cover-tint) 30%, transparent);
 		color: var(--primitive-white);
 		border-color: transparent;
 	}
@@ -1518,7 +1529,7 @@
 	.book-card__media-inner
 		.book-card__cover-rate-not-interested
 		.book-card__action.book-card__action--not-interested-active:hover {
-		background: color-mix(in srgb, var(--color-book-card-chip-on-bg-hover) 24%, transparent);
+		background: color-mix(in srgb, var(--book-card-cover-chip-hover-solid) 36%, transparent);
 		color: var(--primitive-white);
 		border-color: transparent;
 	}

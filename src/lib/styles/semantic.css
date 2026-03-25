@@ -60,10 +60,10 @@
 
 	/* ── Book card: active action chips (neutral; bookmark / not interested) ─ */
 	/** Inverted fill reads clearly as “selected” vs muted default buttons. */
-	--color-book-card-chip-on-bg: var(--primitive-gray-900);
-	--color-book-card-chip-on-bg-hover: color-mix(in srgb, var(--primitive-gray-900) 88%, var(--primitive-white));
+	--color-book-card-chip-on-bg: var(--primitive-deep-aqua);
+	--color-book-card-chip-on-bg-hover: color-mix(in srgb, var(--primitive-deep-aqua) 88%, var(--primitive-white));
 	--color-book-card-chip-on-text: var(--primitive-white);
-	--color-book-card-chip-on-border: var(--primitive-gray-900);
+	--color-book-card-chip-on-border: var(--primitive-deep-aqua);
 
 	/* ── Book card: genre tag pills (neutral contrast vs card surface) ─────── */
 	--color-book-card-tag-bg: var(--primitive-pale-aqua);
