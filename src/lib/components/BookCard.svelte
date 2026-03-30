@@ -161,9 +161,19 @@
 		}
 	}
 
+	function starHoverPreviewSupported(): boolean {
+		if (typeof window === 'undefined') return false;
+		return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+	}
+
+	function handleStarMouseEnter(value: RatingValue) {
+		if (starHoverPreviewSupported()) hoverRating = value;
+	}
+
 	function handleReadClick(e: MouseEvent) {
 		e.stopPropagation();
 		pendingRate = !pendingRate;
+		hoverRating = 0;
 	}
 
 	function handleStarClick(value: RatingValue) {
@@ -296,7 +306,7 @@
 							class:book-card__star--active={displayRating >= value}
 							aria-label={starAriaLabel(value)}
 							aria-pressed={starAriaPressed(value)}
-							onmouseenter={() => (hoverRating = value)}
+							onmouseenter={() => handleStarMouseEnter(value)}
 							onclick={() => {
 								hoverRating = 0;
 								handleStarClick(value);
@@ -418,7 +428,7 @@
 							class:book-card__star--active={displayRating >= value}
 							aria-label={starAriaLabel(value)}
 							aria-pressed={starAriaPressed(value)}
-							onmouseenter={() => (hoverRating = value)}
+							onmouseenter={() => handleStarMouseEnter(value)}
 							onclick={() => {
 								hoverRating = 0;
 								handleStarClick(value);
@@ -458,7 +468,7 @@
 								class:book-card__star--active={displayRating >= value}
 								aria-label={starAriaLabel(value)}
 								aria-pressed={starAriaPressed(value)}
-								onmouseenter={() => (hoverRating = value)}
+								onmouseenter={() => handleStarMouseEnter(value)}
 								onclick={() => {
 									hoverRating = 0;
 									handleStarClick(value);
@@ -565,7 +575,7 @@
 								class:book-card__star--active={displayRating >= value}
 								aria-label={starAriaLabel(value)}
 								aria-pressed={starAriaPressed(value)}
-								onmouseenter={() => (hoverRating = value)}
+								onmouseenter={() => handleStarMouseEnter(value)}
 								onclick={() => {
 									hoverRating = 0;
 									handleStarClick(value);
