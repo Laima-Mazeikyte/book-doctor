@@ -99,8 +99,13 @@
 			/** Feed stays mounted (`display:none` while searching); one frame after show is enough to restore. */
 			void tick().then(() => {
 				requestAnimationFrame(() => {
-					if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
-						document.activeElement.blur();
+					const active = document.activeElement;
+					if (
+						active instanceof HTMLElement &&
+						active !== document.body &&
+						!active.closest('.rate-page__search')
+					) {
+						active.blur();
 					}
 					window.scrollTo({ top: y, left: 0, behavior: 'auto' });
 				});
@@ -802,7 +807,8 @@
 		margin-bottom: var(--space-2);
 		transition: transform 0.25s ease;
 	}
-	.rate-page__sticky-header--hidden {
+	/* Stay visible while the search (or clear control) is focused so the field is not off-screen. */
+	.rate-page__sticky-header--hidden:not(:focus-within) {
 		transform: translateY(-100%);
 		pointer-events: none;
 	}

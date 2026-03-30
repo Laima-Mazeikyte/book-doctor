@@ -32,6 +32,7 @@
 					<span class="landing__adjective typ-display1 typ-display1--inherit-size">{currentAdjective}</span>
 				{/key}
 			</span>
+			<br />
 			{t('home.titleSuffix')}
 		</h1>
 		<p class="landing__lead typ-body">{t('home.lead')}</p>

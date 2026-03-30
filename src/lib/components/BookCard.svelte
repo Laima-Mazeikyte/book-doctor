@@ -330,17 +330,33 @@
 	<div class="book-card__media">
 		<div class="book-card__media-inner" class:book-card__media-inner--not-interested={notInterested}>
 			{#if showCoverImage}
-				<img
-					src={book.coverUrl}
-					alt=""
-					class="book-card__cover"
-					onerror={() => (coverImageFailed = true)}
-				/>
+				<button
+					type="button"
+					class="book-card__cover-hit"
+					aria-label={t('shared.recommendationCard.seeSummary')}
+					aria-expanded={summaryOpen}
+					aria-controls={summaryOpen ? summaryPanelId : undefined}
+					onclick={() => void handleOpenSummary()}
+				>
+					<img
+						src={book.coverUrl}
+						alt=""
+						class="book-card__cover"
+						onerror={() => (coverImageFailed = true)}
+					/>
+				</button>
 			{:else}
-				<div class="book-card__cover book-card__cover--no-image">
+				<button
+					type="button"
+					class="book-card__cover book-card__cover--no-image book-card__cover--opens-summary"
+					aria-label={t('shared.recommendationCard.seeSummary')}
+					aria-expanded={summaryOpen}
+					aria-controls={summaryOpen ? summaryPanelId : undefined}
+					onclick={() => void handleOpenSummary()}
+				>
 					<span class="book-card__placeholder-author">{book.author}{#if book.year}<span class="book-card__year"> · {book.year}</span>{/if}</span>
 					<span class="book-card__placeholder-title">{book.title}</span>
-				</div>
+				</button>
 			{/if}
 			<div class="book-card__cover-actions">
 				<button
@@ -679,6 +695,36 @@
 		border-radius: var(--radius-sm);
 		transition: transform var(--duration-normal) var(--ease-default),
 			opacity var(--duration-fast) var(--ease-default);
+	}
+	.book-card__cover-hit {
+		display: block;
+		width: 100%;
+		height: 100%;
+		padding: 0;
+		margin: 0;
+		border: none;
+		background: transparent;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+	}
+	.book-card__cover-hit:focus-visible {
+		outline: 2px solid var(--color-focus-ring, currentColor);
+		outline-offset: 2px;
+	}
+	.book-card__cover--opens-summary {
+		cursor: pointer;
+		appearance: none;
+		padding: 0;
+		margin: 0;
+		border: none;
+		background: transparent;
+		font: inherit;
+		text-align: left;
+		color: inherit;
+	}
+	.book-card__cover--opens-summary:focus-visible {
+		outline: 2px solid var(--color-focus-ring, currentColor);
+		outline-offset: 2px;
 	}
 	.book-card__media-inner--not-interested .book-card__cover:not(.book-card__cover--no-image) {
 		opacity: 0.3;
