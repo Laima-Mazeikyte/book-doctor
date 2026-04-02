@@ -23,6 +23,7 @@
 	let hoverRating = $state<number>(0);
 	let coverFailedIds = $state<Set<string>>(new Set());
 	let closeButtonEl = $state<HTMLButtonElement | HTMLAnchorElement | null>(null);
+	const ratingsSyncMeta = ratingsStore.syncMeta;
 	const panelId = 'ratings-drawer-panel';
 	const triggerId = 'ratings-trigger';
 	/** Slide distance in px; negative x → panel flies in from the left (desktop and mobile). */
@@ -42,6 +43,31 @@
 	}
 
 	const RATING_OPTIONS: RatingValue[] = [1, 2, 3, 4, 5];
+
+	let syncIndicatorState: 'normal' | 'pending' | 'failed' = $derived.by(() => {
+		if ($ratingsSyncMeta.failedCount > 0) return 'failed';
+		if ($ratingsSyncMeta.queuedCount > 0 || $ratingsSyncMeta.isFlushing) return 'pending';
+		return 'normal';
+	});
+
+	let drawerSyncState: 'pending' | 'failed' | null = $derived.by(() => {
+		if ($ratingsSyncMeta.queuedCount === 0) return null;
+		if ($ratingsSyncMeta.isFlushing || $ratingsSyncMeta.failedCount === 0) return 'pending';
+		return 'failed';
+	});
+
+	let drawerSyncText = $derived.by(() => {
+		if (drawerSyncState === 'failed') return t('shared.ratingsBar.retryNeeded');
+		if (drawerSyncState === 'pending') return t('shared.ratingsBar.syncing');
+		return '';
+	});
+
+	let triggerAriaLabel = $derived.by(() => {
+		const base = `${t('shared.ratingsBar.yourRatings')} (${ratedEntries.length})`;
+		if (syncIndicatorState === 'failed') return `${base}. Some ratings need retrying.`;
+		if (syncIndicatorState === 'pending') return `${base}. Ratings syncing.`;
+		return base;
+	});
 
 	/** Portal node to body so it's not inside the bottom bar (pointer-events: none) and can receive clicks. */
 	function portal(node: HTMLElement, target: HTMLElement = document.body) {
@@ -77,6 +103,10 @@
 		if (e.key === 'Escape') closeDrawer();
 	}
 
+	function retryPendingRatings() {
+		void ratingsStore.retryPending();
+	}
+
 	$effect(() => {
 		if (!open) return;
 		tick().then(() => closeButtonEl?.focus());
@@ -109,13 +139,23 @@
 	aria-expanded={open}
 	aria-controls={panelId}
 	aria-haspopup="dialog"
-	aria-label={t('shared.ratingsBar.yourRatings')}
+	aria-label={triggerAriaLabel}
 	onclick={openDrawer}
 >
 	<span class="ratings-bar__icon">
 		<BookIcon size={14} aria-hidden="true" />
 	</span>
 	<span class="ratings-bar__count" aria-hidden="true">{ratedEntries.length}</span>
+	{#if syncIndicatorState !== 'normal'}
+		<span
+			class="ratings-bar__sync"
+			class:ratings-bar__sync--pending={syncIndicatorState === 'pending'}
+			class:ratings-bar__sync--failed={syncIndicatorState === 'failed'}
+			aria-hidden="true"
+		>
+			{#if syncIndicatorState === 'failed'}!{/if}
+		</span>
+	{/if}
 </button>
 
 {#if open}
@@ -151,6 +191,27 @@
 					</Button>
 				</div>
 				<div class="ratings-drawer__body">
+					{#if drawerSyncState}
+						<div
+							class="ratings-drawer__sync-row"
+							class:ratings-drawer__sync-row--failed={drawerSyncState === 'failed'}
+						>
+							<div class="ratings-drawer__sync-status">
+								<span
+									class="ratings-drawer__sync-indicator"
+									class:ratings-drawer__sync-indicator--pending={drawerSyncState === 'pending'}
+									class:ratings-drawer__sync-indicator--failed={drawerSyncState === 'failed'}
+									aria-hidden="true"
+								>
+									{#if drawerSyncState === 'failed'}!{/if}
+								</span>
+								<span class="ratings-drawer__sync-text">{drawerSyncText}</span>
+							</div>
+							<Button variant="tertiary" compact type="button" onclick={retryPendingRatings}>
+								{t('shared.ratingsBar.syncRatings')}
+							</Button>
+						</div>
+					{/if}
 					{#if ratedEntries.length === 0}
 						<p class="ratings-drawer__empty">
 							{t('shared.ratingsBar.empty')}
@@ -277,6 +338,40 @@
 		font-variant-numeric: tabular-nums;
 		color: inherit;
 	}
+	.ratings-bar__sync {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		width: 0.625rem;
+		height: 0.625rem;
+		border-radius: 999px;
+	}
+	.ratings-bar__sync--pending {
+		background: color-mix(in srgb, var(--color-book-rating-star) 72%, var(--color-bg));
+		animation: ratings-bar-sync-pulse 1.4s ease-in-out infinite;
+	}
+	.ratings-bar__sync--failed {
+		width: 0.875rem;
+		height: 0.875rem;
+		background: var(--color-danger-tonal-bg);
+		border: 1px solid var(--color-danger-tonal-border);
+		color: var(--color-danger-tonal-text);
+		font-family: var(--typ-caption-font-family);
+		font-size: 0.625rem;
+		font-weight: var(--font-weight-semibold);
+		line-height: 1;
+	}
+	@keyframes ratings-bar-sync-pulse {
+		0%, 100% {
+			opacity: 0.55;
+			transform: scale(0.92);
+		}
+		50% {
+			opacity: 1;
+			transform: scale(1);
+		}
+	}
 
 	.ratings-drawer-overlay {
 		position: fixed;
@@ -342,6 +437,60 @@
 		font-weight: var(--typ-caption-font-weight);
 		line-height: var(--typ-caption-line-height);
 		letter-spacing: var(--typ-caption-letter-spacing);
+	}
+	.ratings-drawer__sync-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-2);
+		margin-bottom: var(--space-3);
+		padding: var(--space-2) var(--space-3);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		background: var(--color-bg-muted);
+	}
+	.ratings-drawer__sync-row--failed {
+		border-color: var(--color-danger-tonal-border);
+		background: var(--color-danger-tonal-bg);
+	}
+	.ratings-drawer__sync-status {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		min-width: 0;
+	}
+	.ratings-drawer__sync-indicator {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		width: 0.75rem;
+		height: 0.75rem;
+		border-radius: 999px;
+	}
+	.ratings-drawer__sync-indicator--pending {
+		background: color-mix(in srgb, var(--color-book-rating-star) 72%, var(--color-bg));
+		animation: ratings-bar-sync-pulse 1.4s ease-in-out infinite;
+	}
+	.ratings-drawer__sync-indicator--failed {
+		background: var(--color-danger-tonal-bg);
+		border: 1px solid var(--color-danger-tonal-border);
+		color: var(--color-danger-tonal-text);
+		font-family: var(--typ-caption-font-family);
+		font-size: 0.625rem;
+		font-weight: var(--font-weight-semibold);
+		line-height: 1;
+	}
+	.ratings-drawer__sync-text {
+		font-family: var(--typ-caption-font-family);
+		font-size: var(--typ-caption-font-size);
+		font-weight: var(--font-weight-semibold);
+		line-height: var(--typ-caption-line-height);
+		letter-spacing: var(--typ-caption-letter-spacing);
+		color: var(--color-text);
+	}
+	.ratings-drawer__sync-row--failed .ratings-drawer__sync-text {
+		color: var(--color-danger-tonal-text);
 	}
 	.ratings-drawer__list {
 		list-style: none;
@@ -483,5 +632,13 @@
 		height: 32px;
 		padding-block: 0;
 		padding-inline: var(--space-4);
+	}
+	.ratings-drawer__sync-row :global(.btn.btn--compact) {
+		box-sizing: border-box;
+		flex-shrink: 0;
+		min-height: 32px;
+		height: 32px;
+		padding-block: 0;
+		padding-inline: var(--space-3);
 	}
 </style>

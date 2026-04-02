@@ -47,16 +47,64 @@
 
 	/** Track if we had a user so we only reset ratings when they sign out, not on initial load. */
 	let hadUserBefore = $state(false);
+	let ratingsLoadRequestId = 0;
+	let ratingsPersistenceUserId: string | null = null;
+
+	function isStaleRatingsLoad(requestId: number): boolean {
+		return requestId !== ratingsLoadRequestId;
+	}
+
+	function attachRatingsPersistence(supabase: SupabaseClient, userId: string): void {
+		if (ratingsPersistenceUserId === userId) {
+			void ratingsStore.flushPending();
+			return;
+		}
+
+		ratingsPersistenceUserId = userId;
+		ratingsStore.setPersistence({
+			async set(bookIdNum, value) {
+				const { error } = await supabase
+					.from('user_ratings')
+					.upsert(
+						{
+							user_id: userId,
+							book_id: bookIdNum,
+							book_rating: value,
+							updated_at: new Date().toISOString()
+						},
+						{ onConflict: 'user_id,book_id' }
+					);
+				if (error) {
+					console.error('[ratings] Failed to save rating:', error.message);
+					throw error;
+				}
+			},
+			async remove(bookIdNum) {
+				const { error } = await supabase
+					.from('user_ratings')
+					.delete()
+					.eq('user_id', userId)
+					.eq('book_id', bookIdNum);
+				if (error) {
+					console.error('[ratings] Failed to remove rating:', error.message);
+					throw error;
+				}
+			}
+		});
+	}
 
 	async function loadUserRatingsAndPersistence(
 		supabase: SupabaseClient,
-		userId: string
+		userId: string,
+		requestId: number
 	): Promise<void> {
 		const { data: rows, error: ratingsError } = await supabase
 			.from('user_ratings')
 			.select(`book_id, book_rating, books(id, book_id, book_name, author, cover_url, year, ${BOOK_GENRE_TYPE_SELECT})`)
 			.eq('user_id', userId)
 			.order('updated_at', { ascending: false });
+
+		if (isStaleRatingsLoad(requestId)) return;
 
 		if (ratingsError) {
 			console.error('[ratings] Failed to load user ratings:', ratingsError.message);
@@ -81,6 +129,7 @@
 				.from('books')
 				.select(`id, book_id, book_name, author, cover_url, year, ${BOOK_GENRE_TYPE_SELECT}`)
 				.in('book_id', bookIds);
+			if (isStaleRatingsLoad(requestId)) return;
 			if (bookRows) {
 				bookIdByNum = Object.fromEntries(
 					bookRows.map((b) => [b.book_id, String(b.id)])
@@ -152,43 +201,16 @@
 			};
 		});
 
+		if (isStaleRatingsLoad(requestId)) return;
 		ratingsStore.hydrate(entries);
 		ratingsStore.setRatedBooksDetails(detailsMap);
-
-		ratingsStore.setPersistence({
-			set(bookIdNum, value) {
-				supabase
-					.from('user_ratings')
-					.upsert(
-						{
-							user_id: userId,
-							book_id: bookIdNum,
-							book_rating: value,
-							updated_at: new Date().toISOString()
-						},
-						{ onConflict: 'user_id,book_id' }
-					)
-					.then(({ error }) => {
-						if (error) console.error('[ratings] Failed to save rating:', error.message);
-					});
-			},
-			remove(bookIdNum) {
-				supabase
-					.from('user_ratings')
-					.delete()
-					.eq('user_id', userId)
-					.eq('book_id', bookIdNum)
-					.then(({ error }) => {
-						if (error) console.error('[ratings] Failed to remove rating:', error.message);
-					});
-			}
-		});
 
 		// Load bookmarks and set persistence
 		const { data: bmRows, error: bmError } = await supabase
 			.from('user_bookmarks')
 			.select('book_id')
 			.eq('user_id', userId);
+		if (isStaleRatingsLoad(requestId)) return;
 		if (bmError) {
 			console.error('[bookmarks] Failed to load bookmarks:', bmError.message);
 		}
@@ -198,6 +220,7 @@
 				.from('books')
 				.select('id, book_id')
 				.in('book_id', bmBookIds);
+			if (isStaleRatingsLoad(requestId)) return;
 			const ids = (bookRows ?? []).map((b) => String(b.id));
 			const idToNum = new Map((bookRows ?? []).map((b) => [String(b.id), b.book_id]));
 			planToReadStore.hydrate(ids, idToNum);
@@ -245,6 +268,7 @@
 			.from('user_not_interested')
 			.select('book_id')
 			.eq('user_id', userId);
+		if (isStaleRatingsLoad(requestId)) return;
 		notInterestedStore.hydrate(
 			(niRows ?? []).map((r) => r.book_id).filter((id): id is number => id != null)
 		);
@@ -292,6 +316,7 @@
 	}
 
 	onMount(() => {
+		ratingsStore.hydratePendingFromLocalStorage();
 		const supabase = getSupabase();
 		if (!supabase) return;
 
@@ -302,6 +327,7 @@
 				passwordRecoveryActive.set(true);
 			}
 			authStore.setSession(session);
+			if (session?.user) void ratingsStore.flushPending();
 		});
 
 		void (async () => {
@@ -322,11 +348,13 @@
 						return;
 					}
 					authStore.setSession(signInData?.session ?? null);
+					if (signInData?.session?.user) void ratingsStore.flushPending();
 					if (signInData?.user) {
 						console.debug('[auth] Anonymous sign-in OK, user id:', signInData.user.id);
 					}
 				} else {
 					authStore.setSession(session);
+					if (session.user) void ratingsStore.flushPending();
 				}
 			} catch (e) {
 				console.error('[auth] Auth setup error', e);
@@ -357,6 +385,8 @@
 		const hasUser = !!(session && user);
 
 		if (!hasUser) {
+			ratingsLoadRequestId += 1;
+			ratingsPersistenceUserId = null;
 			if (hadUserBefore) ratingsStore.reset();
 			hadUserBefore = false;
 			ratingsStore.setPersistence(null);
@@ -370,7 +400,9 @@
 		}
 
 		hadUserBefore = true;
-		void loadUserRatingsAndPersistence(supabase, user.id);
+		attachRatingsPersistence(supabase, user.id);
+		const requestId = ++ratingsLoadRequestId;
+		void loadUserRatingsAndPersistence(supabase, user.id, requestId);
 
 		const token = session.access_token ?? null;
 
@@ -391,11 +423,33 @@
 			const supabase = getSupabase();
 			const user = get(authStore).user;
 			if (supabase && user?.id) {
-				void loadUserRatingsAndPersistence(supabase, user.id);
+				attachRatingsPersistence(supabase, user.id);
+				void ratingsStore.flushPending();
+				const requestId = ++ratingsLoadRequestId;
+				void loadUserRatingsAndPersistence(supabase, user.id, requestId);
 			}
 		};
 		window.addEventListener('auth:ratings-migrated', handler);
 		return () => window.removeEventListener('auth:ratings-migrated', handler);
+	});
+
+	onMount(() => {
+		const retryQueuedRatings = () => {
+			void ratingsStore.flushPending();
+		};
+		const handleVisibilityChange = () => {
+			if (document.visibilityState === 'visible') retryQueuedRatings();
+		};
+
+		window.addEventListener('online', retryQueuedRatings);
+		window.addEventListener('focus', retryQueuedRatings);
+		document.addEventListener('visibilitychange', handleVisibilityChange);
+
+		return () => {
+			window.removeEventListener('online', retryQueuedRatings);
+			window.removeEventListener('focus', retryQueuedRatings);
+			document.removeEventListener('visibilitychange', handleVisibilityChange);
+		};
 	});
 </script>
 
