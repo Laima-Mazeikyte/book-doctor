@@ -25,6 +25,8 @@
 	const FEED_TIMEOUT_MS = 60000;
 	const FEED_PAGE_SIZE = 20;
 	const EMPTY_PAGE_CHAIN_MAX = 25;
+	/** Wait for layout auth (anon or session) before choosing feed vs Top 100 on cold load. */
+	const AUTH_WAIT_MS = 12_000;
 	/** After a new feed batch mounts, ignore strict “end of list” briefly so a sentinel already at the viewport bottom does not clear `hasMore` before the user can interact. */
 	const STRICT_FEED_END_GRACE_MS = 750;
 
@@ -290,6 +292,32 @@
 				: t('rate.remainingToRecommend_other', { remaining: ratingsRemainingForRecommendations })
 	);
 
+	/** Resolve once Supabase has set a session (avoids skipping /api/feed/latest on hard refresh). */
+	function waitForAccessToken(maxMs: number): Promise<string | null> {
+		const existing = get(authStore).session?.access_token ?? null;
+		if (existing) return Promise.resolve(existing);
+
+		return new Promise((resolve) => {
+			let settled = false;
+			const finish = (token: string | null) => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(timer);
+				unsub();
+				resolve(token);
+			};
+
+			const timer = setTimeout(() => {
+				finish(get(authStore).session?.access_token ?? null);
+			}, maxMs);
+
+			const unsub = authStore.subscribe((s) => {
+				const t = s.session?.access_token ?? null;
+				if (t) finish(t);
+			});
+		});
+	}
+
 	function mergeMainListBooks(incoming: Book[], mode: 'replace' | 'append'): Book[] {
 		const ratings = get(ratingsStore);
 		const ni = get(notInterestedStore);
@@ -382,32 +410,42 @@
 		loadingInitial = true;
 		popularError = null;
 		sessionShownIds.clear();
+
 		try {
-			const token = get(authStore).session?.access_token ?? null;
-			if (token) {
-				const res = await fetch('/api/feed/latest', {
-					headers: { Authorization: `Bearer ${token}` }
-				});
-				if (res.ok) {
-					const data: {
-						status: string;
-						books: Book[];
-					} = await res.json();
-					if (data.status === 'completed' && data.books?.length > 0) {
-						startedFromLatestFeed = true;
-						const appended = mergeMainListBooks(data.books, 'replace');
-						if (appended.length === 0) {
-							startedFromLatestFeed = false;
-							await loadPopular(0, 0);
-							return;
-						}
+			const token = await waitForAccessToken(AUTH_WAIT_MS);
+			if (!token) {
+				startedFromLatestFeed = false;
+				await loadPopular(0, 0);
+				return;
+			}
+
+			const res = await fetch('/api/feed/latest', {
+				headers: { Authorization: `Bearer ${token}` }
+			});
+			if (res.ok) {
+				const data: {
+					status: string;
+					books: Book[];
+				} = await res.json();
+				if (data.status === 'completed' && data.books?.length > 0) {
+					startedFromLatestFeed = true;
+					const appended = mergeMainListBooks(data.books, 'replace');
+					if (appended.length === 0) {
+						startedFromLatestFeed = false;
+						await loadPopular(0, 0);
+					} else {
 						lastAppendWasFeed = true;
 						setPendingFromAppended(appended);
 						hasMore = true;
-						return;
 					}
+					return;
 				}
+
+				startedFromLatestFeed = false;
+				await loadPopular(0, 0);
+				return;
 			}
+
 			startedFromLatestFeed = false;
 			await loadPopular(0, 0);
 		} catch {
