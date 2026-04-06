@@ -5,7 +5,10 @@ declare global {
 		// interface Error {}
 		// interface Locals {}
 		// interface PageData {}
-		// interface PageState {}
+		interface PageState {
+			/** Shallow history layer: rate page book search overlay opened from toolbar. */
+			rateSearchLayer?: boolean;
+		}
 		// interface Platform {}
 	}
 

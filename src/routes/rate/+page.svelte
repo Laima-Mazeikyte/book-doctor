@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { get } from 'svelte/store';
-	import { afterNavigate, goto } from '$app/navigation';
+	import { browser } from '$app/environment';
+	import { afterNavigate, beforeNavigate, goto, pushState } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import { page } from '$app/stores';
 	import BookCard from '$lib/components/BookCard.svelte';
 	import { getSupabase } from '$lib/supabase';
 	import { authStore } from '$lib/stores/auth';
@@ -12,11 +15,16 @@
 	import Spinner from '$lib/components/Spinner.svelte';
 	import SectionTitle from '$lib/components/SectionTitle.svelte';
 	import Button from '$lib/components/Button.svelte';
+	import { ArrowLeft } from 'lucide-svelte';
 	import { getBookById } from '$lib/data/dummyBooks';
 	import { mobileMenuOpen } from '$lib/stores/mobileMenu';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { notInterestedStore } from '$lib/stores/notInterested';
 	import { planToReadStore } from '$lib/stores/planToRead';
+	import {
+		clearRateSearchExternalEntry,
+		consumeRateSearchExternalEntry
+	} from '$lib/rateSearchExternalNav';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
 
@@ -60,61 +68,205 @@
 
 	const isSearching = $derived(debouncedQuery.trim().length >= 3);
 
+	let searchOverlayOpen = $state(false);
+	let inertSupported = $state(true);
+	let overlayDialogEl = $state<HTMLDivElement | undefined>(undefined);
+	let overlaySearchBar = $state<{ focusInput: () => void } | undefined>(undefined);
+
 	let savedScrollY = $state(0);
-	let wasSearching = $state(false);
-	let previousIsSearching = false;
+
+	function captureFeedScrollForSearchReturn() {
+		if (searchOverlayOpen) return;
+		savedScrollY = Math.max(savedScrollY, window.scrollY);
+	}
+
+	/** Compare location to resolved /rate (includes `base`). */
+	function locationIsRatePage(): boolean {
+		try {
+			return new URL(resolve('/rate'), location.href).pathname === location.pathname;
+		} catch {
+			return false;
+		}
+	}
+
+	function focusOverlaySearchInput() {
+		overlaySearchBar?.focusInput();
+		const input = overlayDialogEl?.querySelector<HTMLInputElement>(
+			'.rate-search-overlay__search-row input[type="search"], .rate-search-overlay__search-row input'
+		);
+		input?.focus({ preventScroll: true });
+	}
+
+	/** Run after the overlay DOM and `bind:this` exist; beats `goto(..., { keepFocus: true })` leaving focus on the toolbar. */
+	async function queueFocusOverlaySearch() {
+		await tick();
+		await tick();
+		requestAnimationFrame(() => {
+			focusOverlaySearchInput();
+			requestAnimationFrame(() => focusOverlaySearchInput());
+		});
+	}
+
+	async function openSearchOverlay(opts?: { pushHistory?: boolean }) {
+		savedScrollY = Math.max(savedScrollY, window.scrollY);
+		if (opts?.pushHistory === true && browser) {
+			clearRateSearchExternalEntry();
+		}
+		/** Only push when transitioning closed → open so we never `history.back()` from UI (fragile vs real stack). */
+		const shouldPush =
+			opts?.pushHistory === true && browser && !searchOverlayOpen;
+		if (shouldPush) {
+			pushState('', { rateSearchLayer: true });
+		}
+		searchOverlayOpen = true;
+		await queueFocusOverlaySearch();
+	}
+
+	function blurSearchOverlayIfFocused() {
+		if (!browser || !overlayDialogEl) return;
+		const a = document.activeElement;
+		if (a instanceof HTMLElement && overlayDialogEl.contains(a)) {
+			a.blur();
+		}
+	}
+
+	function restoreFeedScrollAfterOverlayClose() {
+		void tick().then(() => {
+			requestAnimationFrame(() => {
+				window.scrollTo({ top: savedScrollY, left: 0, behavior: 'auto' });
+			});
+		});
+	}
+
+	function clearSearchResultsState() {
+		searchResults = [];
+		searchNextOffset = 0;
+		searchHasMore = false;
+		searchError = null;
+		loadingSearch = false;
+		loadingSearchMore = false;
+	}
 
 	/**
-	 * When `isSearching` flips true, `window.scrollY` is often already ~0 because the browser
-	 * scrolled the focused search field into view. Capture the feed position on the earliest
-	 * interaction with the search UI (before that), and merge on enter with `Math.max`.
+	 * @param fromPopstate - History step was already applied (browser Back). Skip a second `history.back()` for external entry; still sync URL when staying on `/rate`.
 	 */
-	function captureFeedScrollForSearchReturn() {
-		if (debouncedQuery.trim().length >= 3) return;
-		/** `focusin` may run after the browser has already reduced `scrollY`; never clobber a better save. */
-		savedScrollY = Math.max(savedScrollY, window.scrollY);
+	function closeSearchOverlay(opts?: { fromPopstate?: boolean }) {
+		if (!searchOverlayOpen) return;
+		blurSearchOverlayIfFocused();
+		searchOverlayOpen = false;
+		searchQuery = '';
+		debouncedQuery = '';
+		clearSearchResultsState();
+
+		if (browser && consumeRateSearchExternalEntry()) {
+			if (opts?.fromPopstate) {
+				void goto(resolve('/rate'), { replaceState: true, noScroll: true, keepFocus: false });
+				restoreFeedScrollAfterOverlayClose();
+				return;
+			}
+			history.back();
+			return;
+		}
+
+		/**
+		 * On /rate-only search: replace the current history entry to `/rate` (no `q`).
+		 * `keepFocus: false` avoids leaving focus on the overlay input while it unmounts.
+		 */
+		void goto(resolve('/rate'), { replaceState: true, noScroll: true, keepFocus: false });
+		restoreFeedScrollAfterOverlayClose();
 	}
 
-	function handleSearchAuthor(author: string) {
+	async function handleSearchAuthor(author: string) {
+		clearRateSearchExternalEntry();
 		savedScrollY = Math.max(savedScrollY, window.scrollY);
-		searchQuery = author;
+		const trimmed = author.trim();
+		if (!searchOverlayOpen) {
+			await openSearchOverlay({ pushHistory: true });
+		}
+		searchQuery = trimmed;
+		debouncedQuery = trimmed;
+		if (browser && trimmed) {
+			const active = document.activeElement;
+			const inOverlay =
+				overlayDialogEl != null &&
+				active instanceof Node &&
+				overlayDialogEl.contains(active);
+			await goto(resolve(`/rate?q=${encodeURIComponent(trimmed)}`), {
+				replaceState: true,
+				noScroll: true,
+				keepFocus: inOverlay
+			});
+			await queueFocusOverlaySearch();
+		}
 	}
 
-	afterNavigate(({ to }) => {
-		if (to?.url.pathname !== '/rate') return;
-		const q = to.url.searchParams.get('q')?.trim();
-		if (q) searchQuery = q;
+	beforeNavigate(({ from, to, willUnload }) => {
+		if (!browser || willUnload) return;
+		const toPath = to?.url.pathname;
+		if (!toPath) return;
+		if (from?.url.pathname === '/rate' && toPath !== '/rate') {
+			clearRateSearchExternalEntry();
+		}
+	});
+
+	afterNavigate((nav) => {
+		if (nav.to?.url.pathname !== '/rate') return;
+
+		if (nav.type === 'enter') {
+			clearRateSearchExternalEntry();
+		}
+
+		if (nav.type === 'popstate' && nav.delta === -1 && searchOverlayOpen) {
+			closeSearchOverlay({ fromPopstate: true });
+			return;
+		}
+
+		const q = nav.to.url.searchParams.get('q')?.trim();
+		if (q) {
+			searchOverlayOpen = true;
+			searchQuery = q;
+			debouncedQuery = q;
+			void queueFocusOverlaySearch();
+		}
 	});
 
 	$effect(() => {
-		const now = isSearching;
-		const entering = now && !previousIsSearching;
-		const leaving = !now && previousIsSearching;
+		if (!browser || !searchOverlayOpen) return;
+		void overlayDialogEl;
+		const q = debouncedQuery.trim();
+		const path =
+			q.length > 0 ? resolve(`/rate?q=${encodeURIComponent(q)}`) : resolve('/rate');
+		const cur = $page.url;
+		const curQ = cur.searchParams.get('q')?.trim() ?? '';
+		if (cur.pathname === '/rate' && curQ === q) return;
+		const active = document.activeElement;
+		const keepFocus =
+			active instanceof Node &&
+			overlayDialogEl != null &&
+			overlayDialogEl.contains(active);
+		void goto(path, { replaceState: true, noScroll: true, keepFocus });
+	});
 
-		if (entering) {
-			savedScrollY = Math.max(savedScrollY, window.scrollY);
-			window.scrollTo(0, 0);
-			wasSearching = true;
-		} else if (leaving && wasSearching) {
-			const y = savedScrollY;
-			wasSearching = false;
-			/** Feed stays mounted (`display:none` while searching); one frame after show is enough to restore. */
-			void tick().then(() => {
-				requestAnimationFrame(() => {
-					const active = document.activeElement;
-					if (
-						active instanceof HTMLElement &&
-						active !== document.body &&
-						!active.closest('.rate-page__search')
-					) {
-						active.blur();
-					}
-					window.scrollTo({ top: y, left: 0, behavior: 'auto' });
-				});
-			});
+	$effect(() => {
+		if (!browser) return;
+		if (searchOverlayOpen) {
+			document.documentElement.classList.add('rate-page--search-open');
+			document.body.classList.add('rate-page--search-open');
+		} else {
+			document.documentElement.classList.remove('rate-page--search-open');
+			document.body.classList.remove('rate-page--search-open');
 		}
+	});
 
-		previousIsSearching = now;
+	const searchStatusMessage = $derived.by(() => {
+		if (!searchOverlayOpen) return '';
+		if (searchError) return '';
+		const raw = debouncedQuery.trim();
+		if (raw.length === 0) return t('rate.search.minCharsHint');
+		if (raw.length < 3) return t('rate.search.minCharsHintShort');
+		if (loadingSearch) return t('rate.search.statusSearching');
+		if (searchResults.length === 0) return t('rate.search.statusNoResults');
+		return t('rate.search.statusResults', { count: searchResults.length });
 	});
 
 	let lastScrollY = $state(0);
@@ -196,14 +348,14 @@
 		const more = hasMore;
 		const loading = loadingMore;
 		const initial = loadingInitial;
-		const searching = isSearching;
+		const overlayBlocksFeed = searchOverlayOpen;
 		const feedOnly = paginationFeedOnly;
 		const lastFeed = lastAppendWasFeed;
 		const engaged = engagedWithPendingBatch;
 
 		const preloadObserver = new IntersectionObserver(
 			(entries) => {
-				if (!entries[0].isIntersecting || loading || initial || searching || !more) return;
+				if (!entries[0].isIntersecting || loading || initial || overlayBlocksFeed || !more) return;
 				if (!feedOnly) {
 					void loadPopular(next, 0);
 					return;
@@ -216,7 +368,7 @@
 
 		const strictEndObserver = new IntersectionObserver(
 			(entries) => {
-				if (!entries[0].isIntersecting || loading || initial || searching || !more) return;
+				if (!entries[0].isIntersecting || loading || initial || overlayBlocksFeed || !more) return;
 				if (Date.now() < suppressStrictFeedEndUntil) return;
 				if (feedOnly && lastFeed && !engaged) {
 					hasMore = false;
@@ -234,7 +386,7 @@
 	});
 
 	$effect(() => {
-		if (!searchSentinelEl || !isSearching) return;
+		if (!searchSentinelEl || !searchOverlayOpen || !isSearching) return;
 		const next = searchNextOffset;
 		const more = searchHasMore;
 		const loadingMoreSearch = loadingSearchMore;
@@ -665,7 +817,53 @@
 		goto('/rate/recommendations');
 	}
 
+	function handleToolbarSearchActivate() {
+		captureFeedScrollForSearchReturn();
+		if (!searchOverlayOpen) {
+			void openSearchOverlay({ pushHistory: true });
+		}
+	}
+
+	function getFocusableInDialog(root: HTMLElement): HTMLElement[] {
+		const nodes = root.querySelectorAll<HTMLElement>(
+			'a[href]:not([disabled]), button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+		);
+		return Array.from(nodes).filter((el) => {
+			if (el.closest('[inert]')) return false;
+			if (el.getAttribute('aria-hidden') === 'true') return false;
+			return true;
+		});
+	}
+
+	function handleSearchOverlayKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			closeSearchOverlay();
+			return;
+		}
+		if (e.key !== 'Tab' || !overlayDialogEl) return;
+		const focusables = getFocusableInDialog(overlayDialogEl);
+		if (focusables.length === 0) return;
+		const first = focusables[0];
+		const last = focusables[focusables.length - 1];
+		const active = document.activeElement;
+		const inDialog = active instanceof Node && overlayDialogEl.contains(active);
+		if (e.shiftKey) {
+			if (!inDialog || active === first) {
+				e.preventDefault();
+				last.focus();
+			}
+		} else {
+			if (!inDialog || active === last) {
+				e.preventDefault();
+				first.focus();
+			}
+		}
+	}
+
 	onMount(() => {
+		inertSupported = typeof HTMLElement !== 'undefined' && 'inert' in HTMLElement.prototype;
+
 		const syncPrefetch = () => {
 			mainListPrefetchPx = 3 * window.innerHeight;
 		};
@@ -687,102 +885,73 @@
 			lastScrollY = y;
 		};
 		window.addEventListener('scroll', handleScroll, { passive: true });
+
+		/**
+		 * Shallow `pushState` from `$app/navigation` (search overlay entry) is popped without calling
+		 * `navigate()`, so `afterNavigate({ type: 'popstate' })` never runs. Close the overlay here
+		 * when we’re still on `/rate`; if history left `/rate`, don’t fight the router.
+		 */
+		const onWindowPopstate = () => {
+			queueMicrotask(() => {
+				if (!searchOverlayOpen) return;
+				if (!locationIsRatePage()) return;
+				closeSearchOverlay({ fromPopstate: true });
+			});
+		};
+		window.addEventListener('popstate', onWindowPopstate);
+
 		return () => {
 			window.removeEventListener('scroll', handleScroll);
 			window.removeEventListener('resize', syncPrefetch);
 			window.visualViewport?.removeEventListener('resize', syncPrefetch);
+			window.removeEventListener('popstate', onWindowPopstate);
 		};
 	});
 </script>
 
 <div class="rate-page" class:rate-page--mobile-menu-open={$mobileMenuOpen}>
-	<header
-		class="rate-page__sticky-header"
-		class:rate-page__sticky-header--hidden={!headerVisible}
+	<div
+		class="rate-page__below-overlay"
+		class:rate-page__below-overlay--inert-fallback={searchOverlayOpen && !inertSupported}
+		inert={searchOverlayOpen && inertSupported}
+		aria-hidden={searchOverlayOpen ? true : undefined}
 	>
-		<div class="rate-page__toolbar">
-			<div
-				class="rate-page__search"
-				onpointerdowncapture={captureFeedScrollForSearchReturn}
-				onfocusincapture={captureFeedScrollForSearchReturn}
-			>
-				<SearchBar bind:value={searchQuery} placeholder={t('rate.search.placeholder')} aria-label={t('rate.search.ariaLabel')} />
+		<header
+			class="rate-page__sticky-header"
+			class:rate-page__sticky-header--hidden={!headerVisible}
+		>
+			<div class="rate-page__toolbar">
+				<div
+					class="rate-page__search"
+					class:rate-page__search--obscured={searchOverlayOpen}
+					onpointerdowncapture={handleToolbarSearchActivate}
+					onfocusincapture={handleToolbarSearchActivate}
+				>
+					<SearchBar
+						asTrigger={true}
+						bind:value={searchQuery}
+						placeholder={t('rate.search.placeholder')}
+						aria-label={t('rate.search.ariaLabel')}
+					/>
+				</div>
 			</div>
-		</div>
-	</header>
+		</header>
 
-	<div class="rate-page__content">
-		<!-- Feed stays in the DOM while searching (`display: none`) so layout/scroll height is preserved. -->
-		<div
-			class="rate-page__panel"
-			class:rate-page__panel--hidden={isSearching}
-			aria-hidden={isSearching}
-		>
-			{#if popularError}
-				<ErrorBanner message={popularError} onDismiss={() => (popularError = null)} />
-			{/if}
-
-			{#if loadingInitial}
-				<ul class="rate-page__list book-card-grid" aria-label={t('rate.aria.loadingBooks')} aria-live="polite">
-					{#each Array(8) as _}
-						<li><BookCardSkeleton /></li>
-					{/each}
-				</ul>
-			{:else}
-				<ul class="rate-page__list book-card-grid">
-					{#each popularBooks as book (book.id)}
-						<li>
-							<BookCard
-								context="rate"
-								{book}
-								onSearchAuthor={handleSearchAuthor}
-								bookmarked={$planToReadStore.has(book.id)}
-								onBookmark={(id) => handleRateBookmark(book, id)}
-								notInterested={$notInterestedStore.has(book.book_id ?? 0)}
-								onNotInterested={() => handleMainListNotInterested(book)}
-								onAfterRate={() => handleMainListAfterRate(book)}
-							/>
-						</li>
-					{/each}
-				</ul>
-
-				{#if loadingMore}
-					<div class="rate-page__spinner-wrap rate-page__spinner-wrap--bottom" aria-live="polite">
-						<Spinner />
-					</div>
+		<div class="rate-page__content">
+			<div class="rate-page__panel">
+				{#if popularError}
+					<ErrorBanner message={popularError} onDismiss={() => (popularError = null)} />
 				{/if}
 
-				{#if hasMore}
-					<div bind:this={sentinelEl} class="rate-page__sentinel" aria-hidden="true"></div>
-				{:else if popularBooks.length > 0}
-					<p class="rate-page__end-cta">{t('rate.endOfList')}</p>
-				{/if}
-			{/if}
-		</div>
-
-		<div
-			class="rate-page__panel"
-			class:rate-page__panel--hidden={!isSearching}
-			aria-hidden={!isSearching}
-		>
-			{#if isSearching}
-				<SectionTitle>{t('rate.sectionTitle')}</SectionTitle>
-
-				{#if searchError}
-					<ErrorBanner message={searchError} onDismiss={() => (searchError = null)} />
-				{/if}
-
-				{#if loadingSearch}
-					<ul class="rate-page__list book-card-grid" aria-label={t('rate.aria.searching')} aria-live="polite">
-						{#each Array(6) as _}
+				{#if loadingInitial}
+					<ul class="rate-page__list book-card-grid" aria-label={t('rate.aria.loadingBooks')} aria-live="polite">
+						{#each Array(8) as _}
 							<li><BookCardSkeleton /></li>
 						{/each}
 					</ul>
-				{:else if searchResults.length === 0 && !searchError}
-					<p class="rate-page__empty">{t('rate.emptySearch')}</p>
 				{:else}
 					<ul class="rate-page__list book-card-grid">
-						{#each searchResults as book (book.id)}
+						{#each popularBooks as book (book.id)}
 							<li>
 								<BookCard
 									context="rate"
@@ -791,39 +960,135 @@
 									bookmarked={$planToReadStore.has(book.id)}
 									onBookmark={(id) => handleRateBookmark(book, id)}
 									notInterested={$notInterestedStore.has(book.book_id ?? 0)}
-									onNotInterested={() => handleSearchNotInterested(book)}
-									onAfterRate={() => handleSearchAfterRate()}
+									onNotInterested={() => handleMainListNotInterested(book)}
+									onAfterRate={() => handleMainListAfterRate(book)}
 								/>
 							</li>
 						{/each}
 					</ul>
 
-					{#if loadingSearchMore}
+					{#if loadingMore}
 						<div class="rate-page__spinner-wrap rate-page__spinner-wrap--bottom" aria-live="polite">
 							<Spinner />
 						</div>
 					{/if}
 
-					{#if searchHasMore}
-						<div bind:this={searchSentinelEl} class="rate-page__sentinel" aria-hidden="true"></div>
+					{#if hasMore}
+						<div bind:this={sentinelEl} class="rate-page__sentinel" aria-hidden="true"></div>
+					{:else if popularBooks.length > 0}
+						<p class="rate-page__end-cta">{t('rate.endOfList')}</p>
 					{/if}
 				{/if}
-			{/if}
+			</div>
 		</div>
+
+		{#if showBottomBar}
+			<div class="rate-page__bottom-bar">
+				<RatingsBar {ratedEntries} />
+				{#if canGetRecommendations}
+					<Button variant="primary" pill onclick={handleSubmit}>
+						{recommendationsCtaLabel}
+					</Button>
+				{:else}
+					<p class="rate-page__recommendations-hint" role="status" aria-live="polite">
+						{recommendationsCtaLabel}
+					</p>
+				{/if}
+			</div>
+		{/if}
 	</div>
 
-	{#if showBottomBar}
-		<div class="rate-page__bottom-bar">
-			<RatingsBar {ratedEntries} />
-			{#if canGetRecommendations}
-				<Button variant="primary" pill onclick={handleSubmit}>
-					{recommendationsCtaLabel}
-				</Button>
-			{:else}
-				<p class="rate-page__recommendations-hint" role="status" aria-live="polite">
-					{recommendationsCtaLabel}
-				</p>
-			{/if}
+	{#if searchOverlayOpen}
+		<div
+			bind:this={overlayDialogEl}
+			class="rate-search-overlay"
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="rate-search-dialog-title"
+			tabindex="-1"
+			onkeydown={handleSearchOverlayKeydown}
+		>
+			<div class="rate-search-overlay__scrim" aria-hidden="true"></div>
+			<div class="rate-search-overlay__panel">
+				<header class="rate-search-overlay__header">
+					<div class="rate-search-overlay__header-row">
+						<button
+							type="button"
+							class="rate-search-overlay__icon-btn"
+							aria-label={t('rate.search.backAriaLabel')}
+							onclick={() => closeSearchOverlay()}
+						>
+							<ArrowLeft size={22} aria-hidden="true" />
+						</button>
+						<div class="rate-search-overlay__search-row">
+							<h1 id="rate-search-dialog-title" class="rate-search-overlay__sr-only">
+								{t('rate.search.dialogTitle')}
+							</h1>
+							<SearchBar
+								bind:this={overlaySearchBar}
+								bind:value={searchQuery}
+								autofocus={true}
+								placeholder={t('rate.search.placeholder')}
+								aria-label={t('rate.search.ariaLabel')}
+							/>
+						</div>
+					</div>
+				</header>
+
+				<div class="rate-search-overlay__body">
+					<p class="rate-search-overlay__live" aria-live="polite" aria-atomic="true">
+						{searchStatusMessage}
+					</p>
+
+					{#if searchError}
+						<ErrorBanner message={searchError} onDismiss={() => (searchError = null)} />
+					{/if}
+
+					{#if debouncedQuery.trim().length === 0}
+						<p class="rate-search-overlay__helper">{t('rate.search.minCharsHint')}</p>
+					{:else if debouncedQuery.trim().length < 3}
+						<p class="rate-search-overlay__helper">{t('rate.search.minCharsHintShort')}</p>
+					{:else if loadingSearch}
+						<ul class="rate-page__list book-card-grid" aria-label={t('rate.aria.searching')}>
+							{#each Array(6) as _}
+								<li><BookCardSkeleton /></li>
+							{/each}
+						</ul>
+					{:else if searchError}
+						<!-- Error surfaced via ErrorBanner (role="alert") above -->
+					{:else if searchResults.length === 0}
+						<p class="rate-page__empty">{t('rate.emptySearch')}</p>
+					{:else}
+						<SectionTitle>{t('rate.sectionTitle')}</SectionTitle>
+						<ul class="rate-page__list book-card-grid">
+							{#each searchResults as book (book.id)}
+								<li>
+									<BookCard
+										context="rate"
+										{book}
+										onSearchAuthor={handleSearchAuthor}
+										bookmarked={$planToReadStore.has(book.id)}
+										onBookmark={(id) => handleRateBookmark(book, id)}
+										notInterested={$notInterestedStore.has(book.book_id ?? 0)}
+										onNotInterested={() => handleSearchNotInterested(book)}
+										onAfterRate={() => handleSearchAfterRate()}
+									/>
+								</li>
+							{/each}
+						</ul>
+
+						{#if loadingSearchMore}
+							<div class="rate-page__spinner-wrap rate-page__spinner-wrap--bottom" aria-live="polite">
+								<Spinner />
+							</div>
+						{/if}
+
+						{#if searchHasMore}
+							<div bind:this={searchSentinelEl} class="rate-page__sentinel" aria-hidden="true"></div>
+						{/if}
+					{/if}
+				</div>
+			</div>
 		</div>
 	{/if}
 </div>
@@ -874,8 +1139,137 @@
 		margin: var(--space-4) 0;
 	}
 
-	.rate-page__panel--hidden {
-		display: none;
+	.rate-page__below-overlay--inert-fallback {
+		pointer-events: none;
+		user-select: none;
+	}
+
+	.rate-page__search--obscured {
+		visibility: hidden;
+	}
+
+	.rate-search-overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 130;
+		display: flex;
+		flex-direction: column;
+		animation: rate-search-overlay-in 0.22s var(--ease-default, ease) both;
+	}
+	.rate-search-overlay__scrim {
+		position: absolute;
+		inset: 0;
+		background: var(--color-card-bg);
+	}
+	.rate-search-overlay__panel {
+		position: relative;
+		z-index: 1;
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+		flex: 1;
+		max-height: 100%;
+		background: var(--color-card-bg);
+	}
+	.rate-search-overlay__header {
+		position: sticky;
+		top: 0;
+		z-index: 2;
+		flex-shrink: 0;
+		padding: var(--space-3) var(--space-4);
+		padding-top: calc(var(--space-3) + env(safe-area-inset-top, 0px));
+		background: var(--color-card-bg);
+		border-bottom: 1px solid var(--color-border);
+	}
+	.rate-search-overlay__header-row {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		min-width: 0;
+	}
+	.rate-search-overlay__sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
+	}
+	.rate-search-overlay__icon-btn {
+		flex: 0 0 auto;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: var(--min-tap);
+		height: var(--min-tap);
+		min-width: var(--min-tap);
+		min-height: var(--min-tap);
+		padding: 0;
+		border: none;
+		border-radius: var(--radius-pill);
+		background: var(--color-bg-muted);
+		color: var(--color-text);
+		cursor: pointer;
+		transition: background var(--duration-fast) var(--ease-default);
+	}
+	.rate-search-overlay__icon-btn:hover {
+		background: var(--color-book-card-action-hover-bg);
+	}
+	.rate-search-overlay__icon-btn:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 2px;
+	}
+	.rate-search-overlay__search-row {
+		position: relative;
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+	.rate-search-overlay__search-row :global(.search-bar) {
+		width: 100%;
+	}
+	.rate-search-overlay__body {
+		position: relative;
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		overflow-x: hidden;
+		overscroll-behavior: contain;
+		padding: var(--space-4);
+		padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+	}
+	.rate-search-overlay__helper {
+		margin: var(--space-4) 0;
+		color: var(--color-text-muted);
+		font-family: var(--typ-body-font-family);
+		font-size: var(--typ-body-font-size);
+		line-height: var(--typ-body-line-height);
+	}
+	.rate-search-overlay__live {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
+	}
+	@keyframes rate-search-overlay-in {
+		from {
+			opacity: 0.001;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.rate-search-overlay {
+			animation: none;
+		}
 	}
 
 	.rate-page__spinner-wrap {
@@ -921,6 +1315,13 @@
 	}
 	:global(.rate-page__bottom-bar > *) {
 		pointer-events: auto;
+	}
+
+	:global(html.rate-page--search-open),
+	:global(body.rate-page--search-open) {
+		overflow: hidden;
+		overscroll-behavior: none;
+		touch-action: none;
 	}
 
 	.rate-page__recommendations-hint {

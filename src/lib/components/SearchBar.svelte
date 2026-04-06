@@ -7,6 +7,12 @@
 		placeholder?: string;
 		'aria-label'?: string;
 		oninput?: (e: Event) => void;
+		/** Request focus when this instance mounts (e.g. rate search overlay field). */
+		autofocus?: boolean;
+		/**
+		 * Renders a button styled like the field (toolbar affordance); real typing happens elsewhere (e.g. overlay).
+		 */
+		asTrigger?: boolean;
 	}
 
 	let {
@@ -14,7 +20,23 @@
 		placeholder = t('rate.search.placeholder'),
 		'aria-label': ariaLabel = t('rate.search.ariaLabel'),
 		oninput,
+		autofocus = false,
+		asTrigger = false,
 	}: Props = $props();
+
+	let inputRef: HTMLInputElement | undefined = $state();
+	let triggerRef: HTMLButtonElement | undefined = $state();
+
+	const triggerShowsPlaceholder = $derived(asTrigger && !value.trim());
+
+	/** Focus the input or the trigger button. */
+	export function focusInput() {
+		if (asTrigger) {
+			triggerRef?.focus();
+		} else {
+			inputRef?.focus();
+		}
+	}
 
 	function clearSearch() {
 		value = '';
@@ -25,25 +47,43 @@
 	<span class="search-bar__icon" aria-hidden="true">
 		<Search size={20} />
 	</span>
-	<input
-		type="search"
-		autocomplete="off"
-		{placeholder}
-		aria-label={ariaLabel}
-		bind:value
-		oninput={oninput}
-		class="search-bar__input"
-		class:search-bar__input--has-clear={value.length > 0}
-	/>
-	{#if value.length > 0}
+	{#if asTrigger}
 		<button
+			bind:this={triggerRef}
 			type="button"
-			class="search-bar__clear"
-			aria-label={t('rate.search.clearAriaLabel')}
-			onclick={clearSearch}
+			class="search-bar__trigger"
+			aria-label={ariaLabel}
 		>
-			<X size={18} aria-hidden="true" />
+			<span
+				class="search-bar__trigger-text"
+				class:search-bar__trigger-text--placeholder={triggerShowsPlaceholder}
+			>
+				{triggerShowsPlaceholder ? placeholder : value}
+			</span>
 		</button>
+	{:else}
+		<input
+			bind:this={inputRef}
+			type="search"
+			autocomplete="off"
+			autofocus={autofocus || undefined}
+			{placeholder}
+			aria-label={ariaLabel}
+			bind:value
+			oninput={oninput}
+			class="search-bar__input"
+			class:search-bar__input--has-clear={value.length > 0}
+		/>
+		{#if value.length > 0}
+			<button
+				type="button"
+				class="search-bar__clear"
+				aria-label={t('rate.search.clearAriaLabel')}
+				onclick={clearSearch}
+			>
+				<X size={18} aria-hidden="true" />
+			</button>
+		{/if}
 	{/if}
 </div>
 
@@ -135,5 +175,57 @@
 		outline: none;
 		border-color: var(--color-focus);
 		box-shadow: var(--shadow-focus-input);
+	}
+
+	.search-bar__trigger {
+		box-sizing: border-box;
+		display: flex;
+		align-items: center;
+		width: 100%;
+		min-height: var(--min-tap);
+		margin: 0;
+		padding: var(--space-3) var(--space-4) var(--space-3) var(--space-input-icon-left);
+		font-family: var(--typ-interactive-1-font-family);
+		font-size: var(--typ-interactive-1-font-size);
+		font-weight: var(--typ-interactive-1-font-weight);
+		line-height: var(--typ-interactive-1-line-height);
+		letter-spacing: var(--typ-interactive-1-letter-spacing);
+		text-align: left;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-pill);
+		background: var(--color-card-bg);
+		color: var(--color-text);
+		box-shadow: var(--shadow-input);
+		cursor: pointer;
+		transition: border-color var(--duration-fast) var(--ease-default),
+			box-shadow var(--duration-fast) var(--ease-default);
+	}
+	@media (prefers-color-scheme: dark) {
+		.search-bar__trigger {
+			box-shadow: var(--shadow-input);
+		}
+	}
+	.search-bar__trigger:hover {
+		border-color: var(--color-border-hover);
+	}
+	.search-bar__trigger:focus {
+		outline: none;
+		border-color: var(--color-focus);
+		box-shadow: var(--shadow-focus-input);
+	}
+	.search-bar__trigger:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 2px;
+	}
+	.search-bar__trigger-text {
+		flex: 1 1 auto;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.search-bar__trigger-text--placeholder {
+		color: var(--color-text-muted);
+		font-weight: var(--typ-interactive-1-font-weight);
 	}
 </style>

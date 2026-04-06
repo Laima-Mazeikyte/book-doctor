@@ -1,7 +1,9 @@
   <script lang="ts">
 	import { tick } from 'svelte';
+	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { markRateSearchOpenedFromOtherRoute } from '$lib/rateSearchExternalNav';
 	import { fly } from 'svelte/transition';
 	import { BookOpenText, X, Bookmark, Star, Ban, Search, ArrowLeft } from 'lucide-svelte';
 	import { ratingsStore } from '$lib/stores/ratings';
@@ -538,6 +540,7 @@
 											if (onSearchAuthor) {
 												onSearchAuthor(book.author);
 											} else {
+												if (browser) markRateSearchOpenedFromOtherRoute();
 												void goto(resolve(`/rate?q=${encodeURIComponent(author)}`));
 											}
 											handleCloseSummary();
