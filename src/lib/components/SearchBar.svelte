@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount, tick } from 'svelte';
 	import { t } from '$lib/copy';
 	import { Search, X } from 'lucide-svelte';
 
@@ -41,6 +42,11 @@
 	function clearSearch() {
 		value = '';
 	}
+
+	onMount(() => {
+		if (!autofocus || asTrigger) return;
+		void tick().then(() => inputRef?.focus());
+	});
 </script>
 
 <div class="search-bar">
@@ -66,7 +72,6 @@
 			bind:this={inputRef}
 			type="search"
 			autocomplete="off"
-			autofocus={autofocus || undefined}
 			{placeholder}
 			aria-label={ariaLabel}
 			bind:value

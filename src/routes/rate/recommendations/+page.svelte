@@ -29,7 +29,7 @@
 	let timedOut = $state(false);
 	let pollTimer: ReturnType<typeof setTimeout> | null = null;
 	let viewMode = $state<'loading' | 'history' | 'empty' | 'single' | 'timedOut' | 'error'>('loading');
-	let gridEl: HTMLUListElement | null = null;
+	let gridEl = $state<HTMLDivElement | null>(null);
 
 	function handleGridKeydown(e: KeyboardEvent) {
 		const key = e.key;
@@ -335,15 +335,16 @@
 		{#if books.length === 0}
 			<p class="recommendations-page__empty-run">{t('recommendations.emptyRun')}</p>
 		{:else}
-			<ul
+			<div
 				role="grid"
+				tabindex="-1"
 				aria-label={t('recommendations.aria.recommendedBooks')}
 				class="recommendations-page__list book-card-grid"
 				bind:this={gridEl}
 				onkeydown={handleGridKeydown}
 			>
 				{#each books as book (book.id)}
-					<li role="gridcell">
+					<div class="book-card-grid__cell" role="gridcell">
 						<BookCard
 							context="recommendations"
 							{book}
@@ -357,9 +358,9 @@
 							notInterested={$notInterestedStore.has(book.book_id ?? 0)}
 							onNotInterested={() => handleNotInterested(book)}
 						/>
-					</li>
+					</div>
 				{/each}
-			</ul>
+			</div>
 		{/if}
 	{/if}
 </div>

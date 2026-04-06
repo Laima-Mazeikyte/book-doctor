@@ -25,6 +25,7 @@
 		clearRateSearchExternalEntry,
 		consumeRateSearchExternalEntry
 	} from '$lib/rateSearchExternalNav';
+	import { searchBooks, warmBookSearch } from '$lib/search';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
 
@@ -108,6 +109,7 @@
 	}
 
 	async function openSearchOverlay(opts?: { pushHistory?: boolean }) {
+		if (browser) warmBookSearch();
 		savedScrollY = Math.max(savedScrollY, window.scrollY);
 		if (opts?.pushHistory === true && browser) {
 			clearRateSearchExternalEntry();
@@ -223,6 +225,7 @@
 
 		const q = nav.to.url.searchParams.get('q')?.trim();
 		if (q) {
+			if (browser) warmBookSearch();
 			searchOverlayOpen = true;
 			searchQuery = q;
 			debouncedQuery = q;
@@ -759,11 +762,7 @@
 		searchError = null;
 
 		try {
-			const res = await fetch(
-				`/api/books/search?q=${encodeURIComponent(query)}&offset=${offset}`
-			);
-			if (!res.ok) throw new Error(`HTTP ${res.status}`);
-			const data: { books: Book[]; nextOffset: number; hasMore: boolean } = await res.json();
+			const data = await searchBooks(query, offset);
 
 			if (offset === 0) {
 				const seen = new Set<string>();

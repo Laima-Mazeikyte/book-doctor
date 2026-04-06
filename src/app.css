@@ -137,7 +137,8 @@ main.main-book-grid-shell {
 		grid-template-columns: repeat(auto-fill, minmax(var(--book-card-grid-min), 1fr));
 	}
 }
-.book-card-grid li {
+.book-card-grid li,
+.book-card-grid__cell {
 	margin: 0;
 	min-width: 0;
 	min-height: 0;

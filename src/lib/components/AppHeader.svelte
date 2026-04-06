@@ -350,10 +350,10 @@
 		margin-left: auto;
 		flex-shrink: 0;
 	}
-	.app-header__bug {
+	:global(.app-header__bug) {
 		color: var(--color-text-muted);
 	}
-	.app-header__bug:hover {
+	:global(.app-header__bug:hover) {
 		color: var(--color-text);
 	}
 	.app-header__account {
@@ -377,7 +377,7 @@
 		background: var(--color-button-tertiary-hover-bg);
 		color: var(--color-button-tertiary-text);
 	}
-	.app-header__account-icon {
+	:global(.app-header__account-icon) {
 		flex-shrink: 0;
 	}
 	.app-header__account-panel {
