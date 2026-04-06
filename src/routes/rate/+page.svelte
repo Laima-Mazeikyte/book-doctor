@@ -13,7 +13,6 @@
 	import SearchBar from '$lib/components/SearchBar.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import Spinner from '$lib/components/Spinner.svelte';
-	import SectionTitle from '$lib/components/SectionTitle.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import { ArrowLeft } from 'lucide-svelte';
 	import { getBookById } from '$lib/data/dummyBooks';
@@ -1058,8 +1057,13 @@
 					{:else if searchResults.length === 0}
 						<p class="rate-page__empty">{t('rate.emptySearch')}</p>
 					{:else}
-						<SectionTitle>{t('rate.sectionTitle')}</SectionTitle>
-						<ul class="rate-page__list book-card-grid">
+						<p id="rate-search-results-summary" class="rate-search-overlay__results-summary">
+							{t('rate.search.statusResults', { count: searchResults.length })}
+						</p>
+						<ul
+							class="rate-page__list book-card-grid"
+							aria-labelledby="rate-search-results-summary"
+						>
 							{#each searchResults as book (book.id)}
 								<li>
 									<BookCard
@@ -1171,10 +1175,8 @@
 		background: var(--color-card-bg);
 	}
 	.rate-search-overlay__header {
-		position: sticky;
-		top: 0;
-		z-index: 2;
 		flex-shrink: 0;
+		z-index: 2;
 		padding: var(--space-3) var(--space-4);
 		padding-top: calc(var(--space-3) + env(safe-area-inset-top, 0px));
 		background: var(--color-card-bg);
@@ -1245,6 +1247,14 @@
 		font-family: var(--typ-body-font-family);
 		font-size: var(--typ-body-font-size);
 		line-height: var(--typ-body-line-height);
+	}
+	.rate-search-overlay__results-summary {
+		margin: 0 0 var(--space-3) 0;
+		color: var(--color-text-muted);
+		font-family: var(--typ-body-font-family);
+		font-size: var(--typ-body-font-size);
+		line-height: var(--typ-body-line-height);
+		font-weight: 400;
 	}
 	.rate-search-overlay__live {
 		position: absolute;
@@ -1321,6 +1331,8 @@
 		overflow: hidden;
 		overscroll-behavior: none;
 		touch-action: none;
+		/* Let the fixed overlay use the full viewport width (no reserved root gutter). */
+		scrollbar-gutter: auto;
 	}
 
 	.rate-page__recommendations-hint {
