@@ -168,7 +168,6 @@ en:
       errorInvalidCredentials: "Invalid login credentials"
       errorSignUpFailed: "Sign up failed"
       errorCaptchaRequired: "Please complete the verification challenge."
-      successCheckEmail: "Check your email to confirm your account."
     resetPasswordPage:
       loading: "Loading…"
       title: "Choose a new password"

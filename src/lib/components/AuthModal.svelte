@@ -264,16 +264,12 @@
 
 		if (isAnonymous && anonymousUserId) {
 			// Prefer converting anonymous user (same ID → data stays). Requires manual linking in Supabase.
-			const { data: updateData, error: updateErr } = await supabase.auth.updateUser({
+			const { error: updateErr } = await supabase.auth.updateUser({
 				email,
 				password
 			});
 			if (!updateErr) {
 				loading = false;
-				if (updateData?.user && !updateData.session) {
-					successMessage = t('shared.authModal.successCheckEmail');
-					return;
-				}
 				onClose();
 				return;
 			}
@@ -287,10 +283,6 @@
 			if (signUpErr) {
 				error = signUpErr.message ?? t('shared.authModal.errorSignUpFailed');
 				resetHcaptcha();
-				return;
-			}
-			if (signUpData?.user && !signUpData.session) {
-				successMessage = t('shared.authModal.successCheckEmail');
 				return;
 			}
 			// New user created with session: migrate anonymous data to this account
@@ -329,10 +321,6 @@
 		if (err) {
 			error = err.message ?? t('shared.authModal.errorSignUpFailed');
 			resetHcaptcha();
-			return;
-		}
-		if (data?.user && !data.session) {
-			successMessage = t('shared.authModal.successCheckEmail');
 			return;
 		}
 		onClose();

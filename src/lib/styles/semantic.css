@@ -88,8 +88,8 @@
 	--color-floating-control-bg: color-mix(in srgb, var(--color-bg-muted) 85%, transparent);
 	--color-floating-control-bg-hover: color-mix(in srgb, var(--color-bg-hover) 90%, transparent);
 
-	/* ── Button primary ──────────────────────────────────────────────────── */
-	--color-button-primary-bg: var(--primitive-accent-brand);
+	/* ── Button primary (monochrome CTA: near-black / white in light; inverted in dark) ─ */
+	--color-button-primary-bg: var(--primitive-gray-900);
 	--color-button-primary-hover-bg: color-mix(
 		in srgb,
 		var(--color-button-primary-bg) 88%,
@@ -220,6 +220,14 @@
 
 @media (prefers-color-scheme: dark) {
 	:root {
+		--color-button-primary-bg: var(--primitive-white);
+		--color-button-primary-hover-bg: color-mix(
+			in srgb,
+			var(--color-button-primary-bg) 88%,
+			var(--primitive-on-accent-solid)
+		);
+		--color-button-primary-text: var(--primitive-on-accent-solid);
+
 		--color-success-bg: color-mix(in srgb, var(--primitive-emerald-500) 18%, transparent);
 		--color-success-bg-hover: color-mix(in srgb, var(--primitive-emerald-500) 28%, transparent);
 		--color-success-text: var(--primitive-emerald-300);
