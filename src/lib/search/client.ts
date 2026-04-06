@@ -5,7 +5,8 @@ import { searchBooksViaApi } from './fallback';
 import { SEARCH_PAGE_SIZE } from './types';
 import type { SearchResultPage, SearchWorkerRequest, SearchWorkerResponse } from './types';
 
-const workerUrl = new URL('./worker.ts', import.meta.url);
+// Inline worker avoids emitting `worker.*.ts` (wrong MIME on some hosts); see vite `*?worker&inline`.
+import CreateSearchWorker from './worker.ts?worker&inline';
 
 let searchWorker: Worker | null = null;
 let nextRequestId = 1;
@@ -46,7 +47,7 @@ function ensureWorker(): Worker {
 		return searchWorker;
 	}
 
-	searchWorker = new Worker(workerUrl, { type: 'module' });
+	searchWorker = new CreateSearchWorker();
 	searchWorker.onmessage = (event: MessageEvent<SearchWorkerResponse>) => {
 		const message = event.data;
 		const pending = pendingRequests.get(message.id);
