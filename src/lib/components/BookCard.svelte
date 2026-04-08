@@ -255,18 +255,20 @@
 							<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">{t('shared.recommendationCard.bookmark')}</span>
 						{/if}
 					</button>
-					<button
-						type="button"
-						class="book-card__action book-card__action--reco-hoverable"
-						aria-pressed="false"
-						aria-label={t('shared.recommendationCard.markAsRead')}
-						onclick={handleReadClick}
-					>
-						<Star size={14} aria-hidden="true" />
-						<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">{t('shared.recommendationCard.read')}</span>
-					</button>
+					{#if !bm}
+						<button
+							type="button"
+							class="book-card__action book-card__action--reco-hoverable"
+							aria-pressed="false"
+							aria-label={t('shared.recommendationCard.markAsRead')}
+							onclick={handleReadClick}
+						>
+							<Star size={14} aria-hidden="true" />
+							<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">{t('shared.recommendationCard.read')}</span>
+						</button>
+					{/if}
 				{/if}
-				{#if onNotInterested}
+				{#if onNotInterested && !bm}
 					<button
 						type="button"
 						class="book-card__action"
