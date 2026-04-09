@@ -432,9 +432,32 @@
 
 	const MIN_RATINGS_FOR_RECOMMENDATIONS = 10;
 
+	const ratingsSyncMeta = ratingsStore.syncMeta;
 	const ratedCount = $derived($ratingsStore.size);
 	const showBottomBar = $derived(ratedCount >= 1);
 	const canGetRecommendations = $derived(ratedCount >= MIN_RATINGS_FOR_RECOMMENDATIONS);
+	/** No queued rating writes and not mid-flush — safe to start a recommendations run. */
+	const ratingsSyncedForRecommendations = $derived(
+		$ratingsSyncMeta.queuedCount === 0 && !$ratingsSyncMeta.isFlushing
+	);
+	/** Matches ratings drawer: pending vs failed copy for the bottom CTA. */
+	const recommendationsSubmitSyncFailed = $derived(
+		!ratingsSyncedForRecommendations &&
+			$ratingsSyncMeta.queuedCount > 0 &&
+			!$ratingsSyncMeta.isFlushing &&
+			$ratingsSyncMeta.failedCount > 0
+	);
+	/** Shown on the recommendations CTA and the sub-threshold hint while the queue is non-empty. */
+	const recommendationsOffQueueLabel = $derived(
+		$ratingsSyncMeta.isFlushing || $ratingsSyncMeta.failedCount === 0
+			? t('shared.ratingsBar.syncing')
+			: t('shared.ratingsBar.retryNeeded')
+	);
+	const recommendationsSubmitLabel = $derived(
+		ratingsSyncedForRecommendations
+			? t('rate.getRecommendations')
+			: recommendationsOffQueueLabel
+	);
 	const ratingsRemainingForRecommendations = $derived(
 		Math.max(0, MIN_RATINGS_FOR_RECOMMENDATIONS - ratedCount)
 	);
@@ -444,6 +467,9 @@
 			: ratingsRemainingForRecommendations === 1
 				? t('rate.remainingToRecommend_one')
 				: t('rate.remainingToRecommend_other', { remaining: ratingsRemainingForRecommendations })
+	);
+	const recommendationsHintLabel = $derived(
+		ratingsSyncedForRecommendations ? recommendationsCtaLabel : recommendationsOffQueueLabel
 	);
 
 	/** Resolve once Supabase has set a session (avoids skipping /api/feed/latest on hard refresh). */
@@ -791,6 +817,8 @@
 
 	async function handleSubmit() {
 		if (!canGetRecommendations) return;
+		const sync = get(ratingsSyncMeta);
+		if (sync.queuedCount > 0 || sync.isFlushing) return;
 		const user = get(authStore).user;
 		if (!user?.id) {
 			goto('/rate/recommendations');
@@ -985,13 +1013,70 @@
 			<div class="rate-page__bottom-bar">
 				<RatingsBar {ratedEntries} />
 				{#if canGetRecommendations}
-					<Button variant="primary" pill onclick={handleSubmit}>
-						{recommendationsCtaLabel}
-					</Button>
+					<div class="rate-page__recommendations-cta">
+						{#snippet recommendationsCtaSyncIcon()}
+							{#if recommendationsSubmitSyncFailed}
+								<span class="rate-page__rec-sync-dot rate-page__rec-sync-dot--failed" aria-hidden="true"
+									>!</span>
+							{:else}
+								<span
+									class="rate-page__rec-sync-dot rate-page__rec-sync-dot--pending"
+									aria-hidden="true"
+								></span>
+							{/if}
+						{/snippet}
+						<Button
+							variant="primary"
+							pill
+							class="rate-page__recommendations-submit{!ratingsSyncedForRecommendations
+								? ' rate-page__recommendations-submit--syncing'
+								: ''}{recommendationsSubmitSyncFailed
+								? ' rate-page__recommendations-submit--sync-failed'
+								: ''}"
+							icon={!ratingsSyncedForRecommendations ? recommendationsCtaSyncIcon : undefined}
+							aria-disabled={!ratingsSyncedForRecommendations ? 'true' : undefined}
+							aria-busy={!ratingsSyncedForRecommendations && !recommendationsSubmitSyncFailed
+								? 'true'
+								: undefined}
+							onclick={(e) => {
+								if (!ratingsSyncedForRecommendations) {
+									e.preventDefault();
+									return;
+								}
+								void handleSubmit();
+							}}
+						>
+							{recommendationsSubmitLabel}
+						</Button>
+					</div>
 				{:else}
-					<p class="rate-page__recommendations-hint" role="status" aria-live="polite">
-						{recommendationsCtaLabel}
-					</p>
+					<div class="rate-page__recommendations-hint-wrap">
+						<div
+							class="btn btn--primary btn--pill rate-page__recommendations-hint{!ratingsSyncedForRecommendations
+								? ' rate-page__recommendations-hint--syncing'
+								: ''}{recommendationsSubmitSyncFailed
+								? ' rate-page__recommendations-hint--sync-failed'
+								: ''}"
+							role="status"
+							aria-live="polite"
+							aria-busy={!ratingsSyncedForRecommendations && !recommendationsSubmitSyncFailed
+								? 'true'
+								: undefined}
+						>
+							{#if !ratingsSyncedForRecommendations}
+								{#if recommendationsSubmitSyncFailed}
+									<span class="rate-page__rec-sync-dot rate-page__rec-sync-dot--failed" aria-hidden="true"
+										>!</span>
+								{:else}
+									<span
+										class="rate-page__rec-sync-dot rate-page__rec-sync-dot--pending"
+										aria-hidden="true"
+									></span>
+								{/if}
+							{/if}
+							<span class="btn__label">{recommendationsHintLabel}</span>
+						</div>
+					</div>
 				{/if}
 			</div>
 		{/if}
@@ -1369,20 +1454,74 @@
 		scrollbar-gutter: auto;
 	}
 
-	.rate-page__recommendations-hint {
+	.rate-page__recommendations-cta,
+	.rate-page__recommendations-hint-wrap {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--space-1);
+		max-width: min(20rem, 100%);
+	}
+	:global(.rate-page__recommendations-hint.btn) {
+		pointer-events: none;
+		user-select: none;
+		cursor: default;
 		margin: 0;
-		max-width: 11rem;
 		text-align: center;
-		padding: var(--space-2) var(--space-3);
+	}
+	:global(.rate-page__recommendations-hint.btn--primary.rate-page__recommendations-hint--syncing:hover) {
+		background: var(--color-button-primary-bg);
+	}
+	:global(
+		.rate-page__recommendations-hint.btn--primary.rate-page__recommendations-hint--sync-failed:hover
+	) {
+		background: var(--color-button-primary-bg);
+	}
+	/* Full-opacity primary while ratings flush; same dot treatment as ratings trigger. */
+	:global(.rate-page__recommendations-submit.btn--primary.rate-page__recommendations-submit--syncing) {
+		cursor: wait;
+	}
+	:global(
+		.rate-page__recommendations-submit.btn--primary.rate-page__recommendations-submit--sync-failed
+	) {
+		cursor: not-allowed;
+	}
+	:global(.rate-page__recommendations-submit.btn--primary.rate-page__recommendations-submit--syncing:hover) {
+		background: var(--color-button-primary-bg);
+	}
+	.rate-page__rec-sync-dot {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		width: 0.625rem;
+		height: 0.625rem;
+		border-radius: 999px;
+	}
+	.rate-page__rec-sync-dot--pending {
+		background: color-mix(in srgb, var(--color-book-rating-star) 72%, var(--color-bg));
+		animation: rate-page-rec-sync-pulse 1.4s ease-in-out infinite;
+	}
+	.rate-page__rec-sync-dot--failed {
+		width: 0.875rem;
+		height: 0.875rem;
+		background: var(--color-danger-tonal-bg);
+		border: 1px solid var(--color-danger-tonal-border);
+		color: var(--color-danger-tonal-text);
 		font-family: var(--typ-caption-font-family);
-		font-size: var(--typ-caption-font-size);
-		font-weight: var(--typ-caption-font-weight);
-		line-height: var(--typ-caption-line-height);
-		letter-spacing: var(--typ-caption-letter-spacing);
-		color: var(--color-text);
-		background: var(--color-card-bg);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-xs);
-		box-shadow: var(--shadow-card);
+		font-size: 0.625rem;
+		font-weight: var(--font-weight-semibold);
+		line-height: 1;
+	}
+	@keyframes rate-page-rec-sync-pulse {
+		0%,
+		100% {
+			opacity: 0.55;
+			transform: scale(0.92);
+		}
+		50% {
+			opacity: 1;
+			transform: scale(1);
+		}
 	}
 </style>

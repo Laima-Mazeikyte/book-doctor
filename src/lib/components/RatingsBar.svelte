@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { onDestroy, tick } from 'svelte';
 	import { fly } from 'svelte/transition';
 	import { Book as BookIcon, X } from 'lucide-svelte';
 	import Button from '$lib/components/Button.svelte';
@@ -20,13 +20,22 @@
 	let { ratedEntries }: Props = $props();
 
 	let open = $state(false);
+	/** Book ids in list order when the drawer was opened; cleared on close so the next open uses store order (most recent first). */
+	let drawerOrderIds = $state<string[] | null>(null);
 	let hoverEntryId = $state<string | null>(null);
 	let hoverRating = $state<number>(0);
 	let coverFailedIds = $state<Set<string>>(new Set());
+	/** Book ids scheduled for removal after `PENDING_REMOVE_MS`; store still holds rating until the timer fires or user undoes. */
+	let pendingRemoveIds = $state<Set<string>>(new Set());
+	/** `Date.now()` when each pending removal will commit (for progress UI). */
+	let pendingRemoveEndByBookId = $state(new Map<string, number>());
+	let removalUiClock = $state(Date.now());
 	let closeButtonEl = $state<HTMLButtonElement | null>(null);
 	const ratingsSyncMeta = ratingsStore.syncMeta;
 	const panelId = 'ratings-drawer-panel';
 	const triggerId = 'ratings-trigger';
+	const PENDING_REMOVE_MS = 3000;
+	const pendingRemoveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	/** Slide distance in px; negative x → panel flies in from the left (desktop and mobile). */
 	const DRAWER_SLIDE_PX_DESKTOP = 420;
 
@@ -43,12 +52,6 @@
 		coverFailedIds = new Set(coverFailedIds).add(bookId);
 	}
 
-	let syncIndicatorState: 'normal' | 'pending' | 'failed' = $derived.by(() => {
-		if ($ratingsSyncMeta.failedCount > 0) return 'failed';
-		if ($ratingsSyncMeta.queuedCount > 0 || $ratingsSyncMeta.isFlushing) return 'pending';
-		return 'normal';
-	});
-
 	let drawerSyncState: 'pending' | 'failed' | null = $derived.by(() => {
 		if ($ratingsSyncMeta.queuedCount === 0) return null;
 		if ($ratingsSyncMeta.isFlushing || $ratingsSyncMeta.failedCount === 0) return 'pending';
@@ -61,12 +64,9 @@
 		return '';
 	});
 
-	let triggerAriaLabel = $derived.by(() => {
-		const base = `${t('shared.ratingsBar.yourRatings')} (${ratedEntries.length})`;
-		if (syncIndicatorState === 'failed') return `${base}. Some ratings need retrying.`;
-		if (syncIndicatorState === 'pending') return `${base}. Ratings syncing.`;
-		return base;
-	});
+	let triggerAriaLabel = $derived(
+		`${t('shared.ratingsBar.yourRatings')} (${ratedEntries.length})`
+	);
 
 	/** Portal node to body so it's not inside the bottom bar (pointer-events: none) and can receive clicks. */
 	function portal(node: HTMLElement, target: HTMLElement = document.body) {
@@ -78,14 +78,95 @@
 		};
 	}
 
+	/** While the drawer is open, keep row order stable even when the store moves the latest rating to the front. */
+	let drawerRatedEntries = $derived.by(() => {
+		if (!open || drawerOrderIds === null) return ratedEntries;
+		const byId = new Map(ratedEntries.map((e) => [e.book.id, e]));
+		const ordered: RatedEntry[] = [];
+		const seen = new Set<string>();
+		for (const id of drawerOrderIds) {
+			const e = byId.get(id);
+			if (e) {
+				ordered.push(e);
+				seen.add(id);
+			}
+		}
+		for (const e of ratedEntries) {
+			if (!seen.has(e.book.id)) {
+				ordered.push(e);
+				seen.add(e.book.id);
+			}
+		}
+		return ordered;
+	});
+
 	function openDrawer() {
 		flyX = drawerSlidePx();
+		drawerOrderIds = ratedEntries.map((e) => e.book.id);
 		open = true;
+	}
+
+	function clearPendingRemove(bookId: string) {
+		const tid = pendingRemoveTimers.get(bookId);
+		if (tid != null) {
+			clearTimeout(tid);
+			pendingRemoveTimers.delete(bookId);
+		}
+		if (pendingRemoveIds.has(bookId)) {
+			pendingRemoveIds = new Set([...pendingRemoveIds].filter((id) => id !== bookId));
+		}
+		if (pendingRemoveEndByBookId.has(bookId)) {
+			const next = new Map(pendingRemoveEndByBookId);
+			next.delete(bookId);
+			pendingRemoveEndByBookId = next;
+		}
+	}
+
+	function clearAllPendingRemovals() {
+		for (const tid of pendingRemoveTimers.values()) clearTimeout(tid);
+		pendingRemoveTimers.clear();
+		pendingRemoveIds = new Set();
+		pendingRemoveEndByBookId = new Map();
+	}
+
+	function schedulePendingRemove(bookId: string, bookIdNum: number | undefined) {
+		clearPendingRemove(bookId);
+		pendingRemoveIds = new Set(pendingRemoveIds).add(bookId);
+		const endsAt = Date.now() + PENDING_REMOVE_MS;
+		pendingRemoveEndByBookId = new Map(pendingRemoveEndByBookId).set(bookId, endsAt);
+		const tid = setTimeout(() => {
+			pendingRemoveTimers.delete(bookId);
+			pendingRemoveIds = new Set([...pendingRemoveIds].filter((id) => id !== bookId));
+			const nextEnds = new Map(pendingRemoveEndByBookId);
+			nextEnds.delete(bookId);
+			pendingRemoveEndByBookId = nextEnds;
+			ratingsStore.removeRating(bookId, bookIdNum);
+		}, PENDING_REMOVE_MS);
+		pendingRemoveTimers.set(bookId, tid);
+	}
+
+	$effect(() => {
+		if (pendingRemoveIds.size === 0) return;
+		const id = setInterval(() => {
+			removalUiClock = Date.now();
+		}, 80);
+		return () => clearInterval(id);
+	});
+
+	function pendingRemoveFillRatio(bookId: string): number {
+		const end = pendingRemoveEndByBookId.get(bookId);
+		const msLeft = end != null ? Math.max(0, end - removalUiClock) : 0;
+		return Math.max(0, Math.min(1, msLeft / PENDING_REMOVE_MS));
 	}
 
 	function closeDrawer() {
 		open = false;
+		drawerOrderIds = null;
 	}
+
+	onDestroy(() => {
+		clearAllPendingRemovals();
+	});
 
 	function handleOverlayClick(e: MouseEvent) {
 		if (e.target === e.currentTarget) closeDrawer();
@@ -154,16 +235,6 @@
 	onclick={openDrawer}
 >
 	<span class="ratings-bar__count" aria-hidden="true">{ratedEntries.length}</span>
-	{#if syncIndicatorState !== 'normal'}
-		<span
-			class="ratings-bar__sync"
-			class:ratings-bar__sync--pending={syncIndicatorState === 'pending'}
-			class:ratings-bar__sync--failed={syncIndicatorState === 'failed'}
-			aria-hidden="true"
-		>
-			{#if syncIndicatorState === 'failed'}!{/if}
-		</span>
-	{/if}
 </Button>
 
 {#if open}
@@ -196,12 +267,10 @@
 					<h2 id="ratings-drawer-title" class="ratings-drawer__title typ-h3">
 						{t('shared.ratingsBar.yourRatings')}
 					</h2>
-				</div>
-				<div class="ratings-drawer__body">
 					{#if drawerSyncState}
 						<div
-							class="ratings-drawer__sync-row"
-							class:ratings-drawer__sync-row--failed={drawerSyncState === 'failed'}
+							class="ratings-drawer__header-sync"
+							class:ratings-drawer__header-sync--failed={drawerSyncState === 'failed'}
 						>
 							<div class="ratings-drawer__sync-status">
 								<span
@@ -214,19 +283,26 @@
 								</span>
 								<span class="ratings-drawer__sync-text">{drawerSyncText}</span>
 							</div>
-							<Button variant="tertiary" compact type="button" onclick={retryPendingRatings}>
-								{t('shared.ratingsBar.syncRatings')}
-							</Button>
+							{#if drawerSyncState === 'failed'}
+								<Button variant="tertiary" compact type="button" onclick={retryPendingRatings}>
+									{t('shared.ratingsBar.syncRatings')}
+								</Button>
+							{/if}
 						</div>
 					{/if}
-					{#if ratedEntries.length === 0}
+				</div>
+				<div class="ratings-drawer__body">
+					{#if drawerRatedEntries.length === 0}
 						<p class="ratings-drawer__empty">
 							{t('shared.ratingsBar.empty')}
 						</p>
 					{:else}
 						<ul class="ratings-drawer__list">
-							{#each ratedEntries as entry (entry.book.id)}
-								<li class="ratings-drawer__item">
+							{#each drawerRatedEntries as entry (entry.book.id)}
+								<li
+									class="ratings-drawer__item"
+									class:ratings-drawer__item--pending-remove={pendingRemoveIds.has(entry.book.id)}
+								>
 									<div class="ratings-drawer__item-main">
 										<div class="ratings-drawer__item-cover">
 											{#if entry.book.coverUrl && !coverFailedIds.has(entry.book.id)}
@@ -254,15 +330,20 @@
 											>
 												<BookRatingStarsRow
 													ratingWrapWidth="auto"
-													displayRating={hoverEntryId === entry.book.id && hoverRating > 0
-														? hoverRating
-														: entry.rating}
+													displayRating={pendingRemoveIds.has(entry.book.id)
+														? hoverEntryId === entry.book.id && hoverRating > 0
+															? hoverRating
+															: 0
+														: hoverEntryId === entry.book.id && hoverRating > 0
+															? hoverRating
+															: entry.rating}
 													ariaGroupLabel={t('shared.bookCard.rateThisBook')}
 													starAriaLabel={(value) =>
 														entry.rating === value
 															? t('shared.bookCard.rateOutOf5Clear', { value })
 															: t('shared.bookCard.rateOutOf5', { value })}
-													starAriaPressed={(value) => entry.rating === value}
+													starAriaPressed={(value) =>
+														pendingRemoveIds.has(entry.book.id) ? false : entry.rating === value}
 													onmouseleave={() => {
 														hoverEntryId = null;
 														hoverRating = 0;
@@ -271,30 +352,68 @@
 													onstarClick={(value) => {
 														hoverEntryId = null;
 														hoverRating = 0;
-														if (entry.rating === value) {
-															ratingsStore.removeRating(entry.book.id, entry.book.book_id);
-														} else {
-															ratingsStore.setRating(
-																entry.book.id,
-																value,
-																entry.book.book_id,
-																entry.book
-															);
+														const bookId = entry.book.id;
+														const bookIdNum = entry.book.book_id;
+														if (pendingRemoveIds.has(bookId)) {
+															if (value === entry.rating) {
+																clearPendingRemove(bookId);
+																return;
+															}
+															clearPendingRemove(bookId);
+															ratingsStore.setRating(bookId, value, bookIdNum, entry.book);
+															return;
 														}
+														if (entry.rating === value) {
+															schedulePendingRemove(bookId, bookIdNum);
+															return;
+														}
+														ratingsStore.setRating(bookId, value, bookIdNum, entry.book);
 													}}
 												/>
-												<Button
-													variant="tertiary"
-													compact
-													type="button"
-													aria-label={t('shared.ratingsBar.removeRatingFor', { title: entry.book.title })}
-													onclick={() => ratingsStore.removeRating(entry.book.id, entry.book.book_id)}
-												>
-													{t('shared.ratingsBar.remove')}
-												</Button>
+												{#if pendingRemoveIds.has(entry.book.id)}
+													<Button
+														variant="tertiary"
+														compact
+														type="button"
+														aria-label={`${t('shared.ratingsBar.undoRemoveRatingFor', { title: entry.book.title })}. ${t('shared.ratingsBar.removePendingHint')}`}
+														onclick={() => clearPendingRemove(entry.book.id)}
+													>
+														{t('shared.ratingsBar.undo')}
+													</Button>
+												{:else}
+													<Button
+														variant="tertiary"
+														compact
+														type="button"
+														aria-label={t('shared.ratingsBar.removeRatingFor', { title: entry.book.title })}
+														onclick={() =>
+															schedulePendingRemove(entry.book.id, entry.book.book_id)}
+													>
+														{t('shared.ratingsBar.remove')}
+													</Button>
+												{/if}
 											</div>
 										</div>
 									</div>
+									{#if pendingRemoveIds.has(entry.book.id)}
+										{@const fillRatio = pendingRemoveFillRatio(entry.book.id)}
+										{@const removeProgressPct = Math.round((1 - fillRatio) * 100)}
+										<div class="ratings-drawer__pending-remove-meter">
+											<div
+												class="ratings-drawer__pending-remove-meter__track"
+												role="progressbar"
+												aria-valuemin={0}
+												aria-valuemax={100}
+												aria-valuenow={removeProgressPct}
+												aria-label={t('shared.ratingsBar.removeProgressBarLabel')}
+											>
+												<div
+													class="ratings-drawer__pending-remove-meter__fill"
+													style="width: {fillRatio * 100}%"
+												></div>
+											</div>
+										</div>
+									{/if}
 								</li>
 							{/each}
 						</ul>
@@ -320,30 +439,6 @@
 		line-height: 1;
 		font-variant-numeric: tabular-nums;
 		color: inherit;
-	}
-	.ratings-bar__sync {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-		width: 0.625rem;
-		height: 0.625rem;
-		border-radius: 999px;
-	}
-	.ratings-bar__sync--pending {
-		background: color-mix(in srgb, var(--color-book-rating-star) 72%, var(--color-bg));
-		animation: ratings-bar-sync-pulse 1.4s ease-in-out infinite;
-	}
-	.ratings-bar__sync--failed {
-		width: 0.875rem;
-		height: 0.875rem;
-		background: var(--color-danger-tonal-bg);
-		border: 1px solid var(--color-danger-tonal-border);
-		color: var(--color-danger-tonal-text);
-		font-family: var(--typ-caption-font-family);
-		font-size: 0.625rem;
-		font-weight: var(--font-weight-semibold);
-		line-height: 1;
 	}
 	@keyframes ratings-bar-sync-pulse {
 		0%, 100% {
@@ -422,6 +517,8 @@
 	.ratings-drawer__header {
 		display: flex;
 		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-2);
 		padding: var(--space-4) var(--space-5);
 		padding-right: calc(var(--space-2) + var(--min-tap) + var(--space-3));
 		border-bottom: 1px solid var(--color-border);
@@ -429,6 +526,32 @@
 	}
 	.ratings-drawer__title {
 		margin: 0;
+		min-width: 0;
+		flex: 1 1 auto;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.ratings-drawer__header-sync {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		flex-wrap: wrap;
+		gap: var(--space-1) var(--space-2);
+		flex: 0 1 auto;
+		max-width: min(20rem, 68%);
+		box-sizing: border-box;
+		min-width: 0;
+	}
+	.ratings-drawer__header-sync .ratings-drawer__sync-status {
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+	.ratings-drawer__header-sync .ratings-drawer__sync-text {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.ratings-drawer__body {
@@ -445,21 +568,6 @@
 		font-weight: var(--typ-caption-font-weight);
 		line-height: var(--typ-caption-line-height);
 		letter-spacing: var(--typ-caption-letter-spacing);
-	}
-	.ratings-drawer__sync-row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: var(--space-2);
-		margin-bottom: var(--space-3);
-		padding: var(--space-2) var(--space-3);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
-		background: var(--color-bg-muted);
-	}
-	.ratings-drawer__sync-row--failed {
-		border-color: var(--color-danger-tonal-border);
-		background: var(--color-danger-tonal-bg);
 	}
 	.ratings-drawer__sync-status {
 		display: inline-flex;
@@ -490,14 +598,14 @@
 		line-height: 1;
 	}
 	.ratings-drawer__sync-text {
-		font-family: var(--typ-caption-font-family);
-		font-size: var(--typ-caption-font-size);
-		font-weight: var(--font-weight-semibold);
-		line-height: var(--typ-caption-line-height);
-		letter-spacing: var(--typ-caption-letter-spacing);
+		font-family: var(--typ-interactive-2-font-family);
+		font-size: var(--typ-interactive-2-font-size);
+		font-weight: var(--typ-interactive-2-font-weight);
+		line-height: var(--typ-interactive-2-line-height);
+		letter-spacing: var(--typ-interactive-2-letter-spacing);
 		color: var(--color-text);
 	}
-	.ratings-drawer__sync-row--failed .ratings-drawer__sync-text {
+	.ratings-drawer__header-sync--failed .ratings-drawer__sync-text {
 		color: var(--color-danger-tonal-text);
 	}
 	.ratings-drawer__list {
@@ -508,6 +616,34 @@
 	.ratings-drawer__item {
 		padding: var(--space-3) 0;
 		border-bottom: 1px solid var(--color-border);
+	}
+	.ratings-drawer__item--pending-remove {
+		position: relative;
+		opacity: 0.88;
+	}
+	/* Progress line sits on the row’s bottom edge; no extra vertical space in normal flow. */
+	.ratings-drawer__pending-remove-meter {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		height: 3px;
+		margin: 0;
+		padding: 0;
+		pointer-events: none;
+	}
+	.ratings-drawer__pending-remove-meter__track {
+		width: 100%;
+		height: 100%;
+		border-radius: var(--radius-pill);
+		background: var(--color-border);
+		overflow: hidden;
+	}
+	.ratings-drawer__pending-remove-meter__fill {
+		height: 100%;
+		border-radius: inherit;
+		background: color-mix(in srgb, var(--color-text-muted) 85%, var(--color-text));
+		transition: width 80ms linear;
 	}
 	.ratings-drawer__item:last-child {
 		border-bottom: none;
@@ -596,7 +732,7 @@
 			height: var(--book-card-star-min-sm, 1.75rem);
 		}
 	}
-	.ratings-drawer__sync-row :global(.btn.btn--compact) {
+	.ratings-drawer__header-sync :global(.btn.btn--compact) {
 		box-sizing: border-box;
 		flex-shrink: 0;
 		min-height: 32px;

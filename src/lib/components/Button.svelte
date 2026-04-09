@@ -15,6 +15,9 @@
 		id?: string;
 		/** Required when using icon-only (no default slot content) for accessibility */
 		'aria-label'?: string;
+		/** When set without native `disabled`, keeps full-opacity styling while exposing unavailable/busy state to AT. */
+		'aria-disabled'?: 'true' | 'false';
+		'aria-busy'?: 'true' | 'false';
 		'aria-expanded'?: boolean;
 		'aria-controls'?: string;
 		'aria-haspopup'?: boolean | 'false' | 'true' | 'menu' | 'listbox' | 'tree' | 'grid' | 'dialog';
@@ -35,6 +38,8 @@
 		compact = false,
 		id,
 		'aria-label': ariaLabel,
+		'aria-disabled': ariaDisabled,
+		'aria-busy': ariaBusy,
 		'aria-expanded': ariaExpanded,
 		'aria-controls': ariaControls,
 		'aria-haspopup': ariaHaspopup,
@@ -65,7 +70,8 @@
 		aria-controls={ariaControls}
 		aria-haspopup={ariaHaspopup}
 		aria-label={ariaLabel}
-		aria-disabled={disabled ? 'true' : undefined}
+		aria-disabled={ariaDisabled ?? (disabled ? 'true' : undefined)}
+		aria-busy={ariaBusy}
 		class:btn--disabled={disabled}
 		tabindex={disabled ? -1 : undefined}
 		{...rest}
@@ -94,6 +100,8 @@
 		aria-controls={ariaControls}
 		aria-haspopup={ariaHaspopup}
 		aria-label={ariaLabel}
+		aria-disabled={ariaDisabled}
+		aria-busy={ariaBusy}
 		{...rest}
 		onclick={onclick}
 	>
