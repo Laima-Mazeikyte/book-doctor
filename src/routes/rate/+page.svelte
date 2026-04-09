@@ -1195,8 +1195,8 @@
 	.rate-search-overlay__header {
 		flex-shrink: 0;
 		z-index: 2;
-		padding: var(--space-3) var(--space-4);
-		padding-top: calc(var(--space-3) + env(safe-area-inset-top, 0px));
+		padding: var(--space-4);
+		padding-top: calc(var(--space-4) + env(safe-area-inset-top, 0px));
 		background: var(--color-card-bg);
 		border-bottom: 1px solid var(--color-border);
 	}
