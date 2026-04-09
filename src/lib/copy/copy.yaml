@@ -80,9 +80,18 @@ en:
       recommendedBooks: "Recommended books"
     historyView: "View"
 
+  faq:
+    title: "FAQ"
+    comingSoon: "Content coming soon."
+
   shared:
     skipToContent: "Skip to main content"
     header:
+      siteName: "Book Doctor"
+      logoAlt: "Book Doctor"
+      homeAriaLabel: "Book Doctor, home"
+      mainNavigation: "Main"
+      mobileMenuLabel: "Menu"
       rateBooks: "Rate more books"
       myRecommendations: "Recommendations"
       bookmarks: "Bookmarks"
@@ -90,8 +99,13 @@ en:
       ratedBooks: "Ratings"
       account: "Account"
       signOut: "Sign out"
+      menu: "Menu"
       openMenu: "Open menu"
       closeMenu: "Close menu"
+    footer:
+      ariaLabel: "Site footer"
+      faq: "FAQ"
+      reportBug: "Report a bug"
     errorBanner:
       dismiss: "Dismiss error"
     ratingsBar:
