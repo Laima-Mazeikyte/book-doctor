@@ -156,7 +156,7 @@
 		min-height: var(--min-tap);
 		padding: var(--space-3) var(--space-4) var(--space-3) var(--space-input-icon-left);
 		font-family: var(--typ-interactive-1-font-family);
-		font-size: var(--typ-interactive-1-font-size);
+		font-size: var(--primitive-type-size-16);
 		font-weight: var(--typ-interactive-1-font-weight);
 		line-height: var(--typ-interactive-1-line-height);
 		letter-spacing: var(--typ-interactive-1-letter-spacing);
@@ -186,7 +186,7 @@
 		margin: 0;
 		padding: var(--space-3) var(--space-4) var(--space-3) var(--space-input-icon-left);
 		font-family: var(--typ-interactive-1-font-family);
-		font-size: var(--typ-interactive-1-font-size);
+		font-size: var(--primitive-type-size-16);
 		font-weight: var(--typ-interactive-1-font-weight);
 		line-height: var(--typ-interactive-1-line-height);
 		letter-spacing: var(--typ-interactive-1-letter-spacing);

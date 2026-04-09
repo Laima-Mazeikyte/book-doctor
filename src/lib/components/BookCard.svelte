@@ -388,31 +388,6 @@
 					</span>
 				</button>
 			</div>
-			{#if isRateContext && showSummaryNotInterestedAction}
-				<div class="book-card__cover-rate-not-interested">
-					<button
-						type="button"
-						class="book-card__action"
-						class:book-card__action--not-interested-active={notInterested}
-						class:book-card__action--labeled={notInterested}
-						class:book-card__action--reco-hoverable={!notInterested}
-						aria-pressed={notInterested}
-						aria-label={notInterested
-							? t('shared.recommendationCard.removeFromNotInterested')
-							: t('shared.recommendationCard.notInterested')}
-						onclick={handleNotInterestedClick}
-					>
-						<Ban size={14} aria-hidden="true" />
-						{#if notInterested}
-							<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span>
-						{:else}
-							<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">
-								{t('shared.recommendationCard.notInterested')}
-							</span>
-						{/if}
-					</button>
-				</div>
-			{/if}
 		</div>
 	</div>
 
@@ -798,17 +773,6 @@
 		flex-direction: column;
 		align-items: flex-end;
 		gap: var(--space-2);
-	}
-
-	.book-card__cover-rate-not-interested {
-		position: absolute;
-		bottom: var(--space-2);
-		right: var(--space-2);
-		z-index: 2;
-		display: flex;
-		align-items: flex-end;
-		justify-content: flex-end;
-		max-width: calc(100% - var(--space-2) * 2);
 	}
 
 	.book-card__body {
@@ -1534,8 +1498,7 @@
 	}
 
 	/* Cover tint: deep aqua (does not remap in dark like --primitive-gray-900). */
-	.book-card__media-inner .book-card__cover-actions,
-	.book-card__media-inner .book-card__cover-rate-not-interested {
+	.book-card__media-inner .book-card__cover-actions {
 		--book-card-cover-tint: var(--primitive-deep-aqua);
 		--book-card-cover-chip-hover-solid: color-mix(
 			in srgb,
@@ -1545,8 +1508,7 @@
 	}
 
 	/* Cover overlay actions only: frosted glass (overrides pill-surface rules above) */
-	.book-card__media-inner .book-card__cover-actions .book-card__action,
-	.book-card__media-inner .book-card__cover-rate-not-interested .book-card__action {
+	.book-card__media-inner .book-card__cover-actions .book-card__action {
 		border: none;
 		color: var(--primitive-white);
 		-webkit-backdrop-filter: blur(12px);
@@ -1554,8 +1516,6 @@
 	}
 
 	.book-card__media-inner .book-card__cover-actions
-		.book-card__action:not(.book-card__action--saved):not(.book-card__action--not-interested-active),
-	.book-card__media-inner .book-card__cover-rate-not-interested
 		.book-card__action:not(.book-card__action--saved):not(.book-card__action--not-interested-active) {
 		background: color-mix(in srgb, var(--book-card-cover-tint) 12%, transparent);
 	}
@@ -1567,31 +1527,7 @@
 	.book-card__media-inner .book-card__cover-actions
 		.book-card__action:not(.book-card__action--saved):not(
 			.book-card__action--not-interested-active
-		):focus-visible,
-	.book-card__media-inner .book-card__cover-rate-not-interested
-		.book-card__action:not(.book-card__action--saved):not(
-			.book-card__action--not-interested-active
-		):hover,
-	.book-card__media-inner .book-card__cover-rate-not-interested
-		.book-card__action:not(.book-card__action--saved):not(
-			.book-card__action--not-interested-active
 		):focus-visible {
 		background: color-mix(in srgb, var(--book-card-cover-tint) 30%, transparent);
-	}
-
-	.book-card__media-inner
-		.book-card__cover-rate-not-interested
-		.book-card__action.book-card__action--not-interested-active {
-		background: color-mix(in srgb, var(--book-card-cover-tint) 30%, transparent);
-		color: var(--primitive-white);
-		border-color: transparent;
-	}
-
-	.book-card__media-inner
-		.book-card__cover-rate-not-interested
-		.book-card__action.book-card__action--not-interested-active:hover {
-		background: color-mix(in srgb, var(--book-card-cover-chip-hover-solid) 36%, transparent);
-		color: var(--primitive-white);
-		border-color: transparent;
 	}
 </style>
