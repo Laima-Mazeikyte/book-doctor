@@ -10,6 +10,7 @@
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
 	import type { BookCardListProps } from './book-card/types';
+	import BookRatingStarsRow from './book-card/BookRatingStarsRow.svelte';
 	import { getBookDisplaySummary } from './book-card/summaryStub';
 
 	let {
@@ -70,6 +71,7 @@
 	const summaryTitleId = $derived(`book-summary-title-${book.id}`);
 
 	const SUMMARY_DRAWER_DESKTOP_PX = 400;
+	/** Cap fly distance on very tall viewports (full-screen mobile slide). */
 	const SUMMARY_SHEET_SLIDE_MAX_PX = 900;
 
 	let flySlideX = $state(0);
@@ -393,34 +395,22 @@
 
 	<div class="book-card__body">
 		{#if isRateContext}
-			<div class="book-card__rating-wrap">
-				<div
-					class="book-card__rating"
-					role="group"
-					aria-label={t('shared.bookCard.rateThisBook')}
-					onmouseleave={() => (hoverRating = 0)}
-				>
-					{#each RATING_OPTIONS as value}
-						<button
-							type="button"
-							class="book-card__star"
-							class:book-card__star--active={displayRating >= value}
-							aria-label={starAriaLabel(value)}
-							aria-pressed={starAriaPressed(value)}
-							onmouseenter={() => handleStarMouseEnter(value)}
-							onclick={() => {
-								hoverRating = 0;
-								handleStarClick(value);
-							}}
-						>
-							{@render bookCardStarGlyph(displayRating >= value)}
-						</button>
-					{/each}
-				</div>
-			</div>
+			<BookRatingStarsRow
+				ratingWrapWidth="auto"
+				displayRating={displayRating}
+				ariaGroupLabel={t('shared.bookCard.rateThisBook')}
+				starAriaLabel={starAriaLabel}
+				starAriaPressed={starAriaPressed}
+				onmouseleave={() => (hoverRating = 0)}
+				onstarEnter={handleStarMouseEnter}
+				onstarClick={(value) => {
+					hoverRating = 0;
+					handleStarClick(value);
+				}}
+			/>
 		{:else if showOnlyStars}
-			<div class="book-card__rating-wrap">
-				{#if notInterested && onNotInterested}
+			{#if notInterested && onNotInterested}
+				<div class="book-card__rating-wrap">
 					<button
 						type="button"
 						class="book-card__action book-card__action--rate-not-interested"
@@ -433,32 +423,21 @@
 						<Ban size={14} aria-hidden="true" />
 						<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span>
 					</button>
-				{:else}
-					<div
-						class="book-card__rating"
-						role="group"
-						aria-label={t('shared.recommendationCard.rateThisBook')}
-						onmouseleave={() => (hoverRating = 0)}
-					>
-						{#each RATING_OPTIONS as value}
-							<button
-								type="button"
-								class="book-card__star"
-								class:book-card__star--active={displayRating >= value}
-								aria-label={starAriaLabel(value)}
-								aria-pressed={starAriaPressed(value)}
-								onmouseenter={() => handleStarMouseEnter(value)}
-								onclick={() => {
-									hoverRating = 0;
-									handleStarClick(value);
-								}}
-							>
-								{@render bookCardStarGlyph(displayRating >= value)}
-							</button>
-						{/each}
-					</div>
-				{/if}
-			</div>
+				</div>
+			{:else}
+				<BookRatingStarsRow
+					displayRating={displayRating}
+					ariaGroupLabel={t('shared.recommendationCard.rateThisBook')}
+					starAriaLabel={starAriaLabel}
+					starAriaPressed={starAriaPressed}
+					onmouseleave={() => (hoverRating = 0)}
+					onstarEnter={handleStarMouseEnter}
+					onstarClick={(value) => {
+						hoverRating = 0;
+						handleStarClick(value);
+					}}
+				/>
+			{/if}
 		{:else}
 			{@render recommendationRateMorph(bookmarked, notInterested)}
 		{/if}
@@ -494,8 +473,6 @@
 				<X size={18} aria-hidden="true" />
 			</button>
 			<div class="book-card__summary-content">
-				<div class="book-card__summary-sheet-handle" aria-hidden="true"></div>
-
 				<div
 					class="book-card__summary-muted"
 					class:book-card__summary-muted--not-interested={notInterested}
@@ -568,11 +545,11 @@
 					{#if canRemoveRatingInSheet}
 						<button
 							type="button"
-							class="book-card__summary-remove-rating"
+							class="btn btn--tertiary btn--compact book-card__summary-remove-rating"
 							aria-label={t('shared.ratingsBar.removeRatingFor', { title: book.title })}
 							onclick={handleSheetRemoveRating}
 						>
-							{t('shared.ratingsBar.remove')}
+							<span class="btn__label">{t('shared.ratingsBar.remove')}</span>
 						</button>
 					{/if}
 				</div>
@@ -1183,46 +1160,52 @@
 		position: fixed;
 		inset: 0;
 		z-index: 200;
-		background: var(--color-overlay-scrim-soft);
-		display: flex;
-		align-items: flex-end;
-		justify-content: center;
+		/* Mobile: full-screen panel covers viewport; desktop: scrim beside drawer */
+		background: transparent;
 	}
 	.book-card__summary-dialog-panel {
-		position: relative;
+		position: absolute;
+		inset: 0;
 		z-index: 1;
+		box-sizing: border-box;
 		width: 100%;
-		max-width: 100%;
-		max-height: min(85vh, 85dvh);
+		height: 100%;
+		min-height: 100dvh;
+		max-width: none;
+		max-height: none;
 		background: var(--color-card-bg);
-		box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.12);
+		box-shadow: none;
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
-		border-radius: var(--space-4) var(--space-4) 0 0;
+		border-radius: 0;
 		padding-bottom: env(safe-area-inset-bottom, 0px);
 	}
 	@media (min-width: 768px) {
 		.book-card__summary-dialog-overlay {
+			display: flex;
 			align-items: stretch;
 			justify-content: flex-start;
+			background: var(--color-overlay-scrim-soft);
 		}
 		.book-card__summary-dialog-panel {
+			position: relative;
+			inset: auto;
 			width: min(400px, 85vw);
 			min-width: 320px;
 			max-width: 400px;
-			height: 100%;
+			height: auto;
+			align-self: stretch;
+			min-height: 0;
 			max-height: none;
-			border-radius: 0;
 			box-shadow: var(--shadow-drawer);
 			padding-bottom: 0;
-			background: var(--color-card-bg);
 		}
 	}
 	.book-card__summary-close {
 		position: absolute;
-		top: var(--space-2);
-		right: var(--space-2);
+		top: calc(var(--space-2) + env(safe-area-inset-top, 0px));
+		right: calc(var(--space-2) + env(safe-area-inset-right, 0px));
 		z-index: 11;
 		width: var(--min-tap);
 		height: var(--min-tap);
@@ -1255,24 +1238,6 @@
 		gap: var(--space-4);
 		scrollbar-width: thin;
 		scrollbar-color: var(--color-border) transparent;
-	}
-	@media (min-width: 768px) {
-		.book-card__summary-content {
-			padding: var(--space-6);
-		}
-	}
-	.book-card__summary-sheet-handle {
-		flex-shrink: 0;
-		width: 2.25rem;
-		height: 0.25rem;
-		margin-inline: auto;
-		border-radius: var(--radius-pill);
-		background: var(--color-border);
-	}
-	@media (min-width: 768px) {
-		.book-card__summary-sheet-handle {
-			display: none;
-		}
 	}
 	.book-card__summary-content::-webkit-scrollbar {
 		width: 3px;
@@ -1322,13 +1287,12 @@
 		letter-spacing: var(--typ-interactive-1-letter-spacing);
 		color: var(--color-text);
 		background: var(--color-book-card-pill-surface-bg);
-		border: 1px solid var(--color-border);
+		border: 1px solid var(--color-border-hover);
 		border-radius: var(--radius-pill);
 		cursor: pointer;
 		text-align: left;
 		transition: background var(--duration-fast) var(--ease-default),
-			color var(--duration-fast) var(--ease-default),
-			border-color var(--duration-fast) var(--ease-default);
+			color var(--duration-fast) var(--ease-default);
 	}
 	.book-card__summary-author-pill:hover {
 		background: var(--color-book-card-pill-surface-bg-hover);
@@ -1343,7 +1307,6 @@
 	}
 	.book-card__summary-author-pill--text:hover {
 		background: var(--color-book-card-pill-surface-bg);
-		border-color: var(--color-border);
 	}
 	.book-card__summary-year {
 		color: var(--color-text-muted);
@@ -1370,29 +1333,13 @@
 		width: 24px;
 		height: 24px;
 	}
-	.book-card__summary-remove-rating {
-		padding: var(--space-2) var(--space-1);
-		margin: 0;
-		border: none;
-		background: none;
-		font-family: var(--typ-interactive-1-font-family);
-		font-size: var(--typ-interactive-1-font-size);
-		font-weight: var(--typ-interactive-1-font-weight);
-		line-height: var(--typ-interactive-1-line-height);
-		letter-spacing: var(--typ-interactive-1-letter-spacing);
-		color: var(--color-text-muted);
-		text-decoration: underline;
-		text-underline-offset: 0.2em;
-		cursor: pointer;
-		transition: color var(--duration-fast) var(--ease-default);
-	}
-	.book-card__summary-remove-rating:hover {
-		color: var(--color-text);
-	}
-	.book-card__summary-remove-rating:focus-visible {
-		outline: 2px solid var(--color-focus);
-		outline-offset: 2px;
-		border-radius: var(--radius-xs);
+	/* Summary star row: match 40px stars; aligns with ratings-drawer Remove */
+	button.book-card__summary-remove-rating {
+		box-sizing: border-box;
+		min-height: 40px;
+		height: 40px;
+		padding-block: 0;
+		padding-inline: var(--space-4);
 	}
 	.book-card__summary {
 		font-family: var(--typ-body-font-family);
@@ -1469,6 +1416,18 @@
 			.book-card__action--not-interested-active
 		):hover {
 		background: var(--color-book-card-pill-surface-bg-hover);
+	}
+
+	/* Summary sheet + recommendation row: clearer inactive pill outlines (border unchanged on hover) */
+	.book-card__summary-actions
+		.book-card__action--labeled:not(.book-card__action--saved):not(
+			.book-card__action--not-interested-active
+		),
+	.book-card__reco-layer--actions
+		.book-card__action:not(.book-card__action--saved):not(
+			.book-card__action--not-interested-active
+		) {
+		border-color: var(--color-border-hover);
 	}
 
 	.book-card__reco-layer--rating .book-card__back {

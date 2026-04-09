@@ -1,6 +1,7 @@
 /* Base layer – mobile-first, minimal, accessible. Uses semantic tokens only. */
 @import './lib/styles/primitives.css';
 @import './lib/styles/semantic.css';
+@import './lib/styles/button.css';
 
 *,
 *::before,

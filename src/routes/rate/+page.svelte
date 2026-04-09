@@ -14,7 +14,7 @@
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import Spinner from '$lib/components/Spinner.svelte';
 	import Button from '$lib/components/Button.svelte';
-	import { ArrowLeft } from 'lucide-svelte';
+	import { X } from 'lucide-svelte';
 	import { getBookById } from '$lib/data/dummyBooks';
 	import { mobileMenuOpen } from '$lib/stores/mobileMenu';
 	import { ratingsStore } from '$lib/stores/ratings';
@@ -92,7 +92,7 @@
 	function focusOverlaySearchInput() {
 		overlaySearchBar?.focusInput();
 		const input = overlayDialogEl?.querySelector<HTMLInputElement>(
-			'.rate-search-overlay__search-row input[type="search"], .rate-search-overlay__search-row input'
+			'.rate-search-overlay__search-row .search-bar__input'
 		);
 		input?.focus({ preventScroll: true });
 	}
@@ -1011,14 +1011,6 @@
 			<div class="rate-search-overlay__panel">
 				<header class="rate-search-overlay__header">
 					<div class="rate-search-overlay__header-row">
-						<button
-							type="button"
-							class="rate-search-overlay__icon-btn"
-							aria-label={t('rate.search.backAriaLabel')}
-							onclick={() => closeSearchOverlay()}
-						>
-							<ArrowLeft size={22} aria-hidden="true" />
-						</button>
 						<div class="rate-search-overlay__search-row">
 							<h1 id="rate-search-dialog-title" class="rate-search-overlay__sr-only">
 								{t('rate.search.dialogTitle')}
@@ -1031,6 +1023,14 @@
 								aria-label={t('rate.search.ariaLabel')}
 							/>
 						</div>
+						<button
+							type="button"
+							class="rate-search-overlay__icon-btn"
+							aria-label={t('rate.search.closeAriaLabel')}
+							onclick={() => closeSearchOverlay()}
+						>
+							<X size={22} strokeWidth={2} aria-hidden="true" />
+						</button>
 					</div>
 				</header>
 
@@ -1154,6 +1154,9 @@
 		color: var(--color-text-muted);
 		margin: var(--space-4) 0;
 	}
+	.rate-page__empty {
+		text-align: center;
+	}
 
 	.rate-page__below-overlay--inert-fallback {
 		pointer-events: none;
@@ -1256,6 +1259,7 @@
 	}
 	.rate-search-overlay__helper {
 		margin: var(--space-4) 0;
+		text-align: center;
 		color: var(--color-text-muted);
 		font-family: var(--typ-body-font-family);
 		font-size: var(--typ-body-font-size);

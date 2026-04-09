@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { t } from '$lib/copy';
-	import { Search, X } from 'lucide-svelte';
+	import { Search } from 'lucide-svelte';
 
 	interface Props {
 		value?: string;
@@ -70,7 +70,9 @@
 	{:else}
 		<input
 			bind:this={inputRef}
-			type="search"
+			type="text"
+			inputmode="search"
+			role="searchbox"
 			autocomplete="off"
 			{placeholder}
 			aria-label={ariaLabel}
@@ -86,7 +88,7 @@
 				aria-label={t('rate.search.clearAriaLabel')}
 				onclick={clearSearch}
 			>
-				<X size={18} aria-hidden="true" />
+				<span class="search-bar__clear-label">{t('rate.search.clear')}</span>
 			</button>
 		{/if}
 	{/if}
@@ -114,21 +116,27 @@
 		top: 50%;
 		transform: translateY(-50%);
 		z-index: 1;
-		display: flex;
+		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: var(--min-tap);
-		height: var(--min-tap);
-		min-width: var(--min-tap);
+		box-sizing: border-box;
 		min-height: var(--min-tap);
-		padding: 0;
+		padding: var(--space-2) var(--space-3);
 		background: none;
 		border: none;
-		border-radius: 50%;
+		border-radius: var(--radius-pill);
 		color: var(--color-text-muted);
+		font-family: var(--typ-interactive-1-font-family);
+		font-size: var(--typ-interactive-1-font-size);
+		font-weight: var(--typ-interactive-1-font-weight);
+		line-height: var(--typ-interactive-1-line-height);
+		letter-spacing: var(--typ-interactive-1-letter-spacing);
 		cursor: pointer;
 		transition: color var(--duration-fast) var(--ease-default),
 			background var(--duration-fast) var(--ease-default);
+	}
+	.search-bar__clear-label {
+		white-space: nowrap;
 	}
 	.search-bar__clear:hover {
 		color: var(--color-text);
@@ -137,19 +145,6 @@
 	.search-bar__clear:focus-visible {
 		outline: 2px solid var(--color-focus);
 		outline-offset: 2px;
-	}
-	/* Hide native search clear so we only show our single X */
-	.search-bar__input::-webkit-search-cancel-button,
-	.search-bar__input::-webkit-search-decoration {
-		-webkit-appearance: none;
-		appearance: none;
-	}
-	.search-bar__input::-moz-search-cancel-button {
-		display: none;
-	}
-	.search-bar__input[type='search'] {
-		-webkit-appearance: none;
-		appearance: none;
 	}
 	.search-bar__input {
 		width: 100%;
@@ -169,12 +164,31 @@
 			box-shadow var(--duration-fast) var(--ease-default);
 	}
 	.search-bar__input--has-clear {
-		padding-right: calc(var(--space-4) + var(--min-tap) + var(--space-3));
+		padding-right: calc(var(--space-4) + 5.5rem + var(--space-3));
 	}
 	.search-bar__input:focus {
 		outline: none;
 		border-color: var(--color-focus);
 		box-shadow: var(--shadow-focus-input);
+	}
+
+	/*
+	 * Single clear control: we render `.search-bar__clear`. If `type="search"` is ever used again,
+	 * hide native cancel/decoration (WebKit/Firefox/legacy Edge) so it never stacks with ours.
+	 */
+	.search-bar__input::-webkit-search-cancel-button,
+	.search-bar__input::-webkit-search-decoration,
+	.search-bar__input::-webkit-search-results-button,
+	.search-bar__input::-webkit-search-results-decoration {
+		-webkit-appearance: none;
+		appearance: none;
+		display: none;
+	}
+	.search-bar__input::-moz-search-cancel-button {
+		display: none;
+	}
+	.search-bar__input::-ms-clear {
+		display: none;
 	}
 
 	.search-bar__trigger {

@@ -30,6 +30,7 @@ en:
     search:
       placeholder: "Search books by title or author"
       ariaLabel: "Search books by title or author"
+      clear: "Clear"
       clearAriaLabel: "Clear search"
       dialogTitle: "Search books"
       closeAriaLabel: "Close search"

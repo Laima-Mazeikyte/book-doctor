@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { fly } from 'svelte/transition';
-	import { Book as BookIcon, Star } from 'lucide-svelte';
+	import { Book as BookIcon } from 'lucide-svelte';
 	import Button from '$lib/components/Button.svelte';
+	import BookRatingStarsRow from '$lib/components/book-card/BookRatingStarsRow.svelte';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
@@ -41,8 +42,6 @@
 	function setCoverFailed(bookId: string) {
 		coverFailedIds = new Set(coverFailedIds).add(bookId);
 	}
-
-	const RATING_OPTIONS: RatingValue[] = [1, 2, 3, 4, 5];
 
 	let syncIndicatorState: 'normal' | 'pending' | 'failed' = $derived.by(() => {
 		if ($ratingsSyncMeta.failedCount > 0) return 'failed';
@@ -107,6 +106,17 @@
 		void ratingsStore.retryPending();
 	}
 
+	function starHoverPreviewSupported(): boolean {
+		if (typeof window === 'undefined') return false;
+		return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+	}
+
+	function drawerStarMouseEnter(bookId: string, value: RatingValue) {
+		if (!starHoverPreviewSupported()) return;
+		hoverEntryId = bookId;
+		hoverRating = value;
+	}
+
 	$effect(() => {
 		if (!open) return;
 		tick().then(() => closeButtonEl?.focus());
@@ -123,28 +133,26 @@
 	});
 </script>
 
-{#snippet ratingsDrawerStarGlyph(filled: boolean)}
-	<span class="ratings-drawer__star-icon" aria-hidden="true">
-		<Star fill={filled ? 'currentColor' : 'none'} aria-hidden="true" />
-	</span>
+{#snippet ratingsBarTriggerIcon()}
+	<BookIcon size={14} aria-hidden="true" />
 {/snippet}
 
 <svelte:window onkeydown={handleKeydown} />
 
-<!-- Fragment root so the button is a direct child of the bottom bar and receives pointer-events -->
-<button
+<!-- Direct child of bottom bar (pointer-events); same Button variant as recommendations CTA -->
+<Button
+	variant="primary"
+	pill
+	class="ratings-bar__trigger"
 	id={triggerId}
 	type="button"
-	class="ratings-bar__trigger"
 	aria-expanded={open}
 	aria-controls={panelId}
 	aria-haspopup="dialog"
 	aria-label={triggerAriaLabel}
+	icon={ratingsBarTriggerIcon}
 	onclick={openDrawer}
 >
-	<span class="ratings-bar__icon">
-		<BookIcon size={14} aria-hidden="true" />
-	</span>
 	<span class="ratings-bar__count" aria-hidden="true">{ratedEntries.length}</span>
 	{#if syncIndicatorState !== 'normal'}
 		<span
@@ -156,7 +164,7 @@
 			{#if syncIndicatorState === 'failed'}!{/if}
 		</span>
 	{/if}
-</button>
+</Button>
 
 {#if open}
 		<div
@@ -240,34 +248,42 @@
 											<span class="ratings-drawer__item-author">{entry.book.author}</span>
 											<div
 												class="ratings-drawer__item-actions"
-												role="group"
-												aria-label={t('shared.ratingsBar.changeOrRemoveRating')}
-												onmouseleave={() => { hoverEntryId = null; hoverRating = 0; }}
+												onmouseleave={() => {
+													hoverEntryId = null;
+													hoverRating = 0;
+												}}
 											>
-												<div class="ratings-drawer__stars">
-													{#each RATING_OPTIONS as value}
-														{@const displayRating = hoverEntryId === entry.book.id && hoverRating > 0 ? hoverRating : entry.rating}
-														<button
-															type="button"
-															class="ratings-drawer__star"
-															class:ratings-drawer__star--active={displayRating >= value}
-															aria-label={entry.rating === value ? t('shared.ratingsBar.rateOutOf5Clear', { value }) : t('shared.ratingsBar.setRatingTo', { value })}
-															aria-pressed={entry.rating === value}
-															onmouseenter={() => { hoverEntryId = entry.book.id; hoverRating = value; }}
-															onclick={() => {
-																hoverEntryId = null;
-																hoverRating = 0; // reset hover so mobile (no mouseleave) shows correct state after tap
-																if (entry.rating === value) {
-																	ratingsStore.removeRating(entry.book.id, entry.book.book_id);
-																} else {
-																	ratingsStore.setRating(entry.book.id, value, entry.book.book_id, entry.book);
-																}
-															}}
-														>
-															{@render ratingsDrawerStarGlyph(displayRating >= value)}
-														</button>
-													{/each}
-												</div>
+												<BookRatingStarsRow
+													ratingWrapWidth="auto"
+													displayRating={hoverEntryId === entry.book.id && hoverRating > 0
+														? hoverRating
+														: entry.rating}
+													ariaGroupLabel={t('shared.bookCard.rateThisBook')}
+													starAriaLabel={(value) =>
+														entry.rating === value
+															? t('shared.bookCard.rateOutOf5Clear', { value })
+															: t('shared.bookCard.rateOutOf5', { value })}
+													starAriaPressed={(value) => entry.rating === value}
+													onmouseleave={() => {
+														hoverEntryId = null;
+														hoverRating = 0;
+													}}
+													onstarEnter={(value) => drawerStarMouseEnter(entry.book.id, value)}
+													onstarClick={(value) => {
+														hoverEntryId = null;
+														hoverRating = 0;
+														if (entry.rating === value) {
+															ratingsStore.removeRating(entry.book.id, entry.book.book_id);
+														} else {
+															ratingsStore.setRating(
+																entry.book.id,
+																value,
+																entry.book.book_id,
+																entry.book
+															);
+														}
+													}}
+												/>
 												<Button
 													variant="tertiary"
 													compact
@@ -290,51 +306,19 @@
 {/if}
 
 <style>
-	.ratings-bar__trigger {
+	/* Layout + label row; colors from Button (primary pill, same as rate page CTA) */
+	:global(.ratings-bar__trigger.btn) {
+		flex: 0 0 auto;
+		pointer-events: auto;
+		gap: var(--space-1);
+	}
+	:global(.ratings-bar__trigger .btn__label) {
 		display: inline-flex;
 		align-items: center;
-		justify-content: center;
-		flex: 0 0 auto;
-		box-sizing: border-box;
-		width: max-content;
-		max-width: 100%;
-		min-width: var(--book-card-action-height, 2.25rem);
-		height: var(--book-card-action-height, 2.25rem);
-		padding-block: 0;
-		padding-inline-start: var(--space-2);
-		padding-inline-end: var(--space-3);
 		gap: var(--space-1);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-pill);
-		background: var(--color-bg-muted);
-		color: var(--color-text);
-		cursor: pointer;
-		pointer-events: auto;
-		transition: background var(--duration-fast) var(--ease-default),
-			color var(--duration-fast) var(--ease-default),
-			border-color var(--duration-fast) var(--ease-default);
-	}
-	.ratings-bar__trigger:hover {
-		background: var(--color-book-card-action-hover-bg);
-	}
-	.ratings-bar__trigger:focus-visible {
-		outline: 2px solid var(--color-focus);
-		outline-offset: 2px;
-	}
-	.ratings-bar__icon {
-		display: inline-flex;
-		flex-shrink: 0;
-		color: inherit;
-	}
-	.ratings-bar__icon :global(svg) {
-		flex-shrink: 0;
 	}
 	.ratings-bar__count {
-		font-family: var(--typ-interactive-2-font-family);
-		font-size: var(--typ-interactive-2-font-size);
-		font-weight: var(--typ-interactive-2-font-weight);
 		line-height: 1;
-		letter-spacing: var(--typ-interactive-2-letter-spacing);
 		font-variant-numeric: tabular-nums;
 		color: inherit;
 	}
@@ -574,64 +558,19 @@
 		align-items: center;
 		margin-top: var(--space-2);
 	}
-	.ratings-drawer__stars {
-		display: flex;
-		flex-wrap: nowrap;
-		align-items: center;
-		gap: 0;
-	}
-	.ratings-drawer__star {
-		box-sizing: border-box;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 32px;
-		height: 32px;
-		min-width: 32px;
-		min-height: 32px;
-		padding: 0;
-		font-family: var(--typ-interactive-1-font-family);
-		font-weight: var(--typ-interactive-1-font-weight);
-		line-height: 1;
-		letter-spacing: 0;
-		border: none;
-		background: transparent;
-		border-radius: var(--radius-sm);
-		cursor: pointer;
-		color: var(--color-book-rating-star-muted);
-	}
-	/* Match BookCard star icon size. */
-	.ratings-drawer__star-icon {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-		width: 20px;
-		height: 20px;
-	}
-	.ratings-drawer__star-icon :global(svg) {
-		width: 100%;
-		height: 100%;
-	}
-	.ratings-drawer__star:hover {
-		background: var(--color-bg-hover);
-		color: var(--color-book-rating-star);
-	}
-	.ratings-drawer__star:focus-visible {
-		outline: 2px solid var(--color-focus);
-		outline-offset: 2px;
-	}
-	.ratings-drawer__star--active {
-		background: transparent;
-		color: var(--color-book-rating-star);
-	}
-	/* Button is a child component — :global so compact height applies to Remove */
+	/* Button is a child component — :global so compact height aligns with book-card star row */
 	.ratings-drawer__item-actions :global(.btn.btn--compact) {
 		box-sizing: border-box;
-		min-height: 32px;
-		height: 32px;
+		min-height: var(--book-card-star-min, 2.25rem);
+		height: var(--book-card-star-min, 2.25rem);
 		padding-block: 0;
 		padding-inline: var(--space-4);
+	}
+	@media (max-width: 479px) {
+		.ratings-drawer__item-actions :global(.btn.btn--compact) {
+			min-height: var(--book-card-star-min-sm, 1.75rem);
+			height: var(--book-card-star-min-sm, 1.75rem);
+		}
 	}
 	.ratings-drawer__sync-row :global(.btn.btn--compact) {
 		box-sizing: border-box;
