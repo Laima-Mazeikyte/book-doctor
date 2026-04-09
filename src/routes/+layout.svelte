@@ -8,6 +8,8 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import SkipLink from '$lib/components/SkipLink.svelte';
 	import AppHeader from '$lib/components/AppHeader.svelte';
+	import AppFooter from '$lib/components/AppFooter.svelte';
+	import BugReportModal from '$lib/components/BugReportModal.svelte';
 	import { getHcaptchaTokenForAnonymousAuth } from '$lib/hcaptcha-anonymous';
 	import { getSupabase } from '$lib/supabase';
 	import { authStore, clearPasswordRecoveryFlag, passwordRecoveryActive } from '$lib/stores/auth';
@@ -32,6 +34,16 @@
 	}
 
 	let { children } = $props();
+
+	let bugModalOpen = $state(false);
+
+	function openBugModal() {
+		bugModalOpen = true;
+	}
+
+	function closeBugModal() {
+		bugModalOpen = false;
+	}
 
 	/** Routes with `.book-card-grid` — drop main max-width so more columns fit on large screens */
 	const isBookGridShell = $derived.by(() => {
@@ -464,12 +476,36 @@
 </svelte:head>
 
 <SkipLink />
-<AppHeader />
-<main
-	id="main"
-	class:rate-page={$page.url.pathname === '/rate'}
-	class:landing-page={$page.url.pathname === '/'}
-	class:main-book-grid-shell={isBookGridShell}
->
-	{@render children()}
-</main>
+<div class="app-chrome">
+	<AppHeader onOpenBugReport={openBugModal} />
+	<main
+		id="main"
+		class:rate-page={$page.url.pathname === '/rate'}
+		class:landing-page={$page.url.pathname === '/'}
+		class:main-book-grid-shell={isBookGridShell}
+	>
+		<div class="main-min">
+			{@render children()}
+		</div>
+	</main>
+	<AppFooter onOpenBugReport={openBugModal} />
+</div>
+<BugReportModal open={bugModalOpen} onClose={closeBugModal} />
+
+<style>
+	.app-chrome {
+		display: flex;
+		flex-direction: column;
+		width: 100%;
+		/* Matches AppHeader __inner: min-height 3.25rem + vertical padding (2× --space-3) */
+		--app-header-chrome-height: 4.75rem;
+	}
+	.app-chrome :global(main) {
+		min-width: 0;
+		width: 100%;
+	}
+	.main-min {
+		min-width: 0;
+		min-height: calc(100dvh - var(--app-header-chrome-height));
+	}
+</style>

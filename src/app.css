@@ -104,6 +104,9 @@ main.main-book-grid-shell {
  * Star glyph size follows summary close (18/44 of star button); component: BookCard.svelte
  */
 :root {
+	/* Header/footer chrome — matches `.app-header__nav-link` (typ-interactive-2 + padding) */
+	--chrome-menu-padding-block: var(--space-2);
+	--chrome-menu-padding-inline: var(--space-3);
 	--book-card-radius: var(--radius);
 	--book-card-body-padding: 8px;
 	--book-card-action-height: 2.25rem;
