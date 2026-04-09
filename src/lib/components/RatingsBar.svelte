@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { fly } from 'svelte/transition';
-	import { Book as BookIcon } from 'lucide-svelte';
+	import { Book as BookIcon, X } from 'lucide-svelte';
 	import Button from '$lib/components/Button.svelte';
 	import BookRatingStarsRow from '$lib/components/book-card/BookRatingStarsRow.svelte';
 	import { ratingsStore } from '$lib/stores/ratings';
@@ -23,7 +23,7 @@
 	let hoverEntryId = $state<string | null>(null);
 	let hoverRating = $state<number>(0);
 	let coverFailedIds = $state<Set<string>>(new Set());
-	let closeButtonEl = $state<HTMLButtonElement | HTMLAnchorElement | null>(null);
+	let closeButtonEl = $state<HTMLButtonElement | null>(null);
 	const ratingsSyncMeta = ratingsStore.syncMeta;
 	const panelId = 'ratings-drawer-panel';
 	const triggerId = 'ratings-trigger';
@@ -183,20 +183,19 @@
 				in:fly={{ x: flyX, duration: 200 }}
 				out:fly={{ x: flyX, duration: 150 }}
 			>
+				<button
+					bind:this={closeButtonEl}
+					type="button"
+					class="ratings-drawer__close"
+					aria-label={t('shared.ratingsBar.close')}
+					onclick={closeDrawer}
+				>
+					<X size={18} aria-hidden="true" />
+				</button>
 				<div class="ratings-drawer__header">
 					<h2 id="ratings-drawer-title" class="ratings-drawer__title typ-h3">
 						{t('shared.ratingsBar.yourRatings')}
 					</h2>
-					<Button
-						variant="tertiary"
-						compact
-						type="button"
-						aria-label={t('shared.ratingsBar.close')}
-						ref={(el) => (closeButtonEl = el)}
-						onclick={closeDrawer}
-					>
-						{t('shared.ratingsBar.close')}
-					</Button>
 				</div>
 				<div class="ratings-drawer__body">
 					{#if drawerSyncState}
@@ -374,7 +373,7 @@
 		min-width: 320px;
 		max-width: 400px;
 		height: 100%;
-		background: var(--color-bg);
+		background: var(--color-card-bg);
 		box-shadow: var(--shadow-drawer);
 		display: flex;
 		flex-direction: column;
@@ -395,11 +394,36 @@
 		}
 	}
 
+	.ratings-drawer__close {
+		position: absolute;
+		top: calc(var(--space-2) + env(safe-area-inset-top, 0px));
+		right: calc(var(--space-2) + env(safe-area-inset-right, 0px));
+		z-index: 11;
+		width: var(--min-tap);
+		height: var(--min-tap);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
+		border: none;
+		background: var(--color-floating-control-bg);
+		border-radius: var(--radius-pill);
+		cursor: pointer;
+		color: var(--color-text);
+		transition: background var(--duration-fast) var(--ease-default);
+	}
+	.ratings-drawer__close:hover {
+		background: var(--color-floating-control-bg-hover);
+	}
+	.ratings-drawer__close:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 2px;
+	}
 	.ratings-drawer__header {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
 		padding: var(--space-4) var(--space-5);
+		padding-right: calc(var(--space-2) + var(--min-tap) + var(--space-3));
 		border-bottom: 1px solid var(--color-border);
 		flex-shrink: 0;
 	}
