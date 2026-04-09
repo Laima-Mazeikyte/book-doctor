@@ -171,11 +171,6 @@
 	.search-bar__input--has-clear {
 		padding-right: calc(var(--space-4) + var(--min-tap) + var(--space-3));
 	}
-	@media (prefers-color-scheme: dark) {
-		.search-bar__input {
-			box-shadow: var(--shadow-input);
-		}
-	}
 	.search-bar__input:focus {
 		outline: none;
 		border-color: var(--color-focus);
@@ -204,11 +199,6 @@
 		cursor: pointer;
 		transition: border-color var(--duration-fast) var(--ease-default),
 			box-shadow var(--duration-fast) var(--ease-default);
-	}
-	@media (prefers-color-scheme: dark) {
-		.search-bar__trigger {
-			box-shadow: var(--shadow-input);
-		}
 	}
 	.search-bar__trigger:hover {
 		border-color: var(--color-border-hover);

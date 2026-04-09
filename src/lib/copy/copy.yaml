@@ -26,6 +26,7 @@ en:
       Try to rate a variety of different book genres and authors.
 
   rate:
+    pageTitle: "Browse & Rate"
     search:
       placeholder: "Search books by title or author"
       ariaLabel: "Search books by title or author"
@@ -51,8 +52,8 @@ en:
     remainingToRecommend_other: "Rate {{remaining}} more books"
 
   bookmarks:
-    title: "Bookmarks"
-    empty: "No bookmarks yet. Save books from recommendations or the rate page."
+    title: "Books I've marked"
+    empty: "No bookmarks yet. Bookmark from recommendations or the rate page."
   notInterested:
     title: "Not interested"
     intro: "Books you've marked as not interested. Click the button again to show them in recommendations."
@@ -92,7 +93,7 @@ en:
       homeAriaLabel: "Book Doctor, home"
       mainNavigation: "Main"
       mobileMenuLabel: "Menu"
-      rateBooks: "Rate more books"
+      browse: "Browse"
       myRecommendations: "Recommendations"
       bookmarks: "Bookmarks"
       notInterested: "Not interested"
@@ -132,9 +133,9 @@ en:
       summary: "Summary"
       addToReadingList: "Add to Bookmarks"
       removeFromReadingList: "Remove from Bookmarks"
-      bookmark: "Interested"
-      saved: "Interested"
-      bookmarked: "Interested"
+      bookmark: "Bookmark"
+      saved: "Bookmarked"
+      bookmarked: "Bookmarked"
       markAsRead: "Mark as read"
       read: "Rate"
       backToWantToRead: "Back to Bookmark and Rate buttons"

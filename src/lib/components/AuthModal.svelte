@@ -119,12 +119,9 @@
 				if (cancelled) return;
 				await tick();
 				if (cancelled || !hcaptchaContainerEl || !window.hcaptcha) return;
-				const dark =
-					typeof window.matchMedia === 'function' &&
-					window.matchMedia('(prefers-color-scheme: dark)').matches;
 				createdId = window.hcaptcha.render(hcaptchaContainerEl, {
 					sitekey: hcaptchaSiteKey,
-					theme: dark ? 'dark' : 'light'
+					theme: 'dark'
 				});
 				if (cancelled) {
 					window.hcaptcha.remove(createdId);

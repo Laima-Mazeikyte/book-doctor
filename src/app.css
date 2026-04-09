@@ -12,6 +12,7 @@ html {
 	font-size: 100%;
 	-webkit-text-size-adjust: 100%;
 	scrollbar-gutter: stable;
+	color-scheme: dark;
 	color: var(--color-text);
 	background: var(--color-bg);
 }
@@ -34,6 +35,11 @@ body {
 	line-height: inherit;
 	letter-spacing: inherit;
 	margin: 0;
+}
+
+/* Page h1 rhythm: extra space below title (landing uses flex gap; search dialog title is sr-only). */
+main h1:not(.landing__title):not(.rate-search-overlay__sr-only) {
+	margin-bottom: var(--space-6);
 }
 
 button,
@@ -81,8 +87,9 @@ main {
 }
 
 main.rate-page {
-	padding-bottom: var(--space-24);
-	padding-bottom: calc(var(--space-24) + env(safe-area-inset-bottom, 0px));
+	padding-top: 0;
+	padding-bottom: 40px;
+	padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
 }
 
 main.landing-page {

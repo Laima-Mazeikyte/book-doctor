@@ -3,14 +3,22 @@
 	import { getSupabase } from '$lib/supabase';
 	import { authStore, isAnonymousOrSignedOut, signedInEmail } from '$lib/stores/auth';
 	import { mobileMenuOpen } from '$lib/stores/mobileMenu';
-	import { planToReadStore } from '$lib/stores/planToRead';
-	import { ratingsStore } from '$lib/stores/ratings';
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
 	import AuthModal from '$lib/components/AuthModal.svelte';
+	import AppHeaderMobileMenuAction from '$lib/components/AppHeaderMobileMenuAction.svelte';
 	import { UserRound } from 'lucide-svelte';
 	import { t } from '$lib/copy';
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
+	import homeLogo from '$lib/assets/unread-logo.svg';
+
+	function isNavHrefActive(href: string, pathname: string): boolean {
+		if (href === '/rate') return pathname === '/rate';
+		if (href === '/rate/recommendations') return pathname.startsWith('/rate/recommendations');
+		if (href === '/rated') return pathname === '/rated';
+		if (href === '/bookmarks') return pathname === '/bookmarks';
+		return false;
+	}
 
 	interface Props {
 		onOpenBugReport: () => void;
@@ -26,13 +34,9 @@
 	let mobileMenuEl = $state<HTMLDivElement | null>(null);
 
 	let showAuthActions = $derived($isAnonymousOrSignedOut);
-	let isLandingPage = $derived($page.url.pathname === '/');
-	let isRatePage = $derived($page.url.pathname === '/rate');
 	let email = $derived($signedInEmail);
-	let bookmarkCount = $derived($planToReadStore.size ?? 0);
-	let ratedCount = $derived($ratingsStore.size ?? 0);
-	let recommendationsCount = $derived($recommendationsCountStore);
-
+	let pathname = $derived($page.url.pathname);
+	let showMainNav = $derived($recommendationsCountStore > 0);
 	function openAuthModal(tab: 'signin' | 'signup' = 'signin') {
 		authModalInitialTab = tab;
 		authModalOpen = true;
@@ -117,27 +121,50 @@
 				class="app-header__logo"
 				aria-label={t('shared.header.homeAriaLabel')}
 			>
-				<!-- Logo image can replace .app-header__logo-text; use alt={t('shared.header.logoAlt')} -->
-				<span class="app-header__logo-text">{t('shared.header.siteName')}</span>
+				<img
+					class="app-header__logo-img"
+					src={homeLogo}
+					alt=""
+					width="55"
+					height="36"
+					decoding="async"
+					aria-hidden="true"
+				/>
 			</a>
 		</div>
 
-		<nav class="app-header__nav" aria-label={t('shared.header.mainNavigation')}>
-			{#if !isLandingPage && !isRatePage}
-				<a href="/rate" class="app-header__cta">{t('shared.header.rateBooks')}</a>
-			{/if}
-			<a href="/rated" class="app-header__nav-link">
-				{t('shared.header.ratedBooks')}<span class="app-header__nav-count" aria-label="{ratedCount} rated">({ratedCount})</span>
-			</a>
-			<a href="/bookmarks" class="app-header__nav-link">
-				{t('shared.header.bookmarks')}{#if bookmarkCount > 0}
-					<span class="app-header__nav-count" aria-label="{bookmarkCount} bookmarked">({bookmarkCount})</span>
-				{/if}
-			</a>
-			<a href="/rate/recommendations" class="app-header__nav-link">
-				{t('shared.header.myRecommendations')}<span class="app-header__nav-count" aria-label="{recommendationsCount} recommendations">({recommendationsCount})</span>
-			</a>
-		</nav>
+		{#if showMainNav}
+			<nav class="app-header__nav" aria-label={t('shared.header.mainNavigation')}>
+				<a
+					href="/rate"
+					class="app-header__nav-link"
+					aria-current={isNavHrefActive('/rate', pathname) ? 'page' : undefined}
+				>
+					{t('shared.header.browse')}
+				</a>
+				<a
+					href="/rated"
+					class="app-header__nav-link"
+					aria-current={isNavHrefActive('/rated', pathname) ? 'page' : undefined}
+				>
+					{t('shared.header.ratedBooks')}
+				</a>
+				<a
+					href="/bookmarks"
+					class="app-header__nav-link"
+					aria-current={isNavHrefActive('/bookmarks', pathname) ? 'page' : undefined}
+				>
+					{t('shared.header.bookmarks')}
+				</a>
+				<a
+					href="/rate/recommendations"
+					class="app-header__nav-link"
+					aria-current={isNavHrefActive('/rate/recommendations', pathname) ? 'page' : undefined}
+				>
+					{t('shared.header.myRecommendations')}
+				</a>
+			</nav>
+		{/if}
 
 		<div class="app-header__right">
 			<div class="app-header__account" data-state={accountDropdownOpen ? 'open' : 'closed'}>
@@ -214,28 +241,52 @@
 					aria-label={t('shared.header.homeAriaLabel')}
 					onclick={closeMobileMenu}
 				>
-					<span class="app-header__logo-text">{t('shared.header.siteName')}</span>
+					<img
+						class="app-header__logo-img"
+						src={homeLogo}
+						alt=""
+						width="55"
+						height="36"
+						decoding="async"
+						aria-hidden="true"
+					/>
 				</a>
-				<nav class="app-header__mobile-nav" aria-label={t('shared.header.mainNavigation')}>
-					{#if !isLandingPage && !isRatePage}
-						<a href="/rate" class="app-header__cta app-header__mobile-menu-cta" onclick={closeMobileMenu}>
-							{t('shared.header.rateBooks')}
+				{#if showMainNav}
+					<nav class="app-header__mobile-nav" aria-label={t('shared.header.mainNavigation')}>
+						<a
+							href="/rate"
+							class="app-header__nav-link"
+							aria-current={isNavHrefActive('/rate', pathname) ? 'page' : undefined}
+							onclick={closeMobileMenu}
+						>
+							{t('shared.header.browse')}
 						</a>
-					{/if}
-					<a href="/rated" class="app-header__nav-link" onclick={closeMobileMenu}>
-						{t('shared.header.ratedBooks')}<span class="app-header__nav-count" aria-label="{ratedCount} rated">({ratedCount})</span>
-					</a>
-					<a href="/bookmarks" class="app-header__nav-link" onclick={closeMobileMenu}>
-						{t('shared.header.bookmarks')}{#if bookmarkCount > 0}
-							<span class="app-header__nav-count" aria-label="{bookmarkCount} bookmarked">({bookmarkCount})</span>
-						{/if}
-					</a>
-					<a href="/rate/recommendations" class="app-header__nav-link" onclick={closeMobileMenu}>
-						{t('shared.header.myRecommendations')}<span
-							class="app-header__nav-count"
-							aria-label="{recommendationsCount} recommendations">({recommendationsCount})</span>
-					</a>
-				</nav>
+						<a
+							href="/rated"
+							class="app-header__nav-link"
+							aria-current={isNavHrefActive('/rated', pathname) ? 'page' : undefined}
+							onclick={closeMobileMenu}
+						>
+							{t('shared.header.ratedBooks')}
+						</a>
+						<a
+							href="/bookmarks"
+							class="app-header__nav-link"
+							aria-current={isNavHrefActive('/bookmarks', pathname) ? 'page' : undefined}
+							onclick={closeMobileMenu}
+						>
+							{t('shared.header.bookmarks')}
+						</a>
+						<a
+							href="/rate/recommendations"
+							class="app-header__nav-link"
+							aria-current={isNavHrefActive('/rate/recommendations', pathname) ? 'page' : undefined}
+							onclick={closeMobileMenu}
+						>
+							{t('shared.header.myRecommendations')}
+						</a>
+					</nav>
+				{/if}
 				<div class="app-header__mobile-account">
 					{#if showAuthActions}
 						<button type="button" class="app-header__account-item" onclick={() => openAuthModal('signup')}>
@@ -252,15 +303,15 @@
 					{/if}
 				</div>
 				<div class="app-header__mobile-footer">
-					<a href="/faq" class="app-header__nav-link" onclick={closeMobileMenu}>{t('shared.footer.faq')}</a>
-					<button
-						type="button"
-						class="app-header__nav-link"
-						aria-label={t('shared.bugModal.reportBugAriaLabel')}
+					<AppHeaderMobileMenuAction href="/faq" onclick={closeMobileMenu}>
+						{t('shared.footer.faq')}
+					</AppHeaderMobileMenuAction>
+					<AppHeaderMobileMenuAction
 						onclick={openBugReportFromMenu}
+						aria-label={t('shared.bugModal.reportBugAriaLabel')}
 					>
 						{t('shared.footer.reportBug')}
-					</button>
+					</AppHeaderMobileMenuAction>
 				</div>
 			</div>
 			<button
@@ -304,31 +355,23 @@
 	.app-header__logo {
 		display: inline-flex;
 		align-items: center;
-		font-family: var(--typ-interactive-2-font-family);
-		font-size: var(--typ-interactive-2-font-size);
-		font-weight: 600;
-		line-height: var(--typ-interactive-2-line-height);
-		letter-spacing: var(--typ-interactive-2-letter-spacing);
-		color: var(--color-text);
 		text-decoration: none;
-		white-space: nowrap;
 		border-radius: var(--radius);
 		padding: var(--chrome-menu-padding-block) var(--chrome-menu-padding-inline);
-		transition: color 0.15s ease, background 0.15s ease;
+		transition: background 0.15s ease;
 	}
 	.app-header__logo:hover {
-		color: var(--color-accent);
 		background: var(--color-bg-muted);
 	}
 	.app-header__logo:focus-visible {
 		outline: 2px solid var(--color-focus);
 		outline-offset: 2px;
 	}
-	.app-header__logo-text {
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		max-width: 12rem;
+	.app-header__logo-img {
+		display: block;
+		height: 1.625rem;
+		width: auto;
+		flex-shrink: 0;
 	}
 	.app-header__nav {
 		display: none;
@@ -337,26 +380,6 @@
 		flex: 1 1 auto;
 		min-width: 0;
 		justify-content: flex-start;
-	}
-	.app-header__cta {
-		font-family: var(--typ-interactive-2-font-family);
-		font-size: var(--typ-interactive-2-font-size);
-		font-weight: var(--typ-interactive-2-font-weight);
-		line-height: var(--typ-interactive-2-line-height);
-		letter-spacing: var(--typ-interactive-2-letter-spacing);
-		color: var(--color-bg);
-		text-decoration: none;
-		white-space: nowrap;
-		padding: var(--chrome-menu-padding-block) var(--chrome-menu-padding-inline);
-		border-radius: var(--radius-pill);
-		background: var(--color-text);
-		border: 1px solid var(--color-text);
-		transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
-	}
-	.app-header__cta:hover {
-		opacity: 0.9;
-		background: var(--color-text);
-		color: var(--color-bg);
 	}
 	.app-header__nav-link {
 		font-family: var(--typ-interactive-2-font-family);
@@ -371,13 +394,25 @@
 		border-radius: var(--radius);
 		transition: color 0.15s ease, background 0.15s ease;
 	}
+	.app-header__nav-link:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 2px;
+	}
 	.app-header__nav-link:hover {
 		color: var(--color-text);
 		background: var(--color-bg-muted);
 	}
-	.app-header__nav-count {
-		color: var(--color-text-muted);
-		font-weight: var(--font-weight-normal);
+	.app-header__nav-link[aria-current='page'] {
+		color: var(--color-text);
+		text-decoration: underline;
+		text-decoration-color: var(--color-accent);
+		text-decoration-thickness: 1px;
+		text-underline-offset: 0.60em;
+		text-decoration-skip-ink: auto;
+	}
+	.app-header__nav-link[aria-current='page']:hover {
+		color: var(--color-text);
+		background: var(--color-bg-muted);
 	}
 	.app-header__right {
 		display: flex;
@@ -509,35 +544,42 @@
 		flex: 1 1 auto;
 		display: flex;
 		flex-direction: column;
+		align-items: flex-start;
 		gap: var(--space-6);
 		min-height: 0;
-	}
-	.app-header__mobile-menu-cta {
-		display: block;
-		text-align: center;
-	}
-	.app-header__mobile-menu button.app-header__nav-link {
 		width: 100%;
-		background: none;
-		border: none;
-		cursor: pointer;
-		text-align: left;
 	}
 	.app-header__mobile-nav {
 		display: flex;
 		flex-direction: column;
+		align-self: stretch;
+		align-items: flex-start;
 		gap: var(--space-2);
 	}
 	.app-header__mobile-account {
 		display: flex;
 		flex-direction: column;
+		align-self: stretch;
+		align-items: flex-start;
 		gap: var(--space-2);
 		padding-top: var(--space-4);
 		border-top: 1px solid var(--color-border);
 	}
+	.app-header__mobile-account .app-header__account-item {
+		width: auto;
+		max-width: 100%;
+	}
+	.app-header__mobile-account .app-header__account-email {
+		align-self: stretch;
+		width: 100%;
+		max-width: 100%;
+		box-sizing: border-box;
+	}
 	.app-header__mobile-footer {
 		display: flex;
 		flex-direction: column;
+		align-self: stretch;
+		align-items: flex-start;
 		gap: var(--space-2);
 		padding-top: var(--space-4);
 		margin-top: auto;
@@ -573,13 +615,30 @@
 		.app-header__inner {
 			max-width: var(--content-width-wide);
 			padding: var(--space-3) var(--space-5);
+			display: grid;
+			grid-template-columns: 1fr auto 1fr;
+			align-items: center;
+			column-gap: var(--space-4);
+		}
+		.app-header__start {
+			justify-self: start;
+			grid-column: 1;
 		}
 		.app-header__menu-toggle {
 			display: none;
 		}
 		.app-header__nav {
 			display: flex;
+			grid-column: 2;
+			justify-self: center;
+			flex: none;
+			min-width: 0;
 			gap: var(--space-2);
+		}
+		.app-header__right {
+			grid-column: 3;
+			justify-self: end;
+			margin-left: 0;
 		}
 		.app-header__account-trigger {
 			display: flex;

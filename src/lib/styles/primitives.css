@@ -3,40 +3,40 @@
  * No semantic names. Used by semantic.css and base.
  */
 :root {
-	/* ── Color palette (light) ───────────────────────────────────────────── */
+	/* ── Color palette (default dark; not tied to system theme) ──────────── */
 	/** On-accent only (e.g. primary button text). Do not use for surfaces. */
 	--primitive-white: #ffffff;
-	/** Elevated surfaces (cards, header, inputs). Light = white; dark = dark gray. */
-	--primitive-surface: #ffffff;
+	/** Elevated surfaces (cards, header, inputs). */
+	--primitive-surface: #171717;
 	/** Toggle/switch thumb; must contrast with track in both modes. */
-	--primitive-toggle-thumb: #ffffff;
-	--primitive-gray-50: #fafafa;
-	--primitive-gray-100: #f5f5f5;
-	--primitive-gray-200: #ebebeb;
-	--primitive-gray-300: #e5e5e5;
-	--primitive-gray-400: #d4d4d4;
-	--primitive-gray-500: #525252;
-	--primitive-gray-900: #171717;
-	/** Brand CTA fill — does not flip in dark mode (pair with `--primitive-white` on-button). */
+	--primitive-toggle-thumb: #e5e5e5;
+	--primitive-gray-50: #0a0a0a;
+	--primitive-gray-100: #171717;
+	--primitive-gray-200: #262626;
+	--primitive-gray-300: #262626;
+	--primitive-gray-400: #404040;
+	--primitive-gray-500: #a3a3a3;
+	--primitive-gray-900: #fafafa;
+	/** Brand CTA fill (pair with `--primitive-white` on-button). */
 	--primitive-accent-brand: #8C2006;
-	/** Solid accent for links, focus, chrome — flips in dark mode for contrast. */
-	--primitive-accent-solid: var(--primitive-accent-brand);
+	/** Solid accent for links, focus, chrome. */
+	--primitive-accent-solid: #e5e5e5;
 	/** Text on solid accent surfaces. */
-	--primitive-on-accent-solid: #ffffff;
+	--primitive-on-accent-solid: #0a0a0a;
 	/** Muted accent fills, success chrome, focus halo (warm neutral). */
-	--primitive-accent-muted: #ece9e2;
-	--primitive-sand: #e8e4dc;
+	--primitive-accent-muted: #404040;
+	--primitive-sand: #2d2a26;
 	/** Cool muted surface (e.g. book card genre pills, light). */
 	--primitive-pale-aqua: #d3e0e0;
 	/** Deep cool fill (e.g. book card genre pills, dark). */
 	--primitive-deep-aqua: #243333;
 	/* Error & danger */
-	--primitive-red-50: #fef2f2;
-	--primitive-red-100: #fee2e2;
-	--primitive-red-200: #fecaca;
+	--primitive-red-50: #2d1515;
+	--primitive-red-100: #450a0a;
+	--primitive-red-200: #7f1d1d;
 	--primitive-red-500: #ef4444;
 	--primitive-red-700: #b91c1c;
-	--primitive-red-800: #991b1b;
+	--primitive-red-800: #fca5a5;
 	/** Light pink/red for text on dark danger surfaces (constant across color schemes). */
 	--primitive-red-foreground-200: #fecaca;
 
@@ -48,11 +48,11 @@
 	--primitive-emerald-600: #059669;
 	--primitive-emerald-800: #065f46;
 	/* Shadow (opacity only; color from theme) */
-	--primitive-shadow-opacity-subtle: 0.06;
+	--primitive-shadow-opacity-subtle: 0.25;
 	--primitive-shadow-opacity-hairline: 0.04;
-	--primitive-shadow-opacity-medium: 0.08;
+	--primitive-shadow-opacity-medium: 0.25;
 	--primitive-shadow-opacity-strong: 0.15;
-	--primitive-shadow-opacity-focus: 0.12;
+	--primitive-shadow-opacity-focus: 0.25;
 	/** Modal / overlay scrims (black + alpha). */
 	--primitive-overlay-scrim-opacity: 0.4;
 	--primitive-overlay-scrim-opacity-soft: 0.3;
@@ -124,29 +124,4 @@
 
 	/* ── Motion ───────────────────────────────────────────────────────────── */
 	--ease-default: ease;
-}
-
-@media (prefers-color-scheme: dark) {
-	:root {
-		--primitive-surface: #171717;
-		--primitive-toggle-thumb: #e5e5e5;
-		--primitive-gray-50: #0a0a0a;
-		--primitive-gray-100: #171717;
-		--primitive-gray-200: #262626;
-		--primitive-gray-300: #262626;
-		--primitive-gray-400: #404040;
-		--primitive-gray-500: #a3a3a3;
-		--primitive-gray-900: #fafafa;
-		--primitive-accent-solid: #e5e5e5;
-		--primitive-on-accent-solid: #0a0a0a;
-		--primitive-accent-muted: #404040;
-		--primitive-sand: #2d2a26;
-		--primitive-red-50: #2d1515;
-		--primitive-red-100: #450a0a;
-		--primitive-red-200: #7f1d1d;
-		--primitive-red-800: #fca5a5;
-		--primitive-shadow-opacity-subtle: 0.25;
-		--primitive-shadow-opacity-medium: 0.25;
-		--primitive-shadow-opacity-focus: 0.25;
-	}
 }

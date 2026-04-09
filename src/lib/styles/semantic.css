@@ -30,50 +30,48 @@
 	--color-error-text: var(--primitive-red-800);
 
 	/* ── Success (e.g. bookmark saved on book card) ─────────────────────── */
-	--color-success-bg: var(--primitive-emerald-100);
-	--color-success-bg-hover: var(--primitive-emerald-200);
-	--color-success-text: var(--primitive-emerald-800);
-	--color-success-border: color-mix(in srgb, var(--primitive-emerald-600) 40%, transparent);
+	--color-success-bg: color-mix(in srgb, var(--primitive-emerald-500) 18%, transparent);
+	--color-success-bg-hover: color-mix(in srgb, var(--primitive-emerald-500) 28%, transparent);
+	--color-success-text: var(--primitive-emerald-300);
+	--color-success-border: color-mix(in srgb, var(--primitive-emerald-500) 35%, transparent);
 
 	/* ── Danger tonal (e.g. not-interested on book card) ─────────────────── */
-	--color-danger-tonal-bg: var(--color-error-bg);
-	--color-danger-tonal-bg-hover: var(--primitive-red-100);
-	--color-danger-tonal-text: var(--primitive-red-700);
-	--color-danger-tonal-text-hover: var(--color-error-text);
-	--color-danger-tonal-border: color-mix(in srgb, var(--primitive-red-700) 40%, transparent);
-	--color-danger-tonal-border-hover: color-mix(in srgb, var(--primitive-red-700) 50%, transparent);
+	--color-danger-tonal-bg: color-mix(in srgb, var(--primitive-red-500) 18%, transparent);
+	--color-danger-tonal-bg-hover: color-mix(in srgb, var(--primitive-red-500) 28%, transparent);
+	--color-danger-tonal-text: var(--color-error-text);
+	--color-danger-tonal-text-hover: var(--primitive-red-foreground-200);
+	--color-danger-tonal-border: color-mix(in srgb, var(--primitive-red-500) 35%, transparent);
+	--color-danger-tonal-border-hover: color-mix(in srgb, var(--primitive-red-500) 45%, transparent);
 
 	/* ── Book card: pill actions (Save / Read / Summary / back / stars, etc.) ─ */
-	/** Softer than global `--color-bg-hover` so light-mode hovers stay airy on covers. */
-	--color-book-card-action-hover-bg: color-mix(
-		in srgb,
-		var(--color-bg-muted) 62%,
-		var(--color-bg-hover) 38%
-	);
+	--color-book-card-action-hover-bg: var(--color-bg-hover);
 
 	/**
 	 * Inactive pill actions on cover imagery + summary sheet (Save / Read / Summary / NI, rating row, back).
-	 * Light: `--primitive-surface` + gray hover (vs `--color-bg-muted` used on solid card chrome).
 	 */
-	--color-book-card-pill-surface-bg: var(--primitive-surface);
-	--color-book-card-pill-surface-bg-hover: var(--primitive-gray-100);
+	--color-book-card-pill-surface-bg: var(--primitive-gray-100);
+	--color-book-card-pill-surface-bg-hover: var(--primitive-gray-200);
 
 	/* ── Book card: active action chips (neutral; bookmark / not interested) ─ */
-	/** Inverted fill reads clearly as “selected” vs muted default buttons. */
-	--color-book-card-chip-on-bg: var(--primitive-deep-aqua);
-	--color-book-card-chip-on-bg-hover: color-mix(in srgb, var(--primitive-deep-aqua) 88%, var(--primitive-white));
-	--color-book-card-chip-on-text: var(--primitive-white);
-	--color-book-card-chip-on-border: var(--primitive-deep-aqua);
+	/** Light fill + dark label (constant white / on-accent ink). */
+	--color-book-card-chip-on-bg: var(--primitive-white);
+	--color-book-card-chip-on-bg-hover: color-mix(
+		in srgb,
+		var(--primitive-white) 88%,
+		var(--primitive-on-accent-solid)
+	);
+	--color-book-card-chip-on-text: var(--primitive-on-accent-solid);
+	--color-book-card-chip-on-border: var(--primitive-white);
 
 	/* ── Book card: genre tag pills (neutral contrast vs card surface) ─────── */
-	--color-book-card-tag-bg: var(--primitive-pale-aqua);
+	--color-book-card-tag-bg: var(--primitive-deep-aqua);
 	--color-book-card-tag-text: var(--color-text);
-	--color-book-card-tag-border: var(--primitive-gray-400);
+	--color-book-card-tag-border: color-mix(in srgb, var(--primitive-gray-500) 55%, transparent);
 
-	/** Book title copy (placeholder cover, summary heading, ratings drawer list). Light = deep aqua; dark = pale aqua. */
-	--color-book-title: var(--primitive-deep-aqua);
-	/** Star rating controls (stroke/fill via currentColor). Same flip as title. */
-	--color-book-rating-star: var(--primitive-deep-aqua);
+	/** Book title copy (placeholder cover, summary heading, ratings drawer list). */
+	--color-book-title: var(--primitive-pale-aqua);
+	/** Star rating controls (stroke/fill via currentColor). */
+	--color-book-rating-star: var(--primitive-pale-aqua);
 	/** Empty / inactive stars — tint of rating star mixed with muted text. */
 	--color-book-rating-star-muted: color-mix(
 		in srgb,
@@ -88,14 +86,14 @@
 	--color-floating-control-bg: color-mix(in srgb, var(--color-bg-muted) 85%, transparent);
 	--color-floating-control-bg-hover: color-mix(in srgb, var(--color-bg-hover) 90%, transparent);
 
-	/* ── Button primary (monochrome CTA: near-black / white in light; inverted in dark) ─ */
-	--color-button-primary-bg: var(--primitive-gray-900);
+	/* ── Button primary (monochrome CTA: white fill on dark chrome) ─ */
+	--color-button-primary-bg: var(--primitive-white);
 	--color-button-primary-hover-bg: color-mix(
 		in srgb,
 		var(--color-button-primary-bg) 88%,
-		var(--primitive-white)
+		var(--primitive-on-accent-solid)
 	);
-	--color-button-primary-text: var(--primitive-white);
+	--color-button-primary-text: var(--primitive-on-accent-solid);
 
 	/* ── Button secondary ────────────────────────────────────────────────── */
 	--color-button-secondary-bg: var(--primitive-gray-100);
@@ -216,56 +214,6 @@
 	/* ── Motion ────────────────────────────────────────────────────────────── */
 	--duration-fast: var(--primitive-duration-fast);
 	--duration-normal: var(--primitive-duration-normal);
-}
-
-@media (prefers-color-scheme: dark) {
-	:root {
-		--color-button-primary-bg: var(--primitive-white);
-		--color-button-primary-hover-bg: color-mix(
-			in srgb,
-			var(--color-button-primary-bg) 88%,
-			var(--primitive-on-accent-solid)
-		);
-		--color-button-primary-text: var(--primitive-on-accent-solid);
-
-		--color-success-bg: color-mix(in srgb, var(--primitive-emerald-500) 18%, transparent);
-		--color-success-bg-hover: color-mix(in srgb, var(--primitive-emerald-500) 28%, transparent);
-		--color-success-text: var(--primitive-emerald-300);
-		--color-success-border: color-mix(in srgb, var(--primitive-emerald-500) 35%, transparent);
-
-		--color-danger-tonal-bg: color-mix(in srgb, var(--primitive-red-500) 18%, transparent);
-		--color-danger-tonal-bg-hover: color-mix(in srgb, var(--primitive-red-500) 28%, transparent);
-		--color-danger-tonal-text: var(--color-error-text);
-		--color-danger-tonal-text-hover: var(--primitive-red-foreground-200);
-		--color-danger-tonal-border: color-mix(in srgb, var(--primitive-red-500) 35%, transparent);
-		--color-danger-tonal-border-hover: color-mix(in srgb, var(--primitive-red-500) 45%, transparent);
-
-		/**
-		 * Active Save / Not interested: mirror light mode’s inverted pill (dark fill + white label)
-		 * with the same relationship reversed — light fill + dark label. Uses constant white / on-accent
-		 * ink so flipped gray primitives don’t collapse contrast.
-		 */
-		--color-book-card-chip-on-bg: var(--primitive-white);
-		--color-book-card-chip-on-bg-hover: color-mix(
-			in srgb,
-			var(--primitive-white) 88%,
-			var(--primitive-on-accent-solid)
-		);
-		--color-book-card-chip-on-text: var(--primitive-on-accent-solid);
-		--color-book-card-chip-on-border: var(--primitive-white);
-
-		--color-book-card-tag-bg: var(--primitive-deep-aqua);
-		--color-book-card-tag-text: var(--color-text);
-		--color-book-card-tag-border: color-mix(in srgb, var(--primitive-gray-500) 55%, transparent);
-
-		--color-book-card-action-hover-bg: var(--color-bg-hover);
-
-		--color-book-card-pill-surface-bg: var(--primitive-gray-100);
-		--color-book-card-pill-surface-bg-hover: var(--primitive-gray-200);
-
-		--color-book-title: var(--primitive-pale-aqua);
-		--color-book-rating-star: var(--primitive-pale-aqua);
-	}
 }
 
 /**

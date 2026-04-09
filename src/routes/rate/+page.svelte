@@ -914,6 +914,7 @@
 		inert={searchOverlayOpen && inertSupported}
 		aria-hidden={searchOverlayOpen ? true : undefined}
 	>
+		<h1 class="rate-page__title typ-display2">{t('rate.pageTitle')}</h1>
 		<header
 			class="rate-page__sticky-header"
 			class:rate-page__sticky-header--hidden={!headerVisible}
@@ -1109,9 +1110,18 @@
 		z-index: 50;
 		background: transparent;
 		padding-top: var(--space-4);
-		padding-bottom: var(--space-4);
+		padding-bottom: 0;
 		margin-bottom: var(--space-2);
 		transition: transform 0.25s ease;
+	}
+	/* Title sits above the bar; avoid doubling top padding with the sticky block. */
+	.rate-page__title + .rate-page__sticky-header {
+		padding-top: 0;
+	}
+	.rate-page__title {
+		margin-top: 0;
+		padding-top: var(--space-4);
+		text-align: center;
 	}
 	/* Stay visible while the search (or clear control) is focused so the field is not off-screen. */
 	.rate-page__sticky-header--hidden:not(:focus-within) {
@@ -1122,9 +1132,12 @@
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
+		justify-content: center;
 		gap: var(--space-3);
 		width: 100%;
 		min-height: var(--min-tap);
+		padding-top: 16px;
+		padding-bottom: 16px;
 	}
 	.rate-page__search {
 		flex: 1 1 auto;

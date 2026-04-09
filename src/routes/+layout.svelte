@@ -57,6 +57,11 @@
 		);
 	});
 
+	const showAppFooter = $derived.by(() => {
+		const pathname = $page.url.pathname;
+		return pathname !== '/rate' && !pathname.startsWith('/rate/');
+	});
+
 	/** Track if we had a user so we only reset ratings when they sign out, not on initial load. */
 	let hadUserBefore = $state(false);
 	let ratingsLoadRequestId = 0;
@@ -488,7 +493,9 @@
 			{@render children()}
 		</div>
 	</main>
-	<AppFooter onOpenBugReport={openBugModal} />
+	{#if showAppFooter}
+		<AppFooter onOpenBugReport={openBugModal} />
+	{/if}
 </div>
 <BugReportModal open={bugModalOpen} onClose={closeBugModal} />
 
