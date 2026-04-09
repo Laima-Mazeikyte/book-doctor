@@ -477,43 +477,66 @@
 					class="book-card__summary-muted"
 					class:book-card__summary-muted--not-interested={notInterested}
 				>
-					<h3 class="book-card__summary-sheet-title typ-h2" id={summaryTitleId}>{book.title}</h3>
-
-					{#if showAuthorInSheetMeta || book.year}
-						<div class="book-card__summary-meta-row">
-							{#if showAuthorInSheetMeta}
-								{#if showSearchAuthorInOverlay}
-									<button
-										type="button"
-										class="book-card__summary-author-pill"
-										aria-label={t('shared.bookCard.searchThisAuthorAriaLabel', { author: book.author })}
-										onclick={(e) => {
-											e.preventDefault();
-											e.stopPropagation();
-											const author = book.author.trim();
-											if (onSearchAuthor) {
-												onSearchAuthor(book.author);
-											} else {
-												if (browser) markRateSearchOpenedFromOtherRoute();
-												void goto(resolve(`/rate?q=${encodeURIComponent(author)}`));
-											}
-											handleCloseSummary();
-										}}
-									>
-										<Search size={14} aria-hidden="true" />
-										<span>{book.author}</span>
-									</button>
-								{:else}
-									<span class="book-card__summary-author-pill book-card__summary-author-pill--text">
-										{book.author}
-									</span>
-								{/if}
-							{/if}
-							{#if book.year}
-								<span class="book-card__summary-year typ-caption">{book.year}</span>
+					<div class="book-card__summary-header">
+						<div class="book-card__summary-cover-wrap" aria-hidden="true">
+							{#if showCoverImage}
+								<img
+									src={book.coverUrl}
+									alt=""
+									class="book-card__summary-cover"
+									onerror={() => (coverImageFailed = true)}
+								/>
+							{:else}
+								<div class="book-card__summary-cover book-card__summary-cover--placeholder">
+									{#if book.author || book.year}
+										<span class="book-card__placeholder-author">
+											{book.author}{#if book.year}<span class="book-card__year"> · {book.year}</span>{/if}
+										</span>
+									{/if}
+									<span class="book-card__placeholder-title">{book.title}</span>
+								</div>
 							{/if}
 						</div>
-					{/if}
+						<div class="book-card__summary-header-text">
+							<h3 class="book-card__summary-sheet-title typ-h3" id={summaryTitleId}>{book.title}</h3>
+
+							{#if showAuthorInSheetMeta || book.year}
+								<div class="book-card__summary-meta-row">
+									{#if showAuthorInSheetMeta}
+										{#if showSearchAuthorInOverlay}
+											<button
+												type="button"
+												class="book-card__summary-author-pill"
+												aria-label={t('shared.bookCard.searchThisAuthorAriaLabel', { author: book.author })}
+												onclick={(e) => {
+													e.preventDefault();
+													e.stopPropagation();
+													const author = book.author.trim();
+													if (onSearchAuthor) {
+														onSearchAuthor(book.author);
+													} else {
+														if (browser) markRateSearchOpenedFromOtherRoute();
+														void goto(resolve(`/rate?q=${encodeURIComponent(author)}`));
+													}
+													handleCloseSummary();
+												}}
+											>
+												<Search size={14} aria-hidden="true" />
+												<span>{book.author}</span>
+											</button>
+										{:else}
+											<span class="book-card__summary-author-pill book-card__summary-author-pill--text">
+												{book.author}
+											</span>
+										{/if}
+									{/if}
+									{#if book.year}
+										<span class="book-card__summary-year typ-caption">{book.year}</span>
+									{/if}
+								</div>
+							{/if}
+						</div>
+					</div>
 				</div>
 
 				<div class="book-card__rating-wrap book-card__rating-wrap--summary-sheet">
@@ -1260,6 +1283,62 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-4);
+	}
+	.book-card__summary-header {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--space-4);
+		width: 100%;
+	}
+	.book-card__summary-header-text {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-4);
+		flex: 1;
+		min-width: 0;
+	}
+	.book-card__summary-cover-wrap {
+		flex-shrink: 0;
+		width: 5.5rem;
+		aspect-ratio: 2 / 3;
+		border-radius: var(--radius-sm);
+		overflow: hidden;
+		background: var(--color-card-placeholder-bg);
+	}
+	.book-card__summary-cover {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		object-position: center center;
+		border-radius: var(--radius-sm);
+	}
+	.book-card__summary-cover--placeholder {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		align-items: flex-start;
+		gap: var(--space-1);
+		padding: var(--space-2);
+		box-sizing: border-box;
+		text-align: left;
+		background: var(--color-card-placeholder-bg);
+	}
+	.book-card__summary-cover--placeholder .book-card__placeholder-author,
+	.book-card__summary-cover--placeholder .book-card__placeholder-title {
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		font-size: 0.625rem;
+		line-height: var(--line-height-tight);
+	}
+	.book-card__summary-cover--placeholder .book-card__placeholder-title {
+		-webkit-line-clamp: 4;
+		line-clamp: 4;
+		font-weight: var(--font-weight-semibold);
 	}
 	.book-card__summary-sheet-title {
 		margin: 0;

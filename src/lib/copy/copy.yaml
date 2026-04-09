@@ -35,15 +35,14 @@ en:
       dialogTitle: "Search books"
       closeAriaLabel: "Close search"
       backAriaLabel: "Back"
-      minCharsHint: "Type at least 3 characters."
-      minCharsHintShort: "Keep typing — at least 3 characters."
+      minCharsHint: "Type at least 3 characters to search books."
       statusSearching: "Searching…"
       statusNoResults: "No results"
       statusResults: "{{count}} results"
     errors:
       loadBooks: "Could not load books right now. Try again later."
       searchFailed: "Search failed. Please try again."
-    emptySearch: "No books found for that search."
+    emptySearch: "No books found for '{{query}}'."
     endOfList: "You've reached the end of the list. Rate books or use search to get personalized suggestions."
     aria:
       searching: "Searching…"

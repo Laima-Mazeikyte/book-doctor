@@ -265,7 +265,7 @@
 		if (searchError) return '';
 		const raw = debouncedQuery.trim();
 		if (raw.length === 0) return t('rate.search.minCharsHint');
-		if (raw.length < 3) return t('rate.search.minCharsHintShort');
+		if (raw.length < 3) return '';
 		if (loadingSearch) return t('rate.search.statusSearching');
 		if (searchResults.length === 0) return t('rate.search.statusNoResults');
 		return t('rate.search.statusResults', { count: searchResults.length });
@@ -1045,50 +1045,52 @@
 
 					{#if debouncedQuery.trim().length === 0}
 						<p class="rate-search-overlay__helper">{t('rate.search.minCharsHint')}</p>
-					{:else if debouncedQuery.trim().length < 3}
-						<p class="rate-search-overlay__helper">{t('rate.search.minCharsHintShort')}</p>
-					{:else if loadingSearch}
-						<ul class="rate-page__list book-card-grid" aria-label={t('rate.aria.searching')}>
-							{#each Array(6) as _}
-								<li><BookCardSkeleton /></li>
-							{/each}
-						</ul>
-					{:else if searchError}
-						<!-- Error surfaced via ErrorBanner (role="alert") above -->
-					{:else if searchResults.length === 0}
-						<p class="rate-page__empty">{t('rate.emptySearch')}</p>
-					{:else}
-						<p id="rate-search-results-summary" class="rate-search-overlay__results-summary">
-							{t('rate.search.statusResults', { count: searchResults.length })}
-						</p>
-						<ul
-							class="rate-page__list book-card-grid"
-							aria-labelledby="rate-search-results-summary"
-						>
-							{#each searchResults as book (book.id)}
-								<li>
-									<BookCard
-										context="rate"
-										{book}
-										onSearchAuthor={handleSearchAuthor}
-										bookmarked={$planToReadStore.has(book.id)}
-										onBookmark={(id) => handleRateBookmark(book, id)}
-										notInterested={$notInterestedStore.has(book.book_id ?? 0)}
-										onNotInterested={() => handleSearchNotInterested(book)}
-										onAfterRate={() => handleSearchAfterRate()}
-									/>
-								</li>
-							{/each}
-						</ul>
+					{:else if debouncedQuery.trim().length >= 3}
+						{#if loadingSearch}
+							<ul class="rate-page__list book-card-grid" aria-label={t('rate.aria.searching')}>
+								{#each Array(6) as _}
+									<li><BookCardSkeleton /></li>
+								{/each}
+							</ul>
+						{:else if searchError}
+							<!-- Error surfaced via ErrorBanner (role="alert") above -->
+						{:else if searchResults.length === 0}
+							<p class="rate-page__empty">
+								{t('rate.emptySearch', { query: debouncedQuery.trim() })}
+							</p>
+						{:else}
+							<p id="rate-search-results-summary" class="rate-search-overlay__results-summary">
+								{t('rate.search.statusResults', { count: searchResults.length })}
+							</p>
+							<ul
+								class="rate-page__list book-card-grid"
+								aria-labelledby="rate-search-results-summary"
+							>
+								{#each searchResults as book (book.id)}
+									<li>
+										<BookCard
+											context="rate"
+											{book}
+											onSearchAuthor={handleSearchAuthor}
+											bookmarked={$planToReadStore.has(book.id)}
+											onBookmark={(id) => handleRateBookmark(book, id)}
+											notInterested={$notInterestedStore.has(book.book_id ?? 0)}
+											onNotInterested={() => handleSearchNotInterested(book)}
+											onAfterRate={() => handleSearchAfterRate()}
+										/>
+									</li>
+								{/each}
+							</ul>
 
-						{#if loadingSearchMore}
-							<div class="rate-page__spinner-wrap rate-page__spinner-wrap--bottom" aria-live="polite">
-								<Spinner />
-							</div>
-						{/if}
+							{#if loadingSearchMore}
+								<div class="rate-page__spinner-wrap rate-page__spinner-wrap--bottom" aria-live="polite">
+									<Spinner />
+								</div>
+							{/if}
 
-						{#if searchHasMore}
-							<div bind:this={searchSentinelEl} class="rate-page__sentinel" aria-hidden="true"></div>
+							{#if searchHasMore}
+								<div bind:this={searchSentinelEl} class="rate-page__sentinel" aria-hidden="true"></div>
+							{/if}
 						{/if}
 					{/if}
 				</div>
@@ -1199,10 +1201,13 @@
 		border-bottom: 1px solid var(--color-border);
 	}
 	.rate-search-overlay__header-row {
+		position: relative;
 		display: flex;
+		justify-content: center;
 		align-items: center;
-		gap: var(--space-2);
 		min-width: 0;
+		/* Keep the field clear of the absolutely positioned close control */
+		padding-inline-end: calc(var(--min-tap) + var(--space-2));
 	}
 	.rate-search-overlay__sr-only {
 		position: absolute;
@@ -1216,7 +1221,10 @@
 		border: 0;
 	}
 	.rate-search-overlay__icon-btn {
-		flex: 0 0 auto;
+		position: absolute;
+		top: 50%;
+		right: 0;
+		transform: translateY(-50%);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -1241,8 +1249,17 @@
 	}
 	.rate-search-overlay__search-row {
 		position: relative;
-		flex: 1 1 auto;
+		flex: 0 1 auto;
+		box-sizing: border-box;
+		width: 100%;
 		min-width: 0;
+		/* Match `.rate-page__search` so overlay field caps like the toolbar trigger */
+		max-width: min(48rem, 100%);
+	}
+	@media (max-width: 767px) {
+		.rate-search-overlay__search-row {
+			max-width: none;
+		}
 	}
 	.rate-search-overlay__search-row :global(.search-bar) {
 		width: 100%;
