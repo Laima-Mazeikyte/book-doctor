@@ -7,25 +7,25 @@
 	/** On-accent only (e.g. primary button text). Do not use for surfaces. */
 	--primitive-white: #ffffff;
 	/** Elevated surfaces (cards, header, inputs). */
-	--primitive-surface: #171717;
+	--primitive-surface: #121C1C;
 	/** Toggle/switch thumb; must contrast with track in both modes. */
 	--primitive-toggle-thumb: #e5e5e5;
-	--primitive-gray-50: #0a0a0a;
-	--primitive-gray-100: #171717;
-	--primitive-gray-200: #262626;
-	--primitive-gray-300: #262626;
-	--primitive-gray-400: #404040;
-	--primitive-gray-500: #a3a3a3;
-	--primitive-gray-900: #fafafa;
+    --primitive-gray-50: #0E1616;
+    --primitive-gray-100: #121C1C;
+    --primitive-gray-200: #1E2A2A;
+    --primitive-gray-300: #2B3B3B;
+    --primitive-gray-400: #455454;
+    --primitive-gray-500: #798686;
+    --primitive-gray-900: #E5E6E6;
 	/** Brand CTA fill (pair with `--primitive-white` on-button). */
 	--primitive-accent-brand: #8C2006;
 	/** Solid accent for links, focus, chrome. */
 	--primitive-accent-solid: #e5e5e5;
 	/** Text on solid accent surfaces. */
-	--primitive-on-accent-solid: #0a0a0a;
+	--primitive-on-accent-solid: #0E1616;
 	/** Muted accent fills, success chrome, focus halo (warm neutral). */
-	--primitive-accent-muted: #404040;
-	--primitive-sand: #2d2a26;
+	--primitive-accent-muted: #1E2A2A;
+	--primitive-sand: #2B3B3B;
 	/** Cool muted surface (e.g. book card genre pills, light). */
 	--primitive-pale-aqua: #d3e0e0;
 	/** Deep cool fill (e.g. book card genre pills, dark). */
