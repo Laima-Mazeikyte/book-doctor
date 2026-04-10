@@ -76,6 +76,10 @@ label {
 	outline: none;
 }
 
+.skip-link--rate-bottom-bar:focus {
+	left: calc(var(--space-2) + 13rem);
+}
+
 main {
 	padding: var(--space-5) var(--space-4);
 	max-width: var(--content-width-narrow);

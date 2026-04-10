@@ -948,17 +948,13 @@
 			class:rate-page__sticky-header--hidden={!headerVisible}
 		>
 			<div class="rate-page__toolbar">
-				<div
-					class="rate-page__search"
-					class:rate-page__search--obscured={searchOverlayOpen}
-					onpointerdowncapture={handleToolbarSearchActivate}
-					onfocusincapture={handleToolbarSearchActivate}
-				>
+				<div class="rate-page__search" class:rate-page__search--obscured={searchOverlayOpen}>
 					<SearchBar
 						asTrigger={true}
 						bind:value={searchQuery}
 						placeholder={t('rate.search.placeholder')}
 						aria-label={t('rate.search.ariaLabel')}
+						onActivate={handleToolbarSearchActivate}
 					/>
 				</div>
 			</div>
@@ -1010,7 +1006,7 @@
 		</div>
 
 		{#if showBottomBar}
-			<div class="rate-page__bottom-bar">
+			<div id="rate-bottom-bar" class="rate-page__bottom-bar" tabindex="-1">
 				<RatingsBar
 					{ratedEntries}
 					summaryHooks={{

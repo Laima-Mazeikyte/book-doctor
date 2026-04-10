@@ -6,6 +6,7 @@
 	import { PUBLIC_BUNNY_COVERS_BASE } from '$env/static/public';
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
+	import { t } from '$lib/copy';
 	import SkipLink from '$lib/components/SkipLink.svelte';
 	import AppHeader from '$lib/components/AppHeader.svelte';
 	import AppFooter from '$lib/components/AppFooter.svelte';
@@ -43,6 +44,13 @@
 
 	function closeBugModal() {
 		bugModalOpen = false;
+	}
+
+	function skipToRateBottomBar(e: MouseEvent) {
+		e.preventDefault();
+		const el = document.getElementById('rate-bottom-bar');
+		el?.scrollIntoView({ block: 'nearest' });
+		el?.focus({ preventScroll: true });
 	}
 
 	/** Routes with `.book-card-grid` — drop main max-width so more columns fit on large screens */
@@ -481,6 +489,15 @@
 </svelte:head>
 
 <SkipLink />
+{#if $page.url.pathname === '/rate'}
+	<a
+		href="#rate-bottom-bar"
+		class="skip-link skip-link--rate-bottom-bar"
+		onclick={skipToRateBottomBar}
+	>
+		{t('rate.skipToBottomBar')}
+	</a>
+{/if}
 <div class="app-chrome">
 	<AppHeader onOpenBugReport={openBugModal} />
 	<main

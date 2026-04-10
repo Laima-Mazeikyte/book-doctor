@@ -569,6 +569,7 @@
 			opacity var(--duration-fast) var(--ease-default);
 	}
 	.book-card__cover-hit {
+		position: relative;
 		display: block;
 		width: 100%;
 		height: 100%;
@@ -579,11 +580,21 @@
 		border-radius: var(--radius-sm);
 		cursor: pointer;
 	}
+	/* Inset box-shadow on the button sits under the cover <img>; draw the ring in ::after above the image. */
 	.book-card__cover-hit:focus-visible {
-		outline: 2px solid var(--color-focus-ring, currentColor);
-		outline-offset: 2px;
+		outline: none;
+	}
+	.book-card__cover-hit:focus-visible::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		border-radius: inherit;
+		box-shadow: inset 0 0 0 2px var(--color-focus);
+		pointer-events: none;
+		z-index: 1;
 	}
 	.book-card__cover--opens-summary {
+		position: relative;
 		cursor: pointer;
 		appearance: none;
 		padding: 0;
@@ -595,8 +606,16 @@
 		color: inherit;
 	}
 	.book-card__cover--opens-summary:focus-visible {
-		outline: 2px solid var(--color-focus-ring, currentColor);
-		outline-offset: 2px;
+		outline: none;
+	}
+	.book-card__cover--opens-summary:focus-visible::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		border-radius: inherit;
+		box-shadow: inset 0 0 0 2px var(--color-focus);
+		pointer-events: none;
+		z-index: 1;
 	}
 	.book-card__media-inner--not-interested .book-card__cover:not(.book-card__cover--no-image) {
 		opacity: 0.3;

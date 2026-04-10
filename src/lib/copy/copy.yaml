@@ -27,6 +27,7 @@ en:
 
   rate:
     pageTitle: "Browse & Rate"
+    skipToBottomBar: "Skip to ratings and recommendations"
     search:
       placeholder: "Search books by title or author"
       ariaLabel: "Search books by title or author"

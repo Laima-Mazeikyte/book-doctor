@@ -14,6 +14,8 @@
 		 * Renders a button styled like the field (toolbar affordance); real typing happens elsewhere (e.g. overlay).
 		 */
 		asTrigger?: boolean;
+		/** Click / Enter / Space on the trigger (when `asTrigger` is true). */
+		onActivate?: () => void;
 	}
 
 	let {
@@ -23,6 +25,7 @@
 		oninput,
 		autofocus = false,
 		asTrigger = false,
+		onActivate,
 	}: Props = $props();
 
 	let inputRef: HTMLInputElement | undefined = $state();
@@ -59,6 +62,7 @@
 			type="button"
 			class="search-bar__trigger"
 			aria-label={ariaLabel}
+			onclick={() => onActivate?.()}
 		>
 			<span
 				class="search-bar__trigger-text"
