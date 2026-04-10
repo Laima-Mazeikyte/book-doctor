@@ -5,12 +5,13 @@
 	import { resolve } from '$app/paths';
 	import { markRateSearchOpenedFromOtherRoute } from '$lib/rateSearchExternalNav';
 	import { fly } from 'svelte/transition';
-	import { BookOpenText, X, Bookmark, Star, Ban, Search, ArrowLeft } from 'lucide-svelte';
+	import { BookOpenText, X, Bookmark, Star, Ban, ArrowLeft } from 'lucide-svelte';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
 	import type { BookCardListProps } from './book-card/types';
 	import BookRatingStarsRow from './book-card/BookRatingStarsRow.svelte';
+	import BookSummarySheetBody from './book-card/BookSummarySheetBody.svelte';
 	import { getBookDisplaySummary } from './book-card/summaryStub';
 
 	let {
@@ -151,6 +152,19 @@
 	function handleNotInterestedClick(e: MouseEvent) {
 		e.stopPropagation();
 		onNotInterested?.(book.id);
+	}
+
+	function handleSummaryAuthorPillClick(e: MouseEvent) {
+		e.preventDefault();
+		e.stopPropagation();
+		const author = book.author.trim();
+		if (onSearchAuthor) {
+			onSearchAuthor(book.author);
+		} else {
+			if (browser) markRateSearchOpenedFromOtherRoute();
+			void goto(resolve(`/rate?q=${encodeURIComponent(author)}`));
+		}
+		handleCloseSummary();
 	}
 
 	function handleSheetRemoveRating(e: MouseEvent) {
@@ -472,168 +486,36 @@
 			>
 				<X size={18} aria-hidden="true" />
 			</button>
-			<div class="book-card__summary-content">
-				<div
-					class="book-card__summary-muted"
-					class:book-card__summary-muted--not-interested={notInterested}
-				>
-					<div class="book-card__summary-header">
-						<div class="book-card__summary-cover-wrap" aria-hidden="true">
-							{#if showCoverImage}
-								<img
-									src={book.coverUrl}
-									alt=""
-									class="book-card__summary-cover"
-									onerror={() => (coverImageFailed = true)}
-								/>
-							{:else}
-								<div class="book-card__summary-cover book-card__summary-cover--placeholder">
-									{#if book.author || book.year}
-										<span class="book-card__placeholder-author">
-											{book.author}{#if book.year}<span class="book-card__year"> · {book.year}</span>{/if}
-										</span>
-									{/if}
-									<span class="book-card__placeholder-title">{book.title}</span>
-								</div>
-							{/if}
-						</div>
-						<div class="book-card__summary-header-text">
-							<h3 class="book-card__summary-sheet-title typ-h3" id={summaryTitleId}>{book.title}</h3>
-
-							{#if showAuthorInSheetMeta || book.year}
-								<div class="book-card__summary-meta-row">
-									{#if showAuthorInSheetMeta}
-										{#if showSearchAuthorInOverlay}
-											<button
-												type="button"
-												class="book-card__summary-author-pill"
-												aria-label={t('shared.bookCard.searchThisAuthorAriaLabel', { author: book.author })}
-												onclick={(e) => {
-													e.preventDefault();
-													e.stopPropagation();
-													const author = book.author.trim();
-													if (onSearchAuthor) {
-														onSearchAuthor(book.author);
-													} else {
-														if (browser) markRateSearchOpenedFromOtherRoute();
-														void goto(resolve(`/rate?q=${encodeURIComponent(author)}`));
-													}
-													handleCloseSummary();
-												}}
-											>
-												<Search size={14} aria-hidden="true" />
-												<span>{book.author}</span>
-											</button>
-										{:else}
-											<span class="book-card__summary-author-pill book-card__summary-author-pill--text">
-												{book.author}
-											</span>
-										{/if}
-									{/if}
-									{#if book.year}
-										<span class="book-card__summary-year typ-caption">{book.year}</span>
-									{/if}
-								</div>
-							{/if}
-						</div>
-					</div>
-				</div>
-
-				<div class="book-card__rating-wrap book-card__rating-wrap--summary-sheet">
-					<div
-						class="book-card__rating"
-						role="group"
-						aria-label={isRateContext
-							? t('shared.bookCard.rateThisBook')
-							: t('shared.recommendationCard.rateThisBook')}
-						onmouseleave={() => (hoverRating = 0)}
-					>
-						{#each RATING_OPTIONS as value}
-							<button
-								type="button"
-								class="book-card__star"
-								class:book-card__star--active={displayRating >= value}
-								aria-label={starAriaLabel(value)}
-								aria-pressed={starAriaPressed(value)}
-								onmouseenter={() => handleStarMouseEnter(value)}
-								onclick={() => {
-									hoverRating = 0;
-									handleStarClick(value);
-								}}
-							>
-								{@render bookCardStarGlyph(displayRating >= value)}
-							</button>
-						{/each}
-					</div>
-					{#if canRemoveRatingInSheet}
-						<button
-							type="button"
-							class="btn btn--tertiary btn--compact book-card__summary-remove-rating"
-							aria-label={t('shared.ratingsBar.removeRatingFor', { title: book.title })}
-							onclick={handleSheetRemoveRating}
-						>
-							<span class="btn__label">{t('shared.ratingsBar.remove')}</span>
-						</button>
-					{/if}
-				</div>
-
-				<div
-					class="book-card__summary-muted"
-					class:book-card__summary-muted--not-interested={notInterested}
-				>
-					{#if book.genres && book.genres.length > 0}
-						<ul class="book-card__genres book-card__genres--summary-sheet" aria-label={t('shared.recommendationCard.genres')}>
-							{#each book.genres as genre}
-								<li class="book-card__genre">{genre}</li>
-							{/each}
-						</ul>
-					{/if}
-
-					<p class="book-card__summary">{displaySummary}</p>
-				</div>
-
-				{#if showSummaryBookmarkAction || showSummaryNotInterestedAction}
-					<div
-						class="book-card__summary-actions"
-						class:book-card__summary-actions--single={showSummaryBookmarkAction !== showSummaryNotInterestedAction}
-					>
-						{#if showSummaryBookmarkAction}
-							<button
-								type="button"
-								class="book-card__action book-card__action--labeled"
-								class:book-card__action--saved={bookmarked}
-								aria-pressed={bookmarked}
-								aria-label={bookmarked
-									? t('shared.recommendationCard.removeFromReadingList')
-									: t('shared.recommendationCard.addToReadingList')}
-								onclick={handleBookmarkClick}
-							>
-								<Bookmark size={14} aria-hidden="true" />
-								<span class="book-card__action-label">
-									{bookmarked
-										? t('shared.recommendationCard.saved')
-										: t('shared.recommendationCard.bookmark')}
-								</span>
-							</button>
-						{/if}
-						{#if showSummaryNotInterestedAction}
-							<button
-								type="button"
-								class="book-card__action book-card__action--labeled"
-								class:book-card__action--not-interested-active={notInterested}
-								aria-pressed={notInterested}
-								aria-label={notInterested
-									? t('shared.recommendationCard.removeFromNotInterested')
-									: t('shared.recommendationCard.notInterested')}
-								onclick={handleNotInterestedClick}
-							>
-								<Ban size={14} aria-hidden="true" />
-								<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span>
-							</button>
-						{/if}
-					</div>
-				{/if}
-			</div>
+			<BookSummarySheetBody
+				{book}
+				summaryTitleId={summaryTitleId}
+				displaySummary={displaySummary}
+				showCoverImage={showCoverImage}
+				onCoverImageError={() => (coverImageFailed = true)}
+				showAuthorInSheetMeta={showAuthorInSheetMeta}
+				showSearchAuthorInOverlay={showSearchAuthorInOverlay}
+				onAuthorPillClick={showSearchAuthorInOverlay ? handleSummaryAuthorPillClick : undefined}
+				{notInterested}
+				ratingGroupAriaLabel={isRateContext
+					? t('shared.bookCard.rateThisBook')
+					: t('shared.recommendationCard.rateThisBook')}
+				{displayRating}
+				starAriaLabel={starAriaLabel}
+				starAriaPressed={starAriaPressed}
+				onStarMouseEnter={handleStarMouseEnter}
+				onStarClick={(value) => {
+					hoverRating = 0;
+					handleStarClick(value);
+				}}
+				onRatingGroupMouseLeave={() => (hoverRating = 0)}
+				canRemoveRatingInSheet={canRemoveRatingInSheet}
+				onRemoveRatingClick={handleSheetRemoveRating}
+				showBookmarkAction={showSummaryBookmarkAction}
+				showNotInterestedAction={showSummaryNotInterestedAction}
+				{bookmarked}
+				onBookmarkClick={handleBookmarkClick}
+				onNotInterestedClick={handleNotInterestedClick}
+			/>
 		</div>
 	</div>
 {/if}
@@ -1250,228 +1132,7 @@
 		outline: 2px solid var(--color-focus);
 		outline-offset: 2px;
 	}
-	.book-card__summary-content {
-		flex: 1;
-		min-height: 0;
-		overflow-y: auto;
-		padding: var(--space-6);
-		padding-top: calc(var(--space-6) + env(safe-area-inset-top, 0px));
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-4);
-		scrollbar-width: thin;
-		scrollbar-color: var(--color-border) transparent;
-	}
-	.book-card__summary-content::-webkit-scrollbar {
-		width: 3px;
-	}
-	.book-card__summary-content::-webkit-scrollbar-track {
-		background: transparent;
-	}
-	.book-card__summary-content::-webkit-scrollbar-thumb {
-		background: var(--color-border);
-		border-radius: var(--radius-pill);
-	}
-	.book-card__summary-content::-webkit-scrollbar-thumb:hover {
-		background: var(--color-border-hover);
-	}
-	.book-card__summary-muted--not-interested {
-		opacity: 0.3;
-	}
-	/* Title ↔ author/year and tags ↔ description (children had margin: 0 with no stack gap) */
-	.book-card__summary-content > .book-card__summary-muted {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-4);
-	}
-	.book-card__summary-header {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: var(--space-4);
-		width: 100%;
-	}
-	.book-card__summary-header-text {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-4);
-		flex: 1;
-		min-width: 0;
-	}
-	.book-card__summary-cover-wrap {
-		flex-shrink: 0;
-		width: 5.5rem;
-		aspect-ratio: 2 / 3;
-		border-radius: var(--radius-sm);
-		overflow: hidden;
-		background: var(--color-card-placeholder-bg);
-	}
-	.book-card__summary-cover {
-		display: block;
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		object-position: center center;
-		border-radius: var(--radius-sm);
-	}
-	.book-card__summary-cover--placeholder {
-		display: flex;
-		flex-direction: column;
-		justify-content: center;
-		align-items: flex-start;
-		gap: var(--space-1);
-		padding: var(--space-2);
-		box-sizing: border-box;
-		text-align: left;
-		background: var(--color-card-placeholder-bg);
-	}
-	.book-card__summary-cover--placeholder .book-card__placeholder-author,
-	.book-card__summary-cover--placeholder .book-card__placeholder-title {
-		display: -webkit-box;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-		-webkit-line-clamp: 2;
-		line-clamp: 2;
-		font-size: 0.625rem;
-		line-height: var(--line-height-tight);
-	}
-	.book-card__summary-cover--placeholder .book-card__placeholder-title {
-		-webkit-line-clamp: 4;
-		line-clamp: 4;
-		font-weight: var(--font-weight-semibold);
-	}
-	.book-card__summary-sheet-title {
-		margin: 0;
-		color: var(--color-book-title);
-		text-align: left;
-	}
-	.book-card__summary-meta-row {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: var(--space-2);
-		width: 100%;
-	}
-	.book-card__summary-author-pill {
-		box-sizing: border-box;
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-2);
-		max-width: 100%;
-		padding: var(--space-2) var(--space-3);
-		font-family: var(--typ-interactive-1-font-family);
-		font-size: var(--typ-interactive-1-font-size);
-		font-weight: var(--typ-interactive-1-font-weight);
-		line-height: var(--typ-interactive-1-line-height);
-		letter-spacing: var(--typ-interactive-1-letter-spacing);
-		color: var(--color-text);
-		background: var(--color-book-card-pill-surface-bg);
-		border: 1px solid var(--color-border-hover);
-		border-radius: var(--radius-pill);
-		cursor: pointer;
-		text-align: left;
-		transition: background var(--duration-fast) var(--ease-default),
-			color var(--duration-fast) var(--ease-default);
-	}
-	.book-card__summary-author-pill:hover {
-		background: var(--color-book-card-pill-surface-bg-hover);
-	}
-	.book-card__summary-author-pill:focus-visible {
-		outline: 2px solid var(--color-focus);
-		outline-offset: 2px;
-	}
-	.book-card__summary-author-pill--text {
-		cursor: default;
-		pointer-events: none;
-	}
-	.book-card__summary-author-pill--text:hover {
-		background: var(--color-book-card-pill-surface-bg);
-	}
-	.book-card__summary-year {
-		color: var(--color-text-muted);
-	}
-	.book-card__rating-wrap--summary-sheet {
-		flex-direction: row;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: var(--space-2) var(--space-3);
-	}
-	.book-card__rating-wrap--summary-sheet .book-card__rating {
-		flex: 0 0 auto;
-		gap: 0;
-		justify-content: flex-start;
-	}
-	/* Summary drawer + bottom sheet: larger stars (override narrow-viewport card star shrink) */
-	.book-card__rating-wrap--summary-sheet .book-card__star {
-		width: 40px;
-		height: 40px;
-		min-width: 40px;
-		min-height: 40px;
-	}
-	.book-card__rating-wrap--summary-sheet .book-card__star-icon {
-		width: 24px;
-		height: 24px;
-	}
-	/* Summary star row: match 40px stars; aligns with ratings-drawer Remove */
-	button.book-card__summary-remove-rating {
-		box-sizing: border-box;
-		min-height: 40px;
-		height: 40px;
-		padding-block: 0;
-		padding-inline: var(--space-4);
-	}
-	.book-card__summary {
-		font-family: var(--typ-body-font-family);
-		font-size: var(--typ-body-font-size);
-		font-weight: var(--typ-body-font-weight);
-		line-height: var(--typ-body-line-height);
-		letter-spacing: var(--typ-body-letter-spacing);
-		color: var(--color-text);
-		margin: 0;
-	}
-	.book-card__genres {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-2);
-		list-style: none;
-		margin: 0;
-		padding: 0;
-	}
-	.book-card__genres--summary-sheet {
-		gap: var(--space-2);
-	}
-	.book-card__genre {
-		padding-block: var(--space-2);
-		padding-inline: var(--space-4);
-		font-family: var(--typ-interactive-1-font-family);
-		font-size: var(--typ-interactive-1-font-size);
-		font-weight: var(--typ-interactive-1-font-weight);
-		line-height: var(--typ-interactive-1-line-height);
-		letter-spacing: var(--typ-interactive-1-letter-spacing);
-		background: var(--color-book-card-tag-bg);
-		border-radius: var(--radius-pill);
-		color: var(--color-book-card-tag-text);
-		border: none;
-	}
-	.book-card__genres--summary-sheet .book-card__genre {
-		padding-block: var(--space-1);
-		padding-inline: var(--space-3);
-		font-size: var(--typ-interactive-1-font-size);
-	}
-	.book-card__summary-actions {
-		display: flex;
-		flex-direction: row;
-		flex-wrap: wrap;
-		gap: var(--space-2);
-		margin-top: var(--space-2);
-		padding-bottom: var(--space-1);
-	}
-	/* Summary sheet: same pill chips as card actions, labels always visible, equal-width row */
-	/* Cover + sheet: inactive action pills use elevated surface (light = white), not page-muted gray */
-	.book-card__summary-actions
-		.book-card__action--labeled:not(.book-card__action--saved):not(
-			.book-card__action--not-interested-active
-		),
+	/* Cover + card row: inactive action pills use elevated surface (summary sheet body uses book-summary-sheet-body.css) */
 	.book-card__reco-layer--actions
 		.book-card__action:not(.book-card__action--saved):not(
 			.book-card__action--not-interested-active
@@ -1482,10 +1143,6 @@
 		) {
 		background: var(--color-book-card-pill-surface-bg);
 	}
-	.book-card__summary-actions
-		.book-card__action--labeled:not(.book-card__action--saved):not(
-			.book-card__action--not-interested-active
-		):hover,
 	.book-card__reco-layer--actions
 		.book-card__action:not(.book-card__action--saved):not(
 			.book-card__action--not-interested-active
@@ -1497,11 +1154,6 @@
 		background: var(--color-book-card-pill-surface-bg-hover);
 	}
 
-	/* Summary sheet + recommendation row: clearer inactive pill outlines (border unchanged on hover) */
-	.book-card__summary-actions
-		.book-card__action--labeled:not(.book-card__action--saved):not(
-			.book-card__action--not-interested-active
-		),
 	.book-card__reco-layer--actions
 		.book-card__action:not(.book-card__action--saved):not(
 			.book-card__action--not-interested-active
@@ -1522,17 +1174,6 @@
 	.book-card__reco-layer--rating .book-card__star:not(.book-card__star--active):hover {
 		background: var(--color-book-card-pill-surface-bg-hover);
 		color: var(--color-book-rating-star);
-	}
-	.book-card__summary-actions .book-card__action--labeled {
-		flex: 1 1 0;
-		min-width: 0;
-		width: auto;
-		max-width: none;
-		justify-content: center;
-		min-height: var(--book-card-action-height, 2.25rem);
-	}
-	.book-card__summary-actions--single .book-card__action--labeled {
-		flex: 1 1 100%;
 	}
 
 	/* Cover tint: deep aqua (does not remap in dark like --primitive-gray-900). */

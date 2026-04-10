@@ -111,6 +111,7 @@ en:
       dismiss: "Dismiss error"
     ratingsBar:
       yourRatings: "Ratings"
+      backToRatings: "Back to ratings"
       close: "Close ratings"
       empty: "No books rated yet. Rate at least 10 to get recommendations."
       syncRatings: "Sync ratings"

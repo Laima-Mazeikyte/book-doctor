@@ -1011,7 +1011,17 @@
 
 		{#if showBottomBar}
 			<div class="rate-page__bottom-bar">
-				<RatingsBar {ratedEntries} />
+				<RatingsBar
+					{ratedEntries}
+					summaryHooks={{
+						onSearchAuthor: handleSearchAuthor,
+						onBookmark: (book) => handleRateBookmark(book, book.id),
+						onNotInterested: (book) =>
+							searchOverlayOpen ? handleSearchNotInterested(book) : handleMainListNotInterested(book),
+						onAfterRate: (book) =>
+							searchOverlayOpen ? handleSearchAfterRate() : handleMainListAfterRate(book)
+					}}
+				/>
 				{#if canGetRecommendations}
 					<div class="rate-page__recommendations-cta">
 						{#snippet recommendationsCtaSyncIcon()}
@@ -1430,17 +1440,6 @@
 		justify-content: space-between;
 		pointer-events: none;
 	}
-	@media (min-width: 768px) {
-		.rate-page__bottom-bar {
-			justify-content: flex-start;
-		}
-		:global(.rate-page__bottom-bar > :last-child) {
-			position: absolute;
-			left: 50%;
-			top: 50%;
-			transform: translate(-50%, -50%);
-		}
-	}
 	:global(.rate-page__bottom-bar > *) {
 		pointer-events: auto;
 	}
@@ -1458,7 +1457,7 @@
 	.rate-page__recommendations-hint-wrap {
 		display: flex;
 		flex-direction: column;
-		align-items: center;
+		align-items: flex-end;
 		gap: var(--space-1);
 		max-width: min(20rem, 100%);
 	}

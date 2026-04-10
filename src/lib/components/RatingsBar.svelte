@@ -1,9 +1,18 @@
 <script lang="ts">
 	import { onDestroy, tick } from 'svelte';
+	import { browser } from '$app/environment';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { fly } from 'svelte/transition';
-	import { Book as BookIcon, X } from 'lucide-svelte';
+	import { ArrowLeft, Book as BookIcon, X } from 'lucide-svelte';
 	import Button from '$lib/components/Button.svelte';
 	import BookRatingStarsRow from '$lib/components/book-card/BookRatingStarsRow.svelte';
+	import BookSummarySheetBody from '$lib/components/book-card/BookSummarySheetBody.svelte';
+	import { getBookDisplaySummary } from '$lib/components/book-card/summaryStub';
+	import type { RatingsBarSummaryHooks } from '$lib/components/ratings-bar-summary-hooks';
+	import { markRateSearchOpenedFromOtherRoute } from '$lib/rateSearchExternalNav';
+	import { notInterestedStore } from '$lib/stores/notInterested';
+	import { planToReadStore } from '$lib/stores/planToRead';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
@@ -15,9 +24,10 @@
 
 	interface Props {
 		ratedEntries: RatedEntry[];
+		summaryHooks?: RatingsBarSummaryHooks;
 	}
 
-	let { ratedEntries }: Props = $props();
+	let { ratedEntries, summaryHooks }: Props = $props();
 
 	let open = $state(false);
 	/** Book ids in list order when the drawer was opened; cleared on close so the next open uses store order (most recent first). */
@@ -31,6 +41,11 @@
 	let pendingRemoveEndByBookId = $state(new Map<string, number>());
 	let removalUiClock = $state(Date.now());
 	let closeButtonEl = $state<HTMLButtonElement | null>(null);
+	let drawerBackButtonEl = $state<HTMLButtonElement | null>(null);
+	let detailBookId = $state<string | null>(null);
+	let detailFocusReturnEl = $state<HTMLElement | null>(null);
+	let hoverDetailRating = $state(0);
+	let drawerHadOpen = $state(false);
 	const ratingsSyncMeta = ratingsStore.syncMeta;
 	const panelId = 'ratings-drawer-panel';
 	const triggerId = 'ratings-trigger';
@@ -100,9 +115,52 @@
 		return ordered;
 	});
 
+	let detailEntry = $derived.by(() => {
+		if (!detailBookId) return null;
+		return drawerRatedEntries.find((e) => e.book.id === detailBookId) ?? null;
+	});
+
+	let detailTitleId = $derived(
+		detailEntry ? `ratings-drawer-detail-title-${detailEntry.book.id}` : 'ratings-drawer-title'
+	);
+
+	let detailDisplaySummary = $derived(
+		detailEntry ? getBookDisplaySummary(detailEntry.book) : ''
+	);
+
+	let detailShowCoverImage = $derived(
+		detailEntry
+			? Boolean(detailEntry.book.coverUrl) && !coverFailedIds.has(detailEntry.book.id)
+			: false
+	);
+
+	let detailRatingFromStore = $derived(
+		detailEntry ? $ratingsStore.get(detailEntry.book.id) : undefined
+	);
+
+	let detailDisplayRating = $derived(
+		hoverDetailRating > 0 ? hoverDetailRating : (detailRatingFromStore ?? 0)
+	);
+
+	let detailBookmarked = $derived(
+		detailEntry ? $planToReadStore.has(detailEntry.book.id) : false
+	);
+
+	let detailNotInterested = $derived(
+		detailEntry ? $notInterestedStore.has(detailEntry.book.book_id ?? 0) : false
+	);
+
+	let detailShowAuthorSearchPill = $derived(
+		Boolean(detailEntry?.book.author?.trim()) &&
+			Boolean(summaryHooks?.onSearchAuthor || browser)
+	);
+
 	function openDrawer() {
 		flyX = drawerSlidePx();
 		drawerOrderIds = ratedEntries.map((e) => e.book.id);
+		detailBookId = null;
+		detailFocusReturnEl = null;
+		hoverDetailRating = 0;
 		open = true;
 	}
 
@@ -162,6 +220,89 @@
 	function closeDrawer() {
 		open = false;
 		drawerOrderIds = null;
+		detailBookId = null;
+		detailFocusReturnEl = null;
+		hoverDetailRating = 0;
+	}
+
+	function openDetail(bookId: string, returnTarget: HTMLElement) {
+		detailFocusReturnEl = returnTarget;
+		detailBookId = bookId;
+		hoverDetailRating = 0;
+	}
+
+	function closeDetail() {
+		const el = detailFocusReturnEl;
+		detailBookId = null;
+		detailFocusReturnEl = null;
+		hoverDetailRating = 0;
+		tick().then(() => el?.focus());
+	}
+
+	function handleDrawerAuthorPillClick(e: MouseEvent) {
+		if (!detailEntry) return;
+		e.preventDefault();
+		e.stopPropagation();
+		const author = detailEntry.book.author.trim();
+		if (summaryHooks?.onSearchAuthor) {
+			summaryHooks.onSearchAuthor(detailEntry.book.author);
+		} else if (browser) {
+			markRateSearchOpenedFromOtherRoute();
+			void goto(resolve(`/rate?q=${encodeURIComponent(author)}`));
+		}
+		closeDrawer();
+	}
+
+	function detailStarMouseEnter(value: RatingValue) {
+		if (!detailEntry || !starHoverPreviewSupported()) return;
+		hoverDetailRating = value;
+	}
+
+	function detailStarClick(value: RatingValue) {
+		if (!detailEntry) return;
+		hoverDetailRating = 0;
+		const book = detailEntry.book;
+		clearPendingRemove(book.id);
+		const r = detailRatingFromStore;
+		if (r === value) {
+			ratingsStore.removeRating(book.id, book.book_id);
+		} else {
+			ratingsStore.setRating(book.id, value, book.book_id, book);
+		}
+		summaryHooks?.onAfterRate?.(book);
+	}
+
+	function detailSheetRemoveRating(e: MouseEvent) {
+		if (!detailEntry) return;
+		e.stopPropagation();
+		hoverDetailRating = 0;
+		const book = detailEntry.book;
+		clearPendingRemove(book.id);
+		ratingsStore.removeRating(book.id, book.book_id);
+		summaryHooks?.onAfterRate?.(book);
+	}
+
+	function detailBookmarkClick(e: MouseEvent) {
+		if (!detailEntry) return;
+		e.stopPropagation();
+		summaryHooks?.onBookmark?.(detailEntry.book);
+	}
+
+	function detailNotInterestedClick(e: MouseEvent) {
+		if (!detailEntry) return;
+		e.stopPropagation();
+		summaryHooks?.onNotInterested?.(detailEntry.book);
+	}
+
+	function detailStarAriaLabel(value: RatingValue): string {
+		const r = detailRatingFromStore;
+		return r === value
+			? t('shared.bookCard.rateOutOf5Clear', { value })
+			: t('shared.bookCard.rateOutOf5', { value });
+	}
+
+	function detailStarAriaPressed(value: RatingValue): boolean {
+		return detailRatingFromStore === value;
 	}
 
 	onDestroy(() => {
@@ -180,7 +321,13 @@
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') closeDrawer();
+		if (e.key !== 'Escape') return;
+		if (detailBookId) {
+			e.preventDefault();
+			closeDetail();
+		} else {
+			closeDrawer();
+		}
 	}
 
 	function retryPendingRatings() {
@@ -199,8 +346,29 @@
 	}
 
 	$effect(() => {
-		if (!open) return;
-		tick().then(() => closeButtonEl?.focus());
+		if (!open) {
+			drawerHadOpen = false;
+			return;
+		}
+		const becameOpen = !drawerHadOpen;
+		drawerHadOpen = true;
+		if (becameOpen && !detailBookId) {
+			tick().then(() => closeButtonEl?.focus());
+		}
+	});
+
+	$effect(() => {
+		if (!open || !detailBookId) return;
+		tick().then(() => drawerBackButtonEl?.focus());
+	});
+
+	$effect(() => {
+		if (!detailBookId || !open) return;
+		const exists = drawerRatedEntries.some((e) => e.book.id === detailBookId);
+		if (!exists) {
+			detailBookId = null;
+			detailFocusReturnEl = null;
+		}
 	});
 
 	$effect(() => {
@@ -244,7 +412,7 @@
 			class="ratings-drawer-overlay"
 			role="dialog"
 			aria-modal="true"
-			aria-labelledby="ratings-drawer-title"
+			aria-labelledby={detailEntry ? `${detailTitleId}-sheet` : 'ratings-drawer-title'}
 			tabindex="-1"
 			onclick={handleOverlayClick}
 			onkeydown={handleOverlayKeydown}
@@ -263,10 +431,23 @@
 				>
 					<X size={18} aria-hidden="true" />
 				</button>
-				<div class="ratings-drawer__header">
-					<h2 id="ratings-drawer-title" class="ratings-drawer__title typ-h3">
-						{t('shared.ratingsBar.yourRatings')}
-					</h2>
+				<div class="ratings-drawer__header" class:ratings-drawer__header--detail={detailEntry != null}>
+					{#if detailEntry}
+						<button
+							bind:this={drawerBackButtonEl}
+							type="button"
+							class="ratings-drawer__back"
+							aria-label={t('shared.ratingsBar.backToRatings')}
+							onclick={closeDetail}
+						>
+							<ArrowLeft size={18} aria-hidden="true" />
+							<span class="ratings-drawer__back-label">{t('shared.ratingsBar.backToRatings')}</span>
+						</button>
+					{:else}
+						<h2 id="ratings-drawer-title" class="ratings-drawer__title typ-h3">
+							{t('shared.ratingsBar.yourRatings')}
+						</h2>
+					{/if}
 					{#if drawerSyncState}
 						<div
 							class="ratings-drawer__header-sync"
@@ -291,8 +472,37 @@
 						</div>
 					{/if}
 				</div>
-				<div class="ratings-drawer__body">
-					{#if drawerRatedEntries.length === 0}
+				<div
+					class="ratings-drawer__body"
+					class:ratings-drawer__body--detail={detailEntry != null}
+				>
+					{#if detailEntry}
+						<BookSummarySheetBody
+							book={detailEntry.book}
+							summaryTitleId={`${detailTitleId}-sheet`}
+							displaySummary={detailDisplaySummary}
+							showCoverImage={detailShowCoverImage}
+							onCoverImageError={() => setCoverFailed(detailEntry.book.id)}
+							showAuthorInSheetMeta={Boolean(detailEntry.book.author?.trim())}
+							showSearchAuthorInOverlay={detailShowAuthorSearchPill}
+							onAuthorPillClick={detailShowAuthorSearchPill ? handleDrawerAuthorPillClick : undefined}
+							notInterested={detailNotInterested}
+							ratingGroupAriaLabel={t('shared.bookCard.rateThisBook')}
+							displayRating={detailDisplayRating}
+							starAriaLabel={detailStarAriaLabel}
+							starAriaPressed={detailStarAriaPressed}
+							onStarMouseEnter={detailStarMouseEnter}
+							onStarClick={detailStarClick}
+							onRatingGroupMouseLeave={() => (hoverDetailRating = 0)}
+							canRemoveRatingInSheet={detailRatingFromStore != null}
+							onRemoveRatingClick={detailSheetRemoveRating}
+							showBookmarkAction={Boolean(summaryHooks?.onBookmark)}
+							showNotInterestedAction={Boolean(summaryHooks?.onNotInterested)}
+							bookmarked={detailBookmarked}
+							onBookmarkClick={detailBookmarkClick}
+							onNotInterestedClick={detailNotInterestedClick}
+						/>
+					{:else if drawerRatedEntries.length === 0}
 						<p class="ratings-drawer__empty">
 							{t('shared.ratingsBar.empty')}
 						</p>
@@ -305,22 +515,45 @@
 								>
 									<div class="ratings-drawer__item-main">
 										<div class="ratings-drawer__item-cover">
-											{#if entry.book.coverUrl && !coverFailedIds.has(entry.book.id)}
-												<img
-													src={entry.book.coverUrl}
-													alt=""
-													class="ratings-drawer__cover-img"
-													onerror={() => setCoverFailed(entry.book.id)}
-												/>
-											{:else}
-												<div class="ratings-drawer__cover-placeholder">
-													<span class="ratings-drawer__cover-text">{entry.book.title}</span>
-												</div>
-											{/if}
+											<button
+												type="button"
+												class="ratings-drawer__item-cover-hit"
+												aria-label={t('shared.recommendationCard.seeSummary')}
+												onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
+											>
+												{#if entry.book.coverUrl && !coverFailedIds.has(entry.book.id)}
+													<img
+														src={entry.book.coverUrl}
+														alt=""
+														class="ratings-drawer__cover-img"
+														onerror={() => setCoverFailed(entry.book.id)}
+													/>
+												{:else}
+													<div class="ratings-drawer__cover-placeholder">
+														<span class="ratings-drawer__cover-text">{entry.book.title}</span>
+													</div>
+												{/if}
+											</button>
 										</div>
 										<div class="ratings-drawer__item-info">
-											<span class="ratings-drawer__item-title">{entry.book.title}</span>
-											<span class="ratings-drawer__item-author">{entry.book.author}</span>
+											<button
+												type="button"
+												class="ratings-drawer__item-title-hit"
+												aria-label={t('shared.recommendationCard.seeSummary')}
+												onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
+											>
+												<span class="ratings-drawer__item-title">{entry.book.title}</span>
+											</button>
+											{#if entry.book.author?.trim()}
+												<button
+													type="button"
+													class="ratings-drawer__item-author ratings-drawer__item-author-hit"
+													aria-label={t('shared.recommendationCard.seeSummary')}
+													onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
+												>
+													{entry.book.author}
+												</button>
+											{/if}
 											<div
 												class="ratings-drawer__item-actions"
 												onmouseleave={() => {
@@ -515,6 +748,10 @@
 		outline-offset: 2px;
 	}
 	.ratings-drawer__header {
+		/* Match list (typ-h3 title) and detail (back) so header height does not jump between views */
+		--ratings-drawer-header-min-block: calc(
+			var(--space-4) * 2 + var(--typ-h3-font-size) * var(--typ-h3-line-height)
+		);
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
@@ -523,6 +760,8 @@
 		padding-right: calc(var(--space-2) + var(--min-tap) + var(--space-3));
 		border-bottom: 1px solid var(--color-border);
 		flex-shrink: 0;
+		box-sizing: border-box;
+		min-height: var(--ratings-drawer-header-min-block);
 	}
 	.ratings-drawer__title {
 		margin: 0;
@@ -559,6 +798,79 @@
 		padding: var(--space-4) var(--space-5);
 		flex: 1;
 		min-height: 0;
+	}
+	.ratings-drawer__body--detail {
+		padding: 0;
+		overflow: hidden;
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+	}
+	.ratings-drawer__header.ratings-drawer__header--detail {
+		flex-direction: column;
+		align-items: flex-start;
+		justify-content: center;
+		gap: var(--space-3);
+	}
+	.ratings-drawer__back {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		align-self: flex-start;
+		padding: 0;
+		margin: 0;
+		border: none;
+		background: transparent;
+		font-family: var(--typ-interactive-1-font-family);
+		font-size: var(--typ-interactive-1-font-size);
+		font-weight: var(--typ-interactive-1-font-weight);
+		line-height: var(--typ-interactive-1-line-height);
+		letter-spacing: var(--typ-interactive-1-letter-spacing);
+		color: var(--color-text);
+		cursor: pointer;
+		border-radius: var(--radius-pill);
+	}
+	.ratings-drawer__back:hover {
+		color: var(--color-text-muted);
+	}
+	.ratings-drawer__back:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 2px;
+	}
+	.ratings-drawer__back-label {
+		min-width: 0;
+	}
+	.ratings-drawer__item-cover-hit {
+		display: block;
+		width: 100%;
+		height: 100%;
+		padding: 0;
+		margin: 0;
+		border: none;
+		background: transparent;
+		border-radius: inherit;
+		cursor: pointer;
+		text-align: left;
+	}
+	.ratings-drawer__item-cover-hit:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 2px;
+	}
+	.ratings-drawer__item-title-hit {
+		display: block;
+		width: 100%;
+		padding: 0;
+		margin: 0;
+		border: none;
+		background: transparent;
+		font: inherit;
+		text-align: left;
+		color: inherit;
+		cursor: pointer;
+	}
+	.ratings-drawer__item-title-hit:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 2px;
 	}
 	.ratings-drawer__empty {
 		margin: 0;
@@ -710,6 +1022,22 @@
 		color: var(--color-text-muted);
 		display: block;
 		margin-top: var(--space-1);
+	}
+	button.ratings-drawer__item-author-hit {
+		display: block;
+		width: 100%;
+		padding: 0;
+		margin: 0;
+		margin-top: var(--space-1);
+		border: none;
+		background: transparent;
+		text-align: left;
+		cursor: pointer;
+		appearance: none;
+	}
+	button.ratings-drawer__item-author-hit:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 2px;
 	}
 	.ratings-drawer__item-actions {
 		display: flex;
