@@ -2,6 +2,8 @@
 @import './lib/styles/primitives.css';
 @import './lib/styles/semantic.css';
 @import './lib/styles/button.css';
+/* Global BEM: summary sheet is portalled / nested; keeps star + remove layout out of component-scoped CSS. */
+@import './lib/components/book-card/book-summary-sheet-body.css';
 
 *,
 *::before,
@@ -113,7 +115,7 @@ main.main-book-grid-shell {
 
 /*
  * Book card layout tokens — tweak shell, stars, and body in one place.
- * Star glyph size follows summary close (18/44 of star button); component: BookCard.svelte
+ * Card grid star glyph: BookCard.svelte. Summary sheet stars: book-summary-sheet-body.css (global import below).
  */
 :root {
 	/* Header/footer chrome — matches `.app-header__nav-link` (typ-interactive-2 + padding) */

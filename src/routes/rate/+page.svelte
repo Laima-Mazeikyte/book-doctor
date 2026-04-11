@@ -315,6 +315,18 @@
 		armFeedBatchStrictGrace();
 	}
 
+	/** Explicit “load more” — same loaders as infinite scroll; does not change rating / not-interested revival rules. */
+	function handleManualLoadMoreBooks() {
+		if (loadingMore || loadingInitial) return;
+		if (paginationFeedOnly) {
+			if (lastAppendWasFeed) engagedWithPendingBatch = true;
+			armFeedBatchStrictGrace();
+			void loadCuratedFeedBatch();
+			return;
+		}
+		void loadPopular(nextOffset, 0);
+	}
+
 	/** Search unlocks feed pagination and revives a ended main list (Top 100, curated, or strict end). */
 	$effect(() => {
 		const q = searchQuery.trim();
@@ -988,6 +1000,20 @@
 								/>
 							</li>
 						{/each}
+						{#if !hasMore && popularBooks.length > 0}
+							<li class="book-card-grid__cell rate-page__load-more-cell">
+								<button
+									type="button"
+									class="rate-page__load-more-card typ-interactive-1"
+									onclick={handleManualLoadMoreBooks}
+									disabled={loadingMore}
+									aria-busy={loadingMore ? 'true' : undefined}
+									aria-label={t('rate.loadMoreBooksAriaLabel')}
+								>
+									{t('rate.loadMoreBooks')}
+								</button>
+							</li>
+						{/if}
 					</ul>
 
 					{#if loadingMore}
@@ -998,8 +1024,6 @@
 
 					{#if hasMore}
 						<div bind:this={sentinelEl} class="rate-page__sentinel" aria-hidden="true"></div>
-					{:else if popularBooks.length > 0}
-						<p class="rate-page__end-cta">{t('rate.endOfList')}</p>
 					{/if}
 				{/if}
 			</div>
@@ -1242,10 +1266,54 @@
 			max-width: none;
 		}
 	}
-	.rate-page__empty,
-	.rate-page__end-cta {
+	.rate-page__empty {
 		color: var(--color-text-muted);
 		margin: var(--space-4) 0;
+	}
+
+	.rate-page__load-more-cell {
+		display: flex;
+		min-width: 0;
+		min-height: 0;
+	}
+
+	.rate-page__load-more-card {
+		width: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		box-sizing: border-box;
+		aspect-ratio: 2 / 3;
+		min-height: 12rem;
+		padding: var(--space-4);
+		margin: 0;
+		border-radius: var(--book-card-radius, var(--radius));
+		border: 1px solid var(--color-border);
+		background: var(--color-card-bg);
+		box-shadow: var(--shadow-card);
+		color: var(--color-text-muted);
+		text-align: center;
+		cursor: pointer;
+		transition:
+			box-shadow var(--duration-normal) var(--ease-default),
+			border-color var(--duration-normal) var(--ease-default),
+			color var(--duration-normal) var(--ease-default);
+	}
+
+	.rate-page__load-more-card:hover:not(:disabled) {
+		box-shadow: var(--shadow-card-hover);
+		border-color: var(--color-border-hover);
+		color: var(--color-text);
+	}
+
+	.rate-page__load-more-card:focus-visible {
+		outline: none;
+		box-shadow: var(--shadow-card-hover), 0 0 0 2px var(--color-focus);
+	}
+
+	.rate-page__load-more-card:disabled {
+		cursor: wait;
+		opacity: 0.72;
 	}
 	.rate-page__empty {
 		text-align: center;

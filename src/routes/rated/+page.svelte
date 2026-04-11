@@ -41,23 +41,30 @@
 	{#if displayedEntries.length === 0}
 		<p class="rated-page__empty">{t('rated.empty')}</p>
 	{:else}
-		<ul class="rated-page__list book-card-grid" aria-label={t('shared.ratingsBar.yourRatings')}>
-			{#each displayedEntries as { book, ratingAtLoad } (book.id)}
-				<li>
-					<BookCard
-						context="rated"
-						{book}
-						bookmarked={$planToReadStore.has(book.id)}
-						onBookmark={(id) => planToReadStore.toggle(id, book.book_id)}
-						currentRating={$ratingsStore.get(book.id) ?? null}
-						onRate={(id, value) => ratingsStore.setRating(id, value, book.book_id, book)}
-						onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id)}
-						notInterested={$notInterestedStore.has(book.book_id ?? 0)}
-						onNotInterested={() => handleNotInterested(book)}
-					/>
-				</li>
-			{/each}
-		</ul>
+		<section class="rated-page__books" aria-labelledby="rated-books-heading">
+			<h2 id="rated-books-heading" class="rated-page__books-heading typ-body">
+				{t('shared.listBookCount', { count: displayedEntries.length })}{displayedEntries.length === 1
+					? ''
+					: t('shared.listBookCountPlural')}
+			</h2>
+			<ul class="rated-page__list book-card-grid" aria-label={t('shared.ratingsBar.yourRatings')}>
+				{#each displayedEntries as { book, ratingAtLoad } (book.id)}
+					<li>
+						<BookCard
+							context="rated"
+							{book}
+							bookmarked={$planToReadStore.has(book.id)}
+							onBookmark={(id) => planToReadStore.toggle(id, book.book_id)}
+							currentRating={$ratingsStore.get(book.id) ?? null}
+							onRate={(id, value) => ratingsStore.setRating(id, value, book.book_id, book)}
+							onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id)}
+							notInterested={$notInterestedStore.has(book.book_id ?? 0)}
+							onNotInterested={() => handleNotInterested(book)}
+						/>
+					</li>
+				{/each}
+			</ul>
+		</section>
 	{/if}
 </div>
 
@@ -69,6 +76,11 @@
 		margin: 0 0 var(--space-3) 0;
 		text-align: center;
 		font-size: 32px;
+	}
+	.rated-page__books-heading {
+		font-weight: var(--font-weight-normal);
+		margin: 0 0 var(--space-3) 0;
+		text-align: center;
 	}
 	.rated-page__empty {
 		color: var(--color-text-muted);

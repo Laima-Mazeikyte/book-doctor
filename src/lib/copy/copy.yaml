@@ -44,7 +44,8 @@ en:
       loadBooks: "Could not load books right now. Try again later."
       searchFailed: "Search failed. Please try again."
     emptySearch: "No books found for '{{query}}'."
-    endOfList: "You've reached the end of the list. Rate books or use search to get personalized suggestions."
+    loadMoreBooks: "Load more books"
+    loadMoreBooksAriaLabel: "Load more books into the list"
     aria:
       searching: "Searching…"
       loadingBooks: "Loading books…"
@@ -54,6 +55,7 @@ en:
 
   bookmarks:
     title: "Books I've marked"
+    allTitles: "All bookmarked titles"
     empty: "No bookmarks yet. Bookmark from recommendations or the rate page."
   notInterested:
     title: "Not interested"
@@ -73,8 +75,6 @@ en:
     noRecommendationsYet: "No recommendations yet. Rate more books and try again."
     failedToLoad: "Failed to load recommendations"
     failedToLoadHistory: "Failed to load recommendation history"
-    uniqueBooksCount: "{{count}} book"
-    uniqueBooksCountPlural: "s"
     allUniqueTitles: "All recommended titles"
     recommendationBatches: "Past recommendation runs"
     aria:
@@ -88,6 +88,8 @@ en:
 
   shared:
     skipToContent: "Skip to main content"
+    listBookCount: "{{count}} book"
+    listBookCountPlural: "s"
     header:
       siteName: "Book Doctor"
       logoAlt: "Book Doctor"
@@ -205,10 +207,10 @@ en:
       backHome: "Back to home"
     bugModal:
       title: "Report a bug or send feedback"
-      description: "Description"
+      description: "Message or question"
       descriptionPlaceholder: "What went wrong or what would you like to tell us?"
-      name: "Your name"
-      namePlaceholder: "Your name"
+      name: "Email (optional)"
+      namePlaceholder: "email@example.com"
       submit: "Send feedback"
       submitting: "Sending…"
       close: "Close"

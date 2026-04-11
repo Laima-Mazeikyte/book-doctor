@@ -181,7 +181,7 @@
 	gap: 0;
 	justify-content: flex-start;
 	align-items: center;
-	min-width: 0;
+	min-width: min-content;
 }
 .book-card__summary-content .book-card__star {
 	box-sizing: border-box;
@@ -210,8 +210,9 @@
 	align-items: center;
 	justify-content: center;
 	flex-shrink: 0;
-	width: 24px;
-	height: 24px;
+	/* Fills most of the 40px tap target (glyph was 24px and read as “small” on phones). */
+	width: 34px;
+	height: 34px;
 }
 .book-card__summary-content .book-card__star-icon :global(svg) {
 	width: 100%;
@@ -229,27 +230,19 @@
 	background: transparent;
 	color: var(--color-book-rating-star);
 }
-@media (max-width: 479px) {
-	.book-card__rating-wrap--summary-sheet {
-		flex-wrap: wrap;
-	}
-	.book-card__summary-content .book-card__rating {
-		min-width: 0;
-	}
-	.book-card__summary-content .book-card__star {
-		width: var(--book-card-star-min-sm, 1.75rem);
-		height: var(--book-card-star-min-sm, 1.75rem);
-		min-width: var(--book-card-star-min-sm, 1.75rem);
-		min-height: var(--book-card-star-min-sm, 1.75rem);
-	}
-}
 button.book-card__summary-remove-rating {
 	box-sizing: border-box;
 	flex: 0 0 auto;
+	flex-shrink: 0;
 	min-height: 40px;
 	height: 40px;
 	padding-block: 0;
 	padding-inline: var(--space-4);
+}
+button.book-card__summary-remove-rating.book-card__summary-remove-rating--layout-only {
+	visibility: hidden;
+	pointer-events: none;
+	user-select: none;
 }
 .book-card__summary {
 	font-family: var(--typ-body-font-family);

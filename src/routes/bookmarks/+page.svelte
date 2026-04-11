@@ -71,33 +71,45 @@
 <div class="bookmarks-page">
 	<h1 class="bookmarks-page__title typ-display2">{t('bookmarks.title')}</h1>
 	{#if loading}
-		<ul class="bookmarks-page__list book-card-grid" aria-busy="true" aria-label={t('bookmarks.title')}>
-			{#each Array(6) as _}
-				<li><BookCardSkeleton /></li>
-			{/each}
-		</ul>
+		<section class="bookmarks-page__books" aria-labelledby="bookmarks-books-heading">
+			<h2 id="bookmarks-books-heading" class="bookmarks-page__books-heading typ-body">
+				{t('bookmarks.allTitles')}
+			</h2>
+			<ul class="bookmarks-page__list book-card-grid" aria-busy="true" aria-label={t('bookmarks.title')}>
+				{#each Array(6) as _}
+					<li><BookCardSkeleton /></li>
+				{/each}
+			</ul>
+		</section>
 	{:else if error}
 		<p class="bookmarks-page__error" role="alert">{error}</p>
 	{:else if books.length === 0}
 		<p class="bookmarks-page__empty">{t('bookmarks.empty')}</p>
 	{:else}
-		<ul class="bookmarks-page__list book-card-grid" aria-label={t('shared.recommendationCard.bookmark')}>
-			{#each books as book (book.id)}
-				<li>
-					<BookCard
-						context="bookmarks"
-						{book}
-						bookmarked={$planToReadStore.has(book.id)}
-						onBookmark={(id) => handleBookmark(book, id)}
-						currentRating={$ratingsStore.get(book.id) ?? null}
-						onRate={(id, value) => ratingsStore.setRating(id, value, book.book_id, book)}
-						onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id)}
-						notInterested={$notInterestedStore.has(book.book_id ?? 0)}
-						onNotInterested={() => handleNotInterested(book)}
-					/>
-				</li>
-			{/each}
-		</ul>
+		<section class="bookmarks-page__books" aria-labelledby="bookmarks-books-heading">
+			<h2 id="bookmarks-books-heading" class="bookmarks-page__books-heading typ-body">
+				{t('shared.listBookCount', { count: books.length })}{books.length === 1
+					? ''
+					: t('shared.listBookCountPlural')}
+			</h2>
+			<ul class="bookmarks-page__list book-card-grid" aria-label={t('shared.recommendationCard.bookmark')}>
+				{#each books as book (book.id)}
+					<li>
+						<BookCard
+							context="bookmarks"
+							{book}
+							bookmarked={$planToReadStore.has(book.id)}
+							onBookmark={(id) => handleBookmark(book, id)}
+							currentRating={$ratingsStore.get(book.id) ?? null}
+							onRate={(id, value) => ratingsStore.setRating(id, value, book.book_id, book)}
+							onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id)}
+							notInterested={$notInterestedStore.has(book.book_id ?? 0)}
+							onNotInterested={() => handleNotInterested(book)}
+						/>
+					</li>
+				{/each}
+			</ul>
+		</section>
 	{/if}
 </div>
 
@@ -106,6 +118,11 @@
 		padding-bottom: var(--space-8);
 	}
 	.bookmarks-page__title {
+		margin: 0 0 var(--space-3) 0;
+		text-align: center;
+	}
+	.bookmarks-page__books-heading {
+		font-weight: var(--font-weight-normal);
 		margin: 0 0 var(--space-3) 0;
 		text-align: center;
 	}

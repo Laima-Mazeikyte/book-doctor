@@ -67,6 +67,7 @@
 
 	const showAppFooter = $derived.by(() => {
 		const pathname = $page.url.pathname;
+		if (pathname === '/rate/recommendations') return true;
 		return pathname !== '/rate' && !pathname.startsWith('/rate/');
 	});
 

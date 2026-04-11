@@ -268,7 +268,9 @@
 				{#if uniqueBooksLoading}
 					{t('recommendations.allUniqueTitles')}
 				{:else}
-					{t('recommendations.uniqueBooksCount', { count: uniqueBooks.length })}{uniqueBooks.length === 1 ? '' : t('recommendations.uniqueBooksCountPlural')}
+					{t('shared.listBookCount', { count: uniqueBooks.length })}{uniqueBooks.length === 1
+						? ''
+						: t('shared.listBookCountPlural')}
 				{/if}
 			</h2>
 			{#if uniqueBooksLoading}

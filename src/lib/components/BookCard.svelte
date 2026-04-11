@@ -509,6 +509,7 @@
 				}}
 				onRatingGroupMouseLeave={() => (hoverRating = 0)}
 				canRemoveRatingInSheet={canRemoveRatingInSheet}
+				reserveSummaryRemoveLayoutSlot={isRateContext}
 				onRemoveRatingClick={handleSheetRemoveRating}
 				showBookmarkAction={showSummaryBookmarkAction}
 				showNotInterestedAction={showSummaryNotInterestedAction}

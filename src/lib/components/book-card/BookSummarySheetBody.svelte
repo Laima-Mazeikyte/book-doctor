@@ -25,6 +25,11 @@
 		onRatingGroupMouseLeave?: () => void;
 		canRemoveRatingInSheet: boolean;
 		onRemoveRatingClick: (e: MouseEvent) => void;
+		/**
+		 * When true and there is no rating yet, an invisible remove control still occupies
+		 * layout width so stars do not jump when the real Remove control appears (rate flow).
+		 */
+		reserveSummaryRemoveLayoutSlot?: boolean;
 		showBookmarkAction: boolean;
 		showNotInterestedAction: boolean;
 		bookmarked: boolean;
@@ -51,12 +56,16 @@
 		onRatingGroupMouseLeave,
 		canRemoveRatingInSheet,
 		onRemoveRatingClick,
+		reserveSummaryRemoveLayoutSlot = false,
 		showBookmarkAction,
 		showNotInterestedAction,
 		bookmarked,
 		onBookmarkClick,
 		onNotInterestedClick
 	}: Props = $props();
+
+	const showSummaryRemoveSlot = $derived(canRemoveRatingInSheet || reserveSummaryRemoveLayoutSlot);
+	const summaryRemoveLayoutOnly = $derived(reserveSummaryRemoveLayoutSlot && !canRemoveRatingInSheet);
 </script>
 
 {#snippet summaryStarGlyph(filled: boolean)}
@@ -142,12 +151,19 @@
 				</button>
 			{/each}
 		</div>
-		{#if canRemoveRatingInSheet}
+		{#if showSummaryRemoveSlot}
 			<button
 				type="button"
 				class="btn btn--tertiary btn--compact book-card__summary-remove-rating"
-				aria-label={t('shared.ratingsBar.removeRatingFor', { title: book.title })}
-				onclick={onRemoveRatingClick}
+				class:book-card__summary-remove-rating--layout-only={summaryRemoveLayoutOnly}
+				aria-hidden={summaryRemoveLayoutOnly ? true : undefined}
+				aria-label={summaryRemoveLayoutOnly
+					? undefined
+					: t('shared.ratingsBar.removeRatingFor', { title: book.title })}
+				tabindex={summaryRemoveLayoutOnly ? -1 : undefined}
+				onclick={(e) => {
+					if (!summaryRemoveLayoutOnly) onRemoveRatingClick(e);
+				}}
 			>
 				<span class="btn__label">{t('shared.ratingsBar.remove')}</span>
 			</button>
@@ -212,7 +228,3 @@
 		</div>
 	{/if}
 </div>
-
-<style>
-	@import './book-summary-sheet-body.css';
-</style>
