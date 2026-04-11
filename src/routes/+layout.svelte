@@ -12,6 +12,7 @@
 	import AppFooter from '$lib/components/AppFooter.svelte';
 	import BugReportModal from '$lib/components/BugReportModal.svelte';
 	import { getHcaptchaTokenForAnonymousAuth } from '$lib/hcaptcha-anonymous';
+	import { notifyLibraryPersistedMutationForBrowseFeedWarm, onAfterNavigateForBrowseFeedWarm } from '$lib/feed/browseFeedWarm';
 	import { getSupabase } from '$lib/supabase';
 	import { authStore, clearPasswordRecoveryFlag, passwordRecoveryActive } from '$lib/stores/auth';
 	import { planToReadStore } from '$lib/stores/planToRead';
@@ -104,6 +105,7 @@
 					console.error('[ratings] Failed to save rating:', error.message);
 					throw error;
 				}
+				notifyLibraryPersistedMutationForBrowseFeedWarm();
 			},
 			async remove(bookIdNum) {
 				const { error } = await supabase
@@ -115,6 +117,7 @@
 					console.error('[ratings] Failed to remove rating:', error.message);
 					throw error;
 				}
+				notifyLibraryPersistedMutationForBrowseFeedWarm();
 			}
 		});
 	}
@@ -260,6 +263,7 @@
 					.upsert({ user_id: userId, book_id: bookIdNum }, { onConflict: 'user_id,book_id' })
 					.then(({ error }) => {
 						if (error) console.error('[bookmarks] Failed to add:', error.message);
+						else notifyLibraryPersistedMutationForBrowseFeedWarm();
 					});
 			},
 			remove(bookIdNum) {
@@ -270,6 +274,7 @@
 					.eq('book_id', bookIdNum)
 					.then(({ error }) => {
 						if (error) console.error('[bookmarks] Failed to remove:', error.message);
+						else notifyLibraryPersistedMutationForBrowseFeedWarm();
 					});
 			}
 		});
@@ -306,6 +311,7 @@
 					.upsert({ user_id: userId, book_id: bookIdNum }, { onConflict: 'user_id,book_id' })
 					.then(({ error }) => {
 						if (error) console.error('[not-interested] Failed to add:', error.message);
+						else notifyLibraryPersistedMutationForBrowseFeedWarm();
 					});
 			},
 			remove(bookIdNum) {
@@ -316,6 +322,7 @@
 					.eq('book_id', bookIdNum)
 					.then(({ error }) => {
 						if (error) console.error('[not-interested] Failed to remove:', error.message);
+						else notifyLibraryPersistedMutationForBrowseFeedWarm();
 					});
 			}
 		});
@@ -399,6 +406,7 @@
 		) {
 			clearPasswordRecoveryFlag();
 		}
+		onAfterNavigateForBrowseFeedWarm(from?.url, to?.url);
 	});
 
 	$effect(() => {

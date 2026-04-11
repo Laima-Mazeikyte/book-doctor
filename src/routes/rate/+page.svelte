@@ -25,12 +25,11 @@
 		consumeRateSearchExternalEntry
 	} from '$lib/rateSearchExternalNav';
 	import { searchBooks, warmBookSearch } from '$lib/search';
+	import { insertFeedRequestRow, pollCuratedFeedRequest } from '$lib/feed/warmCuratedFeed';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
 
 	const SCROLL_THRESHOLD = 60;
-	const FEED_POLL_MS = 3000;
-	const FEED_TIMEOUT_MS = 60000;
 	const FEED_PAGE_SIZE = 20;
 	const EMPTY_PAGE_CHAIN_MAX = 25;
 	/** Wait for layout auth (anon or session) before choosing feed vs Top 100 on cold load. */
@@ -131,10 +130,13 @@
 		}
 	}
 
-	function restoreFeedScrollAfterOverlayClose() {
+	function restoreFeedScrollAfterOverlayClose(opts?: { refreshMainIfAtTop?: boolean }) {
 		void tick().then(() => {
 			requestAnimationFrame(() => {
 				window.scrollTo({ top: savedScrollY, left: 0, behavior: 'auto' });
+				if (opts?.refreshMainIfAtTop === true && savedScrollY <= SCROLL_THRESHOLD) {
+					void reloadMainListAfterSearchCloseWithNewFeedRequest();
+				}
 			});
 		});
 	}
@@ -162,7 +164,7 @@
 		if (browser && consumeRateSearchExternalEntry()) {
 			if (opts?.fromPopstate) {
 				void goto(resolve('/rate'), { replaceState: true, noScroll: true, keepFocus: false });
-				restoreFeedScrollAfterOverlayClose();
+				restoreFeedScrollAfterOverlayClose({ refreshMainIfAtTop: true });
 				return;
 			}
 			history.back();
@@ -174,7 +176,7 @@
 		 * `keepFocus: false` avoids leaving focus on the overlay input while it unmounts.
 		 */
 		void goto(resolve('/rate'), { replaceState: true, noScroll: true, keepFocus: false });
-		restoreFeedScrollAfterOverlayClose();
+		restoreFeedScrollAfterOverlayClose({ refreshMainIfAtTop: true });
 	}
 
 	async function handleSearchAuthor(author: string) {
@@ -598,6 +600,66 @@
 		}
 	}
 
+	/**
+	 * After closing search near the top: persist ratings, insert a new `feed_requests` row, poll
+	 * until complete, then replace the main list (so Supabase shows a new request — not only GET latest).
+	 */
+	async function reloadMainListAfterSearchCloseWithNewFeedRequest() {
+		loadingInitial = true;
+		popularError = null;
+		sessionShownIds.clear();
+
+		try {
+			await ratingsStore.flushPending();
+
+			const token = await waitForAccessToken(AUTH_WAIT_MS);
+			if (!token) {
+				startedFromLatestFeed = false;
+				await loadPopular(0, 0);
+				return;
+			}
+
+			const supabase = getSupabase();
+			const user = get(authStore).user;
+			if (!supabase || !user?.id) {
+				await loadInitialMainList();
+				return;
+			}
+
+			const requestId = await insertFeedRequestRow(supabase, user.id);
+			if (requestId == null) {
+				startedFromLatestFeed = false;
+				await loadPopular(0, 0);
+				return;
+			}
+
+			const outcome = await pollCuratedFeedRequest(requestId, token);
+			if (outcome.kind === 'completed' && outcome.books.length > 0) {
+				startedFromLatestFeed = true;
+				const appended = mergeMainListBooks(outcome.books, 'replace');
+				if (appended.length === 0) {
+					startedFromLatestFeed = false;
+					await loadPopular(0, 0);
+				} else {
+					lastAppendWasFeed = true;
+					setPendingFromAppended(appended);
+					hasMore = appended.length >= FEED_PAGE_SIZE;
+				}
+				return;
+			}
+
+			/* New request failed or timed out — fall back to latest snapshot, then Top 100. */
+			await loadInitialMainList();
+		} catch (e) {
+			console.error('[rate] reloadMainListAfterSearchCloseWithNewFeedRequest', e);
+			popularError = t('rate.errors.loadBooks');
+			startedFromLatestFeed = false;
+			await loadPopular(0, 0);
+		} finally {
+			loadingInitial = false;
+		}
+	}
+
 	async function loadInitialMainList() {
 		loadingInitial = true;
 		popularError = null;
@@ -611,7 +673,7 @@
 				return;
 			}
 
-			const res = await fetch('/api/feed/latest', {
+			const res = await fetch(resolve('/api/feed/latest'), {
 				headers: { Authorization: `Bearer ${token}` }
 			});
 			if (res.ok) {
@@ -673,7 +735,7 @@
 			const headers: Record<string, string> = {};
 			const accessToken = get(authStore).session?.access_token ?? null;
 			if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
-			const res = await fetch(`/api/books/popular?${params.toString()}`, { headers });
+			const res = await fetch(`${resolve('/api/books/popular')}?${params.toString()}`, { headers });
 			if (!res.ok) {
 				if (offset > 0) hasMore = false;
 				throw new Error(`HTTP ${res.status}`);
@@ -723,59 +785,26 @@
 				return;
 			}
 
-			const { data, error: insertError } = await supabase
-				.from('feed_requests')
-				.insert({ user_id: user.id })
-				.select('id')
-				.single();
+			const requestId = await insertFeedRequestRow(supabase, user.id);
 
-			if (insertError || data?.id == null) {
-				console.error('[rate] feed_requests insert:', insertError);
+			if (requestId == null) {
 				loadingMore = false;
 				await loadPopular(popularContinuationOffset, 0);
 				return;
 			}
 
-			const requestId = String(data.id);
-			const started = Date.now();
+			const outcome = await pollCuratedFeedRequest(requestId, token);
 
-			while (Date.now() - started < FEED_TIMEOUT_MS) {
-				const res = await fetch(`/api/feed?request_id=${encodeURIComponent(requestId)}`, {
-					headers: { Authorization: `Bearer ${token}` }
-				});
-
-				if (!res.ok) {
-					loadingMore = false;
-					await loadPopular(popularContinuationOffset, 0);
-					return;
+			if (outcome.kind === 'completed') {
+				const appended = mergeMainListBooks(outcome.books, 'append');
+				if (appended.length === 0) {
+					hasMore = false;
+				} else {
+					hasMore = appended.length >= FEED_PAGE_SIZE;
+					lastAppendWasFeed = true;
+					setPendingFromAppended(appended);
 				}
-
-				const payload: {
-					status: string;
-					books: Book[];
-					request_id: string;
-					error_message?: string | null;
-				} = await res.json();
-
-				if (payload.status === 'failed' || payload.status === 'skipped') {
-					loadingMore = false;
-					await loadPopular(popularContinuationOffset, 0);
-					return;
-				}
-
-				if (payload.status === 'completed') {
-					const appended = mergeMainListBooks(payload.books, 'append');
-					if (appended.length === 0) {
-						hasMore = false;
-					} else {
-						hasMore = appended.length >= FEED_PAGE_SIZE;
-						lastAppendWasFeed = true;
-						setPendingFromAppended(appended);
-					}
-					return;
-				}
-
-				await new Promise((r) => setTimeout(r, FEED_POLL_MS));
+				return;
 			}
 
 			loadingMore = false;
