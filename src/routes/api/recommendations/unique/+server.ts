@@ -11,10 +11,10 @@ export const GET: RequestHandler = async ({ request }) => {
 		: null;
 	const supabase = createSupabaseWithAuth(accessToken);
 
-	// Get user's recommendation runs (request_ids) from recommendation_log
+	// Get user's recommendation runs (newest first) for per-book recency ordering
 	const { data: logs, error: logError } = await supabase
 		.from('recommendation_log')
-		.select('request_id')
+		.select('request_id, created_at')
 		.order('created_at', { ascending: false });
 
 	if (logError) {
@@ -30,7 +30,7 @@ export const GET: RequestHandler = async ({ request }) => {
 	// Get all items for those runs (may contain duplicates across runs)
 	const { data: items, error: itemsError } = await supabase
 		.from('recommendation_items')
-		.select('book_id')
+		.select('book_id, request_id')
 		.in('request_id', requestIds);
 
 	if (itemsError) {
@@ -38,11 +38,31 @@ export const GET: RequestHandler = async ({ request }) => {
 		throw error(500, 'Failed to load recommendation items');
 	}
 
-	let uniqueBookIds = [...new Set(
-		(items ?? [])
-			.map((i) => parseInt(i.book_id, 10))
-			.filter((id) => !Number.isNaN(id))
-	)];
+	const itemsByRequestId = new Map<string, number[]>();
+	for (const row of items ?? []) {
+		const bid = parseInt(row.book_id, 10);
+		if (Number.isNaN(bid) || !row.request_id) continue;
+		const list = itemsByRequestId.get(row.request_id) ?? [];
+		list.push(bid);
+		itemsByRequestId.set(row.request_id, list);
+	}
+
+	let uniqueBookIds = [...new Set([...itemsByRequestId.values()].flat())];
+
+	// Most recent run that contained each book (logs are newest-first)
+	const lastRecommendedMs = new Map<number, number>();
+	for (const log of logs ?? []) {
+		const rid = log.request_id;
+		if (!rid) continue;
+		const runBookIds = itemsByRequestId.get(rid) ?? [];
+		const tsRaw = log.created_at ? new Date(log.created_at).getTime() : 0;
+		const ts = Number.isFinite(tsRaw) ? tsRaw : 0;
+		for (const bid of runBookIds) {
+			if (!lastRecommendedMs.has(bid)) {
+				lastRecommendedMs.set(bid, ts);
+			}
+		}
+	}
 
 	// Exclude not-interested when authenticated
 	if (accessToken && uniqueBookIds.length > 0) {
@@ -97,8 +117,13 @@ export const GET: RequestHandler = async ({ request }) => {
 		};
 	});
 
-	// Sort by title for consistent list
-	books.sort((a, b) => (a.title ?? '').localeCompare(b.title ?? ''));
+	// Newest recommendation batch first; stable tie-break by title
+	books.sort((a, b) => {
+		const ta = lastRecommendedMs.get(a.book_id ?? 0) ?? 0;
+		const tb = lastRecommendedMs.get(b.book_id ?? 0) ?? 0;
+		if (tb !== ta) return tb - ta;
+		return (a.title ?? '').localeCompare(b.title ?? '');
+	});
 
 	return json({ books });
 };
