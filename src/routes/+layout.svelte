@@ -350,8 +350,9 @@
 
 	onMount(() => {
 		ratingsStore.hydratePendingFromLocalStorage();
-		const supabase = getSupabase();
-		if (!supabase) return;
+		const supabaseClient = getSupabase();
+		if (!supabaseClient) return;
+		const supabase = supabaseClient;
 
 		const {
 			data: { subscription }
@@ -363,39 +364,135 @@
 			if (session?.user) void ratingsStore.flushPending();
 		});
 
-		void (async () => {
+		const AUTH_RETRY_DELAYS_MS = [1000, 3000, 8000];
+		let authInitInFlight = false;
+		let authRetryTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+		let authRetryAttempt = 0;
+
+		function clearAuthRetryTimer() {
+			if (authRetryTimer != null) {
+				clearTimeout(authRetryTimer);
+				authRetryTimer = null;
+			}
+		}
+
+		function cancelAnonymousAuthRetries() {
+			clearAuthRetryTimer();
+			authRetryAttempt = 0;
+		}
+
+		function scheduleAnonymousAuthRetry() {
+			const delayMs = AUTH_RETRY_DELAYS_MS[authRetryAttempt];
+			if (delayMs === undefined) {
+				console.warn('[auth] Anonymous sign-in retry budget exhausted');
+				return;
+			}
+			authRetryAttempt += 1;
+			clearAuthRetryTimer();
+			authRetryTimer = globalThis.setTimeout(() => {
+				authRetryTimer = null;
+				void ensureSessionOrAnonymous(false);
+			}, delayMs);
+		}
+
+		async function ensureSessionOrAnonymous(fromLifecycleTrigger: boolean) {
+			if (authInitInFlight) return;
+			if (fromLifecycleTrigger) {
+				cancelAnonymousAuthRetries();
+			}
+			authInitInFlight = true;
 			try {
 				const session = await getSessionAfterUrlTokens(supabase);
-				if (!session) {
-					let captchaToken: string | undefined;
-					try {
-						captchaToken = await getHcaptchaTokenForAnonymousAuth();
-					} catch (e) {
-						console.error('[auth] hCaptcha for anonymous sign-in failed:', e);
-					}
-					const { data: signInData, error } = await supabase.auth.signInAnonymously(
-						captchaToken ? { options: { captchaToken } } : undefined
-					);
-					if (error) {
-						console.error('[auth] Anonymous sign-in failed:', error.message, error);
-						return;
-					}
-					authStore.setSession(signInData?.session ?? null);
-					if (signInData?.session?.user) void ratingsStore.flushPending();
-					if (signInData?.user) {
-						console.debug('[auth] Anonymous sign-in OK, user id:', signInData.user.id);
-					}
-				} else {
+				if (session) {
+					cancelAnonymousAuthRetries();
 					authStore.setSession(session);
 					if (session.user) void ratingsStore.flushPending();
+					return;
 				}
+
+				if (get(authStore).session) {
+					cancelAnonymousAuthRetries();
+					return;
+				}
+
+				let captchaToken: string | undefined;
+				try {
+					captchaToken = await getHcaptchaTokenForAnonymousAuth();
+				} catch (e) {
+					console.error('[auth] hCaptcha for anonymous sign-in failed:', e);
+				}
+				const { data: signInData, error } = await supabase.auth.signInAnonymously(
+					captchaToken ? { options: { captchaToken } } : undefined
+				);
+
+				if (!error && signInData?.session) {
+					cancelAnonymousAuthRetries();
+					authStore.setSession(signInData.session);
+					if (signInData.session.user) void ratingsStore.flushPending();
+					if (signInData.user) {
+						console.debug('[auth] Anonymous sign-in OK, user id:', signInData.user.id);
+					}
+					return;
+				}
+
+				if (error) {
+					console.error('[auth] Anonymous sign-in failed:', error.message, error);
+				}
+
+				const {
+					data: { session: sessionAfterFail }
+				} = await supabase.auth.getSession();
+				if (sessionAfterFail) {
+					cancelAnonymousAuthRetries();
+					authStore.setSession(sessionAfterFail);
+					if (sessionAfterFail.user) void ratingsStore.flushPending();
+					return;
+				}
+				if (get(authStore).session) {
+					cancelAnonymousAuthRetries();
+					return;
+				}
+
+				scheduleAnonymousAuthRetry();
 			} catch (e) {
 				console.error('[auth] Auth setup error', e);
+				if (!get(authStore).session) {
+					scheduleAnonymousAuthRetry();
+				}
+			} finally {
+				authInitInFlight = false;
 			}
-		})();
+		}
+
+		const requestAuthRetryFromLifecycle = () => {
+			if (get(authStore).session) return;
+			if (authInitInFlight) return;
+			void ensureSessionOrAnonymous(true);
+		};
+
+		const onOnlineForAuth = () => {
+			requestAuthRetryFromLifecycle();
+		};
+		const onFocusForAuth = () => {
+			requestAuthRetryFromLifecycle();
+		};
+		const onVisibilityForAuth = () => {
+			if (document.visibilityState !== 'visible') return;
+			requestAuthRetryFromLifecycle();
+		};
+
+		window.addEventListener('online', onOnlineForAuth);
+		window.addEventListener('focus', onFocusForAuth);
+		document.addEventListener('visibilitychange', onVisibilityForAuth);
+
+		void ensureSessionOrAnonymous(false);
 
 		return () => {
 			subscription.unsubscribe();
+			cancelAnonymousAuthRetries();
+			window.removeEventListener('online', onOnlineForAuth);
+			window.removeEventListener('focus', onFocusForAuth);
+			document.removeEventListener('visibilitychange', onVisibilityForAuth);
 		};
 	});
 

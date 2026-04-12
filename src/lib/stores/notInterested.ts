@@ -14,6 +14,29 @@ export interface NotInterestedPersistence {
 function createNotInterestedStore() {
 	const { subscribe, set, update } = writable<Set<number>>(new Set());
 	let persistence: NotInterestedPersistence | null = null;
+	const pendingOps = new Map<number, 'add' | 'remove'>();
+
+	function queuePendingOp(bookIdNum: number, action: 'add' | 'remove') {
+		pendingOps.set(bookIdNum, action);
+	}
+
+	function applyPendingOps(base: Set<number>): Set<number> {
+		const next = new Set(base);
+		for (const [bookIdNum, action] of pendingOps) {
+			if (action === 'add') next.add(bookIdNum);
+			else next.delete(bookIdNum);
+		}
+		return next;
+	}
+
+	function flushPendingOps() {
+		if (!persistence || pendingOps.size === 0) return;
+		for (const [bookIdNum, action] of pendingOps) {
+			if (action === 'add') void Promise.resolve(persistence.add(bookIdNum));
+			else void Promise.resolve(persistence.remove(bookIdNum));
+		}
+		pendingOps.clear();
+	}
 
 	return {
 		subscribe,
@@ -27,10 +50,11 @@ function createNotInterestedStore() {
 		},
 		setPersistence(p: NotInterestedPersistence | null) {
 			persistence = p;
+			if (persistence) flushPendingOps();
 		},
 		/** Hydrate from server (GET /api/not-interested) or after merge. */
 		hydrate(bookIds: number[]) {
-			set(new Set(bookIds));
+			set(applyPendingOps(new Set(bookIds)));
 		},
 		/** Hydrate from localStorage (anonymous user). */
 		hydrateFromLocalStorage() {
@@ -82,11 +106,13 @@ function createNotInterestedStore() {
 				if (nextSet.has(bookIdNum)) {
 					nextSet.delete(bookIdNum);
 					next = false;
-					void Promise.resolve(persistence?.remove(bookIdNum));
+					if (persistence) void Promise.resolve(persistence.remove(bookIdNum));
+					else queuePendingOp(bookIdNum, 'remove');
 				} else {
 					nextSet.add(bookIdNum);
 					next = true;
-					void Promise.resolve(persistence?.add(bookIdNum));
+					if (persistence) void Promise.resolve(persistence.add(bookIdNum));
+					else queuePendingOp(bookIdNum, 'add');
 				}
 				return nextSet;
 			});
@@ -97,7 +123,8 @@ function createNotInterestedStore() {
 				if (s.has(bookIdNum)) return s;
 				const next = new Set(s);
 				next.add(bookIdNum);
-				void Promise.resolve(persistence?.add(bookIdNum));
+				if (persistence) void Promise.resolve(persistence.add(bookIdNum));
+				else queuePendingOp(bookIdNum, 'add');
 				return next;
 			});
 		},
@@ -106,12 +133,14 @@ function createNotInterestedStore() {
 				if (!s.has(bookIdNum)) return s;
 				const next = new Set(s);
 				next.delete(bookIdNum);
-				void Promise.resolve(persistence?.remove(bookIdNum));
+				if (persistence) void Promise.resolve(persistence.remove(bookIdNum));
+				else queuePendingOp(bookIdNum, 'remove');
 				return next;
 			});
 		},
 		reset() {
 			set(new Set());
+			pendingOps.clear();
 		}
 	};
 }

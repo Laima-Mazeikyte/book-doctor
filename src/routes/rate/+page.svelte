@@ -296,6 +296,8 @@
 	let pendingBatchIds = $state<string[]>([]);
 	let pendingBatchNumericIds = $state<number[]>([]);
 	let suppressStrictFeedEndUntil = $state(0);
+	/** Cold `loadInitialMainList` used Top 100 because no access token was ready in time; retry feed once auth exists. */
+	let mainListFellBackDueToMissingAuthToken = $state(false);
 
 	let mainListPrefetchPx = $state(600);
 
@@ -668,10 +670,13 @@
 		try {
 			const token = await waitForAccessToken(AUTH_WAIT_MS);
 			if (!token) {
+				mainListFellBackDueToMissingAuthToken = true;
 				startedFromLatestFeed = false;
 				await loadPopular(0, 0);
 				return;
 			}
+
+			mainListFellBackDueToMissingAuthToken = false;
 
 			const res = await fetch(resolve('/api/feed/latest'), {
 				headers: { Authorization: `Bearer ${token}` }
@@ -709,6 +714,15 @@
 			loadingInitial = false;
 		}
 	}
+
+	$effect(() => {
+		if (!browser) return;
+		if (!mainListFellBackDueToMissingAuthToken) return;
+		if (!$authStore.session?.access_token) return;
+		if (isSearching) return;
+		if (loadingInitial) return;
+		void loadInitialMainList();
+	});
 
 	async function loadPopular(offset: number, depth: number) {
 		if (depth > EMPTY_PAGE_CHAIN_MAX) {
