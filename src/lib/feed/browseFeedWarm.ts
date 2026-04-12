@@ -53,14 +53,15 @@ export function notifyLibraryPersistedMutationForBrowseFeedWarm(): void {
 	const auth = get(authStore);
 	const user = auth.user;
 	const session = auth.session;
+	// Do not clear `feedWarmPending` here. Anonymous (or any) session can lag behind the first
+	// persisted write after leaving /rate; clearing the flag dropped the warm forever (regressed
+	// in aa401ed vs never arming a dead path before).
 	if (!session?.access_token || !user?.id) {
-		feedWarmPending = false;
 		return;
 	}
 
 	const supabase = getSupabase();
 	if (!supabase) {
-		feedWarmPending = false;
 		return;
 	}
 
@@ -74,11 +75,18 @@ export function notifyLibraryPersistedMutationForBrowseFeedWarm(): void {
 			const { data: sessionData } = await supabase.auth.getSession();
 			if (!sessionData.session) {
 				console.warn('[browseFeedWarm] skip warm: no Supabase session on client');
+				feedWarmPending = true;
 				return;
 			}
 			const requestId = await insertFeedRequestRow(supabase, userId);
-			if (requestId) await pollCuratedFeedRequest(requestId, token);
+			if (!requestId) {
+				// If auth/client state is still settling, keep the warm armed for the next persisted write.
+				feedWarmPending = true;
+				return;
+			}
+			await pollCuratedFeedRequest(requestId, token);
 		} catch (e) {
+			feedWarmPending = true;
 			console.error('[browseFeedWarm]', e);
 		} finally {
 			feedWarmInFlight = false;
