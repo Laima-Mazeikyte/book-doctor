@@ -11,26 +11,6 @@ declare global {
 		}
 		// interface Platform {}
 	}
-
-	interface Window {
-		hcaptcha?: {
-			render: (
-				container: string | HTMLElement,
-				params: Record<string, unknown> & {
-					sitekey: string;
-					size?: 'normal' | 'compact' | 'invisible';
-					theme?: 'light' | 'dark';
-					callback?: (token: string) => void;
-					'error-callback'?: () => void;
-					'expired-callback'?: () => void;
-				}
-			) => number;
-			execute: (widgetId: number) => void;
-			getResponse: (widgetId: number) => string;
-			reset: (widgetId: number) => void;
-			remove: (widgetId: number) => void;
-		};
-	}
 }
 
 declare module '*.yaml' {

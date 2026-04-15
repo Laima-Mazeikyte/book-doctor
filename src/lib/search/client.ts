@@ -1,5 +1,7 @@
 import { browser } from '$app/environment';
-import { base } from '$app/paths';
+import { base, resolve } from '$app/paths';
+
+import type { Book } from '$lib/types/book';
 
 import { searchBooksViaApi } from './fallback';
 import { SEARCH_PAGE_SIZE } from './types';
@@ -152,6 +154,31 @@ export function warmBookSearch(): void {
 	});
 }
 
+/** Overlay live `books.summary` from the API; static FlexSearch docs can omit or stale summaries. */
+async function enrichFlexSearchBooksWithLiveSummaries(books: Book[]): Promise<Book[]> {
+	if (books.length === 0) return books;
+
+	const ids = [...new Set(books.map((b) => b.id).filter(Boolean))];
+	if (ids.length === 0) return books;
+
+	try {
+		const params = new URLSearchParams({ ids: ids.join(',') });
+		const res = await fetch(`${resolve('/api/books/summaries-by-ids')}?${params.toString()}`);
+		if (!res.ok) return books;
+
+		const data = (await res.json()) as { summaries?: Record<string, string> };
+		const summaries = data.summaries ?? {};
+
+		return books.map((b) => {
+			const fromDb = summaries[b.id];
+			if (fromDb?.trim()) return { ...b, summary: fromDb };
+			return b;
+		});
+	} catch {
+		return books;
+	}
+}
+
 export async function searchBooks(
 	query: string,
 	offset = 0,
@@ -173,7 +200,15 @@ export async function searchBooks(
 			throw new Error(`Unexpected worker response: ${response.type}`);
 		}
 
-		return response.result;
+		const result = response.result;
+		if (result.source === 'flexsearch' && result.books.length > 0) {
+			return {
+				...result,
+				books: await enrichFlexSearchBooksWithLiveSummaries(result.books)
+			};
+		}
+
+		return result;
 	} catch (error) {
 		disableWorker(error);
 		return searchBooksViaApi(query, offset);

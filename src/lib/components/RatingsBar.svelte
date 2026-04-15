@@ -187,7 +187,9 @@
 		pendingRemoveEndByBookId = new Map();
 	}
 
-	function schedulePendingRemove(bookId: string, bookIdNum: number | undefined) {
+	function schedulePendingRemove(book: Book) {
+		const bookId = book.id;
+		const bookIdNum = book.book_id;
 		clearPendingRemove(bookId);
 		pendingRemoveIds = new Set(pendingRemoveIds).add(bookId);
 		const endsAt = Date.now() + PENDING_REMOVE_MS;
@@ -199,6 +201,7 @@
 			nextEnds.delete(bookId);
 			pendingRemoveEndByBookId = nextEnds;
 			ratingsStore.removeRating(bookId, bookIdNum);
+			summaryHooks?.onAfterRate?.(book);
 		}, PENDING_REMOVE_MS);
 		pendingRemoveTimers.set(bookId, tid);
 	}
@@ -595,13 +598,15 @@
 															}
 															clearPendingRemove(bookId);
 															ratingsStore.setRating(bookId, value, bookIdNum, entry.book);
+															summaryHooks?.onAfterRate?.(entry.book);
 															return;
 														}
 														if (entry.rating === value) {
-															schedulePendingRemove(bookId, bookIdNum);
+															schedulePendingRemove(entry.book);
 															return;
 														}
 														ratingsStore.setRating(bookId, value, bookIdNum, entry.book);
+														summaryHooks?.onAfterRate?.(entry.book);
 													}}
 												/>
 												{#if pendingRemoveIds.has(entry.book.id)}
@@ -620,8 +625,7 @@
 														compact
 														type="button"
 														aria-label={t('shared.ratingsBar.removeRatingFor', { title: entry.book.title })}
-														onclick={() =>
-															schedulePendingRemove(entry.book.id, entry.book.book_id)}
+														onclick={() => schedulePendingRemove(entry.book)}
 													>
 														{t('shared.ratingsBar.remove')}
 													</Button>

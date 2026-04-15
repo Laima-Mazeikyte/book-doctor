@@ -11,7 +11,7 @@
 	import AppHeader from '$lib/components/AppHeader.svelte';
 	import AppFooter from '$lib/components/AppFooter.svelte';
 	import BugReportModal from '$lib/components/BugReportModal.svelte';
-	import { getHcaptchaTokenForAnonymousAuth } from '$lib/hcaptcha-anonymous';
+	import { registerAnonymousSessionStarter } from '$lib/auth/anonymous-session';
 	import { notifyLibraryPersistedMutationForBrowseFeedWarm, onAfterNavigateForBrowseFeedWarm } from '$lib/feed/browseFeedWarm';
 	import { getSupabase } from '$lib/supabase';
 	import { authStore, clearPasswordRecoveryFlag, passwordRecoveryActive } from '$lib/stores/auth';
@@ -129,7 +129,7 @@
 	): Promise<void> {
 		const { data: rows, error: ratingsError } = await supabase
 			.from('user_ratings')
-			.select(`book_id, book_rating, books(id, book_id, book_name, author, cover_url, year, ${BOOK_GENRE_TYPE_SELECT})`)
+			.select(`book_id, book_rating, books(id, book_id, book_name, author, cover_url, year, summary, ${BOOK_GENRE_TYPE_SELECT})`)
 			.eq('user_id', userId)
 			.order('updated_at', { ascending: false });
 
@@ -151,12 +151,13 @@
 			author: string;
 			cover_url?: string;
 			year?: number;
+			summary?: string | null;
 		} & BookGenreSlotRow & { type?: string | null }> = [];
 		if (needBookIds && rawRows.length > 0) {
 			const bookIds = [...new Set(rawRows.map((r) => r.book_id))];
 			const { data: bookRows } = await supabase
 				.from('books')
-				.select(`id, book_id, book_name, author, cover_url, year, ${BOOK_GENRE_TYPE_SELECT}`)
+				.select(`id, book_id, book_name, author, cover_url, year, summary, ${BOOK_GENRE_TYPE_SELECT}`)
 				.in('book_id', bookIds);
 			if (isStaleRatingsLoad(requestId)) return;
 			if (bookRows) {
@@ -170,6 +171,7 @@
 					author: b.author ?? '',
 					cover_url: b.cover_url ?? undefined,
 					year: b.year,
+					summary: b.summary ?? undefined,
 					...pickGenreTypeFields(b as BookGenreSlotRow & { type?: string | null })
 				}));
 			}
@@ -188,6 +190,7 @@
 					author?: string;
 					cover_url?: string;
 					year?: number;
+					summary?: string | null;
 				} & BookGenreSlotRow & { type?: string | null };
 			};
 			const uuid =
@@ -205,6 +208,7 @@
 					author: b.author ?? '',
 					coverUrl: coverUrlFor(b.cover_url, b.book_id),
 					year: b.year != null ? String(b.year) : undefined,
+					summary: b.summary ?? undefined,
 					genres: genresFromGenreColumns(b),
 					...(type ? { type } : {})
 				});
@@ -219,6 +223,7 @@
 						author: fb.author,
 						coverUrl: coverUrlFor(fb.cover_url, fb.book_id),
 						year: fb.year != null ? String(fb.year) : undefined,
+						summary: fb.summary ?? undefined,
 						genres: genresFromGenreColumns(fb),
 						...(type ? { type } : {})
 					});
@@ -350,6 +355,7 @@
 
 	onMount(() => {
 		ratingsStore.hydratePendingFromLocalStorage();
+		notInterestedStore.hydrateFromLocalStorage();
 		const supabaseClient = getSupabase();
 		if (!supabaseClient) return;
 		const supabase = supabaseClient;
@@ -364,75 +370,30 @@
 			if (session?.user) void ratingsStore.flushPending();
 		});
 
-		const AUTH_RETRY_DELAYS_MS = [1000, 3000, 8000];
 		let authInitInFlight = false;
-		let authRetryTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
-		let authRetryAttempt = 0;
 
-		function clearAuthRetryTimer() {
-			if (authRetryTimer != null) {
-				clearTimeout(authRetryTimer);
-				authRetryTimer = null;
-			}
-		}
-
-		function cancelAnonymousAuthRetries() {
-			clearAuthRetryTimer();
-			authRetryAttempt = 0;
-		}
-
-		function scheduleAnonymousAuthRetry() {
-			const delayMs = AUTH_RETRY_DELAYS_MS[authRetryAttempt];
-			if (delayMs === undefined) {
-				console.warn('[auth] Anonymous sign-in retry budget exhausted');
-				return;
-			}
-			authRetryAttempt += 1;
-			clearAuthRetryTimer();
-			authRetryTimer = globalThis.setTimeout(() => {
-				authRetryTimer = null;
-				void ensureSessionOrAnonymous(false);
-			}, delayMs);
-		}
-
-		async function ensureSessionOrAnonymous(fromLifecycleTrigger: boolean) {
-			if (authInitInFlight) return;
-			if (fromLifecycleTrigger) {
-				cancelAnonymousAuthRetries();
-			}
+		async function ensureAnonymousSession(): Promise<boolean> {
+			if (authInitInFlight) return !!get(authStore).session;
 			authInitInFlight = true;
 			try {
 				const session = await getSessionAfterUrlTokens(supabase);
 				if (session) {
-					cancelAnonymousAuthRetries();
 					authStore.setSession(session);
 					if (session.user) void ratingsStore.flushPending();
-					return;
+					return true;
 				}
 
-				if (get(authStore).session) {
-					cancelAnonymousAuthRetries();
-					return;
-				}
+				if (get(authStore).session) return true;
 
-				let captchaToken: string | undefined;
-				try {
-					captchaToken = await getHcaptchaTokenForAnonymousAuth();
-				} catch (e) {
-					console.error('[auth] hCaptcha for anonymous sign-in failed:', e);
-				}
-				const { data: signInData, error } = await supabase.auth.signInAnonymously(
-					captchaToken ? { options: { captchaToken } } : undefined
-				);
+				const { data: signInData, error } = await supabase.auth.signInAnonymously();
 
 				if (!error && signInData?.session) {
-					cancelAnonymousAuthRetries();
 					authStore.setSession(signInData.session);
 					if (signInData.session.user) void ratingsStore.flushPending();
 					if (signInData.user) {
 						console.debug('[auth] Anonymous sign-in OK, user id:', signInData.user.id);
 					}
-					return;
+					return true;
 				}
 
 				if (error) {
@@ -443,56 +404,30 @@
 					data: { session: sessionAfterFail }
 				} = await supabase.auth.getSession();
 				if (sessionAfterFail) {
-					cancelAnonymousAuthRetries();
 					authStore.setSession(sessionAfterFail);
 					if (sessionAfterFail.user) void ratingsStore.flushPending();
-					return;
+					return true;
 				}
-				if (get(authStore).session) {
-					cancelAnonymousAuthRetries();
-					return;
-				}
-
-				scheduleAnonymousAuthRetry();
+				return !!get(authStore).session;
 			} catch (e) {
-				console.error('[auth] Auth setup error', e);
-				if (!get(authStore).session) {
-					scheduleAnonymousAuthRetry();
-				}
+				console.error('[auth] Lazy anonymous sign-in error', e);
+				return !!get(authStore).session;
 			} finally {
 				authInitInFlight = false;
 			}
 		}
 
-		const requestAuthRetryFromLifecycle = () => {
-			if (get(authStore).session) return;
-			if (authInitInFlight) return;
-			void ensureSessionOrAnonymous(true);
-		};
-
-		const onOnlineForAuth = () => {
-			requestAuthRetryFromLifecycle();
-		};
-		const onFocusForAuth = () => {
-			requestAuthRetryFromLifecycle();
-		};
-		const onVisibilityForAuth = () => {
-			if (document.visibilityState !== 'visible') return;
-			requestAuthRetryFromLifecycle();
-		};
-
-		window.addEventListener('online', onOnlineForAuth);
-		window.addEventListener('focus', onFocusForAuth);
-		document.addEventListener('visibilitychange', onVisibilityForAuth);
-
-		void ensureSessionOrAnonymous(false);
+		registerAnonymousSessionStarter(ensureAnonymousSession);
+		void (async () => {
+			const session = await getSessionAfterUrlTokens(supabase);
+			if (!session) return;
+			authStore.setSession(session);
+			if (session.user) void ratingsStore.flushPending();
+		})();
 
 		return () => {
 			subscription.unsubscribe();
-			cancelAnonymousAuthRetries();
-			window.removeEventListener('online', onOnlineForAuth);
-			window.removeEventListener('focus', onFocusForAuth);
-			document.removeEventListener('visibilitychange', onVisibilityForAuth);
+			registerAnonymousSessionStarter(null);
 		};
 	});
 
@@ -518,15 +453,17 @@
 		if (!hasUser) {
 			ratingsLoadRequestId += 1;
 			ratingsPersistenceUserId = null;
-			if (hadUserBefore) ratingsStore.reset();
-			hadUserBefore = false;
 			ratingsStore.setPersistence(null);
-			planToReadStore.reset();
 			planToReadStore.setPersistence(null);
-			notInterestedStore.reset();
 			notInterestedStore.setPersistence(null);
-			notInterestedStore.clearLocalStorage();
 			recommendationsCountStore.set(0);
+			if (hadUserBefore) {
+				ratingsStore.reset();
+				planToReadStore.reset();
+				notInterestedStore.reset();
+				notInterestedStore.clearLocalStorage();
+			}
+			hadUserBefore = false;
 			return;
 		}
 

@@ -190,7 +190,6 @@ en:
       errorUnableToConnect: "Unable to connect. Please try again."
       errorInvalidCredentials: "Invalid login credentials"
       errorSignUpFailed: "Sign up failed"
-      errorCaptchaRequired: "Please complete the verification challenge."
     resetPasswordPage:
       loading: "Loading…"
       title: "Choose a new password"

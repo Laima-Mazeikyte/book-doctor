@@ -6,6 +6,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/stores';
 	import BookCard from '$lib/components/BookCard.svelte';
+	import { ensureAnonymousSessionStarted } from '$lib/auth/anonymous-session';
 	import { getSupabase } from '$lib/supabase';
 	import { authStore } from '$lib/stores/auth';
 	import BookCardSkeleton from '$lib/components/BookCardSkeleton.svelte';
@@ -32,8 +33,8 @@
 	const SCROLL_THRESHOLD = 60;
 	const FEED_PAGE_SIZE = 20;
 	const EMPTY_PAGE_CHAIN_MAX = 25;
-	/** Wait for layout auth (anon or session) before choosing feed vs Top 100 on cold load. */
-	const AUTH_WAIT_MS = 12_000;
+	/** Give restored sessions a brief head start before falling back to Top 100. */
+	const AUTH_WAIT_MS = 1_000;
 	/** After a new feed batch mounts, ignore strict “end of list” briefly so a sentinel already at the viewport bottom does not clear `hasMore` before the user can interact. */
 	const STRICT_FEED_END_GRACE_MS = 750;
 
@@ -429,12 +430,76 @@
 	});
 
 	function findBookById(id: string): Book | undefined {
-		return (
-			ratingsStore.getRatedBook(id) ??
-			popularBooks.find((b) => b.id === id) ??
-			searchResults.find((b) => b.id === id) ??
-			getBookById(id)
+		const rated = ratingsStore.getRatedBook(id);
+		const fromPopular = popularBooks.find((b) => b.id === id);
+		const fromSearch = searchResults.find((b) => b.id === id);
+		const fromDummy = getBookById(id);
+
+		const base = rated ?? fromPopular ?? fromSearch ?? fromDummy;
+		if (!base) return undefined;
+
+		const candidates = [rated, fromPopular, fromSearch, fromDummy].filter(
+			(b): b is Book => b != null
 		);
+
+		const longestSummary = (): string | undefined => {
+			let best: string | undefined;
+			let bestLen = 0;
+			for (const b of candidates) {
+				const trimmed = b.summary?.trim();
+				if (trimmed && trimmed.length > bestLen) {
+					best = b.summary;
+					bestLen = trimmed.length;
+				}
+			}
+			return best;
+		};
+
+		const firstNonEmpty = (pick: (b: Book) => string | undefined): string | undefined => {
+			for (const b of candidates) {
+				const v = pick(b);
+				if (v != null && v.trim() !== '') return v;
+			}
+			return undefined;
+		};
+
+		const richestGenres = (): string[] | undefined => {
+			let best: string[] | undefined;
+			let bestLen = 0;
+			for (const b of candidates) {
+				const g = b.genres;
+				const len = g?.length ?? 0;
+				if (len > bestLen) {
+					best = g;
+					bestLen = len;
+				}
+			}
+			return best;
+		};
+
+		const mergedSummary = longestSummary();
+		const mergedCover =
+			base.coverUrl != null && base.coverUrl.trim() !== ''
+				? base.coverUrl
+				: (firstNonEmpty((b) => b.coverUrl) ?? base.coverUrl);
+		const mergedYear =
+			base.year != null && base.year.trim() !== ''
+				? base.year
+				: (firstNonEmpty((b) => b.year) ?? base.year);
+		const mergedGenres =
+			(base.genres?.length ?? 0) > 0 ? base.genres : (richestGenres() ?? base.genres);
+		const mergedBookId = base.book_id ?? candidates.find((b) => b.book_id != null)?.book_id;
+		const mergedType = base.type ?? candidates.find((b) => b.type)?.type;
+
+		return {
+			...base,
+			summary: mergedSummary ?? base.summary,
+			coverUrl: mergedCover,
+			year: mergedYear,
+			genres: mergedGenres,
+			book_id: mergedBookId,
+			type: mergedType ?? base.type
+		};
 	}
 
 	const ratedEntries = $derived(
@@ -554,6 +619,9 @@
 		everHadSessionSignal = true;
 		if (lastAppendWasFeed) engagedWithPendingBatch = true;
 		reviveMainListPaginationAfterEngagement();
+		if (!get(authStore).session) {
+			void ensureAnonymousSessionStarted();
+		}
 	}
 
 	function handleRateBookmark(book: Book, id: string) {
@@ -584,6 +652,9 @@
 		everHadSessionSignal = true;
 		if (lastAppendWasFeed) engagedWithPendingBatch = true;
 		reviveMainListPaginationAfterEngagement();
+		if (!get(authStore).session) {
+			void ensureAnonymousSessionStarted();
+		}
 	}
 
 	function handleSearchNotInterested(book: Book) {
