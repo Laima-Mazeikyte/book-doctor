@@ -251,40 +251,38 @@
 			aria-hidden={pendingRate ? true : undefined}
 		>
 			<div class="book-card__actions">
-				{#if !ni}
+				<button
+					type="button"
+					class="book-card__action"
+					class:book-card__action--saved={bm}
+					class:book-card__action--labeled={bm}
+					class:book-card__action--reco-hoverable={!bm}
+					aria-pressed={bm}
+					aria-label={bm
+						? t('shared.recommendationCard.removeFromReadingList')
+						: t('shared.recommendationCard.addToReadingList')}
+					onclick={handleBookmarkClick}
+				>
+					<Bookmark size={14} aria-hidden="true" />
+					{#if bm}
+						<span class="book-card__action-label">{t('shared.recommendationCard.saved')}</span>
+					{:else}
+						<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">{t('shared.recommendationCard.bookmark')}</span>
+					{/if}
+				</button>
+				{#if !ni && !bm}
 					<button
 						type="button"
-						class="book-card__action"
-						class:book-card__action--saved={bm}
-						class:book-card__action--labeled={bm}
-						class:book-card__action--reco-hoverable={!bm}
-						aria-pressed={bm}
-						aria-label={bm
-							? t('shared.recommendationCard.removeFromReadingList')
-							: t('shared.recommendationCard.addToReadingList')}
-						onclick={handleBookmarkClick}
+						class="book-card__action book-card__action--reco-hoverable"
+						aria-pressed="false"
+						aria-label={t('shared.recommendationCard.markAsRead')}
+						onclick={handleReadClick}
 					>
-						<Bookmark size={14} aria-hidden="true" />
-						{#if bm}
-							<span class="book-card__action-label">{t('shared.recommendationCard.saved')}</span>
-						{:else}
-							<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">{t('shared.recommendationCard.bookmark')}</span>
-						{/if}
+						<Star size={14} aria-hidden="true" />
+						<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">{t('shared.recommendationCard.read')}</span>
 					</button>
-					{#if !bm}
-						<button
-							type="button"
-							class="book-card__action book-card__action--reco-hoverable"
-							aria-pressed="false"
-							aria-label={t('shared.recommendationCard.markAsRead')}
-							onclick={handleReadClick}
-						>
-							<Star size={14} aria-hidden="true" />
-							<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">{t('shared.recommendationCard.read')}</span>
-						</button>
-					{/if}
 				{/if}
-				{#if onNotInterested && !bm}
+				{#if onNotInterested}
 					<button
 						type="button"
 						class="book-card__action"
@@ -388,7 +386,57 @@
 					<span class="book-card__placeholder-title">{book.title}</span>
 				</button>
 			{/if}
-			<div class="book-card__cover-actions">
+			{#if isRateContext && onBookmark}
+				<div class="book-card__cover-actions book-card__cover-actions--tl">
+					<button
+						type="button"
+						class="book-card__action"
+						class:book-card__action--saved={bookmarked}
+						class:book-card__action--labeled={bookmarked}
+						class:book-card__action--reco-hoverable={!bookmarked}
+						aria-pressed={bookmarked}
+						aria-label={bookmarked
+							? t('shared.recommendationCard.removeFromReadingList')
+							: t('shared.recommendationCard.addToReadingList')}
+						onclick={handleBookmarkClick}
+					>
+						<Bookmark size={14} aria-hidden="true" />
+						{#if bookmarked}
+							<span class="book-card__action-label">{t('shared.recommendationCard.saved')}</span>
+						{:else}
+							<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">
+								{t('shared.recommendationCard.bookmark')}
+							</span>
+						{/if}
+					</button>
+				</div>
+			{/if}
+			{#if isRateContext && onNotInterested}
+				<div class="book-card__cover-actions book-card__cover-actions--br">
+					<button
+						type="button"
+						class="book-card__action"
+						class:book-card__action--not-interested-active={notInterested}
+						class:book-card__action--labeled={notInterested}
+						class:book-card__action--reco-hoverable={!notInterested}
+						aria-pressed={notInterested}
+						aria-label={notInterested
+							? t('shared.recommendationCard.removeFromNotInterested')
+							: t('shared.recommendationCard.notInterested')}
+						onclick={handleNotInterestedClick}
+					>
+						<Ban size={14} aria-hidden="true" />
+						{#if notInterested}
+							<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span>
+						{:else}
+							<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">
+								{t('shared.recommendationCard.notInterested')}
+							</span>
+						{/if}
+					</button>
+				</div>
+			{/if}
+			<div class="book-card__cover-actions book-card__cover-actions--tr">
 				<button
 					bind:this={summaryBtnRef}
 					type="button"
@@ -668,13 +716,25 @@
 
 	.book-card__cover-actions {
 		position: absolute;
-		top: var(--space-2);
-		right: var(--space-2);
 		z-index: 2;
 		display: flex;
 		flex-direction: column;
-		align-items: flex-end;
 		gap: var(--space-2);
+	}
+	.book-card__cover-actions--tr {
+		top: var(--space-2);
+		right: var(--space-2);
+		align-items: flex-end;
+	}
+	.book-card__cover-actions--tl {
+		top: var(--space-2);
+		left: var(--space-2);
+		align-items: flex-start;
+	}
+	.book-card__cover-actions--br {
+		bottom: var(--space-2);
+		right: var(--space-2);
+		align-items: flex-end;
 	}
 
 	.book-card__body {
@@ -1212,6 +1272,14 @@
 		color: var(--primitive-white);
 		-webkit-backdrop-filter: blur(12px);
 		backdrop-filter: blur(12px);
+	}
+
+	/* Selected chip on cover: base rule above wins specificity over .book-card__action--saved; restore contrast */
+	.book-card__media-inner .book-card__cover-actions .book-card__action.book-card__action--saved,
+	.book-card__media-inner
+		.book-card__cover-actions
+		.book-card__action.book-card__action--not-interested-active {
+		color: var(--color-book-card-chip-on-text);
 	}
 
 	.book-card__media-inner .book-card__cover-actions
