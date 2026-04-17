@@ -5,11 +5,11 @@ import type { Book, RatingValue } from '$lib/types/book';
  *
  * | context | Rating source | Body UI |
  * |---------|---------------|---------|
- * | `rate` | `ratingsStore` inside component | Cover: summary + (when callbacks exist) save & not-interested stack; body stars only; summary overlay |
- * | `bookmarks` | Parent props + callbacks | Actions + optional rate flow + overlay |
- * | `rated` | Parent props + callbacks | Typically stars-only when rated |
- * | `not-interested` | Parent props + callbacks | Actions + `notInterested` styling |
- * | `recommendations` | Parent props + callbacks | Full card; grid keyboard on parent |
+ * | `rate` | `ratingsStore` inside component | Cover: bookmark / not-interested / summary pills; body stars; summary overlay |
+ * | `bookmarks` | Parent props + callbacks | Same chrome + stars as `rate` (callbacks drive pills) |
+ * | `rated` | Parent props + callbacks | Same as `bookmarks` |
+ * | `recommendations` | Parent props + callbacks | Same as `bookmarks`; grid keyboard on parent |
+ * | `not-interested` | Parent props + callbacks | Same chrome + stars as `rate` |
  */
 export type BookCardContext = 'rate' | 'bookmarks' | 'rated' | 'not-interested' | 'recommendations';
 
