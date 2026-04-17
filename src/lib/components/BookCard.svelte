@@ -66,6 +66,24 @@
 	const summaryPanelId = $derived(`book-summary-panel-${book.id}`);
 	const summaryTitleId = $derived(`book-summary-title-${book.id}`);
 
+	const bookIdentityAriaLabel = $derived(
+		book.author?.trim()
+			? t('shared.recommendationCard.bookCardIdentityAriaLabelWithAuthor', {
+					title: book.title,
+					author: book.author.trim()
+				})
+			: t('shared.recommendationCard.bookCardIdentityAriaLabelTitleOnly', { title: book.title })
+	);
+
+	const coverOpenSummaryAriaLabel = $derived(
+		book.author?.trim()
+			? t('shared.recommendationCard.seeSummaryCoverAriaLabelWithAuthor', {
+					title: book.title,
+					author: book.author.trim()
+				})
+			: t('shared.recommendationCard.seeSummaryCoverAriaLabelTitleOnly', { title: book.title })
+	);
+
 	const SUMMARY_DRAWER_DESKTOP_PX = 400;
 	/** Cap fly distance on very tall viewports (full-screen mobile slide). */
 	const SUMMARY_SHEET_SLIDE_MAX_PX = 900;
@@ -223,15 +241,15 @@
 	class="book-card"
 	data-book-id={book.id}
 	data-context={context}
-	aria-label="{book.title} by {book.author}"
+	aria-label={bookIdentityAriaLabel}
 >
-	<div class="book-card__media">
+	<div class="book-card__media" role="group" aria-label={bookIdentityAriaLabel}>
 		<div class="book-card__media-inner" class:book-card__media-inner--not-interested={notInterested}>
 			{#if showCoverImage}
 				<button
 					type="button"
 					class="book-card__cover-hit"
-					aria-label={t('shared.recommendationCard.seeSummary')}
+					aria-label={coverOpenSummaryAriaLabel}
 					aria-expanded={summaryOpen}
 					aria-controls={summaryOpen ? summaryPanelId : undefined}
 					onclick={() => void handleOpenSummary()}
@@ -247,7 +265,7 @@
 				<button
 					type="button"
 					class="book-card__cover book-card__cover--no-image book-card__cover--opens-summary"
-					aria-label={t('shared.recommendationCard.seeSummary')}
+					aria-label={coverOpenSummaryAriaLabel}
 					aria-expanded={summaryOpen}
 					aria-controls={summaryOpen ? summaryPanelId : undefined}
 					onclick={() => void handleOpenSummary()}
@@ -260,6 +278,7 @@
 				<div class="book-card__cover-actions book-card__cover-actions--tl">
 					<button
 						type="button"
+						tabindex={-1}
 						class="book-card__action"
 						class:book-card__action--saved={bookmarked}
 						class:book-card__action--labeled={bookmarked}
@@ -285,6 +304,7 @@
 				<div class="book-card__cover-actions book-card__cover-actions--br">
 					<button
 						type="button"
+						tabindex={-1}
 						class="book-card__action"
 						class:book-card__action--not-interested-active={notInterested}
 						class:book-card__action--labeled={notInterested}
@@ -310,8 +330,9 @@
 				<button
 					bind:this={summaryBtnRef}
 					type="button"
+					tabindex={-1}
 					class="book-card__action book-card__action--reco-hoverable"
-					aria-label={t('shared.recommendationCard.seeSummary')}
+					aria-label={coverOpenSummaryAriaLabel}
 					aria-expanded={summaryOpen}
 					aria-controls={summaryOpen ? summaryPanelId : undefined}
 					onclick={handleOpenSummary}

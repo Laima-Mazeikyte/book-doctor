@@ -1,216 +1,88 @@
 import { browser } from '$app/environment';
-import { base, resolve } from '$app/paths';
 
-import type { Book } from '$lib/types/book';
+import { getSupabase } from '$lib/supabase';
 
-import { searchBooksViaApi } from './fallback';
-import { SEARCH_PAGE_SIZE } from './types';
-import type { SearchResultPage, SearchWorkerRequest, SearchWorkerResponse } from './types';
+import { invokeBookSearch } from './bookSearchEdge';
+import { resolveBooksByNumericIdsInOrder } from './resolveBooksFromSupabase';
+import { SEARCH_MAX_LIMIT, type SearchResultPage } from './types';
 
-// Inline worker avoids emitting `worker.*.ts` (wrong MIME on some hosts); see vite `*?worker&inline`.
-import CreateSearchWorker from './worker.ts?worker&inline';
-
-let searchWorker: Worker | null = null;
-let nextRequestId = 1;
-let workerDisabled = false;
-let titleWarmPromise: Promise<void> | null = null;
-let deferredWarmPromise: Promise<void> | null = null;
-const pendingRequests = new Map<
-	number,
-	{
-		resolve: (message: SearchWorkerResponse) => void;
-		reject: (error: Error) => void;
-	}
->();
-
-function getAssetBaseUrl(): string {
-	const originAndBase = `${window.location.origin}${base}`.replace(/\/$/, '');
-	return `${originAndBase}/search/`;
+/**
+ * Whether another Meilisearch page may exist. `estimatedTotalHits` is sometimes
+ * low/incorrect through proxies; a full `hits` page still implies more. Empty
+ * `hits` must stop pagination even if an inflated estimate says otherwise.
+ */
+export function computeSearchHasMore(
+	scannedHitCount: number,
+	cappedLimit: number,
+	nextOffset: number,
+	estimatedTotalHits: number | null
+): boolean {
+	if (scannedHitCount <= 0) return false;
+	return (
+		scannedHitCount >= cappedLimit ||
+		(estimatedTotalHits != null && nextOffset < estimatedTotalHits)
+	);
 }
 
-function rejectPending(error: Error): void {
-	for (const { reject } of pendingRequests.values()) {
-		reject(error);
-	}
-
-	pendingRequests.clear();
-}
-
-function ensureWorker(): Worker {
-	if (!browser) {
-		throw new Error('Search worker is only available in the browser');
-	}
-
-	if (workerDisabled) {
-		throw new Error('Search worker has been disabled after a previous failure');
-	}
-
-	if (searchWorker) {
-		return searchWorker;
-	}
-
-	searchWorker = new CreateSearchWorker();
-	searchWorker.onmessage = (event: MessageEvent<SearchWorkerResponse>) => {
-		const message = event.data;
-		const pending = pendingRequests.get(message.id);
-		if (!pending) return;
-
-		pendingRequests.delete(message.id);
-
-		if (message.type === 'error') {
-			pending.reject(new Error(message.message));
-			return;
-		}
-
-		pending.resolve(message);
+function emptyResultPage(): SearchResultPage {
+	return {
+		books: [],
+		nextOffset: 0,
+		hasMore: false,
+		source: 'edge',
+		loadedFields: []
 	};
-	searchWorker.onerror = (event) => {
-		workerDisabled = true;
-		const message =
-			event instanceof ErrorEvent && event.message
-				? event.message
-				: 'Search worker failed unexpectedly';
-		rejectPending(new Error(message));
-		searchWorker?.terminate();
-		searchWorker = null;
-	};
-
-	return searchWorker;
 }
 
-type WorkerRequestPayload =
-	| { type: 'warmTitle' }
-	| { type: 'warmRemaining' }
-	| { type: 'search'; query: string; offset: number; limit: number };
-
-async function sendWorkerRequest(request: WorkerRequestPayload): Promise<SearchWorkerResponse> {
-	const worker = ensureWorker();
-	const id = nextRequestId++;
-	const assetBase = getAssetBaseUrl();
-
-	const message: SearchWorkerRequest =
-		request.type === 'search'
-			? { id, assetBase, type: 'search', query: request.query, offset: request.offset, limit: request.limit }
-			: request.type === 'warmTitle'
-				? { id, assetBase, type: 'warmTitle' }
-				: { id, assetBase, type: 'warmRemaining' };
-
-	const responsePromise = new Promise<SearchWorkerResponse>((resolveRequest, rejectRequest) => {
-		pendingRequests.set(id, {
-			resolve: resolveRequest,
-			reject: rejectRequest
-		});
-	});
-
-	worker.postMessage(message);
-	return responsePromise;
-}
-
-function disableWorker(error: unknown): void {
-	console.warn('[search] FlexSearch worker unavailable, falling back to API search', error);
-	workerDisabled = true;
-	searchWorker?.terminate();
-	searchWorker = null;
-	rejectPending(new Error('Search worker disabled'));
-}
-
-export async function warmTitleIndex(): Promise<void> {
-	if (!browser || workerDisabled) return;
-
-	titleWarmPromise ??= (async () => {
-		try {
-			await sendWorkerRequest({ type: 'warmTitle' });
-		} catch (error) {
-			disableWorker(error);
-		}
-	})();
-
-	await titleWarmPromise;
-}
-
-export async function warmRemainingIndexes(): Promise<void> {
-	if (!browser || workerDisabled) return;
-
-	deferredWarmPromise ??= (async () => {
-		try {
-			await warmTitleIndex();
-			if (workerDisabled) return;
-			await sendWorkerRequest({ type: 'warmRemaining' });
-		} catch (error) {
-			disableWorker(error);
-		}
-	})();
-
-	await deferredWarmPromise;
-}
-
-export function warmBookSearch(): void {
-	if (!browser || workerDisabled) return;
-
-	void warmTitleIndex().then(() => {
-		if (!workerDisabled) {
-			void warmRemainingIndexes();
-		}
-	});
-}
-
-/** Overlay live `books.summary` from the API; static FlexSearch docs can omit or stale summaries. */
-async function enrichFlexSearchBooksWithLiveSummaries(books: Book[]): Promise<Book[]> {
-	if (books.length === 0) return books;
-
-	const ids = [...new Set(books.map((b) => b.id).filter(Boolean))];
-	if (ids.length === 0) return books;
-
-	try {
-		const params = new URLSearchParams({ ids: ids.join(',') });
-		const res = await fetch(`${resolve('/api/books/summaries-by-ids')}?${params.toString()}`);
-		if (!res.ok) return books;
-
-		const data = (await res.json()) as { summaries?: Record<string, string> };
-		const summaries = data.summaries ?? {};
-
-		return books.map((b) => {
-			const fromDb = summaries[b.id];
-			if (fromDb?.trim()) return { ...b, summary: fromDb };
-			return b;
-		});
-	} catch {
-		return books;
-	}
-}
-
+/**
+ * Full-text book search: Edge Function `book-search` (Meilisearch proxy) then
+ * Postgres-backed resolution to `Book` rows. Browser-only; returns an empty
+ * page during SSR.
+ */
 export async function searchBooks(
 	query: string,
 	offset = 0,
-	limit = SEARCH_PAGE_SIZE
+	limit = SEARCH_MAX_LIMIT
 ): Promise<SearchResultPage> {
-	if (!browser || workerDisabled) {
-		return searchBooksViaApi(query, offset);
+	if (!browser) {
+		return emptyResultPage();
 	}
 
-	try {
-		const response = await sendWorkerRequest({
-			type: 'search',
-			query,
-			offset,
-			limit
-		});
-
-		if (response.type !== 'search-result') {
-			throw new Error(`Unexpected worker response: ${response.type}`);
-		}
-
-		const result = response.result;
-		if (result.source === 'flexsearch' && result.books.length > 0) {
-			return {
-				...result,
-				books: await enrichFlexSearchBooksWithLiveSummaries(result.books)
-			};
-		}
-
-		return result;
-	} catch (error) {
-		disableWorker(error);
-		return searchBooksViaApi(query, offset);
+	const trimmed = query.trim();
+	if (!trimmed) {
+		return emptyResultPage();
 	}
+
+	const supabase = getSupabase();
+	if (!supabase) {
+		throw new Error(
+			'Search is unavailable. Check that PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_ANON_KEY are set.'
+		);
+	}
+
+	const cappedLimit = Math.min(Math.max(1, limit), SEARCH_MAX_LIMIT);
+
+	const { bookIds, estimatedTotalHits, scannedHitCount } = await invokeBookSearch(supabase, {
+		q: trimmed,
+		limit: cappedLimit,
+		offset
+	});
+
+	const books = await resolveBooksByNumericIdsInOrder(supabase, bookIds);
+	// Advance Meilisearch `offset` by raw hit count so it stays aligned with ranking (dedupe is display-only).
+	const nextOffset = offset + scannedHitCount;
+	const hasMore = computeSearchHasMore(
+		scannedHitCount,
+		cappedLimit,
+		nextOffset,
+		estimatedTotalHits
+	);
+
+	return {
+		books,
+		nextOffset,
+		hasMore,
+		source: 'edge',
+		loadedFields: []
+	};
 }

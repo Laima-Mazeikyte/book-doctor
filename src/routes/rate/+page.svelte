@@ -25,7 +25,7 @@
 		clearRateSearchExternalEntry,
 		consumeRateSearchExternalEntry
 	} from '$lib/rateSearchExternalNav';
-	import { searchBooks, warmBookSearch } from '$lib/search';
+	import { searchBooks, SEARCH_MIN_QUERY_LENGTH } from '$lib/search';
 	import { insertFeedRequestRow, pollCuratedFeedRequest } from '$lib/feed/warmCuratedFeed';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
@@ -42,6 +42,11 @@
 	let searchQuery = $state('');
 	let debouncedQuery = $state('');
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+	/**
+	 * Bumped only when a new first-page search starts so pagination requests do not
+	 * invalidate an in-flight initial load (and vice versa).
+	 */
+	let searchRequestGeneration = 0;
 
 	$effect(() => {
 		const q = searchQuery;
@@ -56,7 +61,7 @@
 
 	$effect(() => {
 		const q = debouncedQuery.trim();
-		if (q.length >= 3) {
+		if (q.length >= SEARCH_MIN_QUERY_LENGTH) {
 			doSearch(q, 0);
 		} else {
 			searchResults = [];
@@ -66,7 +71,7 @@
 		}
 	});
 
-	const isSearching = $derived(debouncedQuery.trim().length >= 3);
+	const isSearching = $derived(debouncedQuery.trim().length >= SEARCH_MIN_QUERY_LENGTH);
 
 	let searchOverlayOpen = $state(false);
 	let inertSupported = $state(true);
@@ -108,14 +113,12 @@
 	}
 
 	async function openSearchOverlay(opts?: { pushHistory?: boolean }) {
-		if (browser) warmBookSearch();
 		savedScrollY = Math.max(savedScrollY, window.scrollY);
 		if (opts?.pushHistory === true && browser) {
 			clearRateSearchExternalEntry();
 		}
 		/** Only push when transitioning closed → open so we never `history.back()` from UI (fragile vs real stack). */
-		const shouldPush =
-			opts?.pushHistory === true && browser && !searchOverlayOpen;
+		const shouldPush = opts?.pushHistory === true && browser && !searchOverlayOpen;
 		if (shouldPush) {
 			pushState('', { rateSearchLayer: true });
 		}
@@ -192,9 +195,7 @@
 		if (browser && trimmed) {
 			const active = document.activeElement;
 			const inOverlay =
-				overlayDialogEl != null &&
-				active instanceof Node &&
-				overlayDialogEl.contains(active);
+				overlayDialogEl != null && active instanceof Node && overlayDialogEl.contains(active);
 			await goto(resolve(`/rate?q=${encodeURIComponent(trimmed)}`), {
 				replaceState: true,
 				noScroll: true,
@@ -227,7 +228,6 @@
 
 		const q = nav.to.url.searchParams.get('q')?.trim();
 		if (q) {
-			if (browser) warmBookSearch();
 			searchOverlayOpen = true;
 			searchQuery = q;
 			debouncedQuery = q;
@@ -239,16 +239,13 @@
 		if (!browser || !searchOverlayOpen) return;
 		void overlayDialogEl;
 		const q = debouncedQuery.trim();
-		const path =
-			q.length > 0 ? resolve(`/rate?q=${encodeURIComponent(q)}`) : resolve('/rate');
+		const path = q.length > 0 ? resolve(`/rate?q=${encodeURIComponent(q)}`) : resolve('/rate');
 		const cur = $page.url;
 		const curQ = cur.searchParams.get('q')?.trim() ?? '';
 		if (cur.pathname === '/rate' && curQ === q) return;
 		const active = document.activeElement;
 		const keepFocus =
-			active instanceof Node &&
-			overlayDialogEl != null &&
-			overlayDialogEl.contains(active);
+			active instanceof Node && overlayDialogEl != null && overlayDialogEl.contains(active);
 		void goto(path, { replaceState: true, noScroll: true, keepFocus });
 	});
 
@@ -268,8 +265,10 @@
 		if (searchError) return '';
 		const raw = debouncedQuery.trim();
 		if (raw.length === 0) return t('rate.search.minCharsHint');
-		if (raw.length < 3) return '';
+		if (raw.length < SEARCH_MIN_QUERY_LENGTH) return '';
 		if (loadingSearch) return t('rate.search.statusSearching');
+		/** Skip updates while appending so `aria-live` does not re-announce the count every page. */
+		if (loadingSearchMore) return '';
 		if (searchResults.length === 0) return t('rate.search.statusNoResults');
 		return t('rate.search.statusResults', { count: searchResults.length });
 	});
@@ -350,7 +349,10 @@
 	let searchError = $state<string | null>(null);
 
 	let sentinelEl = $state<HTMLDivElement | undefined>(undefined);
-	let searchSentinelEl = $state<HTMLDivElement | undefined>(undefined);
+	/** Scroll container for search results (`overflow-y: auto`); load-more uses this, not the viewport. */
+	let searchOverlayScrollEl = $state<HTMLDivElement | undefined>(undefined);
+
+	const SEARCH_SCROLL_LOAD_THRESHOLD_PX = 360;
 
 	/**
 	 * Two observers: a large bottom rootMargin prefetches the next page while the user is still
@@ -404,29 +406,42 @@
 		};
 	});
 
-	$effect(() => {
-		if (!searchSentinelEl || !searchOverlayOpen || !isSearching) return;
-		const next = searchNextOffset;
-		const more = searchHasMore;
-		const loadingMoreSearch = loadingSearchMore;
+	/**
+	 * Search results live in a nested scroll container (not the viewport). IntersectionObserver
+	 * with the default viewport root misses that, and re-creating observers on every offset/load
+	 * change drops “already intersecting” targets so the next page never fires — so we use scroll.
+	 */
+	function tryLoadMoreSearchNearBottom() {
+		if (!browser) return;
+		const root = searchOverlayScrollEl;
+		if (!root || !searchOverlayOpen) return;
+		if (!searchHasMore || loadingSearch || loadingSearchMore || searchError) return;
 		const q = debouncedQuery.trim();
+		if (q.length < SEARCH_MIN_QUERY_LENGTH) return;
+		const distance = root.scrollHeight - root.scrollTop - root.clientHeight;
+		if (distance <= SEARCH_SCROLL_LOAD_THRESHOLD_PX) {
+			void doSearch(q, searchNextOffset);
+		}
+	}
 
-		const observer = new IntersectionObserver(
-			(entries) => {
-				if (
-					entries[0].isIntersecting &&
-					!loadingSearch &&
-					!loadingMoreSearch &&
-					more
-				) {
-					doSearch(q, next);
-				}
-			},
-			{ rootMargin: '300px' }
-		);
-
-		observer.observe(searchSentinelEl);
-		return () => observer.disconnect();
+	$effect(() => {
+		if (!browser) return;
+		if (!searchOverlayScrollEl || !searchOverlayOpen || !isSearching) return;
+		const el = searchOverlayScrollEl;
+		let raf = 0;
+		const onScroll = () => {
+			if (raf) return;
+			raf = requestAnimationFrame(() => {
+				raf = 0;
+				tryLoadMoreSearchNearBottom();
+			});
+		};
+		el.addEventListener('scroll', onScroll, { passive: true });
+		queueMicrotask(onScroll);
+		return () => {
+			el.removeEventListener('scroll', onScroll);
+			if (raf) cancelAnimationFrame(raf);
+		};
 	});
 
 	function findBookById(id: string): Book | undefined {
@@ -535,9 +550,7 @@
 			: t('shared.ratingsBar.retryNeeded')
 	);
 	const recommendationsSubmitLabel = $derived(
-		ratingsSyncedForRecommendations
-			? t('rate.getRecommendations')
-			: recommendationsOffQueueLabel
+		ratingsSyncedForRecommendations ? t('rate.getRecommendations') : recommendationsOffQueueLabel
 	);
 	const ratingsRemainingForRecommendations = $derived(
 		Math.max(0, MIN_RATINGS_FOR_RECOMMENDATIONS - ratedCount)
@@ -825,7 +838,8 @@
 				if (offset > 0) hasMore = false;
 				throw new Error(`HTTP ${res.status}`);
 			}
-			const data: { books: Book[]; nextOffset: number; hasMore: boolean; seed?: string } = await res.json();
+			const data: { books: Book[]; nextOffset: number; hasMore: boolean; seed?: string } =
+				await res.json();
 
 			const mode = offset === 0 ? 'replace' : 'append';
 			const appended = mergeMainListBooks(data.books, mode);
@@ -905,6 +919,11 @@
 	}
 
 	async function doSearch(query: string, offset = 0) {
+		const trimmedQuery = query.trim();
+		if (offset === 0) {
+			searchRequestGeneration += 1;
+		}
+		const generation = searchRequestGeneration;
 		if (offset === 0) {
 			loadingSearch = true;
 		} else {
@@ -914,6 +933,8 @@
 
 		try {
 			const data = await searchBooks(query, offset);
+			if (generation !== searchRequestGeneration) return;
+			if (trimmedQuery !== debouncedQuery.trim()) return;
 
 			if (offset === 0) {
 				const seen = new Set<string>();
@@ -922,14 +943,22 @@
 					seen.add(b.id);
 					return true;
 				});
+				searchNextOffset = data.nextOffset;
+				searchHasMore = data.hasMore;
 			} else {
 				const existingIds = new Set(searchResults.map((b) => b.id));
 				const newBooks = data.books.filter((b) => !existingIds.has(b.id));
 				searchResults = [...searchResults, ...newBooks];
+				searchNextOffset = data.nextOffset;
+				// Do not clear hasMore when a page yields no new rows: hits can duplicate
+				// across offsets, or Postgres can drop ids Meilisearch still counts — offset
+				// still advances and `queueMicrotask` can fetch the next page while at bottom.
+				searchHasMore = data.hasMore;
 			}
-			searchNextOffset = data.nextOffset;
-			searchHasMore = data.hasMore;
+			queueMicrotask(() => tryLoadMoreSearchNearBottom());
 		} catch {
+			if (generation !== searchRequestGeneration) return;
+			if (trimmedQuery !== debouncedQuery.trim()) return;
 			searchError = t('rate.errors.searchFailed');
 			if (offset === 0) searchResults = [];
 		} finally {
@@ -1093,7 +1122,11 @@
 				{/if}
 
 				{#if loadingInitial}
-					<ul class="rate-page__list book-card-grid" aria-label={t('rate.aria.loadingBooks')} aria-live="polite">
+					<ul
+						class="rate-page__list book-card-grid"
+						aria-label={t('rate.aria.loadingBooks')}
+						aria-live="polite"
+					>
 						{#each Array(8) as _}
 							<li><BookCardSkeleton /></li>
 						{/each}
@@ -1151,7 +1184,9 @@
 						onSearchAuthor: handleSearchAuthor,
 						onBookmark: (book) => handleRateBookmark(book, book.id),
 						onNotInterested: (book) =>
-							searchOverlayOpen ? handleSearchNotInterested(book) : handleMainListNotInterested(book),
+							searchOverlayOpen
+								? handleSearchNotInterested(book)
+								: handleMainListNotInterested(book),
 						onAfterRate: (book) =>
 							searchOverlayOpen ? handleSearchAfterRate() : handleMainListAfterRate(book)
 					}}
@@ -1160,8 +1195,10 @@
 					<div class="rate-page__recommendations-cta">
 						{#snippet recommendationsCtaSyncIcon()}
 							{#if recommendationsSubmitSyncFailed}
-								<span class="rate-page__rec-sync-dot rate-page__rec-sync-dot--failed" aria-hidden="true"
-									>!</span>
+								<span
+									class="rate-page__rec-sync-dot rate-page__rec-sync-dot--failed"
+									aria-hidden="true">!</span
+								>
 							{:else}
 								<span
 									class="rate-page__rec-sync-dot rate-page__rec-sync-dot--pending"
@@ -1209,8 +1246,10 @@
 						>
 							{#if !ratingsSyncedForRecommendations}
 								{#if recommendationsSubmitSyncFailed}
-									<span class="rate-page__rec-sync-dot rate-page__rec-sync-dot--failed" aria-hidden="true"
-										>!</span>
+									<span
+										class="rate-page__rec-sync-dot rate-page__rec-sync-dot--failed"
+										aria-hidden="true">!</span
+									>
 								{:else}
 									<span
 										class="rate-page__rec-sync-dot rate-page__rec-sync-dot--pending"
@@ -1263,7 +1302,7 @@
 					</div>
 				</header>
 
-				<div class="rate-search-overlay__body">
+				<div class="rate-search-overlay__body" bind:this={searchOverlayScrollEl}>
 					<p class="rate-search-overlay__live" aria-live="polite" aria-atomic="true">
 						{searchStatusMessage}
 					</p>
@@ -1274,7 +1313,7 @@
 
 					{#if debouncedQuery.trim().length === 0}
 						<p class="rate-search-overlay__helper">{t('rate.search.minCharsHint')}</p>
-					{:else if debouncedQuery.trim().length >= 3}
+					{:else if debouncedQuery.trim().length >= SEARCH_MIN_QUERY_LENGTH}
 						{#if loadingSearch}
 							<ul class="rate-page__list book-card-grid" aria-label={t('rate.aria.searching')}>
 								{#each Array(6) as _}
@@ -1312,13 +1351,12 @@
 							</ul>
 
 							{#if loadingSearchMore}
-								<div class="rate-page__spinner-wrap rate-page__spinner-wrap--bottom" aria-live="polite">
+								<div
+									class="rate-page__spinner-wrap rate-page__spinner-wrap--bottom"
+									aria-live="polite"
+								>
 									<Spinner />
 								</div>
-							{/if}
-
-							{#if searchHasMore}
-								<div bind:this={searchSentinelEl} class="rate-page__sentinel" aria-hidden="true"></div>
 							{/if}
 						{/if}
 					{/if}
@@ -1422,7 +1460,9 @@
 
 	.rate-page__load-more-card:focus-visible {
 		outline: none;
-		box-shadow: var(--shadow-card-hover), 0 0 0 2px var(--color-focus);
+		box-shadow:
+			var(--shadow-card-hover),
+			0 0 0 2px var(--color-focus);
 	}
 
 	.rate-page__load-more-card:disabled {
@@ -1544,6 +1584,8 @@
 		overflow-y: auto;
 		overflow-x: hidden;
 		overscroll-behavior: contain;
+		/* html/body use `touch-action: none` while search is open; allow vertical pan inside the list. */
+		touch-action: pan-y;
 		padding: var(--space-4);
 		padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
 	}
@@ -1646,7 +1688,9 @@
 		margin: 0;
 		text-align: center;
 	}
-	:global(.rate-page__recommendations-hint.btn--primary.rate-page__recommendations-hint--syncing:hover) {
+	:global(
+		.rate-page__recommendations-hint.btn--primary.rate-page__recommendations-hint--syncing:hover
+	) {
 		background: var(--color-button-primary-bg);
 	}
 	:global(
@@ -1655,7 +1699,9 @@
 		background: var(--color-button-primary-bg);
 	}
 	/* Full-opacity primary while ratings flush; same dot treatment as ratings trigger. */
-	:global(.rate-page__recommendations-submit.btn--primary.rate-page__recommendations-submit--syncing) {
+	:global(
+		.rate-page__recommendations-submit.btn--primary.rate-page__recommendations-submit--syncing
+	) {
 		cursor: wait;
 	}
 	:global(
@@ -1663,7 +1709,9 @@
 	) {
 		cursor: not-allowed;
 	}
-	:global(.rate-page__recommendations-submit.btn--primary.rate-page__recommendations-submit--syncing:hover) {
+	:global(
+		.rate-page__recommendations-submit.btn--primary.rate-page__recommendations-submit--syncing:hover
+	) {
 		background: var(--color-button-primary-bg);
 	}
 	.rate-page__rec-sync-dot {

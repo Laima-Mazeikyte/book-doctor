@@ -67,6 +67,17 @@
 		coverFailedIds = new Set(coverFailedIds).add(bookId);
 	}
 
+	function seeSummaryOpenAriaLabel(book: Book): string {
+		const author = book.author?.trim();
+		if (author) {
+			return t('shared.recommendationCard.seeSummaryCoverAriaLabelWithAuthor', {
+				title: book.title,
+				author
+			});
+		}
+		return t('shared.recommendationCard.seeSummaryCoverAriaLabelTitleOnly', { title: book.title });
+	}
+
 	let drawerSyncState: 'pending' | 'failed' | null = $derived.by(() => {
 		if ($ratingsSyncMeta.queuedCount === 0) return null;
 		if ($ratingsSyncMeta.isFlushing || $ratingsSyncMeta.failedCount === 0) return 'pending';
@@ -522,7 +533,7 @@
 											<button
 												type="button"
 												class="ratings-drawer__item-cover-hit"
-												aria-label={t('shared.recommendationCard.seeSummary')}
+												aria-label={seeSummaryOpenAriaLabel(entry.book)}
 												onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
 											>
 												{#if entry.book.coverUrl && !coverFailedIds.has(entry.book.id)}
@@ -543,7 +554,7 @@
 											<button
 												type="button"
 												class="ratings-drawer__item-title-hit"
-												aria-label={t('shared.recommendationCard.seeSummary')}
+												aria-label={seeSummaryOpenAriaLabel(entry.book)}
 												onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
 											>
 												<span class="ratings-drawer__item-title">{entry.book.title}</span>
@@ -552,7 +563,7 @@
 												<button
 													type="button"
 													class="ratings-drawer__item-author ratings-drawer__item-author-hit"
-													aria-label={t('shared.recommendationCard.seeSummary')}
+													aria-label={seeSummaryOpenAriaLabel(entry.book)}
 													onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
 												>
 													{entry.book.author}

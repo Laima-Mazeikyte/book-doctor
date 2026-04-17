@@ -138,6 +138,10 @@ en:
       searchThisAuthorAriaLabel: "Search for books by {{author}}"
     recommendationCard:
       seeSummary: "See summary"
+      seeSummaryCoverAriaLabelWithAuthor: "{{title}} by {{author}}. See summary"
+      seeSummaryCoverAriaLabelTitleOnly: "{{title}}. See summary"
+      bookCardIdentityAriaLabelWithAuthor: "{{title}} by {{author}}"
+      bookCardIdentityAriaLabelTitleOnly: "{{title}}"
       summary: "Summary"
       addToReadingList: "Add to Bookmarks"
       removeFromReadingList: "Remove from Bookmarks"

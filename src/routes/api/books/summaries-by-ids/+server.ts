@@ -4,13 +4,17 @@ import { supabase } from '$lib/server/supabase';
 
 const MAX_IDS = 64;
 
-/**
- * Batch-load `books.summary` by UUID `id` for client-side search enrichment.
- * FlexSearch uses static `documents.msgpack`, which can omit or stale summaries vs live DB.
- */
+/** Batch-load `books.summary` by UUID `id` for callers that need live text without a full row fetch. */
 export const GET: RequestHandler = async ({ url }) => {
 	const raw = url.searchParams.get('ids') ?? '';
-	const ids = [...new Set(raw.split(',').map((s) => s.trim()).filter(Boolean))].slice(0, MAX_IDS);
+	const ids = [
+		...new Set(
+			raw
+				.split(',')
+				.map((s) => s.trim())
+				.filter(Boolean)
+		)
+	].slice(0, MAX_IDS);
 
 	if (ids.length === 0) {
 		return json({ summaries: {} as Record<string, string> });
