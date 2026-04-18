@@ -35,8 +35,32 @@
 	const EMPTY_PAGE_CHAIN_MAX = 25;
 	/** Give restored sessions a brief head start before falling back to Top 100. */
 	const AUTH_WAIT_MS = 1_000;
+	const INITIAL_CACHE_VALIDATION_GRACE_MS = 250;
 	/** After a new feed batch mounts, ignore strict “end of list” briefly so a sentinel already at the viewport bottom does not clear `hasMore` before the user can interact. */
 	const STRICT_FEED_END_GRACE_MS = 750;
+	const CURATED_FEED_CACHE_KEY = 'book-doctor:rate:curated-feed:v1';
+
+	type InitialListSource = 'cached_curated' | 'fresh_curated' | 'top100';
+	type LatestFeedMode = 'cache_current' | 'cache_pending_newer' | 'newer_completed' | 'cold_start';
+	type LatestFeedPayload = {
+		status: string;
+		books: Book[];
+		request_id: string | null;
+		error_message: string | null;
+	};
+	type LatestFeedStateResponse = {
+		mode: LatestFeedMode;
+		latest_request_id: string | null;
+		latest_request_status: string | null;
+		latest_completed_request_id: string | null;
+		latest_completed: LatestFeedPayload | null;
+	};
+	type CachedCuratedFeed = {
+		request_id: string;
+		books: Book[];
+		cached_at: string;
+		viewer_key: string;
+	};
 
 	// ── Search ─────────────────────────────────────────────────────────────────
 	let searchQuery = $state('');
@@ -93,7 +117,6 @@
 	 * User closed search while a quiet (overlay-open) feed refresh was still running — show the
 	 * main-list skeleton until that request finishes so the list does not swap without warning.
 	 */
-	let searchFeedRevealMainListSkeletonUntilRefreshDone = $state(false);
 
 	function resetSearchSessionFeedFlags() {
 		searchFeedSessionId += 1;
@@ -101,9 +124,6 @@
 		searchSessionFeedRefreshIssued = false;
 		searchSessionFeedInsertAttempted = false;
 		searchSessionFeedRefreshPipelineCompleted = false;
-		if (searchSessionFeedRefreshInFlightPromise == null) {
-			searchFeedRevealMainListSkeletonUntilRefreshDone = false;
-		}
 	}
 
 	function captureFeedScrollForSearchReturn() {
@@ -164,26 +184,11 @@
 		}
 	}
 
-	function restoreFeedScrollAfterOverlayClose(opts?: { refreshMainIfAtTop?: boolean }) {
-		const dirty = searchOverlaySessionDirty;
+	function restoreFeedScrollAfterOverlayClose() {
 		void tick().then(() => {
 			requestAnimationFrame(() => {
 				window.scrollTo({ top: savedScrollY, left: 0, behavior: 'auto' });
 				searchOverlaySessionDirty = false;
-				const pipelineDone = searchSessionFeedRefreshPipelineCompleted;
-				const inFlight = searchSessionFeedRefreshInFlightPromise != null;
-				const shouldCloseRetry =
-					opts?.refreshMainIfAtTop === true &&
-					savedScrollY <= SCROLL_THRESHOLD &&
-					dirty &&
-					!inFlight &&
-					!pipelineDone;
-				if (shouldCloseRetry) {
-					if (!searchSessionFeedRefreshIssued) {
-						searchSessionFeedRefreshIssued = true;
-					}
-					beginSearchSessionFeedRefresh({ quietUi: false });
-				}
 			});
 		});
 	}
@@ -208,18 +213,10 @@
 		debouncedQuery = '';
 		clearSearchResultsState();
 
-		const feedRefreshStillPending =
-			searchSessionFeedRefreshInFlightPromise != null ||
-			(searchSessionFeedRefreshIssued && !searchSessionFeedRefreshPipelineCompleted);
-		if (feedRefreshStillPending) {
-			loadingInitial = true;
-			searchFeedRevealMainListSkeletonUntilRefreshDone = true;
-		}
-
 		if (browser && consumeRateSearchExternalEntry()) {
 			if (opts?.fromPopstate) {
 				void goto(resolve('/rate'), { replaceState: true, noScroll: true, keepFocus: false });
-				restoreFeedScrollAfterOverlayClose({ refreshMainIfAtTop: true });
+				restoreFeedScrollAfterOverlayClose();
 				return;
 			}
 			history.back();
@@ -231,7 +228,7 @@
 		 * `keepFocus: false` avoids leaving focus on the overlay input while it unmounts.
 		 */
 		void goto(resolve('/rate'), { replaceState: true, noScroll: true, keepFocus: false });
-		restoreFeedScrollAfterOverlayClose({ refreshMainIfAtTop: true });
+		restoreFeedScrollAfterOverlayClose();
 	}
 
 	async function handleSearchAuthor(author: string) {
@@ -350,8 +347,19 @@
 	let suppressStrictFeedEndUntil = $state(0);
 	/** Cold `loadInitialMainList` used Top 100 because no access token was ready in time; retry feed once auth exists. */
 	let mainListFellBackDueToMissingAuthToken = $state(false);
+	let initialListSource = $state<InitialListSource | null>(null);
+	let initialListDecisionPending = $state(false);
+	let initialListDecisionSettled = $state(false);
+	let cachedInitialFeedPreview = $state.raw<CachedCuratedFeed | null>(null);
+	let initialMainListLoadInFlight: Promise<void> | null = null;
 
 	let mainListPrefetchPx = $state(600);
+	const holdInitialPagination = $derived(
+		(initialListDecisionPending && initialListSource === 'cached_curated') ||
+			(initialListDecisionSettled &&
+				initialListSource === 'cached_curated' &&
+				!$authStore.session?.access_token)
+	);
 
 	const paginationFeedOnly = $derived(startedFromLatestFeed || everHadSessionSignal);
 
@@ -373,7 +381,7 @@
 
 	/** Explicit “load more” — same loaders as infinite scroll; does not change rating / not-interested revival rules. */
 	function handleManualLoadMoreBooks() {
-		if (loadingMore || loadingInitial) return;
+		if (loadingMore || loadingInitial || holdInitialPagination) return;
 		if (paginationFeedOnly) {
 			if (lastAppendWasFeed) engagedWithPendingBatch = true;
 			armFeedBatchStrictGrace();
@@ -425,10 +433,19 @@
 		const feedOnly = paginationFeedOnly;
 		const lastFeed = lastAppendWasFeed;
 		const engaged = engagedWithPendingBatch;
+		const holdInitial = holdInitialPagination;
 
 		const preloadObserver = new IntersectionObserver(
 			(entries) => {
-				if (!entries[0].isIntersecting || loading || initial || overlayBlocksFeed || !more) return;
+				if (
+					!entries[0].isIntersecting ||
+					loading ||
+					initial ||
+					overlayBlocksFeed ||
+					!more ||
+					holdInitial
+				)
+					return;
 				if (!feedOnly) {
 					void loadPopular(next, 0);
 					return;
@@ -441,7 +458,15 @@
 
 		const strictEndObserver = new IntersectionObserver(
 			(entries) => {
-				if (!entries[0].isIntersecting || loading || initial || overlayBlocksFeed || !more) return;
+				if (
+					!entries[0].isIntersecting ||
+					loading ||
+					initial ||
+					overlayBlocksFeed ||
+					!more ||
+					holdInitial
+				)
+					return;
 				if (Date.now() < suppressStrictFeedEndUntil) return;
 				if (feedOnly && lastFeed && !engaged) {
 					hasMore = false;
@@ -644,6 +669,73 @@
 		});
 	}
 
+	function currentFeedViewerKey(): string | null {
+		const user = get(authStore).user;
+		if (!user?.id) return null;
+		return user.is_anonymous === true ? `anon:${user.id}` : `user:${user.id}`;
+	}
+
+	function readCuratedFeedCache(): CachedCuratedFeed | null {
+		if (!browser) return null;
+		try {
+			const raw = window.localStorage.getItem(CURATED_FEED_CACHE_KEY);
+			if (!raw) return null;
+			const parsed = JSON.parse(raw) as Partial<CachedCuratedFeed>;
+			if (
+				typeof parsed?.request_id !== 'string' ||
+				!Array.isArray(parsed.books) ||
+				parsed.books.length === 0 ||
+				typeof parsed.cached_at !== 'string' ||
+				typeof parsed.viewer_key !== 'string'
+			) {
+				return null;
+			}
+			const viewerKey = currentFeedViewerKey();
+			if (viewerKey) {
+				return parsed.viewer_key === viewerKey ? (parsed as CachedCuratedFeed) : null;
+			}
+			return parsed.viewer_key.startsWith('anon:') ? (parsed as CachedCuratedFeed) : null;
+		} catch {
+			return null;
+		}
+	}
+
+	function persistCuratedFeedCache(payload: { request_id: string; books: Book[] }) {
+		if (!browser || payload.books.length === 0) return;
+		const viewerKey = currentFeedViewerKey();
+		if (!viewerKey) return;
+		try {
+			window.localStorage.setItem(
+				CURATED_FEED_CACHE_KEY,
+				JSON.stringify({
+					request_id: payload.request_id,
+					books: payload.books,
+					cached_at: new Date().toISOString(),
+					viewer_key: viewerKey
+				} satisfies CachedCuratedFeed)
+			);
+		} catch {
+			// Cache is only a first-paint optimization; ignore storage failures.
+		}
+	}
+
+	async function fetchLatestFeedState(
+		token: string,
+		knownRequestId?: string
+	): Promise<LatestFeedStateResponse> {
+		const url = new URL(resolve('/api/feed/latest'), location.href);
+		if (knownRequestId) {
+			url.searchParams.set('known_request_id', knownRequestId);
+		}
+		const res = await fetch(url.toString(), {
+			headers: { Authorization: `Bearer ${token}` }
+		});
+		if (!res.ok) {
+			throw new Error(`Failed to load latest feed state: HTTP ${res.status}`);
+		}
+		return (await res.json()) as LatestFeedStateResponse;
+	}
+
 	/** Assign main list from API payload only (no client-side filter/dedupe). */
 	function setMainListBooks(incoming: Book[], mode: 'replace' | 'append'): Book[] {
 		if (mode === 'replace') {
@@ -661,6 +753,51 @@
 			.filter((n): n is number => n != null && Number.isInteger(n));
 		engagedWithPendingBatch = false;
 		armFeedBatchStrictGrace();
+	}
+
+	function primeCachedCuratedValidation(cache: CachedCuratedFeed) {
+		cachedInitialFeedPreview = cache;
+		initialListSource = 'cached_curated';
+		initialListDecisionPending = true;
+		initialListDecisionSettled = false;
+		popularError = null;
+	}
+
+	function lockCachedCuratedForVisit(cache: CachedCuratedFeed) {
+		commitInitialCuratedChoice('cached_curated', cache.request_id, cache.books, {
+			persistCache: false
+		});
+		loadingInitial = false;
+	}
+
+	function commitInitialCuratedChoice(
+		source: Extract<InitialListSource, 'cached_curated' | 'fresh_curated'>,
+		requestId: string,
+		books: Book[],
+		opts?: { persistCache?: boolean }
+	) {
+		cachedInitialFeedPreview = null;
+		initialListSource = source;
+		initialListDecisionPending = false;
+		initialListDecisionSettled = true;
+		mainListFellBackDueToMissingAuthToken = false;
+		startedFromLatestFeed = true;
+		const applied = setMainListBooks(books, 'replace');
+		lastAppendWasFeed = true;
+		setPendingFromAppended(applied);
+		hasMore = true;
+		if (opts?.persistCache !== false) {
+			persistCuratedFeedCache({ request_id: requestId, books: applied });
+		}
+	}
+
+	async function commitInitialTop100Choice(skipInitialLoading: boolean) {
+		cachedInitialFeedPreview = null;
+		initialListSource = 'top100';
+		initialListDecisionPending = false;
+		initialListDecisionSettled = true;
+		startedFromLatestFeed = false;
+		await loadPopular(0, 0, { skipInitialLoading });
 	}
 
 	function handleMainListAfterRate(_book: Book) {
@@ -736,25 +873,20 @@
 
 	function beginSearchSessionFeedRefresh(opts?: { quietUi?: boolean }) {
 		if (searchSessionFeedRefreshInFlightPromise != null) return;
-		const quietUi = opts?.quietUi === true;
 		const sid = searchFeedSessionId;
-		const p = refreshMainFeedAfterSearchSession({ quietUi, sid });
+		const p = refreshMainFeedAfterSearchSession({ sid });
 		searchSessionFeedRefreshInFlightPromise = p.finally(() => {
 			searchSessionFeedRefreshInFlightPromise = null;
 		});
 	}
 
 	/**
-	 * Persist ratings, insert one `feed_requests` row per search session, poll, replace main list.
-	 * `quietUi` skips the main-list skeleton while the search overlay is open.
+	 * Persist ratings, insert one `feed_requests` row per search session, poll, and cache the
+	 * resulting feed for a future visit. This intentionally does not replace the current visible
+	 * `/rate` list mid-session.
 	 */
-	async function refreshMainFeedAfterSearchSession(opts: { quietUi: boolean; sid: number }) {
-		const { quietUi, sid } = opts;
-		const skipListSkeleton = quietUi;
-		if (!quietUi) {
-			loadingInitial = true;
-		}
-		popularError = null;
+	async function refreshMainFeedAfterSearchSession(opts: { sid: number }) {
+		const { sid } = opts;
 
 		try {
 			await ratingsStore.flushPending();
@@ -762,63 +894,35 @@
 
 			const token = await waitForAccessToken(AUTH_WAIT_MS);
 			if (sid !== searchFeedSessionId) return;
-			if (!token) {
-				startedFromLatestFeed = false;
-				await loadPopular(0, 0, { skipInitialLoading: skipListSkeleton });
-				return;
-			}
+			if (!token) return;
 
 			const supabase = getSupabase();
 			const user = get(authStore).user;
-			if (!supabase || !user?.id) {
-				await loadInitialMainList({ skipInitialLoading: skipListSkeleton });
-				return;
-			}
+			if (!supabase || !user?.id) return;
 
 			if (sid !== searchFeedSessionId) return;
 			const requestId = await insertFeedRequestRow(supabase, user.id);
 			if (sid !== searchFeedSessionId) return;
 			searchSessionFeedInsertAttempted = true;
 
-			if (requestId == null) {
-				startedFromLatestFeed = false;
-				await loadPopular(0, 0, { skipInitialLoading: skipListSkeleton });
-				return;
-			}
+			if (requestId == null) return;
 
 			const outcome = await pollCuratedFeedRequest(requestId, token);
 			if (sid !== searchFeedSessionId) return;
 
 			if (outcome.kind === 'completed' && outcome.books.length > 0) {
-				startedFromLatestFeed = true;
-				const books = setMainListBooks(outcome.books, 'replace');
-				lastAppendWasFeed = true;
-				setPendingFromAppended(books);
-				hasMore = books.length >= FEED_PAGE_SIZE;
-				return;
+				persistCuratedFeedCache({ request_id: requestId, books: outcome.books });
 			}
-
-			await loadInitialMainList({ skipInitialLoading: skipListSkeleton });
 		} catch (e) {
 			console.error('[rate] refreshMainFeedAfterSearchSession', e);
-			popularError = t('rate.errors.loadBooks');
-			startedFromLatestFeed = false;
-			await loadPopular(0, 0, { skipInitialLoading: skipListSkeleton });
 		} finally {
 			if (sid === searchFeedSessionId) {
 				searchSessionFeedRefreshPipelineCompleted = true;
-				if (!quietUi || searchFeedRevealMainListSkeletonUntilRefreshDone) {
-					loadingInitial = false;
-					searchFeedRevealMainListSkeletonUntilRefreshDone = false;
-				}
-			} else if (searchFeedRevealMainListSkeletonUntilRefreshDone) {
-				loadingInitial = false;
-				searchFeedRevealMainListSkeletonUntilRefreshDone = false;
 			}
 		}
 	}
 
-	async function loadInitialMainList(listOpts?: { skipInitialLoading?: boolean }) {
+	async function loadInitialMainListInternal(listOpts?: { skipInitialLoading?: boolean }) {
 		const skip = listOpts?.skipInitialLoading === true;
 		if (!skip) {
 			loadingInitial = true;
@@ -828,41 +932,68 @@
 		try {
 			const token = await waitForAccessToken(AUTH_WAIT_MS);
 			if (!token) {
+				if (cachedInitialFeedPreview) {
+					return;
+				}
 				mainListFellBackDueToMissingAuthToken = true;
-				startedFromLatestFeed = false;
-				await loadPopular(0, 0, { skipInitialLoading: skip });
+				await commitInitialTop100Choice(skip);
 				return;
 			}
 
 			mainListFellBackDueToMissingAuthToken = false;
 
-			const res = await fetch(resolve('/api/feed/latest'), {
-				headers: { Authorization: `Bearer ${token}` }
-			});
-			if (res.ok) {
-				const data: {
-					status: string;
-					books: Book[];
-				} = await res.json();
-				if (data.status === 'completed' && data.books?.length > 0) {
-					startedFromLatestFeed = true;
-					const books = setMainListBooks(data.books, 'replace');
-					lastAppendWasFeed = true;
-					setPendingFromAppended(books);
-					hasMore = true;
+			if (cachedInitialFeedPreview) {
+				const data = await fetchLatestFeedState(token, cachedInitialFeedPreview.request_id);
+				if (
+					data.mode === 'newer_completed' &&
+					data.latest_completed?.status === 'completed' &&
+					data.latest_completed.request_id &&
+					data.latest_completed.books?.length > 0
+				) {
+					commitInitialCuratedChoice(
+						'fresh_curated',
+						data.latest_completed.request_id,
+						data.latest_completed.books
+					);
 					return;
 				}
 
-				startedFromLatestFeed = false;
-				await loadPopular(0, 0, { skipInitialLoading: skip });
+				commitInitialCuratedChoice(
+					'cached_curated',
+					cachedInitialFeedPreview.request_id,
+					cachedInitialFeedPreview.books,
+					{ persistCache: false }
+				);
 				return;
 			}
 
-			startedFromLatestFeed = false;
-			await loadPopular(0, 0, { skipInitialLoading: skip });
+			const data = await fetchLatestFeedState(token);
+			if (
+				data.mode === 'newer_completed' &&
+				data.latest_completed?.status === 'completed' &&
+				data.latest_completed.request_id &&
+				data.latest_completed.books?.length > 0
+			) {
+				commitInitialCuratedChoice(
+					'fresh_curated',
+					data.latest_completed.request_id,
+					data.latest_completed.books
+				);
+				return;
+			}
+
+			await commitInitialTop100Choice(skip);
 		} catch {
-			startedFromLatestFeed = false;
-			await loadPopular(0, 0, { skipInitialLoading: skip });
+			if (cachedInitialFeedPreview) {
+				commitInitialCuratedChoice(
+					'cached_curated',
+					cachedInitialFeedPreview.request_id,
+					cachedInitialFeedPreview.books,
+					{ persistCache: false }
+				);
+				return;
+			}
+			await commitInitialTop100Choice(skip);
 		} finally {
 			if (!skip) {
 				loadingInitial = false;
@@ -870,13 +1001,27 @@
 		}
 	}
 
+	function loadInitialMainList(listOpts?: { skipInitialLoading?: boolean }) {
+		if (initialMainListLoadInFlight != null) {
+			return initialMainListLoadInFlight;
+		}
+		const p = loadInitialMainListInternal(listOpts).finally(() => {
+			if (initialMainListLoadInFlight === p) {
+				initialMainListLoadInFlight = null;
+			}
+		});
+		initialMainListLoadInFlight = p;
+		return p;
+	}
+
 	$effect(() => {
 		if (!browser) return;
-		if (!mainListFellBackDueToMissingAuthToken) return;
+		if (initialListDecisionSettled) return;
+		if (!initialListDecisionPending && !mainListFellBackDueToMissingAuthToken) return;
 		if (!$authStore.session?.access_token) return;
 		if (isSearching) return;
 		if (loadingInitial) return;
-		void loadInitialMainList();
+		void loadInitialMainList({ skipInitialLoading: initialListDecisionPending });
 	});
 
 	async function loadPopular(
@@ -947,7 +1092,7 @@
 	}
 
 	async function loadCuratedFeedBatch() {
-		if (loadingMore || loadingInitial) return;
+		if (loadingMore || loadingInitial || holdInitialPagination) return;
 		loadingMore = true;
 		popularError = null;
 		try {
@@ -1128,7 +1273,20 @@
 		window.addEventListener('resize', syncPrefetch);
 		window.visualViewport?.addEventListener('resize', syncPrefetch);
 
-		void loadInitialMainList();
+		const cached = readCuratedFeedCache();
+		if (cached) {
+			primeCachedCuratedValidation(cached);
+			void (async () => {
+				const token = await waitForAccessToken(INITIAL_CACHE_VALIDATION_GRACE_MS);
+				if (token) {
+					void loadInitialMainList();
+					return;
+				}
+				lockCachedCuratedForVisit(cached);
+			})();
+		} else {
+			void loadInitialMainList();
+		}
 
 		const handleScroll = () => {
 			const y = window.scrollY;
