@@ -286,9 +286,6 @@
 	let loadingMore = $state(false);
 	let popularError = $state<string | null>(null);
 
-	/** Shown book ids this page visit (main list only); avoids repeats from API. */
-	const sessionShownIds = new Set<string>();
-
 	let startedFromLatestFeed = $state(false);
 	let everHadSessionSignal = $state(false);
 	let lastAppendWasFeed = $state(false);
@@ -592,31 +589,14 @@
 		});
 	}
 
-	function mergeMainListBooks(incoming: Book[], mode: 'replace' | 'append'): Book[] {
-		const ratings = get(ratingsStore);
-		const ni = get(notInterestedStore);
-		const seenIncoming = new Set<string>();
-		const out: Book[] = [];
-		for (const b of incoming) {
-			if (seenIncoming.has(b.id)) continue;
-			seenIncoming.add(b.id);
-			if (sessionShownIds.has(b.id)) continue;
-			if (ratings.has(b.id)) continue;
-			if (b.book_id != null && ni.has(b.book_id)) continue;
-			out.push(b);
-		}
+	/** Assign main list from API payload only (no client-side filter/dedupe). */
+	function setMainListBooks(incoming: Book[], mode: 'replace' | 'append'): Book[] {
 		if (mode === 'replace') {
-			sessionShownIds.clear();
-		}
-		for (const b of out) {
-			sessionShownIds.add(b.id);
-		}
-		if (mode === 'replace') {
-			popularBooks = out;
+			popularBooks = incoming;
 		} else {
-			popularBooks = [...popularBooks, ...out];
+			popularBooks = [...popularBooks, ...incoming];
 		}
-		return out;
+		return incoming;
 	}
 
 	function setPendingFromAppended(appended: Book[]) {
@@ -693,7 +673,6 @@
 	async function reloadMainListAfterSearchCloseWithNewFeedRequest() {
 		loadingInitial = true;
 		popularError = null;
-		sessionShownIds.clear();
 
 		try {
 			await ratingsStore.flushPending();
@@ -722,15 +701,10 @@
 			const outcome = await pollCuratedFeedRequest(requestId, token);
 			if (outcome.kind === 'completed' && outcome.books.length > 0) {
 				startedFromLatestFeed = true;
-				const appended = mergeMainListBooks(outcome.books, 'replace');
-				if (appended.length === 0) {
-					startedFromLatestFeed = false;
-					await loadPopular(0, 0);
-				} else {
-					lastAppendWasFeed = true;
-					setPendingFromAppended(appended);
-					hasMore = appended.length >= FEED_PAGE_SIZE;
-				}
+				const books = setMainListBooks(outcome.books, 'replace');
+				lastAppendWasFeed = true;
+				setPendingFromAppended(books);
+				hasMore = books.length >= FEED_PAGE_SIZE;
 				return;
 			}
 
@@ -749,7 +723,6 @@
 	async function loadInitialMainList() {
 		loadingInitial = true;
 		popularError = null;
-		sessionShownIds.clear();
 
 		try {
 			const token = await waitForAccessToken(AUTH_WAIT_MS);
@@ -772,15 +745,10 @@
 				} = await res.json();
 				if (data.status === 'completed' && data.books?.length > 0) {
 					startedFromLatestFeed = true;
-					const appended = mergeMainListBooks(data.books, 'replace');
-					if (appended.length === 0) {
-						startedFromLatestFeed = false;
-						await loadPopular(0, 0);
-					} else {
-						lastAppendWasFeed = true;
-						setPendingFromAppended(appended);
-						hasMore = true;
-					}
+					const books = setMainListBooks(data.books, 'replace');
+					lastAppendWasFeed = true;
+					setPendingFromAppended(books);
+					hasMore = true;
 					return;
 				}
 
@@ -842,7 +810,7 @@
 				await res.json();
 
 			const mode = offset === 0 ? 'replace' : 'append';
-			const appended = mergeMainListBooks(data.books, mode);
+			setMainListBooks(data.books, mode);
 			if (offset === 0 && data.seed) popularSeed = data.seed;
 
 			nextOffset = data.nextOffset;
@@ -854,7 +822,7 @@
 
 			hasMore = data.hasMore ?? data.books.length > 0;
 
-			if (appended.length === 0 && hasMore) {
+			if (data.books.length === 0 && hasMore) {
 				await loadPopular(data.nextOffset, depth + 1);
 				return;
 			}
@@ -895,13 +863,13 @@
 			const outcome = await pollCuratedFeedRequest(requestId, token);
 
 			if (outcome.kind === 'completed') {
-				const appended = mergeMainListBooks(outcome.books, 'append');
-				if (appended.length === 0) {
+				const books = setMainListBooks(outcome.books, 'append');
+				if (books.length === 0) {
 					hasMore = false;
 				} else {
-					hasMore = appended.length >= FEED_PAGE_SIZE;
+					hasMore = books.length >= FEED_PAGE_SIZE;
 					lastAppendWasFeed = true;
-					setPendingFromAppended(appended);
+					setPendingFromAppended(books);
 				}
 				return;
 			}
