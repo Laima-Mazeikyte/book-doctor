@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { get } from 'svelte/store';
 	import { goto } from '$app/navigation';
 	import Button from '$lib/components/Button.svelte';
@@ -12,24 +12,37 @@
 	import RecommendationsLoading from '$lib/components/RecommendationsLoading.svelte';
 	import { authStore } from '$lib/stores/auth';
 	import { ratingsStore } from '$lib/stores/ratings';
+	import {
+		recommendationsPageStore,
+		type RecommendationRun
+	} from '$lib/stores/recommendationsPage';
 	import { t } from '$lib/copy';
 	import type { Book } from '$lib/types/book';
-
-	type RecommendationRun = { request_id: string; created_at: string };
 
 	const POLL_INTERVAL_MS = 3000;
 	const POLL_TIMEOUT_MS = 60000;
 
+	const initialHistorySnapshot = recommendationsPageStore.getHistorySnapshot();
+
 	let books = $state<Book[]>([]);
-	let runs = $state<RecommendationRun[]>([]);
-	let uniqueBooks = $state<Book[]>([]);
-	let uniqueBooksLoading = $state(false);
-	let loading = $state(true);
+	let runs = $state<RecommendationRun[]>(initialHistorySnapshot.runs);
+	let uniqueBooks = $state<Book[]>(initialHistorySnapshot.uniqueBooks);
+	let uniqueBooksLoading = $state(
+		initialHistorySnapshot.runs.length > 0 && !initialHistorySnapshot.uniqueLoaded
+	);
+	let loading = $state(!initialHistorySnapshot.loaded);
 	let error = $state<string | null>(null);
 	let timedOut = $state(false);
 	let pollTimer: ReturnType<typeof setTimeout> | null = null;
-	let viewMode = $state<'loading' | 'history' | 'empty' | 'single' | 'timedOut' | 'error'>('loading');
+	let viewMode = $state<'loading' | 'history' | 'empty' | 'single' | 'timedOut' | 'error'>(
+		initialHistorySnapshot.loaded
+			? initialHistorySnapshot.runs.length === 0
+				? 'empty'
+				: 'history'
+			: 'loading'
+	);
 	let gridEl = $state<HTMLDivElement | null>(null);
+	let activeRouteLoadId = 0;
 
 	function handleGridKeydown(e: KeyboardEvent) {
 		const key = e.key;
@@ -128,12 +141,31 @@
 		}
 	}
 
+	function isActiveRouteLoad(loadId: number, requestId: string | null): boolean {
+		return loadId === activeRouteLoadId && (page.url.searchParams.get('request_id')?.trim() ?? null) === requestId;
+	}
+
+	function applyHistorySnapshot() {
+		const snapshot = recommendationsPageStore.getHistorySnapshot();
+		runs = snapshot.runs;
+		uniqueBooks = snapshot.uniqueBooks;
+		loading = !snapshot.loaded;
+		uniqueBooksLoading = snapshot.runs.length > 0 && !snapshot.uniqueLoaded;
+		error = null;
+		timedOut = false;
+		viewMode = snapshot.loaded ? (snapshot.runs.length === 0 ? 'empty' : 'history') : 'loading';
+		if (snapshot.uniqueLoaded || snapshot.runs.length === 0) {
+			recommendationsCountStore.set(snapshot.uniqueBooks.length);
+		}
+	}
+
 	// React to URL changes (client-side navigation from history "View" link, etc.)
 	$effect(() => {
-		const url = $page.url;
+		const url = page.url;
 		const requestId = url.searchParams.get('request_id')?.trim() ?? null;
 		const fromHistory = url.searchParams.get('from') === 'history';
 		const accessToken = $authStore.session?.access_token ?? null;
+		const loadId = ++activeRouteLoadId;
 
 		// Clean up previous poll when URL or effect re-runs
 		if (pollTimer != null) {
@@ -143,26 +175,34 @@
 
 		if (requestId) {
 			if (fromHistory) {
-				loading = true;
+				const cachedBooks = recommendationsPageStore.getRunBooks(requestId);
+				books = cachedBooks ? [...cachedBooks] : [];
+				loading = !cachedBooks;
 				error = null;
-				viewMode = 'loading';
+				timedOut = false;
+				viewMode = cachedBooks ? 'single' : 'loading';
 				const requestedId = requestId;
 				fetchRecommendations(accessToken, requestId)
 					.then(({ books: nextBooks }) => {
 						// Only apply if still on this request (user didn't navigate away)
-						if ($page.url.searchParams.get('request_id')?.trim() === requestedId) {
+						if (isActiveRouteLoad(loadId, requestedId)) {
 							books = nextBooks;
+							recommendationsPageStore.setRunBooks(requestedId, nextBooks);
+							error = null;
 							viewMode = 'single';
 						}
 					})
 					.catch((e) => {
-						if ($page.url.searchParams.get('request_id')?.trim() === requestedId) {
-							error = e instanceof Error ? e.message : t('recommendations.failedToLoad');
-							viewMode = 'error';
+						if (!isActiveRouteLoad(loadId, requestedId)) return;
+						if (cachedBooks) {
+							error = null;
+							return;
 						}
+						error = e instanceof Error ? e.message : t('recommendations.failedToLoad');
+						viewMode = 'error';
 					})
 					.finally(() => {
-						if ($page.url.searchParams.get('request_id')?.trim() === requestedId) {
+						if (isActiveRouteLoad(loadId, requestedId)) {
 							loading = false;
 						}
 					});
@@ -172,11 +212,14 @@
 			const start = Date.now();
 
 			const schedule = async () => {
+				if (!isActiveRouteLoad(loadId, requestId)) return;
 				let done = false;
 				try {
 					const { books: nextBooks } = await fetchRecommendations(accessToken, requestId);
+					if (!isActiveRouteLoad(loadId, requestId)) return;
 					if (nextBooks.length > 0) {
 						books = nextBooks;
+						recommendationsPageStore.setRunBooks(requestId, nextBooks);
 						loading = false;
 						error = null;
 						timedOut = false;
@@ -190,12 +233,14 @@
 						done = true;
 					}
 				} catch (e) {
-						error = e instanceof Error ? e.message : t('recommendations.failedToLoad');
+					if (!isActiveRouteLoad(loadId, requestId)) return;
+					error = e instanceof Error ? e.message : t('recommendations.failedToLoad');
 					viewMode = 'error';
 					loading = false;
 					done = true;
 				}
 
+				if (!isActiveRouteLoad(loadId, requestId)) return;
 				if (done) {
 					if (pollTimer != null) {
 						clearTimeout(pollTimer);
@@ -206,39 +251,71 @@
 				}
 			};
 
+			books = [];
 			loading = true;
 			error = null;
 			timedOut = false;
 			viewMode = 'loading';
-			schedule();
+			void schedule();
 		} else {
-			loading = true;
-			error = null;
+			const cachedHistory = recommendationsPageStore.getHistorySnapshot();
+			applyHistorySnapshot();
+
+			const refreshUniqueBooks = async (): Promise<void> => {
+				if (!cachedHistory.uniqueLoaded) {
+					uniqueBooksLoading = true;
+				}
+
+				try {
+					const list = await fetchUniqueBooks(accessToken);
+					if (!isActiveRouteLoad(loadId, null)) return;
+					uniqueBooks = list;
+					recommendationsPageStore.setUniqueBooks(list);
+					recommendationsCountStore.set(list.length);
+				} catch {
+					if (!isActiveRouteLoad(loadId, null)) return;
+					if (!cachedHistory.uniqueLoaded) {
+						uniqueBooks = [];
+						recommendationsCountStore.set(0);
+					}
+				} finally {
+					if (isActiveRouteLoad(loadId, null)) {
+						uniqueBooksLoading = false;
+					}
+				}
+			};
+
 			fetchHistory(accessToken)
 				.then((historyRuns) => {
-					if (!$page.url.searchParams.get('request_id')?.trim()) {
-						runs = historyRuns;
-						viewMode = historyRuns.length === 0 ? 'empty' : 'history';
-						if (historyRuns.length === 0) {
-							recommendationsCountStore.set(0);
-						} else if (historyRuns.length > 0) {
-							uniqueBooksLoading = true;
-							fetchUniqueBooks(accessToken).then((list) => {
-								uniqueBooks = list;
-								recommendationsCountStore.set(list.length);
-								uniqueBooksLoading = false;
-							});
-						}
+					if (!isActiveRouteLoad(loadId, null)) return;
+					runs = historyRuns;
+					recommendationsPageStore.setRuns(historyRuns);
+					error = null;
+					viewMode = historyRuns.length === 0 ? 'empty' : 'history';
+					if (historyRuns.length === 0) {
+						uniqueBooks = [];
+						uniqueBooksLoading = false;
+						recommendationsPageStore.setUniqueBooks([]);
+						recommendationsCountStore.set(0);
+					} else {
+						void refreshUniqueBooks();
 					}
 				})
 				.catch((e) => {
-					if (!$page.url.searchParams.get('request_id')?.trim()) {
-						error = e instanceof Error ? e.message : t('recommendations.failedToLoadHistory');
-						viewMode = 'error';
+					if (!isActiveRouteLoad(loadId, null)) return;
+					if (cachedHistory.loaded) {
+						error = null;
+						viewMode = cachedHistory.runs.length === 0 ? 'empty' : 'history';
+						if (cachedHistory.runs.length > 0) {
+							void refreshUniqueBooks();
+						}
+						return;
 					}
+					error = e instanceof Error ? e.message : t('recommendations.failedToLoadHistory');
+					viewMode = 'error';
 				})
 				.finally(() => {
-					if (!$page.url.searchParams.get('request_id')?.trim()) {
+					if (isActiveRouteLoad(loadId, null)) {
 						loading = false;
 					}
 				});
@@ -275,7 +352,7 @@
 			</h2>
 			{#if uniqueBooksLoading}
 				<ul class="recommendations-page__unique-grid book-card-grid" aria-busy="true" aria-label={t('recommendations.allUniqueTitles')}>
-					{#each Array(6) as _}
+					{#each Array(6) as _, index (index)}
 						<li><BookCardSkeleton /></li>
 					{/each}
 				</ul>
@@ -322,7 +399,7 @@
 		</section>
 	{:else if viewMode === 'single'}
 		<h1 class="recommendations-page__title typ-display2">{t('recommendations.title')}</h1>
-		{#if $page.url.searchParams.get('from') === 'history'}
+		{#if page.url.searchParams.get('from') === 'history'}
 			<p class="recommendations-page__back-wrap">
 				<Button
 					variant="tertiary"

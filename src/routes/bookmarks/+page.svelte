@@ -4,25 +4,38 @@
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { notInterestedStore } from '$lib/stores/notInterested';
+	import { bookmarksPageStore } from '$lib/stores/bookmarksPage';
 	import BookCard from '$lib/components/BookCard.svelte';
 	import BookCardSkeleton from '$lib/components/BookCardSkeleton.svelte';
 	import { t } from '$lib/copy';
 	import type { Book } from '$lib/types/book';
 
-	let books = $state<Book[]>([]);
-	let loading = $state(true);
+	const initialSnapshot = bookmarksPageStore.getSnapshot();
+
+	let books = $state<Book[]>(initialSnapshot.books);
+	let loading = $state(!initialSnapshot.loaded);
 	let error = $state<string | null>(null);
+	let loadRequestId = 0;
 
 	$effect(() => {
 		const session = $authStore.session;
 		const token = session?.access_token ?? null;
+		const snapshot = bookmarksPageStore.getSnapshot();
+
+		const requestId = ++loadRequestId;
 		if (!token) {
+			error = null;
+			books = snapshot.books;
 			loading = false;
-			books = [];
 			return;
 		}
-		loading = true;
+
+		if (snapshot.loaded) {
+			books = snapshot.books;
+		}
+		loading = !snapshot.loaded;
 		error = null;
+
 		fetch('/api/bookmarks', {
 			headers: { Authorization: `Bearer ${token}` }
 		})
@@ -31,13 +44,22 @@
 				return res.json();
 			})
 			.then((data: { books: Book[] }) => {
+				if (requestId !== loadRequestId) return;
 				books = data.books ?? [];
+				bookmarksPageStore.setBooks(books);
+				error = null;
 			})
 			.catch((e) => {
+				if (requestId !== loadRequestId) return;
+				if (snapshot.loaded) {
+					error = null;
+					return;
+				}
 				error = e instanceof Error ? e.message : t('bookmarks.empty');
 				books = [];
 			})
 			.finally(() => {
+				if (requestId !== loadRequestId) return;
 				loading = false;
 			});
 	});
@@ -50,6 +72,7 @@
 		}
 		if (wasBookmarked) {
 			books = books.filter((b) => b.id !== book.id);
+			bookmarksPageStore.removeBook(book.id);
 		}
 	}
 
@@ -60,6 +83,8 @@
 		if (nowNotInterested && !wasNotInterested) {
 			if (planToReadStore.has(book.id)) {
 				planToReadStore.toggle(book.id, book.book_id);
+				books = books.filter((b) => b.id !== book.id);
+				bookmarksPageStore.removeBook(book.id);
 			}
 			if (get(ratingsStore).has(book.id)) {
 				ratingsStore.removeRating(book.id, book.book_id);
@@ -76,7 +101,7 @@
 				{t('bookmarks.allTitles')}
 			</h2>
 			<ul class="bookmarks-page__list book-card-grid" aria-busy="true" aria-label={t('bookmarks.title')}>
-				{#each Array(6) as _}
+				{#each Array(6) as _, index (index)}
 					<li><BookCardSkeleton /></li>
 				{/each}
 			</ul>

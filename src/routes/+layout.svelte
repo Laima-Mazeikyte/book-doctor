@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
 	import { afterNavigate } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { PUBLIC_BUNNY_COVERS_BASE } from '$env/static/public';
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
@@ -19,6 +19,8 @@
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
 	import { notInterestedStore } from '$lib/stores/notInterested';
+	import { bookmarksPageStore } from '$lib/stores/bookmarksPage';
+	import { recommendationsPageStore } from '$lib/stores/recommendationsPage';
 	import type { SupabaseClient } from '@supabase/supabase-js';
 	import {
 		BOOK_GENRE_TYPE_SELECT,
@@ -56,7 +58,7 @@
 
 	/** Routes with `.book-card-grid` — drop main max-width so more columns fit on large screens */
 	const isBookGridShell = $derived.by(() => {
-		const pathname = $page.url.pathname;
+		const pathname = page.url.pathname;
 		return (
 			pathname === '/bookmarks' ||
 			pathname === '/rated' ||
@@ -67,7 +69,7 @@
 	});
 
 	const showAppFooter = $derived.by(() => {
-		const pathname = $page.url.pathname;
+		const pathname = page.url.pathname;
 		if (pathname === '/rate/recommendations') return true;
 		return pathname !== '/rate' && !pathname.startsWith('/rate/');
 	});
@@ -456,6 +458,8 @@
 			ratingsStore.setPersistence(null);
 			planToReadStore.setPersistence(null);
 			notInterestedStore.setPersistence(null);
+			bookmarksPageStore.reset();
+			recommendationsPageStore.reset();
 			recommendationsCountStore.set(0);
 			if (hadUserBefore) {
 				ratingsStore.reset();
@@ -532,7 +536,7 @@
 </svelte:head>
 
 <SkipLink />
-{#if $page.url.pathname === '/rate'}
+{#if page.url.pathname === '/rate'}
 	<a
 		href="#rate-bottom-bar"
 		class="skip-link skip-link--rate-bottom-bar"
@@ -545,8 +549,8 @@
 	<AppHeader onOpenBugReport={openBugModal} />
 	<main
 		id="main"
-		class:rate-page={$page.url.pathname === '/rate'}
-		class:landing-page={$page.url.pathname === '/'}
+		class:rate-page={page.url.pathname === '/rate'}
+		class:landing-page={page.url.pathname === '/'}
 		class:main-book-grid-shell={isBookGridShell}
 	>
 		<div class="main-min">

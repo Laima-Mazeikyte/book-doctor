@@ -80,6 +80,32 @@
 
 	let savedScrollY = $state(0);
 
+	/** Bumped when a new search overlay session starts; stale feed refreshes ignore flag writes. */
+	let searchFeedSessionId = $state(0);
+	/** Any rate / bookmark / not-interested while the overlay was open this session. */
+	let searchOverlaySessionDirty = $state(false);
+	/** First qualifying mutation consumed the one in-session warm-feed attempt. */
+	let searchSessionFeedRefreshIssued = $state(false);
+	let searchSessionFeedInsertAttempted = $state(false);
+	let searchSessionFeedRefreshPipelineCompleted = $state(false);
+	let searchSessionFeedRefreshInFlightPromise: Promise<void> | null = null;
+	/**
+	 * User closed search while a quiet (overlay-open) feed refresh was still running — show the
+	 * main-list skeleton until that request finishes so the list does not swap without warning.
+	 */
+	let searchFeedRevealMainListSkeletonUntilRefreshDone = $state(false);
+
+	function resetSearchSessionFeedFlags() {
+		searchFeedSessionId += 1;
+		searchOverlaySessionDirty = false;
+		searchSessionFeedRefreshIssued = false;
+		searchSessionFeedInsertAttempted = false;
+		searchSessionFeedRefreshPipelineCompleted = false;
+		if (searchSessionFeedRefreshInFlightPromise == null) {
+			searchFeedRevealMainListSkeletonUntilRefreshDone = false;
+		}
+	}
+
 	function captureFeedScrollForSearchReturn() {
 		if (searchOverlayOpen) return;
 		savedScrollY = Math.max(savedScrollY, window.scrollY);
@@ -117,10 +143,14 @@
 		if (opts?.pushHistory === true && browser) {
 			clearRateSearchExternalEntry();
 		}
+		const wasOpen = searchOverlayOpen;
 		/** Only push when transitioning closed → open so we never `history.back()` from UI (fragile vs real stack). */
-		const shouldPush = opts?.pushHistory === true && browser && !searchOverlayOpen;
+		const shouldPush = opts?.pushHistory === true && browser && !wasOpen;
 		if (shouldPush) {
 			pushState('', { rateSearchLayer: true });
+		}
+		if (!wasOpen) {
+			resetSearchSessionFeedFlags();
 		}
 		searchOverlayOpen = true;
 		await queueFocusOverlaySearch();
@@ -135,11 +165,24 @@
 	}
 
 	function restoreFeedScrollAfterOverlayClose(opts?: { refreshMainIfAtTop?: boolean }) {
+		const dirty = searchOverlaySessionDirty;
 		void tick().then(() => {
 			requestAnimationFrame(() => {
 				window.scrollTo({ top: savedScrollY, left: 0, behavior: 'auto' });
-				if (opts?.refreshMainIfAtTop === true && savedScrollY <= SCROLL_THRESHOLD) {
-					void reloadMainListAfterSearchCloseWithNewFeedRequest();
+				searchOverlaySessionDirty = false;
+				const pipelineDone = searchSessionFeedRefreshPipelineCompleted;
+				const inFlight = searchSessionFeedRefreshInFlightPromise != null;
+				const shouldCloseRetry =
+					opts?.refreshMainIfAtTop === true &&
+					savedScrollY <= SCROLL_THRESHOLD &&
+					dirty &&
+					!inFlight &&
+					!pipelineDone;
+				if (shouldCloseRetry) {
+					if (!searchSessionFeedRefreshIssued) {
+						searchSessionFeedRefreshIssued = true;
+					}
+					beginSearchSessionFeedRefresh({ quietUi: false });
 				}
 			});
 		});
@@ -164,6 +207,14 @@
 		searchQuery = '';
 		debouncedQuery = '';
 		clearSearchResultsState();
+
+		const feedRefreshStillPending =
+			searchSessionFeedRefreshInFlightPromise != null ||
+			(searchSessionFeedRefreshIssued && !searchSessionFeedRefreshPipelineCompleted);
+		if (feedRefreshStillPending) {
+			loadingInitial = true;
+			searchFeedRevealMainListSkeletonUntilRefreshDone = true;
+		}
 
 		if (browser && consumeRateSearchExternalEntry()) {
 			if (opts?.fromPopstate) {
@@ -228,7 +279,11 @@
 
 		const q = nav.to.url.searchParams.get('q')?.trim();
 		if (q) {
+			const wasOpen = searchOverlayOpen;
 			searchOverlayOpen = true;
+			if (!wasOpen) {
+				resetSearchSessionFeedFlags();
+			}
 			searchQuery = q;
 			debouncedQuery = q;
 			void queueFocusOverlaySearch();
@@ -623,6 +678,9 @@
 		if (!wasBookmarked && book.book_id != null) {
 			notInterestedStore.remove(book.book_id);
 		}
+		if (searchOverlayOpen) {
+			scheduleSearchSessionFeedRefresh();
+		}
 	}
 
 	function handleMainListNotInterested(book: Book) {
@@ -648,6 +706,7 @@
 		if (!get(authStore).session) {
 			void ensureAnonymousSessionStarted();
 		}
+		scheduleSearchSessionFeedRefresh();
 	}
 
 	function handleSearchNotInterested(book: Book) {
@@ -664,41 +723,72 @@
 			if (lastAppendWasFeed) engagedWithPendingBatch = true;
 			reviveMainListPaginationAfterEngagement();
 		}
+		scheduleSearchSessionFeedRefresh();
+	}
+
+	function scheduleSearchSessionFeedRefresh() {
+		searchOverlaySessionDirty = true;
+		if (!searchOverlayOpen) return;
+		if (searchSessionFeedRefreshIssued) return;
+		searchSessionFeedRefreshIssued = true;
+		beginSearchSessionFeedRefresh({ quietUi: true });
+	}
+
+	function beginSearchSessionFeedRefresh(opts?: { quietUi?: boolean }) {
+		if (searchSessionFeedRefreshInFlightPromise != null) return;
+		const quietUi = opts?.quietUi === true;
+		const sid = searchFeedSessionId;
+		const p = refreshMainFeedAfterSearchSession({ quietUi, sid });
+		searchSessionFeedRefreshInFlightPromise = p.finally(() => {
+			searchSessionFeedRefreshInFlightPromise = null;
+		});
 	}
 
 	/**
-	 * After closing search near the top: persist ratings, insert a new `feed_requests` row, poll
-	 * until complete, then replace the main list (so Supabase shows a new request — not only GET latest).
+	 * Persist ratings, insert one `feed_requests` row per search session, poll, replace main list.
+	 * `quietUi` skips the main-list skeleton while the search overlay is open.
 	 */
-	async function reloadMainListAfterSearchCloseWithNewFeedRequest() {
-		loadingInitial = true;
+	async function refreshMainFeedAfterSearchSession(opts: { quietUi: boolean; sid: number }) {
+		const { quietUi, sid } = opts;
+		const skipListSkeleton = quietUi;
+		if (!quietUi) {
+			loadingInitial = true;
+		}
 		popularError = null;
 
 		try {
 			await ratingsStore.flushPending();
+			if (sid !== searchFeedSessionId) return;
 
 			const token = await waitForAccessToken(AUTH_WAIT_MS);
+			if (sid !== searchFeedSessionId) return;
 			if (!token) {
 				startedFromLatestFeed = false;
-				await loadPopular(0, 0);
+				await loadPopular(0, 0, { skipInitialLoading: skipListSkeleton });
 				return;
 			}
 
 			const supabase = getSupabase();
 			const user = get(authStore).user;
 			if (!supabase || !user?.id) {
-				await loadInitialMainList();
+				await loadInitialMainList({ skipInitialLoading: skipListSkeleton });
 				return;
 			}
 
+			if (sid !== searchFeedSessionId) return;
 			const requestId = await insertFeedRequestRow(supabase, user.id);
+			if (sid !== searchFeedSessionId) return;
+			searchSessionFeedInsertAttempted = true;
+
 			if (requestId == null) {
 				startedFromLatestFeed = false;
-				await loadPopular(0, 0);
+				await loadPopular(0, 0, { skipInitialLoading: skipListSkeleton });
 				return;
 			}
 
 			const outcome = await pollCuratedFeedRequest(requestId, token);
+			if (sid !== searchFeedSessionId) return;
+
 			if (outcome.kind === 'completed' && outcome.books.length > 0) {
 				startedFromLatestFeed = true;
 				const books = setMainListBooks(outcome.books, 'replace');
@@ -708,20 +798,31 @@
 				return;
 			}
 
-			/* New request failed or timed out — fall back to latest snapshot, then Top 100. */
-			await loadInitialMainList();
+			await loadInitialMainList({ skipInitialLoading: skipListSkeleton });
 		} catch (e) {
-			console.error('[rate] reloadMainListAfterSearchCloseWithNewFeedRequest', e);
+			console.error('[rate] refreshMainFeedAfterSearchSession', e);
 			popularError = t('rate.errors.loadBooks');
 			startedFromLatestFeed = false;
-			await loadPopular(0, 0);
+			await loadPopular(0, 0, { skipInitialLoading: skipListSkeleton });
 		} finally {
-			loadingInitial = false;
+			if (sid === searchFeedSessionId) {
+				searchSessionFeedRefreshPipelineCompleted = true;
+				if (!quietUi || searchFeedRevealMainListSkeletonUntilRefreshDone) {
+					loadingInitial = false;
+					searchFeedRevealMainListSkeletonUntilRefreshDone = false;
+				}
+			} else if (searchFeedRevealMainListSkeletonUntilRefreshDone) {
+				loadingInitial = false;
+				searchFeedRevealMainListSkeletonUntilRefreshDone = false;
+			}
 		}
 	}
 
-	async function loadInitialMainList() {
-		loadingInitial = true;
+	async function loadInitialMainList(listOpts?: { skipInitialLoading?: boolean }) {
+		const skip = listOpts?.skipInitialLoading === true;
+		if (!skip) {
+			loadingInitial = true;
+		}
 		popularError = null;
 
 		try {
@@ -729,7 +830,7 @@
 			if (!token) {
 				mainListFellBackDueToMissingAuthToken = true;
 				startedFromLatestFeed = false;
-				await loadPopular(0, 0);
+				await loadPopular(0, 0, { skipInitialLoading: skip });
 				return;
 			}
 
@@ -753,17 +854,19 @@
 				}
 
 				startedFromLatestFeed = false;
-				await loadPopular(0, 0);
+				await loadPopular(0, 0, { skipInitialLoading: skip });
 				return;
 			}
 
 			startedFromLatestFeed = false;
-			await loadPopular(0, 0);
+			await loadPopular(0, 0, { skipInitialLoading: skip });
 		} catch {
 			startedFromLatestFeed = false;
-			await loadPopular(0, 0);
+			await loadPopular(0, 0, { skipInitialLoading: skip });
 		} finally {
-			loadingInitial = false;
+			if (!skip) {
+				loadingInitial = false;
+			}
 		}
 	}
 
@@ -776,14 +879,19 @@
 		void loadInitialMainList();
 	});
 
-	async function loadPopular(offset: number, depth: number) {
+	async function loadPopular(
+		offset: number,
+		depth: number,
+		loadOpts?: { skipInitialLoading?: boolean }
+	) {
 		if (depth > EMPTY_PAGE_CHAIN_MAX) {
 			hasMore = false;
 			return;
 		}
-		if (offset === 0) {
+		const skipInit = offset === 0 && loadOpts?.skipInitialLoading === true;
+		if (offset === 0 && !skipInit) {
 			loadingInitial = true;
-		} else {
+		} else if (offset !== 0) {
 			loadingMore = true;
 		}
 		popularError = null;
@@ -830,9 +938,9 @@
 			popularError = t('rate.errors.loadBooks');
 			if (offset > 0) hasMore = false;
 		} finally {
-			if (offset === 0) {
+			if (offset === 0 && !skipInit) {
 				loadingInitial = false;
-			} else {
+			} else if (offset !== 0) {
 				loadingMore = false;
 			}
 		}
