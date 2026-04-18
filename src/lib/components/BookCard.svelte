@@ -270,8 +270,10 @@
 					aria-controls={summaryOpen ? summaryPanelId : undefined}
 					onclick={() => void handleOpenSummary()}
 				>
-					<span class="book-card__placeholder-author">{book.author}{#if book.year}<span class="book-card__year"> · {book.year}</span>{/if}</span>
-					<span class="book-card__placeholder-title">{book.title}</span>
+					<span class="book-card__placeholder-title book-card__summary-sheet-title typ-h3">{book.title}</span>
+					{#if book.author?.trim()}
+						<span class="book-card__placeholder-author typ-body">{book.author}</span>
+					{/if}
 				</button>
 			{/if}
 			{#if onBookmark}
@@ -551,21 +553,26 @@
 	.book-card:hover .book-card__cover--no-image {
 		transform: scale(1.03);
 	}
-	.book-card__placeholder-author {
-		font-family: var(--typ-caption-font-family);
-		font-size: var(--typ-caption-font-size);
-		font-weight: var(--typ-caption-font-weight);
-		line-height: var(--typ-caption-line-height);
-		letter-spacing: var(--typ-caption-letter-spacing);
+	.book-card__cover--no-image .book-card__placeholder-author {
 		color: var(--color-text-muted);
+		font-weight: var(--font-weight-medium);
+		width: 100%;
+		min-width: 0;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
 	}
-	.book-card__placeholder-title {
-		font-family: var(--typ-caption-font-family);
-		font-size: var(--typ-caption-font-size);
-		font-weight: var(--font-weight-semibold);
-		line-height: var(--line-height-tight);
-		letter-spacing: var(--typ-caption-letter-spacing);
-		color: var(--color-book-title);
+	.book-card__cover--no-image .book-card__placeholder-title {
+		width: 100%;
+		min-width: 0;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+		-webkit-line-clamp: 4;
+		line-clamp: 4;
+		text-align: left;
 	}
 	.book-card__year {
 		opacity: 0.75;
