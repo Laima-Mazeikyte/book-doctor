@@ -59,7 +59,7 @@
 		text-decoration: none;
 		white-space: nowrap;
 		padding: var(--chrome-menu-padding-block) var(--chrome-menu-padding-inline);
-		border-radius: var(--radius);
+		border-radius: var(--radius-pill);
 		transition: color 0.15s ease, background 0.15s ease;
 	}
 	.app-footer__link:hover {

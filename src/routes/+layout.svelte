@@ -60,8 +60,7 @@
 	const isBookGridShell = $derived.by(() => {
 		const pathname = page.url.pathname;
 		return (
-			pathname === '/bookmarks' ||
-			pathname === '/rated' ||
+			pathname === '/my-bookshelf' ||
 			pathname === '/not-interested' ||
 			pathname === '/rate' ||
 			pathname.startsWith('/rate/')

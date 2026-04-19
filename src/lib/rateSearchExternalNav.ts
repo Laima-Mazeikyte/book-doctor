@@ -1,5 +1,5 @@
 /**
- * When the user opens /rate?q=… from another in-app route (e.g. bookmarks), closing search
+ * When the user opens /rate?q=… from another in-app route (e.g. my bookshelf), closing search
  * should return them there (`history.back()`), not leave them on the rate browse feed.
  */
 const KEY = 'book-doctor-rate-search-external';

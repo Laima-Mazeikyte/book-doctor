@@ -553,7 +553,7 @@
 	.auth-modal__text-btn:focus-visible {
 		outline: 2px solid var(--color-focus);
 		outline-offset: 2px;
-		border-radius: var(--radius-sm);
+		border-radius: var(--radius-pill);
 	}
 	.auth-modal__text-btn:disabled {
 		opacity: 0.5;
@@ -576,15 +576,14 @@
 
 	.auth-modal__tabs {
 		display: flex;
-		gap: var(--space-5);
-		flex: 1;
+		gap: var(--space-1);
+		flex-shrink: 0;
+		flex-wrap: wrap;
 		min-width: 0;
-		border-bottom: 1px solid var(--color-border);
 	}
 
 	.auth-modal__tab {
-		padding: var(--space-3) 0 calc(var(--space-3) + 1px);
-		margin-bottom: -1px;
+		padding: var(--chrome-menu-padding-block) var(--chrome-menu-padding-inline);
 		font-family: var(--typ-interactive-2-font-family);
 		font-size: var(--typ-interactive-2-font-size);
 		font-weight: var(--typ-interactive-2-font-weight);
@@ -593,17 +592,22 @@
 		color: var(--color-text-muted);
 		background: transparent;
 		border: none;
-		border-bottom: 2px solid transparent;
-		border-radius: 0;
+		border-radius: var(--radius-pill);
 		cursor: pointer;
+		transition: color 0.15s ease, background 0.15s ease;
 	}
 	.auth-modal__tab:hover {
 		color: var(--color-text);
+		background: var(--color-bg-muted);
 	}
 	.auth-modal__tab--active {
 		color: var(--color-text);
 		font-weight: var(--font-weight-semibold);
-		border-bottom-color: var(--color-accent);
+		background: var(--color-accent-bg);
+	}
+	.auth-modal__tab--active:hover {
+		color: var(--color-text);
+		background: var(--color-bg-muted);
 	}
 	.auth-modal__tab:focus-visible {
 		outline: 2px solid var(--color-focus);
@@ -733,7 +737,7 @@
 		margin: 0;
 		background: none;
 		border: none;
-		border-radius: var(--radius-sm);
+		border-radius: var(--radius-pill);
 		color: var(--color-text-muted);
 		cursor: pointer;
 		transition: color var(--duration-fast) var(--ease-default),

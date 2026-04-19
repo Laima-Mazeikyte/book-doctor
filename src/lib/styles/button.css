@@ -14,7 +14,7 @@
 	font-weight: var(--typ-interactive-1-font-weight);
 	line-height: var(--typ-interactive-1-line-height);
 	letter-spacing: var(--typ-interactive-1-letter-spacing);
-	border-radius: var(--radius-sm);
+	border-radius: var(--radius-pill);
 	transition:
 		background var(--duration-fast) var(--ease-default),
 		border-color var(--duration-fast) var(--ease-default),

@@ -15,8 +15,7 @@
 	function isNavHrefActive(href: string, pathname: string): boolean {
 		if (href === '/rate') return pathname === '/rate';
 		if (href === '/rate/recommendations') return pathname.startsWith('/rate/recommendations');
-		if (href === '/rated') return pathname === '/rated';
-		if (href === '/bookmarks') return pathname === '/bookmarks';
+		if (href === '/my-bookshelf') return pathname === '/my-bookshelf';
 		return false;
 	}
 
@@ -143,18 +142,11 @@
 					{t('shared.header.browse')}
 				</a>
 				<a
-					href="/rated"
+					href="/my-bookshelf"
 					class="app-header__nav-link"
-					aria-current={isNavHrefActive('/rated', pathname) ? 'page' : undefined}
+					aria-current={isNavHrefActive('/my-bookshelf', pathname) ? 'page' : undefined}
 				>
-					{t('shared.header.ratedBooks')}
-				</a>
-				<a
-					href="/bookmarks"
-					class="app-header__nav-link"
-					aria-current={isNavHrefActive('/bookmarks', pathname) ? 'page' : undefined}
-				>
-					{t('shared.header.bookmarks')}
+					{t('shared.header.myBookshelf')}
 				</a>
 				<a
 					href="/rate/recommendations"
@@ -262,20 +254,12 @@
 							{t('shared.header.browse')}
 						</a>
 						<a
-							href="/rated"
+							href="/my-bookshelf"
 							class="app-header__nav-link"
-							aria-current={isNavHrefActive('/rated', pathname) ? 'page' : undefined}
+							aria-current={isNavHrefActive('/my-bookshelf', pathname) ? 'page' : undefined}
 							onclick={closeMobileMenu}
 						>
-							{t('shared.header.ratedBooks')}
-						</a>
-						<a
-							href="/bookmarks"
-							class="app-header__nav-link"
-							aria-current={isNavHrefActive('/bookmarks', pathname) ? 'page' : undefined}
-							onclick={closeMobileMenu}
-						>
-							{t('shared.header.bookmarks')}
+							{t('shared.header.myBookshelf')}
 						</a>
 						<a
 							href="/rate/recommendations"
@@ -356,7 +340,7 @@
 		display: inline-flex;
 		align-items: center;
 		text-decoration: none;
-		border-radius: var(--radius);
+		border-radius: var(--radius-pill);
 		padding: var(--chrome-menu-padding-block) var(--chrome-menu-padding-inline);
 		transition: background 0.15s ease;
 	}
@@ -391,7 +375,7 @@
 		text-decoration: none;
 		white-space: nowrap;
 		padding: var(--chrome-menu-padding-block) var(--chrome-menu-padding-inline);
-		border-radius: var(--radius);
+		border-radius: var(--radius-pill);
 		transition: color 0.15s ease, background 0.15s ease;
 	}
 	.app-header__nav-link:focus-visible {
@@ -404,11 +388,7 @@
 	}
 	.app-header__nav-link[aria-current='page'] {
 		color: var(--color-text);
-		text-decoration: underline;
-		text-decoration-color: var(--color-accent);
-		text-decoration-thickness: 1px;
-		text-underline-offset: 0.60em;
-		text-decoration-skip-ink: auto;
+		background: var(--color-accent-bg);
 	}
 	.app-header__nav-link[aria-current='page']:hover {
 		color: var(--color-text);
@@ -438,7 +418,7 @@
 		white-space: nowrap;
 		padding: var(--chrome-menu-padding-block) var(--chrome-menu-padding-inline);
 		border: none;
-		border-radius: var(--radius);
+		border-radius: var(--radius-pill);
 		background: transparent;
 		cursor: pointer;
 		transition: color 0.15s ease, background 0.15s ease;
@@ -463,7 +443,7 @@
 		padding: var(--chrome-menu-padding-block) var(--chrome-menu-padding-inline);
 		background: var(--color-button-tertiary-bg);
 		border: none;
-		border-radius: var(--radius);
+		border-radius: var(--radius-pill);
 		color: var(--color-button-tertiary-text);
 		cursor: pointer;
 		transition: color 0.15s ease, background 0.15s ease;
@@ -501,7 +481,7 @@
 		color: var(--color-text);
 		background: none;
 		border: none;
-		border-radius: var(--radius-sm);
+		border-radius: var(--radius-pill);
 		cursor: pointer;
 	}
 	.app-header__account-item:hover {
@@ -596,7 +576,7 @@
 		justify-content: center;
 		background: none;
 		border: none;
-		border-radius: var(--radius);
+		border-radius: var(--radius-pill);
 		cursor: pointer;
 		color: var(--color-text);
 	}
@@ -614,7 +594,7 @@
 	@media (min-width: 768px) {
 		.app-header__inner {
 			max-width: var(--content-width-wide);
-			padding: var(--space-3) var(--space-5);
+			padding: var(--space-3) var(--space-4);
 			display: grid;
 			grid-template-columns: 1fr auto 1fr;
 			align-items: center;

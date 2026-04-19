@@ -53,17 +53,21 @@ en:
     remainingToRecommend_one: "Rate 1 more book"
     remainingToRecommend_other: "Rate {{remaining}} more books"
 
-  bookmarks:
-    title: "Books I've marked"
-    allTitles: "All bookmarked titles"
-    empty: "No bookmarks yet. Bookmark from recommendations or the rate page."
   notInterested:
     title: "Not interested"
     intro: "Books you've marked as not interested. Click the button again to show them in recommendations."
     empty: "No books marked as not interested yet."
   rated:
-    title: "Books I've rated"
+    title: "My bookshelf"
     empty: "No books rated yet. Rate at least 10 to get recommendations."
+    loadingList: "Loading your library…"
+    emptyBookmarked: "No bookmark-only titles here. If a book is also rated, it appears under Rated."
+    emptyNotInterested: "No books marked as not interested yet."
+    tabs:
+      ariaLabel: "Filter your shelf"
+      rated: "Rated"
+      bookmarked: "Bookmarked"
+      notInterested: "Not interested"
 
   recommendations:
     title: "Recommendations"
@@ -98,9 +102,9 @@ en:
       mobileMenuLabel: "Menu"
       browse: "Rate books"
       myRecommendations: "My Recommendations"
-      bookmarks: "My Bookmarks"
       notInterested: "Not interested"
       ratedBooks: "My Ratings"
+      myBookshelf: "My bookshelf"
       account: "Account"
       signOut: "Sign out"
       menu: "Menu"
