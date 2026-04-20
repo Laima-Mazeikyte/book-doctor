@@ -51,8 +51,9 @@
 	background: var(--color-button-tertiary-bg);
 	color: var(--color-button-tertiary-text);
 }
-.btn--tertiary:hover {
+.btn--tertiary:hover:not(.btn--disabled) {
 	background: var(--color-button-tertiary-hover-bg);
+	color: var(--color-text);
 }
 
 .btn--inverse {

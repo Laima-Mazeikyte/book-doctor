@@ -16,15 +16,18 @@ export const GET: RequestHandler = async ({ request }) => {
 
 	const { data: rows, error: selectError } = await supabase
 		.from('user_bookmarks')
-		.select('book_id');
+		.select('book_id, created_at')
+		.order('created_at', { ascending: false });
 
 	if (selectError) {
 		console.error(selectError);
 		throw error(500, 'Failed to load bookmarks');
 	}
 
-	const bookIds = (rows ?? []).map((r) => r.book_id).filter((id): id is number => id != null);
-	if (bookIds.length === 0) {
+	const orderedBookIds = (rows ?? [])
+		.map((r) => r.book_id)
+		.filter((id): id is number => id != null && Number.isInteger(id));
+	if (orderedBookIds.length === 0) {
 		return json({ books: [], bookIds: [] });
 	}
 
@@ -32,28 +35,37 @@ export const GET: RequestHandler = async ({ request }) => {
 	const { data: booksData, error: booksError } = await supabase
 		.from('books')
 		.select(`id, book_id, book_name, author, cover_url, summary, year, ${BOOK_GENRE_TYPE_SELECT}`)
-		.in('book_id', bookIds);
+		.in('book_id', orderedBookIds);
 
 	if (booksError) {
 		console.error(booksError);
 		throw error(500, 'Failed to load bookmarked books');
 	}
 
-	const books = (booksData ?? []).map((b) => {
-		const row = b as typeof b & BookGenreSlotRow & { type?: string | null };
-		const type = catalogTypeFromRow(row);
-		return {
-			id: String(b.id),
-			book_id: b.book_id,
-			title: b.book_name ?? '',
-			author: b.author ?? '',
-			coverUrl: b.cover_url ?? (base ? `${base}/${b.book_id}.avif` : undefined),
-			summary: b.summary ?? undefined,
-			year: b.year != null ? String(b.year) : undefined,
-			genres: genresFromGenreColumns(row),
-			...(type ? { type } : {})
-		};
-	});
+	const bookByNum = new Map(
+		(booksData ?? []).map((b) => {
+			const row = b as typeof b & BookGenreSlotRow & { type?: string | null };
+			const type = catalogTypeFromRow(row);
+			return [
+				b.book_id,
+				{
+					id: String(b.id),
+					book_id: b.book_id,
+					title: b.book_name ?? '',
+					author: b.author ?? '',
+					coverUrl: b.cover_url ?? (base ? `${base}/${b.book_id}.avif` : undefined),
+					summary: b.summary ?? undefined,
+					year: b.year != null ? String(b.year) : undefined,
+					genres: genresFromGenreColumns(row),
+					...(type ? { type } : {})
+				}
+			] as const;
+		})
+	);
+
+	const books = orderedBookIds
+		.map((bookId) => bookByNum.get(bookId))
+		.filter((b): b is NonNullable<typeof b> => b != null);
 
 	return json({ books, bookIds: books.map((b) => b.id) });
 };

@@ -282,7 +282,7 @@
 	}
 	.reset-password__password-toggle:hover:not(:disabled) {
 		color: var(--color-text);
-		background: var(--color-bg-muted);
+		background: var(--color-interactive-hover-subtle);
 	}
 	.reset-password__password-toggle:focus-visible {
 		outline: 2px solid var(--color-focus);

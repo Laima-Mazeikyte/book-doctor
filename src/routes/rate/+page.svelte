@@ -594,6 +594,18 @@
 		};
 	}
 
+	/** Resolve a book by integer `book_id` for ratings drawer (NI tab, etc.). */
+	function findBookByBookIdNum(bookIdNum: number): Book | undefined {
+		if (!Number.isFinite(bookIdNum) || bookIdNum === 0) return undefined;
+		for (const bookId of get(ratingsStore).keys()) {
+			const b = ratingsStore.getRatedBook(bookId);
+			if ((b?.book_id ?? 0) === bookIdNum) return b;
+		}
+		const fromPopular = popularBooks.find((b) => (b.book_id ?? 0) === bookIdNum);
+		if (fromPopular) return fromPopular;
+		return searchResults.find((b) => (b.book_id ?? 0) === bookIdNum);
+	}
+
 	const ratedEntries = $derived(
 		Array.from($ratingsStore.entries())
 			.map(([bookId, rating]) => {
@@ -1414,6 +1426,8 @@
 			<div id="rate-bottom-bar" class="rate-page__bottom-bar" tabindex="-1">
 				<RatingsBar
 					{ratedEntries}
+					resolveBook={findBookById}
+					resolveBookByBookNum={findBookByBookIdNum}
 					summaryHooks={{
 						onSearchAuthor: handleSearchAuthor,
 						onBookmark: (book) => handleRateBookmark(book, book.id),
@@ -1623,8 +1637,8 @@
 	}
 	.rate-page__title {
 		margin-top: 0;
-		padding-top: var(--space-4);
-		text-align: center;
+		padding-top: 0;
+		text-align: start;
 	}
 	/* Stay visible while the search (or clear control) is focused so the field is not off-screen. */
 	.rate-page__sticky-header--hidden:not(:focus-within) {
@@ -1635,7 +1649,7 @@
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		justify-content: center;
+		justify-content: flex-start;
 		gap: var(--space-3);
 		width: 100%;
 		min-height: var(--min-tap);
@@ -1782,13 +1796,13 @@
 		padding: 0;
 		border: none;
 		border-radius: var(--radius-pill);
-		background: var(--color-bg-muted);
+		background: var(--color-floating-control-bg);
 		color: var(--color-text);
 		cursor: pointer;
 		transition: background var(--duration-fast) var(--ease-default);
 	}
 	.rate-search-overlay__icon-btn:hover {
-		background: var(--color-book-card-action-hover-bg);
+		background: var(--color-floating-control-bg-hover);
 	}
 	.rate-search-overlay__icon-btn:focus-visible {
 		outline: 2px solid var(--color-focus);

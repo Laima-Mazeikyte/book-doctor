@@ -18,7 +18,7 @@
     --primitive-gray-500: #798686;
     --primitive-gray-900: #E5E6E6;
 	/** Brand CTA fill (pair with `--primitive-white` on-button). */
-	--primitive-accent-brand: #8C2006;
+	--primitive-accent-brand: #A8D6D5;
 	/** Solid accent for links, focus, chrome. */
 	--primitive-accent-solid: #e5e5e5;
 	/** Text on solid accent surfaces. */
@@ -56,6 +56,12 @@
 	/** Modal / overlay scrims (black + alpha). */
 	--primitive-overlay-scrim-opacity: 0.4;
 	--primitive-overlay-scrim-opacity-soft: 0.3;
+
+	/** Interactive hover — alpha wash on dark surfaces (tune in one place). */
+	--primitive-opacity-hover-subtle: 10%;
+	--primitive-opacity-hover-emphasized: 18%;
+	/** Dark ink on white primary CTA (pair with `--color-hover-wash-on-primary-fill`). */
+	--primitive-opacity-hover-primary-on-light: 12%;
 
 	/* ── Spacing ──────────────────────────────────────────────────────────── */
 	--primitive-space-1: 0.25rem;

@@ -4,10 +4,11 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { fly } from 'svelte/transition';
-	import { ArrowLeft, Book as BookIcon, X } from 'lucide-svelte';
+	import { ArrowLeft, LibraryBig, X } from 'lucide-svelte';
 	import Button from '$lib/components/Button.svelte';
 	import BookRatingStarsRow from '$lib/components/book-card/BookRatingStarsRow.svelte';
 	import BookSummarySheetBody from '$lib/components/book-card/BookSummarySheetBody.svelte';
+	import NavStyleTabList from '$lib/components/NavStyleTabList.svelte';
 	import { getBookDisplaySummary } from '$lib/components/book-card/summaryStub';
 	import type { RatingsBarSummaryHooks } from '$lib/components/ratings-bar-summary-hooks';
 	import { markRateSearchOpenedFromOtherRoute } from '$lib/rateSearchExternalNav';
@@ -25,9 +26,122 @@
 	interface Props {
 		ratedEntries: RatedEntry[];
 		summaryHooks?: RatingsBarSummaryHooks;
+		/** When both resolvers are set, the drawer shows Rated / Bookmarked / Not interested tabs (browse page). */
+		resolveBook?: (bookId: string) => Book | undefined;
+		resolveBookByBookNum?: (bookIdNum: number) => Book | undefined;
 	}
 
-	let { ratedEntries, summaryHooks }: Props = $props();
+	let { ratedEntries, summaryHooks, resolveBook, resolveBookByBookNum }: Props = $props();
+
+	type ShelfFilterId = 'rated' | 'bookmarked' | 'not-interested';
+
+	const shelfListPanelId = 'ratings-drawer-shelf-panel';
+	const shelfTabIdPrefix = 'ratings-drawer-shelf-tab';
+
+	const shelfTabsEnabled = $derived(Boolean(resolveBook && resolveBookByBookNum));
+
+	let activeShelfTab = $state<ShelfFilterId>('rated');
+
+	function shelfNotInterested(book: Book, niNums: Set<number>): boolean {
+		return niNums.has(book.book_id ?? 0);
+	}
+
+	const unionBooksById = $derived.by(() => {
+		const m = new Map<string, Book>();
+		if (!shelfTabsEnabled) return m;
+		for (const e of ratedEntries) m.set(e.book.id, e.book);
+		for (const id of $planToReadStore) {
+			const b = resolveBook?.(id);
+			if (b && !m.has(b.id)) m.set(b.id, b);
+		}
+		for (const num of $notInterestedStore) {
+			const b = resolveBookByBookNum?.(num);
+			if (b && !m.has(b.id)) m.set(b.id, b);
+		}
+		return m;
+	});
+
+	const partitionCounts = $derived.by(() => {
+		if (!shelfTabsEnabled) return { ni: 0, rated: 0, bookmarked: 0 };
+		const ratings = $ratingsStore;
+		const planIds = $planToReadStore;
+		const niNums = $notInterestedStore;
+		let ni = 0;
+		let rated = 0;
+		let bookmarked = 0;
+		for (const book of unionBooksById.values()) {
+			if (shelfNotInterested(book, niNums)) {
+				ni++;
+				continue;
+			}
+			if (ratings.has(book.id) && ratingsStore.getRatedBook(book.id)) rated++;
+			if (planIds.has(book.id)) bookmarked++;
+		}
+		return { ni, rated, bookmarked };
+	});
+
+	function countForShelfTab(id: ShelfFilterId): number {
+		if (id === 'rated') return partitionCounts.rated;
+		if (id === 'bookmarked') return partitionCounts.bookmarked;
+		return partitionCounts.ni;
+	}
+
+	const shelfTabItems = $derived([
+		{ id: 'rated' as const, label: t('rated.tabs.rated') },
+		{ id: 'bookmarked' as const, label: t('rated.tabs.bookmarked') },
+		{ id: 'not-interested' as const, label: t('rated.tabs.notInterested') }
+	]);
+
+	const shelfEmptyMessage = $derived.by(() => {
+		if (activeShelfTab === 'rated') return t('rated.empty');
+		if (activeShelfTab === 'bookmarked') return t('rated.emptyBookmarked');
+		return t('rated.emptyNotInterested');
+	});
+
+	const RATING_PLACEHOLDER = 1 as RatingValue;
+
+	const bookmarkedShelfEntries = $derived.by((): RatedEntry[] => {
+		if (!shelfTabsEnabled || !resolveBook) return [];
+		const ratings = $ratingsStore;
+		const planIds = $planToReadStore;
+		const niNums = $notInterestedStore;
+		const out: RatedEntry[] = [];
+		const seen = new Set<string>();
+		for (const id of planIds) {
+			const book = resolveBook(id);
+			if (!book || seen.has(book.id)) continue;
+			if (shelfNotInterested(book, niNums)) continue;
+			seen.add(book.id);
+			const r = ratings.get(book.id);
+			out.push({ book, rating: r ?? RATING_PLACEHOLDER });
+		}
+		return out;
+	});
+
+	const niShelfEntries = $derived.by((): RatedEntry[] => {
+		if (!shelfTabsEnabled || !resolveBookByBookNum) return [];
+		const ratings = $ratingsStore;
+		const planIds = $planToReadStore;
+		const niNums = $notInterestedStore;
+		const out: RatedEntry[] = [];
+		const seen = new Set<string>();
+		for (const num of niNums) {
+			const book = resolveBookByBookNum(num);
+			if (!book || seen.has(book.id)) continue;
+			if (!niNums.has(book.book_id ?? 0)) continue;
+			seen.add(book.id);
+			const r = ratings.get(book.id);
+			out.push({ book, rating: r ?? RATING_PLACEHOLDER });
+		}
+		return out;
+	});
+
+	const drawerSourceEntries = $derived.by((): RatedEntry[] => {
+		if (!shelfTabsEnabled) return ratedEntries;
+		if (activeShelfTab === 'rated') return ratedEntries;
+		if (activeShelfTab === 'bookmarked') return bookmarkedShelfEntries;
+		return niShelfEntries;
+	});
 
 	let open = $state(false);
 	/** Book ids in list order when the drawer was opened; cleared on close so the next open uses store order (most recent first). */
@@ -51,8 +165,8 @@
 	const triggerId = 'ratings-trigger';
 	const PENDING_REMOVE_MS = 3000;
 	const pendingRemoveTimers = new Map<string, ReturnType<typeof setTimeout>>();
-	/** Slide distance in px; negative x → panel flies in from the left (desktop and mobile). */
-	const DRAWER_SLIDE_PX_DESKTOP = 420;
+	/** Slide distance in px; negative x → panel flies in from the left (desktop and mobile). Match desktop panel max width. */
+	const DRAWER_SLIDE_PX_DESKTOP = 520;
 
 	function drawerSlidePx(): number {
 		if (typeof window === 'undefined') return -DRAWER_SLIDE_PX_DESKTOP;
@@ -90,8 +204,12 @@
 		return '';
 	});
 
-	let triggerAriaLabel = $derived(
-		`${t('shared.ratingsBar.yourRatings')} (${ratedEntries.length})`
+	const triggerBadgeCount = $derived(
+		shelfTabsEnabled ? unionBooksById.size : ratedEntries.length
+	);
+
+	const triggerAriaLabel = $derived(
+		`${t('shared.ratingsBar.yourRatings')} (${triggerBadgeCount})`
 	);
 
 	/** Portal node to body so it's not inside the bottom bar (pointer-events: none) and can receive clicks. */
@@ -104,10 +222,11 @@
 		};
 	}
 
-	/** While the drawer is open, keep row order stable even when the store moves the latest rating to the front. */
-	let drawerRatedEntries = $derived.by(() => {
-		if (!open || drawerOrderIds === null) return ratedEntries;
-		const byId = new Map(ratedEntries.map((e) => [e.book.id, e]));
+	/** While the drawer is open, keep row order stable when the underlying list changes. */
+	const drawerOrderedEntries = $derived.by(() => {
+		const source = drawerSourceEntries;
+		if (!open || drawerOrderIds === null) return source;
+		const byId = new Map(source.map((e) => [e.book.id, e]));
 		const ordered: RatedEntry[] = [];
 		const seen = new Set<string>();
 		for (const id of drawerOrderIds) {
@@ -117,7 +236,7 @@
 				seen.add(id);
 			}
 		}
-		for (const e of ratedEntries) {
+		for (const e of source) {
 			if (!seen.has(e.book.id)) {
 				ordered.push(e);
 				seen.add(e.book.id);
@@ -128,7 +247,7 @@
 
 	let detailEntry = $derived.by(() => {
 		if (!detailBookId) return null;
-		return drawerRatedEntries.find((e) => e.book.id === detailBookId) ?? null;
+		return drawerOrderedEntries.find((e) => e.book.id === detailBookId) ?? null;
 	});
 
 	let detailTitleId = $derived(
@@ -168,11 +287,23 @@
 
 	function openDrawer() {
 		flyX = drawerSlidePx();
+		activeShelfTab = 'rated';
 		drawerOrderIds = ratedEntries.map((e) => e.book.id);
 		detailBookId = null;
 		detailFocusReturnEl = null;
 		hoverDetailRating = 0;
 		open = true;
+	}
+
+	function selectShelfTab(id: ShelfFilterId) {
+		activeShelfTab = id;
+		detailBookId = null;
+		detailFocusReturnEl = null;
+		hoverDetailRating = 0;
+		clearAllPendingRemovals();
+		const nextSource =
+			id === 'rated' ? ratedEntries : id === 'bookmarked' ? bookmarkedShelfEntries : niShelfEntries;
+		drawerOrderIds = nextSource.map((e) => e.book.id);
 	}
 
 	function clearPendingRemove(bookId: string) {
@@ -237,6 +368,7 @@
 		detailBookId = null;
 		detailFocusReturnEl = null;
 		hoverDetailRating = 0;
+		activeShelfTab = 'rated';
 	}
 
 	function openDetail(bookId: string, returnTarget: HTMLElement) {
@@ -379,7 +511,7 @@
 
 	$effect(() => {
 		if (!detailBookId || !open) return;
-		const exists = drawerRatedEntries.some((e) => e.book.id === detailBookId);
+		const exists = drawerOrderedEntries.some((e) => e.book.id === detailBookId);
 		if (!exists) {
 			detailBookId = null;
 			detailFocusReturnEl = null;
@@ -398,7 +530,7 @@
 </script>
 
 {#snippet ratingsBarTriggerIcon()}
-	<BookIcon size={14} aria-hidden="true" />
+	<LibraryBig size={14} aria-hidden="true" />
 {/snippet}
 
 <svelte:window onkeydown={handleKeydown} />
@@ -417,7 +549,7 @@
 	icon={ratingsBarTriggerIcon}
 	onclick={openDrawer}
 >
-	<span class="ratings-bar__count" aria-hidden="true">{ratedEntries.length}</span>
+	<span class="ratings-bar__count" aria-hidden="true">{triggerBadgeCount}</span>
 </Button>
 
 {#if open}
@@ -451,7 +583,7 @@
 						<button
 							bind:this={drawerBackButtonEl}
 							type="button"
-							class="ratings-drawer__back"
+							class="chrome-nav-link ratings-drawer__back"
 							aria-label={t('shared.ratingsBar.backToRatings')}
 							onclick={closeDetail}
 						>
@@ -488,8 +620,9 @@
 					{/if}
 				</div>
 				<div
-					class="ratings-drawer__body"
+					class="ratings-drawer__body scrollbar-subtle"
 					class:ratings-drawer__body--detail={detailEntry != null}
+					class:ratings-drawer__body--shelf-tabs={shelfTabsEnabled && detailEntry == null}
 				>
 					{#if detailEntry}
 						<BookSummarySheetBody
@@ -517,157 +650,333 @@
 							onBookmarkClick={detailBookmarkClick}
 							onNotInterestedClick={detailNotInterestedClick}
 						/>
-					{:else if drawerRatedEntries.length === 0}
+					{:else if !shelfTabsEnabled && drawerOrderedEntries.length === 0}
 						<p class="ratings-drawer__empty">
 							{t('shared.ratingsBar.empty')}
 						</p>
 					{:else}
-						<ul class="ratings-drawer__list">
-							{#each drawerRatedEntries as entry (entry.book.id)}
-								<li
-									class="ratings-drawer__item"
-									class:ratings-drawer__item--pending-remove={pendingRemoveIds.has(entry.book.id)}
-								>
-									<div class="ratings-drawer__item-main">
-										<div class="ratings-drawer__item-cover">
-											<button
-												type="button"
-												class="ratings-drawer__item-cover-hit"
-												aria-label={seeSummaryOpenAriaLabel(entry.book)}
-												onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
+						{#if shelfTabsEnabled}
+							<div class="ratings-drawer__shelf-tabs-wrap">
+								<NavStyleTabList
+									ariaLabel={t('rated.tabs.ariaLabel')}
+									panelId={shelfListPanelId}
+									idPrefix={shelfTabIdPrefix}
+									items={shelfTabItems}
+									selectedId={activeShelfTab}
+									countsReady={true}
+									getCount={(id) => countForShelfTab(id as ShelfFilterId)}
+									onSelect={(id) => selectShelfTab(id as ShelfFilterId)}
+								/>
+							</div>
+						{/if}
+						{#if shelfTabsEnabled}
+							<div
+								id={shelfListPanelId}
+								class="ratings-drawer__shelf-scroll scrollbar-subtle"
+								role="tabpanel"
+								aria-labelledby={`${shelfTabIdPrefix}-${activeShelfTab}`}
+							>
+								{#if drawerOrderedEntries.length === 0}
+									<p class="ratings-drawer__empty">{shelfEmptyMessage}</p>
+								{:else}
+									<ul class="ratings-drawer__list">
+										{#each drawerOrderedEntries as entry (entry.book.id)}
+											{@const storedRating = $ratingsStore.get(entry.book.id)}
+											<li
+												class="ratings-drawer__item"
+												class:ratings-drawer__item--pending-remove={pendingRemoveIds.has(entry.book.id)}
 											>
-												{#if entry.book.coverUrl && !coverFailedIds.has(entry.book.id)}
-													<img
-														src={entry.book.coverUrl}
-														alt=""
-														class="ratings-drawer__cover-img"
-														onerror={() => setCoverFailed(entry.book.id)}
-													/>
-												{:else}
-													<div class="ratings-drawer__cover-placeholder">
-														<span class="ratings-drawer__cover-text">{entry.book.title}</span>
+												<div class="ratings-drawer__item-main">
+													<div class="ratings-drawer__item-cover">
+														<button
+															type="button"
+															class="ratings-drawer__item-cover-hit"
+															aria-label={seeSummaryOpenAriaLabel(entry.book)}
+															onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
+														>
+															{#if entry.book.coverUrl && !coverFailedIds.has(entry.book.id)}
+																<img
+																	src={entry.book.coverUrl}
+																	alt=""
+																	class="ratings-drawer__cover-img"
+																	onerror={() => setCoverFailed(entry.book.id)}
+																/>
+															{:else}
+																<div class="ratings-drawer__cover-placeholder">
+																	<span class="ratings-drawer__cover-text">{entry.book.title}</span>
+																</div>
+															{/if}
+														</button>
+													</div>
+													<div class="ratings-drawer__item-info">
+														<button
+															type="button"
+															class="ratings-drawer__item-title-hit"
+															aria-label={seeSummaryOpenAriaLabel(entry.book)}
+															onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
+														>
+															<span class="ratings-drawer__item-title">{entry.book.title}</span>
+														</button>
+														{#if entry.book.author?.trim()}
+															<button
+																type="button"
+																class="ratings-drawer__item-author ratings-drawer__item-author-hit"
+																aria-label={seeSummaryOpenAriaLabel(entry.book)}
+																onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
+															>
+																{entry.book.author}
+															</button>
+														{/if}
+														<div
+															class="ratings-drawer__item-actions"
+															onmouseleave={() => {
+																hoverEntryId = null;
+																hoverRating = 0;
+															}}
+														>
+															<BookRatingStarsRow
+																ratingWrapWidth="auto"
+																displayRating={pendingRemoveIds.has(entry.book.id)
+																	? hoverEntryId === entry.book.id && hoverRating > 0
+																		? hoverRating
+																		: 0
+																	: hoverEntryId === entry.book.id && hoverRating > 0
+																		? hoverRating
+																		: (storedRating ?? 0)}
+																ariaGroupLabel={t('shared.bookCard.rateThisBook')}
+																starAriaLabel={(value) =>
+																	storedRating === value
+																		? t('shared.bookCard.rateOutOf5Clear', { value })
+																		: t('shared.bookCard.rateOutOf5', { value })}
+																starAriaPressed={(value) =>
+																	pendingRemoveIds.has(entry.book.id)
+																		? false
+																		: storedRating === value}
+																onmouseleave={() => {
+																	hoverEntryId = null;
+																	hoverRating = 0;
+																}}
+																onstarEnter={(value) => drawerStarMouseEnter(entry.book.id, value)}
+																onstarClick={(value) => {
+																	hoverEntryId = null;
+																	hoverRating = 0;
+																	const bookId = entry.book.id;
+																	const bookIdNum = entry.book.book_id;
+																	if (pendingRemoveIds.has(bookId)) {
+																		if (value === storedRating) {
+																			clearPendingRemove(bookId);
+																			return;
+																		}
+																		clearPendingRemove(bookId);
+																		ratingsStore.setRating(bookId, value, bookIdNum, entry.book);
+																		summaryHooks?.onAfterRate?.(entry.book);
+																		return;
+																	}
+																	if (storedRating != null && value === storedRating) {
+																		schedulePendingRemove(entry.book);
+																		return;
+																	}
+																	ratingsStore.setRating(bookId, value, bookIdNum, entry.book);
+																	summaryHooks?.onAfterRate?.(entry.book);
+																}}
+															/>
+															{#if pendingRemoveIds.has(entry.book.id)}
+																<Button
+																	variant="tertiary"
+																	compact
+																	type="button"
+																	aria-label={`${t('shared.ratingsBar.undoRemoveRatingFor', { title: entry.book.title })}. ${t('shared.ratingsBar.removePendingHint')}`}
+																	onclick={() => clearPendingRemove(entry.book.id)}
+																>
+																	{t('shared.ratingsBar.undo')}
+																</Button>
+															{:else}
+																<Button
+																	variant="tertiary"
+																	compact
+																	type="button"
+																	aria-label={t('shared.ratingsBar.removeRatingFor', { title: entry.book.title })}
+																	onclick={() => schedulePendingRemove(entry.book)}
+																>
+																	{t('shared.ratingsBar.remove')}
+																</Button>
+															{/if}
+														</div>
+													</div>
+												</div>
+												{#if pendingRemoveIds.has(entry.book.id)}
+													{@const fillRatio = pendingRemoveFillRatio(entry.book.id)}
+													{@const removeProgressPct = Math.round((1 - fillRatio) * 100)}
+													<div class="ratings-drawer__pending-remove-meter">
+														<div
+															class="ratings-drawer__pending-remove-meter__track"
+															role="progressbar"
+															aria-valuemin={0}
+															aria-valuemax={100}
+															aria-valuenow={removeProgressPct}
+															aria-label={t('shared.ratingsBar.removeProgressBarLabel')}
+														>
+															<div
+																class="ratings-drawer__pending-remove-meter__fill"
+																style="width: {fillRatio * 100}%"
+															></div>
+														</div>
 													</div>
 												{/if}
-											</button>
-										</div>
-										<div class="ratings-drawer__item-info">
-											<button
-												type="button"
-												class="ratings-drawer__item-title-hit"
-												aria-label={seeSummaryOpenAriaLabel(entry.book)}
-												onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
-											>
-												<span class="ratings-drawer__item-title">{entry.book.title}</span>
-											</button>
-											{#if entry.book.author?.trim()}
+											</li>
+										{/each}
+									</ul>
+								{/if}
+							</div>
+						{:else}
+							<ul class="ratings-drawer__list">
+								{#each drawerOrderedEntries as entry (entry.book.id)}
+									{@const storedRating = $ratingsStore.get(entry.book.id)}
+									<li
+										class="ratings-drawer__item"
+										class:ratings-drawer__item--pending-remove={pendingRemoveIds.has(entry.book.id)}
+									>
+										<div class="ratings-drawer__item-main">
+											<div class="ratings-drawer__item-cover">
 												<button
 													type="button"
-													class="ratings-drawer__item-author ratings-drawer__item-author-hit"
+													class="ratings-drawer__item-cover-hit"
 													aria-label={seeSummaryOpenAriaLabel(entry.book)}
 													onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
 												>
-													{entry.book.author}
+													{#if entry.book.coverUrl && !coverFailedIds.has(entry.book.id)}
+														<img
+															src={entry.book.coverUrl}
+															alt=""
+															class="ratings-drawer__cover-img"
+															onerror={() => setCoverFailed(entry.book.id)}
+														/>
+													{:else}
+														<div class="ratings-drawer__cover-placeholder">
+															<span class="ratings-drawer__cover-text">{entry.book.title}</span>
+														</div>
+													{/if}
 												</button>
-											{/if}
-											<div
-												class="ratings-drawer__item-actions"
-												onmouseleave={() => {
-													hoverEntryId = null;
-													hoverRating = 0;
-												}}
-											>
-												<BookRatingStarsRow
-													ratingWrapWidth="auto"
-													displayRating={pendingRemoveIds.has(entry.book.id)
-														? hoverEntryId === entry.book.id && hoverRating > 0
-															? hoverRating
-															: 0
-														: hoverEntryId === entry.book.id && hoverRating > 0
-															? hoverRating
-															: entry.rating}
-													ariaGroupLabel={t('shared.bookCard.rateThisBook')}
-													starAriaLabel={(value) =>
-														entry.rating === value
-															? t('shared.bookCard.rateOutOf5Clear', { value })
-															: t('shared.bookCard.rateOutOf5', { value })}
-													starAriaPressed={(value) =>
-														pendingRemoveIds.has(entry.book.id) ? false : entry.rating === value}
+											</div>
+											<div class="ratings-drawer__item-info">
+												<button
+													type="button"
+													class="ratings-drawer__item-title-hit"
+													aria-label={seeSummaryOpenAriaLabel(entry.book)}
+													onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
+												>
+													<span class="ratings-drawer__item-title">{entry.book.title}</span>
+												</button>
+												{#if entry.book.author?.trim()}
+													<button
+														type="button"
+														class="ratings-drawer__item-author ratings-drawer__item-author-hit"
+														aria-label={seeSummaryOpenAriaLabel(entry.book)}
+														onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
+													>
+														{entry.book.author}
+													</button>
+												{/if}
+												<div
+													class="ratings-drawer__item-actions"
 													onmouseleave={() => {
 														hoverEntryId = null;
 														hoverRating = 0;
 													}}
-													onstarEnter={(value) => drawerStarMouseEnter(entry.book.id, value)}
-													onstarClick={(value) => {
-														hoverEntryId = null;
-														hoverRating = 0;
-														const bookId = entry.book.id;
-														const bookIdNum = entry.book.book_id;
-														if (pendingRemoveIds.has(bookId)) {
-															if (value === entry.rating) {
+												>
+													<BookRatingStarsRow
+														ratingWrapWidth="auto"
+														displayRating={pendingRemoveIds.has(entry.book.id)
+															? hoverEntryId === entry.book.id && hoverRating > 0
+																? hoverRating
+																: 0
+															: hoverEntryId === entry.book.id && hoverRating > 0
+																? hoverRating
+																: (storedRating ?? 0)}
+														ariaGroupLabel={t('shared.bookCard.rateThisBook')}
+														starAriaLabel={(value) =>
+															storedRating === value
+																? t('shared.bookCard.rateOutOf5Clear', { value })
+																: t('shared.bookCard.rateOutOf5', { value })}
+														starAriaPressed={(value) =>
+															pendingRemoveIds.has(entry.book.id) ? false : storedRating === value}
+														onmouseleave={() => {
+															hoverEntryId = null;
+															hoverRating = 0;
+														}}
+														onstarEnter={(value) => drawerStarMouseEnter(entry.book.id, value)}
+														onstarClick={(value) => {
+															hoverEntryId = null;
+															hoverRating = 0;
+															const bookId = entry.book.id;
+															const bookIdNum = entry.book.book_id;
+															if (pendingRemoveIds.has(bookId)) {
+																if (value === storedRating) {
+																	clearPendingRemove(bookId);
+																	return;
+																}
 																clearPendingRemove(bookId);
+																ratingsStore.setRating(bookId, value, bookIdNum, entry.book);
+																summaryHooks?.onAfterRate?.(entry.book);
 																return;
 															}
-															clearPendingRemove(bookId);
+															if (storedRating != null && value === storedRating) {
+																schedulePendingRemove(entry.book);
+																return;
+															}
 															ratingsStore.setRating(bookId, value, bookIdNum, entry.book);
 															summaryHooks?.onAfterRate?.(entry.book);
-															return;
-														}
-														if (entry.rating === value) {
-															schedulePendingRemove(entry.book);
-															return;
-														}
-														ratingsStore.setRating(bookId, value, bookIdNum, entry.book);
-														summaryHooks?.onAfterRate?.(entry.book);
-													}}
-												/>
-												{#if pendingRemoveIds.has(entry.book.id)}
-													<Button
-														variant="tertiary"
-														compact
-														type="button"
-														aria-label={`${t('shared.ratingsBar.undoRemoveRatingFor', { title: entry.book.title })}. ${t('shared.ratingsBar.removePendingHint')}`}
-														onclick={() => clearPendingRemove(entry.book.id)}
-													>
-														{t('shared.ratingsBar.undo')}
-													</Button>
-												{:else}
-													<Button
-														variant="tertiary"
-														compact
-														type="button"
-														aria-label={t('shared.ratingsBar.removeRatingFor', { title: entry.book.title })}
-														onclick={() => schedulePendingRemove(entry.book)}
-													>
-														{t('shared.ratingsBar.remove')}
-													</Button>
-												{/if}
+														}}
+													/>
+													{#if pendingRemoveIds.has(entry.book.id)}
+														<Button
+															variant="tertiary"
+															compact
+															type="button"
+															aria-label={`${t('shared.ratingsBar.undoRemoveRatingFor', { title: entry.book.title })}. ${t('shared.ratingsBar.removePendingHint')}`}
+															onclick={() => clearPendingRemove(entry.book.id)}
+														>
+															{t('shared.ratingsBar.undo')}
+														</Button>
+													{:else}
+														<Button
+															variant="tertiary"
+															compact
+															type="button"
+															aria-label={t('shared.ratingsBar.removeRatingFor', { title: entry.book.title })}
+															onclick={() => schedulePendingRemove(entry.book)}
+														>
+															{t('shared.ratingsBar.remove')}
+														</Button>
+													{/if}
+												</div>
 											</div>
 										</div>
-									</div>
-									{#if pendingRemoveIds.has(entry.book.id)}
-										{@const fillRatio = pendingRemoveFillRatio(entry.book.id)}
-										{@const removeProgressPct = Math.round((1 - fillRatio) * 100)}
-										<div class="ratings-drawer__pending-remove-meter">
-											<div
-												class="ratings-drawer__pending-remove-meter__track"
-												role="progressbar"
-												aria-valuemin={0}
-												aria-valuemax={100}
-												aria-valuenow={removeProgressPct}
-												aria-label={t('shared.ratingsBar.removeProgressBarLabel')}
-											>
+										{#if pendingRemoveIds.has(entry.book.id)}
+											{@const fillRatio = pendingRemoveFillRatio(entry.book.id)}
+											{@const removeProgressPct = Math.round((1 - fillRatio) * 100)}
+											<div class="ratings-drawer__pending-remove-meter">
 												<div
-													class="ratings-drawer__pending-remove-meter__fill"
-													style="width: {fillRatio * 100}%"
-												></div>
+													class="ratings-drawer__pending-remove-meter__track"
+													role="progressbar"
+													aria-valuemin={0}
+													aria-valuemax={100}
+													aria-valuenow={removeProgressPct}
+													aria-label={t('shared.ratingsBar.removeProgressBarLabel')}
+												>
+													<div
+														class="ratings-drawer__pending-remove-meter__fill"
+														style="width: {fillRatio * 100}%"
+													></div>
+												</div>
 											</div>
-										</div>
-									{/if}
-								</li>
-							{/each}
-						</ul>
-				{/if}
-			</div>
+										{/if}
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					{/if}
+				</div>
 		</div>
 	</div>
 {/if}
@@ -724,6 +1033,14 @@
 		overflow: hidden;
 	}
 
+	@media (min-width: 768px) {
+		.ratings-drawer-panel {
+			width: min(440px, 92vw);
+			min-width: 400px;
+			max-width: 440px;
+		}
+	}
+
 	@media (max-width: 767px) {
 		.ratings-drawer-overlay {
 			background: var(--color-bg);
@@ -750,13 +1067,16 @@
 		justify-content: center;
 		padding: 0;
 		border: none;
-		background: var(--color-floating-control-bg);
+		background: transparent;
 		border-radius: var(--radius-pill);
 		cursor: pointer;
 		color: var(--color-text);
 		transition: background var(--duration-fast) var(--ease-default);
 	}
 	.ratings-drawer__close:hover {
+		background: var(--color-floating-control-bg);
+	}
+	.ratings-drawer__close:hover:active {
 		background: var(--color-floating-control-bg-hover);
 	}
 	.ratings-drawer__close:focus-visible {
@@ -774,7 +1094,6 @@
 		gap: var(--space-2);
 		padding: var(--space-4) var(--space-5);
 		padding-right: calc(var(--space-2) + var(--min-tap) + var(--space-3));
-		border-bottom: 1px solid var(--color-border);
 		flex-shrink: 0;
 		box-sizing: border-box;
 		min-height: var(--ratings-drawer-header-min-block);
@@ -822,6 +1141,22 @@
 		flex-direction: column;
 		min-height: 0;
 	}
+	.ratings-drawer__body--shelf-tabs {
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		padding: 0;
+	}
+	.ratings-drawer__shelf-tabs-wrap {
+		flex-shrink: 0;
+		padding: var(--space-2) var(--space-5) var(--space-2);
+	}
+	.ratings-drawer__shelf-scroll {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		padding: 0 var(--space-5) var(--space-4);
+	}
 	.ratings-drawer__header.ratings-drawer__header--detail {
 		flex-direction: column;
 		align-items: flex-start;
@@ -829,29 +1164,8 @@
 		gap: var(--space-3);
 	}
 	.ratings-drawer__back {
-		display: inline-flex;
-		align-items: center;
 		gap: var(--space-2);
 		align-self: flex-start;
-		padding: 0;
-		margin: 0;
-		border: none;
-		background: transparent;
-		font-family: var(--typ-interactive-1-font-family);
-		font-size: var(--typ-interactive-1-font-size);
-		font-weight: var(--typ-interactive-1-font-weight);
-		line-height: var(--typ-interactive-1-line-height);
-		letter-spacing: var(--typ-interactive-1-letter-spacing);
-		color: var(--color-text);
-		cursor: pointer;
-		border-radius: var(--radius-pill);
-	}
-	.ratings-drawer__back:hover {
-		color: var(--color-text-muted);
-	}
-	.ratings-drawer__back:focus-visible {
-		outline: 2px solid var(--color-focus);
-		outline-offset: 2px;
 	}
 	.ratings-drawer__back-label {
 		min-width: 0;

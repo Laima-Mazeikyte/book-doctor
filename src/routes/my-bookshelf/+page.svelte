@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
@@ -12,6 +13,7 @@
 	import BookCard from '$lib/components/BookCard.svelte';
 	import BookCardSkeleton from '$lib/components/BookCardSkeleton.svelte';
 	import NavStyleTabList from '$lib/components/NavStyleTabList.svelte';
+	import { ChevronDown } from 'lucide-svelte';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
 
@@ -19,44 +21,104 @@
 	type FilterId = (typeof FILTER_IDS)[number];
 
 	const LS_FILTER_KEY = 'book-doctor:my-bookshelf-filter';
+	const LS_SORT_KEY = 'book-doctor:my-bookshelf-sort';
+
+	const SHELF_SORT_IDS = ['newest', 'oldest', 'rating-high', 'rating-low'] as const;
+	type ShelfSortId = (typeof SHELF_SORT_IDS)[number];
+
+	function isValidShelfSortId(s: string | null | undefined): s is ShelfSortId {
+		return s != null && (SHELF_SORT_IDS as readonly string[]).includes(s);
+	}
 
 	function isValidFilter(s: string | null | undefined): s is FilterId {
 		return s != null && (FILTER_IDS as readonly string[]).includes(s);
 	}
 
-	/** Partition priority: not interested > rated > bookmarked (disjoint buckets). */
-	type Bucket = 'ni' | 'rated' | 'bookmarked';
-
-	function bucketFor(
-		book: Book,
-		ratings: Map<string, RatingValue>,
-		planIds: Set<string>,
-		niNums: Set<number>
-	): Bucket | null {
-		const bid = book.book_id ?? 0;
-		if (niNums.has(bid)) return 'ni';
-		if (ratings.has(book.id) && ratingsStore.getRatedBook(book.id)) return 'rated';
-		if (planIds.has(book.id)) return 'bookmarked';
-		return null;
+	/** Not interested is exclusive; rated and bookmarked can overlap. */
+	function isNotInterested(book: Book, niNums: Set<number>): boolean {
+		return niNums.has(book.book_id ?? 0);
 	}
 
-	let displayedEntries = $state<Array<{ book: Book; ratingAtLoad: RatingValue }>>([]);
+	function readSortFromLs(): ShelfSortId {
+		if (!browser) return 'newest';
+		try {
+			const s = localStorage.getItem(LS_SORT_KEY);
+			if (isValidShelfSortId(s)) return s;
+		} catch {
+			// ignore
+		}
+		return 'newest';
+	}
+
+	/** Recency order is list order; rating sorts use `ratings` (0 = unrated). Ties keep recency order. */
+	function sortBooksByShelfOrder(
+		books: Book[],
+		order: ShelfSortId,
+		ratings: Map<string, RatingValue>
+	): Book[] {
+		const arr = [...books];
+		if (order === 'newest') return arr;
+		if (order === 'oldest') return arr.reverse();
+
+		const baseIdx = new Map(books.map((book, i) => [book.id, i]));
+		const ratingOf = (id: string) => ratings.get(id) ?? 0;
+
+		if (order === 'rating-high') {
+			arr.sort((a, b) => {
+				const diff = ratingOf(b.id) - ratingOf(a.id);
+				if (diff !== 0) return diff;
+				return (baseIdx.get(a.id) ?? 0) - (baseIdx.get(b.id) ?? 0);
+			});
+			return arr;
+		}
+		arr.sort((a, b) => {
+			const diff = ratingOf(a.id) - ratingOf(b.id);
+			if (diff !== 0) return diff;
+			return (baseIdx.get(a.id) ?? 0) - (baseIdx.get(b.id) ?? 0);
+		});
+		return arr;
+	}
+
 	let bookmarkBooks = $state<Book[]>([]);
 	let niBooks = $state<Book[]>([]);
 	let bmNiLoading = $state(false);
 	let loadRequestId = 0;
 
 	let activeFilter = $state<FilterId>('rated');
+	let sortOrder = $state<ShelfSortId>(readSortFromLs());
 
-	$effect(() => {
-		if ($ratingsStore.size > 0 && displayedEntries.length === 0) {
-			displayedEntries = Array.from($ratingsStore.entries())
-				.map(([bookId, rating]) => {
-					const book = ratingsStore.getRatedBook(bookId);
-					return book ? { book, ratingAtLoad: rating } : null;
-				})
-				.filter((e): e is { book: Book; ratingAtLoad: RatingValue } => e !== null);
+	const ratedDisplayEntries = $derived.by(() => {
+		const entries = Array.from($ratingsStore.entries())
+			.map(([bookId, rating]) => {
+				const book = ratingsStore.getRatedBook(bookId);
+				return book ? { book, ratingAtLoad: rating } : null;
+			})
+			.filter((e): e is { book: Book; ratingAtLoad: RatingValue } => e !== null);
+
+		if (sortOrder === 'newest') return entries;
+
+		const ratings = $ratingsStore;
+		const baseIdx = new Map(entries.map((e, i) => [e.book.id, i]));
+		const score = (e: { book: Book; ratingAtLoad: RatingValue }) =>
+			ratings.get(e.book.id) ?? e.ratingAtLoad;
+
+		if (sortOrder === 'oldest') return [...entries].reverse();
+
+		const sorted = [...entries];
+		if (sortOrder === 'rating-high') {
+			sorted.sort((a, b) => {
+				const diff = score(b) - score(a);
+				if (diff !== 0) return diff;
+				return (baseIdx.get(a.book.id) ?? 0) - (baseIdx.get(b.book.id) ?? 0);
+			});
+			return sorted;
 		}
+		sorted.sort((a, b) => {
+			const diff = score(a) - score(b);
+			if (diff !== 0) return diff;
+			return (baseIdx.get(a.book.id) ?? 0) - (baseIdx.get(b.book.id) ?? 0);
+		});
+		return sorted;
 	});
 
 	$effect(() => {
@@ -106,11 +168,13 @@
 		});
 	});
 
+	/** Sync from URL only when `$page.url` changes — do not subscribe to `activeFilter`, or a tab change can run before `goto` updates the query and this effect would snap `activeFilter` back to the stale param (breaking keyboard focus on other tabs). */
 	$effect(() => {
 		if (!browser) return;
 		const param = $page.url.searchParams.get('filter');
 		if (isValidFilter(param)) {
-			if (activeFilter !== param) activeFilter = param;
+			const current = untrack(() => activeFilter);
+			if (current !== param) activeFilter = param;
 			try {
 				localStorage.setItem(LS_FILTER_KEY, param);
 			} catch {
@@ -125,7 +189,8 @@
 		} catch {
 			// ignore
 		}
-		if (activeFilter !== next) activeFilter = next;
+		const current = untrack(() => activeFilter);
+		if (current !== next) activeFilter = next;
 		void goto(`/my-bookshelf?filter=${encodeURIComponent(next)}`, {
 			replaceState: true,
 			keepFocus: true,
@@ -159,11 +224,14 @@
 		let ni = 0;
 		let rated = 0;
 		let bookmarked = 0;
+		const ratings = $ratingsStore;
 		for (const book of unionBooksById.values()) {
-			const b = bucketFor(book, $ratingsStore, planIds, niNums);
-			if (b === 'ni') ni++;
-			else if (b === 'rated') rated++;
-			else if (b === 'bookmarked') bookmarked++;
+			if (isNotInterested(book, niNums)) {
+				ni++;
+				continue;
+			}
+			if (ratings.has(book.id) && ratingsStore.getRatedBook(book.id)) rated++;
+			if (planIds.has(book.id)) bookmarked++;
 		}
 		return { ni, rated, bookmarked };
 	});
@@ -180,13 +248,36 @@
 		{ id: 'not-interested' as FilterId, label: t('rated.tabs.notInterested') }
 	]);
 
+	const sortOptionLabel = $derived.by((): string => {
+		switch (sortOrder) {
+			case 'newest':
+				return t('rated.sort.newest');
+			case 'oldest':
+				return t('rated.sort.oldest');
+			case 'rating-high':
+				return t('rated.sort.ratingHigh');
+			case 'rating-low':
+				return t('rated.sort.ratingLow');
+			default: {
+				const _x: never = sortOrder;
+				return _x;
+			}
+		}
+	});
+
 	const bookmarkTabBooks = $derived(
-		bookmarkBooks.filter(
-			(b) => bucketFor(b, $ratingsStore, planIds, niNums) === 'bookmarked'
-		)
+		bookmarkBooks.filter((b) => !isNotInterested(b, niNums))
 	);
 
 	const niTabBooks = $derived(niBooks.filter((b) => $notInterestedStore.has(b.book_id ?? 0)));
+
+	const sortedBookmarkTabBooks = $derived.by(() =>
+		sortBooksByShelfOrder(bookmarkTabBooks, sortOrder, $ratingsStore)
+	);
+
+	const sortedNiTabBooks = $derived.by(() =>
+		sortBooksByShelfOrder(niTabBooks, sortOrder, $ratingsStore)
+	);
 
 	const listNeedsBmNi = $derived(
 		activeFilter === 'bookmarked' || activeFilter === 'not-interested'
@@ -195,16 +286,22 @@
 	const listLoading = $derived($authStore.session?.access_token && listNeedsBmNi && bmNiLoading);
 
 	const currentListBooks = $derived.by((): Book[] => {
-		if (activeFilter === 'rated') return displayedEntries.map((e) => e.book);
-		if (activeFilter === 'bookmarked') return bookmarkTabBooks;
-		return niTabBooks;
+		if (activeFilter === 'rated') return ratedDisplayEntries.map((e) => e.book);
+		if (activeFilter === 'bookmarked') return sortedBookmarkTabBooks;
+		return sortedNiTabBooks;
 	});
 
-	function cardContextFor(book: Book): 'rated' | 'bookmarks' | 'not-interested' {
-		const b = bucketFor(book, $ratingsStore, planIds, niNums);
-		if (b === 'ni') return 'not-interested';
-		if (b === 'bookmarked') return 'bookmarks';
-		return 'rated';
+	function setSortOrder(next: ShelfSortId) {
+		sortOrder = next;
+		try {
+			localStorage.setItem(LS_SORT_KEY, next);
+		} catch {
+			// ignore
+		}
+	}
+
+	function cardContextFor(): 'bookmarks' | 'not-interested' {
+		return activeFilter === 'not-interested' ? 'not-interested' : 'bookmarks';
 	}
 
 	function selectTab(id: FilterId) {
@@ -228,7 +325,9 @@
 			notInterestedStore.remove(book.book_id);
 			niBooks = niBooks.filter((b) => b.book_id !== book.book_id);
 			if (!bookmarkBooks.some((b) => b.id === book.id)) {
-				bookmarkBooks = [book, ...bookmarkBooks];
+				const rest = bookmarkBooks.filter((b) => b.id !== book.id);
+				bookmarkBooks =
+					sortOrder === 'oldest' ? [...rest, book] : [book, ...rest];
 				bookmarksPageStore.setBooks(bookmarkBooks);
 			}
 		}
@@ -251,7 +350,10 @@
 			if (get(ratingsStore).has(book.id)) {
 				ratingsStore.removeRating(book.id, book.book_id);
 			}
-			niBooks = [book, ...niBooks.filter((b) => b.id !== book.id)];
+			{
+				const rest = niBooks.filter((b) => b.id !== book.id);
+				niBooks = sortOrder === 'oldest' ? [...rest, book] : [book, ...rest];
+			}
 		} else if (wasNotInterested && !nowNotInterested) {
 			niBooks = niBooks.filter((b) => b.book_id !== book.book_id);
 		}
@@ -278,6 +380,27 @@
 			getCount={(id) => countForTab(id as FilterId)}
 			onSelect={(id) => selectTab(id as FilterId)}
 		/>
+		<div class="bookshelf-page__sort">
+			<span class="bookshelf-page__sort-sizer" aria-hidden="true">{sortOptionLabel}</span>
+			<select
+				id="bookshelf-sort"
+				class="bookshelf-page__sort-select"
+				aria-label={t('rated.sort.ariaLabel')}
+				value={sortOrder}
+				onchange={(e) => {
+					const v = (e.currentTarget as HTMLSelectElement).value;
+					if (isValidShelfSortId(v)) setSortOrder(v);
+				}}
+			>
+				<option value="newest">{t('rated.sort.newest')}</option>
+				<option value="oldest">{t('rated.sort.oldest')}</option>
+				<option value="rating-high">{t('rated.sort.ratingHigh')}</option>
+				<option value="rating-low">{t('rated.sort.ratingLow')}</option>
+			</select>
+			<span class="bookshelf-page__sort-chevron" aria-hidden="true">
+				<ChevronDown size={18} strokeWidth={2} />
+			</span>
+		</div>
 	</div>
 
 	<div
@@ -293,7 +416,7 @@
 					<li><BookCardSkeleton /></li>
 				{/each}
 			</ul>
-		{:else if activeFilter === 'rated' && displayedEntries.length === 0}
+		{:else if activeFilter === 'rated' && ratedDisplayEntries.length === 0}
 			<p class="bookshelf-page__empty">{t('rated.empty')}</p>
 		{:else if activeFilter === 'bookmarked' && bookmarkTabBooks.length === 0}
 			<p class="bookshelf-page__empty">{t('rated.emptyBookmarked')}</p>
@@ -302,7 +425,7 @@
 		{:else}
 			<ul class="bookshelf-page__list book-card-grid" aria-label={t('shared.ratingsBar.yourRatings')}>
 				{#if activeFilter === 'rated'}
-					{#each displayedEntries as { book } (book.id)}
+					{#each ratedDisplayEntries as { book } (book.id)}
 						<li>
 							<BookCard
 								context="rated"
@@ -319,7 +442,7 @@
 					{/each}
 				{:else}
 					{#each currentListBooks as book (book.id)}
-						{@const ctx = cardContextFor(book)}
+						{@const ctx = cardContextFor()}
 						<li>
 							<BookCard
 								context={ctx}
@@ -352,7 +475,98 @@
 		text-align: left;
 	}
 	.bookshelf-page__tabs-wrap {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-3);
 		margin: 0 0 var(--space-5) 0;
+	}
+	.bookshelf-page__tabs-wrap :global(.nav-style-tabs__wrap) {
+		width: auto;
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+	.bookshelf-page__tabs-wrap :global(.nav-style-tabs__list) {
+		width: auto;
+	}
+	.bookshelf-page__sort {
+		position: relative;
+		display: inline-flex;
+		align-items: stretch;
+		flex-shrink: 0;
+		max-width: 100%;
+		vertical-align: middle;
+		border-radius: var(--radius-pill);
+		background: transparent;
+		cursor: pointer;
+		transition: background 0.15s ease;
+	}
+	.bookshelf-page__sort:hover {
+		background: var(--color-interactive-hover-subtle);
+	}
+	/**
+	 * Sizer width = selected label only (native `<select>` uses widest option otherwise).
+	 * Padding matches `.nav-style-tabs__tab` + `space-1` + 18px chevron (like label + gap + count).
+	 */
+	.bookshelf-page__sort-sizer {
+		display: inline-block;
+		padding: var(--chrome-menu-padding-block)
+			calc(var(--chrome-menu-padding-inline) + var(--space-1) + 1.125rem)
+			var(--chrome-menu-padding-block) var(--chrome-menu-padding-inline);
+		font-family: var(--typ-interactive-2-font-family);
+		font-size: var(--typ-interactive-2-font-size);
+		font-weight: var(--typ-interactive-2-font-weight);
+		line-height: var(--typ-interactive-2-line-height);
+		letter-spacing: var(--typ-interactive-2-letter-spacing);
+		white-space: nowrap;
+		visibility: hidden;
+		pointer-events: none;
+	}
+	.bookshelf-page__sort-select {
+		appearance: none;
+		-webkit-appearance: none;
+		position: absolute;
+		inset: 0;
+		box-sizing: border-box;
+		width: 100%;
+		height: 100%;
+		margin: 0;
+		min-width: 0;
+		padding: var(--chrome-menu-padding-block)
+			calc(var(--chrome-menu-padding-inline) + var(--space-1) + 1.125rem)
+			var(--chrome-menu-padding-block) var(--chrome-menu-padding-inline);
+		font-family: var(--typ-interactive-2-font-family);
+		font-size: var(--typ-interactive-2-font-size);
+		font-weight: var(--typ-interactive-2-font-weight);
+		line-height: var(--typ-interactive-2-line-height);
+		letter-spacing: var(--typ-interactive-2-letter-spacing);
+		color: var(--color-text-muted);
+		background: transparent;
+		border: none;
+		border-radius: inherit;
+		cursor: pointer;
+		transition: color 0.15s ease;
+	}
+	.bookshelf-page__sort:hover .bookshelf-page__sort-select {
+		color: var(--color-text);
+	}
+	/** Match `.nav-style-tabs__tab:focus-visible`. */
+	.bookshelf-page__sort-select:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 2px;
+	}
+	.bookshelf-page__sort-chevron {
+		position: absolute;
+		right: var(--chrome-menu-padding-inline);
+		top: 50%;
+		transform: translateY(-50%);
+		display: flex;
+		color: var(--color-text-muted);
+		pointer-events: none;
+	}
+	.bookshelf-page__sort:hover .bookshelf-page__sort-chevron {
+		color: var(--color-text);
 	}
 	.bookshelf-page__loading {
 		margin: 0 0 var(--space-3) 0;

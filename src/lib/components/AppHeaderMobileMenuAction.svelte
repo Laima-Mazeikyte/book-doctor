@@ -36,7 +36,7 @@
 	}
 	.app-header__mobile-menu-action:hover {
 		color: var(--color-text);
-		background: var(--color-bg-muted);
+		background: var(--color-interactive-hover-subtle);
 	}
 	.app-header__mobile-menu-action:focus-visible {
 		outline: 2px solid var(--color-focus);

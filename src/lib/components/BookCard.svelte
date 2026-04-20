@@ -815,7 +815,7 @@
 		justify-content: center;
 		padding: 0;
 		border: none;
-		background: var(--color-floating-control-bg);
+		background: transparent;
 		border-radius: var(--radius-pill);
 		cursor: pointer;
 		color: var(--color-text);

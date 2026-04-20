@@ -37,15 +37,6 @@
 		</h1>
 		<p class="landing__lead typ-body">{t('home.lead')}</p>
 
-		<div class="landing__tips">
-			<p class="landing__tips-label typ-caption">{t('home.ratingTipsTitle')}</p>
-			<ul class="landing__tips-list">
-				{#each t('home.ratingTips').split('\n').filter((line) => line.trim()) as tip}
-					<li class="landing__tips-item typ-caption">{tip.trim()}</li>
-				{/each}
-			</ul>
-		</div>
-
 		<Button href="/rate" variant="inverse" pill>{t('home.startRating')}</Button>
 	</div>
 </div>
@@ -99,47 +90,6 @@
 	.landing__lead {
 		color: var(--color-text-muted);
 		margin: 0;
-	}
-
-	.landing__tips {
-		width: 100%;
-		border: none;
-		border-radius: var(--radius-md);
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-3);
-	}
-
-	.landing__tips-label {
-		text-transform: uppercase;
-		color: var(--color-text-muted);
-		opacity: 0.55;
-		margin: 0;
-		text-align: center;
-	}
-
-	.landing__tips-list {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: grid;
-		grid-template-columns: 1fr;
-		gap: var(--space-2);
-	}
-
-	.landing__tips-item {
-		color: var(--color-text-muted);
-		background: var(--color-bg-muted);
-		border-radius: var(--radius-sm);
-		padding: var(--space-2) var(--space-3);
-		text-align: left;
-	}
-
-	@media (min-width: 560px) {
-		.landing__tips-list {
-			grid-template-columns: repeat(3, 1fr);
-		}
 	}
 
 	@media (min-width: 480px) {

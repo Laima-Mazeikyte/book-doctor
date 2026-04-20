@@ -64,7 +64,7 @@
 	}
 	.app-footer__link:hover {
 		color: var(--color-text);
-		background: var(--color-bg-muted);
+		background: var(--color-interactive-hover-subtle);
 	}
 	.app-footer__link:focus-visible {
 		outline: 2px solid var(--color-focus);

@@ -120,7 +120,7 @@ main.main-book-grid-shell {
  * Card grid star glyph: BookCard.svelte. Summary sheet stars: book-summary-sheet-body.css (global import below).
  */
 :root {
-	/* Header/footer chrome — matches `.app-header__nav-link` (typ-interactive-2 + padding) */
+	/* Header/footer chrome — matches `.chrome-nav-link` (typ-interactive-2 + padding) */
 	--chrome-menu-padding-block: var(--space-2);
 	--chrome-menu-padding-inline: var(--space-3);
 	--book-card-radius: var(--radius);

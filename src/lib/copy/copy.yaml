@@ -19,11 +19,6 @@ en:
       - serious
     lead: "Discover your next favorite book"
     startRating: "Start rating"
-    ratingTipsTitle: "Book rating tips"
-    ratingTips: |
-      10 books is enough to get a good recommendation.
-      It's okay to rate books you haven't finished.
-      Try to rate a variety of different book genres and authors.
 
   rate:
     pageTitle: "Browse & Rate"
@@ -58,16 +53,23 @@ en:
     intro: "Books you've marked as not interested. Click the button again to show them in recommendations."
     empty: "No books marked as not interested yet."
   rated:
-    title: "My bookshelf"
+    title: "Bookshelf"
     empty: "No books rated yet. Rate at least 10 to get recommendations."
     loadingList: "Loading your library…"
-    emptyBookmarked: "No bookmark-only titles here. If a book is also rated, it appears under Rated."
+    emptyBookmarked: "No bookmarked books yet. Titles you save stay here even if you also rate them."
     emptyNotInterested: "No books marked as not interested yet."
     tabs:
       ariaLabel: "Filter your shelf"
       rated: "Rated"
       bookmarked: "Bookmarked"
       notInterested: "Not interested"
+    sort:
+      label: "Sort"
+      ariaLabel: "Sort books on your shelf"
+      newest: "Newest"
+      oldest: "Oldest"
+      ratingHigh: "Highest rating"
+      ratingLow: "Lowest rating"
 
   recommendations:
     title: "Recommendations"
@@ -85,6 +87,17 @@ en:
       pastRuns: "Past recommendation runs"
       recommendedBooks: "Recommended books"
     historyView: "View"
+    tabs:
+      ariaLabel: "Filter recommendations"
+      recommended: "Recommended"
+    sort:
+      ariaLabel: "Sort recommendations"
+      newestRecs: "Latest recs"
+      oldestRecs: "Oldest recs"
+    emptyRecommendedTab: "No recommendations in this list yet."
+    emptyBookmarkedTab: "No bookmarked recommendations yet."
+    emptyNotInterestedTab: "No recommended titles marked not interested yet."
+    loadingList: "Loading…"
 
   faq:
     title: "FAQ"
@@ -101,10 +114,10 @@ en:
       mainNavigation: "Main"
       mobileMenuLabel: "Menu"
       browse: "Rate books"
-      myRecommendations: "My Recommendations"
+      myRecommendations: "Recommendations"
       notInterested: "Not interested"
       ratedBooks: "My Ratings"
-      myBookshelf: "My bookshelf"
+      myBookshelf: "Bookshelf"
       account: "Account"
       signOut: "Sign out"
       menu: "Menu"
@@ -117,9 +130,9 @@ en:
     errorBanner:
       dismiss: "Dismiss error"
     ratingsBar:
-      yourRatings: "Ratings"
-      backToRatings: "Back to ratings"
-      close: "Close ratings"
+      yourRatings: "Bookshelf"
+      backToRatings: "Back to bookshelf"
+      close: "Close bookshelf"
       empty: "No books rated yet. Rate at least 10 to get recommendations."
       syncRatings: "Sync ratings"
       syncing: "Ratings syncing"
@@ -174,15 +187,15 @@ en:
       youRatedCount: "You rated {{count}} book"
       youRatedCountPlural: "s"
     authModal:
-      dialogAccessibleName: "Sign in or create account"
-      signIn: "Sign in"
-      createAccount: "Create account"
+      dialogAccessibleName: "Log in or create account"
+      signIn: "Log in"
+      createAccount: "Sign up"
       forgotPassword: "Forgot password?"
       resetPasswordTitle: "Reset password"
       resetPasswordLead: "Enter your email and we’ll send a link to choose a new password."
       sendResetLink: "Send reset link"
       sendingResetLink: "Sending…"
-      backToSignIn: "Back to sign in"
+      backToSignIn: "Back to log in"
       successResetEmailSent: "If an account exists for that email, you’ll get reset instructions shortly."
       errorResetEmailFailed: "Could not send reset email. Please try again."
       errorEmailRequired: "Please enter your email."
@@ -193,7 +206,7 @@ en:
       showPassword: "Show password"
       hidePassword: "Hide password"
       emailPlaceholder: "you@example.com"
-      signingIn: "Signing in…"
+      signingIn: "Logging in…"
       creatingAccount: "Creating account…"
       errorUnableToConnect: "Unable to connect. Please try again."
       errorInvalidCredentials: "Invalid login credentials"
@@ -206,8 +219,8 @@ en:
       passwordHint: "At least 6 characters."
       submit: "Update password"
       submitting: "Updating…"
-      invalidOrExpired: "This reset link is invalid or has expired. Request a new one from Sign in."
-      useSignInInstead: "You’re already signed in. To change your password, sign out and use Forgot password from the sign-in screen."
+      invalidOrExpired: "This reset link is invalid or has expired. Request a new one from the log in screen."
+      useSignInInstead: "You’re already signed in. To change your password, sign out and use Forgot password from the log in screen."
       errorMismatch: "Passwords don’t match."
       errorWeak: "Password is too short."
       errorUpdateFailed: "Could not update password. Try requesting a new link."

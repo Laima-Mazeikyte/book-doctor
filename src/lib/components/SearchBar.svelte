@@ -144,7 +144,7 @@
 	}
 	.search-bar__clear:hover {
 		color: var(--color-text);
-		background: var(--color-bg-muted);
+		background: var(--color-interactive-hover-subtle);
 	}
 	.search-bar__clear:focus-visible {
 		outline: 2px solid var(--color-focus);

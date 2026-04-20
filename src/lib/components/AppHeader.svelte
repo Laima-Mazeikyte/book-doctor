@@ -35,7 +35,8 @@
 	let showAuthActions = $derived($isAnonymousOrSignedOut);
 	let email = $derived($signedInEmail);
 	let pathname = $derived($page.url.pathname);
-	let showMainNav = $derived($recommendationsCountStore > 0);
+	/** Signed-in (non-anonymous) users always see primary nav; anonymous users only when they already have recommendations. */
+	let showMainNav = $derived(!$isAnonymousOrSignedOut || $recommendationsCountStore > 0);
 	function openAuthModal(tab: 'signin' | 'signup' = 'signin') {
 		authModalInitialTab = tab;
 		authModalOpen = true;
@@ -136,21 +137,21 @@
 			<nav class="app-header__nav" aria-label={t('shared.header.mainNavigation')}>
 				<a
 					href="/rate"
-					class="app-header__nav-link"
+					class="chrome-nav-link"
 					aria-current={isNavHrefActive('/rate', pathname) ? 'page' : undefined}
 				>
 					{t('shared.header.browse')}
 				</a>
 				<a
 					href="/my-bookshelf"
-					class="app-header__nav-link"
+					class="chrome-nav-link"
 					aria-current={isNavHrefActive('/my-bookshelf', pathname) ? 'page' : undefined}
 				>
 					{t('shared.header.myBookshelf')}
 				</a>
 				<a
 					href="/rate/recommendations"
-					class="app-header__nav-link"
+					class="chrome-nav-link"
 					aria-current={isNavHrefActive('/rate/recommendations', pathname) ? 'page' : undefined}
 				>
 					{t('shared.header.myRecommendations')}
@@ -160,49 +161,51 @@
 
 		<div class="app-header__right">
 			<div class="app-header__account" data-state={accountDropdownOpen ? 'open' : 'closed'}>
-				<button
-					type="button"
-					class="app-header__account-trigger"
-					aria-expanded={accountDropdownOpen}
-					aria-haspopup="menu"
-					aria-controls="app-header-account-menu"
-					aria-label={t('shared.header.account')}
-					bind:this={accountTriggerEl}
-					onclick={toggleAccountDropdown}
-				>
-					<UserRound class="app-header__account-icon" size={20} aria-hidden="true" />
-				</button>
-				<div
-					id="app-header-account-menu"
-					class="app-header__account-panel"
-					role="menu"
-					hidden={!accountDropdownOpen}
-					bind:this={accountPanelEl}
-				>
-					{#if showAuthActions}
+				{#if showAuthActions}
+					<div class="app-header__auth-actions">
 						<button
 							type="button"
-							role="menuitem"
-							class="app-header__account-item"
-							onclick={() => openAuthModal('signup')}
-						>
-							{t('shared.authModal.createAccount')}
-						</button>
-						<button
-							type="button"
-							role="menuitem"
-							class="app-header__account-item"
+							class="btn btn--tertiary btn--compact"
 							onclick={() => openAuthModal('signin')}
 						>
 							{t('shared.authModal.signIn')}
 						</button>
-					{:else if email}
-						<div class="app-header__account-email" role="presentation">{email}</div>
-						<button type="button" role="menuitem" class="app-header__account-item" onclick={handleSignOut}>
-							{t('shared.header.signOut')}
+						<button
+							type="button"
+							class="btn btn--primary btn--compact"
+							onclick={() => openAuthModal('signup')}
+						>
+							{t('shared.authModal.createAccount')}
 						</button>
-					{/if}
-				</div>
+					</div>
+				{:else}
+					<button
+						type="button"
+						class="app-header__account-trigger"
+						aria-expanded={accountDropdownOpen}
+						aria-haspopup="menu"
+						aria-controls="app-header-account-menu"
+						aria-label={t('shared.header.account')}
+						bind:this={accountTriggerEl}
+						onclick={toggleAccountDropdown}
+					>
+						<UserRound class="app-header__account-icon" size={20} aria-hidden="true" />
+					</button>
+					<div
+						id="app-header-account-menu"
+						class="app-header__account-panel"
+						role="menu"
+						hidden={!accountDropdownOpen}
+						bind:this={accountPanelEl}
+					>
+						{#if email}
+							<div class="app-header__account-email" role="presentation">{email}</div>
+							<button type="button" role="menuitem" class="app-header__account-item" onclick={handleSignOut}>
+								{t('shared.header.signOut')}
+							</button>
+						{/if}
+					</div>
+				{/if}
 			</div>
 
 			<button
@@ -247,7 +250,7 @@
 					<nav class="app-header__mobile-nav" aria-label={t('shared.header.mainNavigation')}>
 						<a
 							href="/rate"
-							class="app-header__nav-link"
+							class="chrome-nav-link"
 							aria-current={isNavHrefActive('/rate', pathname) ? 'page' : undefined}
 							onclick={closeMobileMenu}
 						>
@@ -255,7 +258,7 @@
 						</a>
 						<a
 							href="/my-bookshelf"
-							class="app-header__nav-link"
+							class="chrome-nav-link"
 							aria-current={isNavHrefActive('/my-bookshelf', pathname) ? 'page' : undefined}
 							onclick={closeMobileMenu}
 						>
@@ -263,7 +266,7 @@
 						</a>
 						<a
 							href="/rate/recommendations"
-							class="app-header__nav-link"
+							class="chrome-nav-link"
 							aria-current={isNavHrefActive('/rate/recommendations', pathname) ? 'page' : undefined}
 							onclick={closeMobileMenu}
 						>
@@ -273,11 +276,11 @@
 				{/if}
 				<div class="app-header__mobile-account">
 					{#if showAuthActions}
-						<button type="button" class="app-header__account-item" onclick={() => openAuthModal('signup')}>
-							{t('shared.authModal.createAccount')}
-						</button>
 						<button type="button" class="app-header__account-item" onclick={() => openAuthModal('signin')}>
 							{t('shared.authModal.signIn')}
+						</button>
+						<button type="button" class="app-header__account-item" onclick={() => openAuthModal('signup')}>
+							{t('shared.authModal.createAccount')}
 						</button>
 					{:else if email}
 						<div class="app-header__account-email" role="presentation">{email}</div>
@@ -345,7 +348,7 @@
 		transition: background 0.15s ease;
 	}
 	.app-header__logo:hover {
-		background: var(--color-bg-muted);
+		background: var(--color-interactive-hover-subtle);
 	}
 	.app-header__logo:focus-visible {
 		outline: 2px solid var(--color-focus);
@@ -364,35 +367,6 @@
 		flex: 1 1 auto;
 		min-width: 0;
 		justify-content: flex-start;
-	}
-	.app-header__nav-link {
-		font-family: var(--typ-interactive-2-font-family);
-		font-size: var(--typ-interactive-2-font-size);
-		font-weight: var(--typ-interactive-2-font-weight);
-		line-height: var(--typ-interactive-2-line-height);
-		letter-spacing: var(--typ-interactive-2-letter-spacing);
-		color: var(--color-text-muted);
-		text-decoration: none;
-		white-space: nowrap;
-		padding: var(--chrome-menu-padding-block) var(--chrome-menu-padding-inline);
-		border-radius: var(--radius-pill);
-		transition: color 0.15s ease, background 0.15s ease;
-	}
-	.app-header__nav-link:focus-visible {
-		outline: 2px solid var(--color-focus);
-		outline-offset: 2px;
-	}
-	.app-header__nav-link:hover {
-		color: var(--color-text);
-		background: var(--color-bg-muted);
-	}
-	.app-header__nav-link[aria-current='page'] {
-		color: var(--color-text);
-		background: var(--color-accent-bg);
-	}
-	.app-header__nav-link[aria-current='page']:hover {
-		color: var(--color-text);
-		background: var(--color-bg-muted);
 	}
 	.app-header__right {
 		display: flex;
@@ -425,7 +399,7 @@
 	}
 	.app-header__menu-toggle:hover {
 		color: var(--color-text);
-		background: var(--color-bg-muted);
+		background: var(--color-interactive-hover-subtle);
 	}
 	.app-header__menu-toggle:focus-visible {
 		outline: 2px solid var(--color-focus);
@@ -433,6 +407,18 @@
 	}
 	.app-header__account {
 		position: relative;
+	}
+	.app-header__auth-actions {
+		display: none;
+		align-items: center;
+		gap: var(--space-2);
+		flex-wrap: wrap;
+		justify-content: flex-end;
+	}
+	/** Match `.chrome-nav-link` chip size (shared `--chrome-menu-padding-*`, no fixed min-height). */
+	.app-header__auth-actions :global(.btn.btn--compact) {
+		min-height: auto;
+		padding: var(--chrome-menu-padding-block) var(--chrome-menu-padding-inline);
 	}
 	.app-header__account-trigger {
 		display: none;
@@ -450,7 +436,7 @@
 	}
 	.app-header__account-trigger:hover {
 		background: var(--color-button-tertiary-hover-bg);
-		color: var(--color-button-tertiary-text);
+		color: var(--color-text);
 	}
 	:global(.app-header__account-icon) {
 		flex-shrink: 0;
@@ -485,7 +471,7 @@
 		cursor: pointer;
 	}
 	.app-header__account-item:hover {
-		background: var(--color-bg-muted);
+		background: var(--color-interactive-hover-subtle);
 	}
 	.app-header__account-email {
 		padding: var(--chrome-menu-padding-block) var(--chrome-menu-padding-inline);
@@ -595,30 +581,18 @@
 		.app-header__inner {
 			max-width: var(--content-width-wide);
 			padding: var(--space-3) var(--space-4);
-			display: grid;
-			grid-template-columns: 1fr auto 1fr;
-			align-items: center;
-			column-gap: var(--space-4);
-		}
-		.app-header__start {
-			justify-self: start;
-			grid-column: 1;
 		}
 		.app-header__menu-toggle {
 			display: none;
 		}
 		.app-header__nav {
 			display: flex;
-			grid-column: 2;
-			justify-self: center;
-			flex: none;
+			flex: 0 1 auto;
 			min-width: 0;
 			gap: var(--space-2);
 		}
-		.app-header__right {
-			grid-column: 3;
-			justify-self: end;
-			margin-left: 0;
+		.app-header__auth-actions {
+			display: flex;
 		}
 		.app-header__account-trigger {
 			display: flex;

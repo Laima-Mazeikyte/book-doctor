@@ -6,8 +6,37 @@
 	/* ── Background & surface ────────────────────────────────────────────── */
 	--color-bg: var(--primitive-gray-50);
 	--color-bg-muted: var(--primitive-gray-100);
+	/**
+	 * Solid step (legacy / non-overlay). Prefer `--color-interactive-hover-*` for hovers.
+	 * @deprecated for new hovers — use alpha wash tokens so hovers read on `--color-card-bg`.
+	 */
 	--color-bg-hover: var(--primitive-gray-200);
 	--color-card-bg: var(--primitive-surface);
+
+	/**
+	 * Theme hooks: default dark UI uses a light wash on surfaces.
+	 * For a future light theme, swap to dark ink (e.g. `var(--primitive-gray-900)`) and invert primary CTA wash.
+	 */
+	--color-hover-wash-surface: var(--primitive-gray-500);
+	--color-hover-wash-on-primary-fill: var(--primitive-on-accent-solid);
+
+	/** Alpha overlays — visible on page bg, card bg, and accent surfaces (unlike solid `--color-bg-muted`). */
+	--color-interactive-hover-subtle: color-mix(
+		in srgb,
+		var(--color-hover-wash-surface) var(--primitive-opacity-hover-subtle),
+		transparent
+	);
+	--color-interactive-hover-emphasized: color-mix(
+		in srgb,
+		var(--color-hover-wash-surface) var(--primitive-opacity-hover-emphasized),
+		transparent
+	);
+	/** Selected chip / tab on `--color-accent-bg` (replaces solid `--color-bg-muted` hover on same-toned panels). */
+	--color-interactive-hover-on-accent: color-mix(
+		in srgb,
+		var(--color-hover-wash-surface) var(--primitive-opacity-hover-subtle),
+		var(--color-accent-bg)
+	);
 	--color-card-placeholder-bg: var(--primitive-sand);
 	--color-toggle-thumb: var(--primitive-toggle-thumb);
 
@@ -44,22 +73,25 @@
 	--color-danger-tonal-border-hover: color-mix(in srgb, var(--primitive-red-500) 45%, transparent);
 
 	/* ── Book card: pill actions (Save / Read / Summary / back / stars, etc.) ─ */
-	--color-book-card-action-hover-bg: var(--color-bg-hover);
+	--color-book-card-action-hover-bg: color-mix(
+		in srgb,
+		var(--color-hover-wash-surface) var(--primitive-opacity-hover-emphasized),
+		var(--color-bg-muted)
+	);
 
 	/**
 	 * Inactive pill actions on cover imagery + summary sheet (Save / Read / Summary / NI, rating row, back).
 	 */
 	--color-book-card-pill-surface-bg: var(--primitive-gray-100);
-	--color-book-card-pill-surface-bg-hover: var(--primitive-gray-200);
+	--color-book-card-pill-surface-bg-hover: color-mix(
+		in srgb,
+		var(--color-hover-wash-surface) var(--primitive-opacity-hover-emphasized),
+		var(--color-book-card-pill-surface-bg)
+	);
 
 	/* ── Book card: active action chips (neutral; bookmark / not interested) ─ */
 	/** Light fill + dark label (constant white / on-accent ink). */
 	--color-book-card-chip-on-bg: var(--primitive-white);
-	--color-book-card-chip-on-bg-hover: color-mix(
-		in srgb,
-		var(--primitive-white) 88%,
-		var(--primitive-on-accent-solid)
-	);
 	--color-book-card-chip-on-text: var(--primitive-on-accent-solid);
 	--color-book-card-chip-on-border: var(--primitive-white);
 
@@ -71,7 +103,7 @@
 	/** Book title copy (placeholder cover, summary heading, ratings drawer list). */
 	--color-book-title: var(--primitive-pale-aqua);
 	/** Star rating controls (stroke/fill via currentColor). */
-	--color-book-rating-star: var(--primitive-pale-aqua);
+	--color-book-rating-star: var(--primitive-accent-brand);
 	/** Empty / inactive stars — tint of rating star mixed with muted text. */
 	--color-book-rating-star-muted: color-mix(
 		in srgb,
@@ -83,29 +115,39 @@
 	--color-overlay-scrim: rgba(0, 0, 0, var(--primitive-overlay-scrim-opacity));
 	--color-overlay-scrim-soft: rgba(0, 0, 0, var(--primitive-overlay-scrim-opacity-soft));
 	/** Floating icon/button on top of cards (e.g. summary close). */
-	--color-floating-control-bg: color-mix(in srgb, var(--color-bg-muted) 85%, transparent);
-	--color-floating-control-bg-hover: color-mix(in srgb, var(--color-bg-hover) 90%, transparent);
+	--color-floating-control-bg: color-mix(
+		in srgb,
+		var(--color-hover-wash-surface) var(--primitive-opacity-hover-subtle),
+		transparent
+	);
+	--color-floating-control-bg-hover: var(--color-interactive-hover-emphasized);
 
 	/* ── Button primary (monochrome CTA: white fill on dark chrome) ─ */
-	--color-button-primary-bg: var(--primitive-white);
+	--color-button-primary-bg: var(--primitive-accent-brand);
 	--color-button-primary-hover-bg: color-mix(
 		in srgb,
-		var(--color-button-primary-bg) 88%,
-		var(--primitive-on-accent-solid)
+		var(--color-hover-wash-on-primary-fill) var(--primitive-opacity-hover-primary-on-light),
+		var(--color-button-primary-bg)
 	);
 	--color-button-primary-text: var(--primitive-on-accent-solid);
+	/** Same wash as primary `.btn--primary:hover` (defined after `--color-button-primary-hover-bg`). */
+	--color-book-card-chip-on-bg-hover: var(--color-button-primary-hover-bg);
 
 	/* ── Button secondary ────────────────────────────────────────────────── */
 	--color-button-secondary-bg: var(--primitive-gray-100);
 	--color-button-secondary-text: var(--primitive-gray-900);
 	--color-button-secondary-border: var(--primitive-gray-300);
-	--color-button-secondary-hover-bg: var(--primitive-gray-200);
+	--color-button-secondary-hover-bg: color-mix(
+		in srgb,
+		var(--color-hover-wash-surface) var(--primitive-opacity-hover-emphasized),
+		var(--color-button-secondary-bg)
+	);
 	--color-button-secondary-hover-border: var(--primitive-gray-400);
 
-	/* ── Button tertiary ─────────────────────────────────────────────────── */
+	/* ── Button tertiary (matches `.chrome-nav-link` chip styling) ─ */
 	--color-button-tertiary-bg: transparent;
-	--color-button-tertiary-text: var(--primitive-gray-900);
-	--color-button-tertiary-hover-bg: var(--primitive-gray-200);
+	--color-button-tertiary-text: var(--color-text-muted);
+	--color-button-tertiary-hover-bg: var(--color-interactive-hover-subtle);
 
 	/* ── Button link ──────────────────────────────────────────────────────── */
 	--color-button-link-text: var(--primitive-accent-solid);
@@ -295,4 +337,70 @@
 	font-size: var(--typ-interactive-2-font-size);
 	line-height: var(--typ-interactive-2-line-height);
 	letter-spacing: var(--typ-interactive-2-letter-spacing);
+}
+
+/**
+ * Primary header nav chip and matching controls (pill padding, muted → text on hover, current page accent).
+ * Use on `<a href>` or `<button type="button">` (e.g. ratings drawer “back”).
+ */
+.chrome-nav-link {
+	display: inline-flex;
+	align-items: center;
+	font-family: var(--typ-interactive-2-font-family);
+	font-size: var(--typ-interactive-2-font-size);
+	font-weight: var(--typ-interactive-2-font-weight);
+	line-height: var(--typ-interactive-2-line-height);
+	letter-spacing: var(--typ-interactive-2-letter-spacing);
+	color: var(--color-text-muted);
+	text-decoration: none;
+	white-space: nowrap;
+	padding: var(--chrome-menu-padding-block) var(--chrome-menu-padding-inline);
+	border-radius: var(--radius-pill);
+	transition:
+		color 0.15s ease,
+		background 0.15s ease;
+}
+button.chrome-nav-link {
+	border: none;
+	background: transparent;
+	cursor: pointer;
+}
+.chrome-nav-link:focus-visible {
+	outline: 2px solid var(--color-focus);
+	outline-offset: 2px;
+}
+.chrome-nav-link:hover {
+	color: var(--color-text);
+	background: var(--color-interactive-hover-subtle);
+}
+.chrome-nav-link[aria-current='page'] {
+	color: var(--color-text);
+	background: var(--color-accent-bg);
+}
+.chrome-nav-link[aria-current='page']:hover {
+	color: var(--color-text);
+	background: var(--color-interactive-hover-on-accent);
+}
+
+/**
+ * Thin, low-contrast scrollbars for overflow panels (dialogs, drawers).
+ * Matches `book-card__summary-content` in book-summary-sheet-body.css.
+ */
+.scrollbar-subtle {
+	scrollbar-width: thin;
+	scrollbar-color: var(--color-border) transparent;
+}
+.scrollbar-subtle::-webkit-scrollbar {
+	width: 3px;
+	height: 3px;
+}
+.scrollbar-subtle::-webkit-scrollbar-track {
+	background: transparent;
+}
+.scrollbar-subtle::-webkit-scrollbar-thumb {
+	background: var(--color-border);
+	border-radius: var(--radius-pill);
+}
+.scrollbar-subtle::-webkit-scrollbar-thumb:hover {
+	background: var(--color-border-hover);
 }
