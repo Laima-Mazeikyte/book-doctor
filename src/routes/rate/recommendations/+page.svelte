@@ -9,7 +9,6 @@
 	import BookCardSkeleton from '$lib/components/BookCardSkeleton.svelte';
 	import RecommendationsEmpty from '$lib/components/RecommendationsEmpty.svelte';
 	import NavStyleTabList from '$lib/components/NavStyleTabList.svelte';
-	import { ChevronDown } from 'lucide-svelte';
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
 	import { notInterestedStore } from '$lib/stores/notInterested';
@@ -27,14 +26,6 @@
 	type RecFilterId = (typeof FILTER_IDS)[number];
 
 	const LS_FILTER_KEY = 'book-doctor:recommendations-filter';
-	const LS_SORT_KEY = 'book-doctor:recommendations-sort';
-
-	const REC_SORT_IDS = ['newest', 'oldest'] as const;
-	type RecSortId = (typeof REC_SORT_IDS)[number];
-
-	function isValidRecSortId(s: string | null | undefined): s is RecSortId {
-		return s != null && (REC_SORT_IDS as readonly string[]).includes(s);
-	}
 
 	function isValidRecFilter(s: string | null | undefined): s is RecFilterId {
 		return s != null && (FILTER_IDS as readonly string[]).includes(s);
@@ -44,23 +35,13 @@
 		return niNums.has(book.book_id ?? 0);
 	}
 
-	function readRecSortFromLs(): RecSortId {
-		if (!browser) return 'newest';
-		try {
-			const s = localStorage.getItem(LS_SORT_KEY);
-			if (isValidRecSortId(s)) return s;
-		} catch {
-			// ignore
-		}
-		return 'newest';
-	}
-
-	function sortByRecommendationRecency(books: Book[], order: RecSortId, at: Record<string, number>): Book[] {
+	/** Latest recommendation batch first (matches API default). */
+	function sortByRecommendationRecencyNewestFirst(books: Book[], at: Record<string, number>): Book[] {
 		const arr = [...books];
 		const ms = (b: Book) => at[String(b.book_id ?? 0)] ?? 0;
 		arr.sort((a, b) => {
 			const diff = ms(b) - ms(a);
-			if (diff !== 0) return order === 'newest' ? diff : -diff;
+			if (diff !== 0) return diff;
 			return (a.title ?? '').localeCompare(b.title ?? '');
 		});
 		return arr;
@@ -98,7 +79,6 @@
 	let bmNiLoadRequestId = 0;
 
 	let activeFilter = $state<RecFilterId>('recommended');
-	let recSortOrder = $state<RecSortId>(readRecSortFromLs());
 
 	const niNums = $derived.by(() => new Set([...$notInterestedStore]));
 
@@ -122,15 +102,15 @@
 	);
 
 	const recommendedTabBooks = $derived.by(() =>
-		sortByRecommendationRecency(recommendedRawList, recSortOrder, lastRecommendedAt)
+		sortByRecommendationRecencyNewestFirst(recommendedRawList, lastRecommendedAt)
 	);
 
 	const bookmarkTabBooks = $derived.by(() =>
-		sortByRecommendationRecency(bookmarkTabBooksRaw, recSortOrder, lastRecommendedAt)
+		sortByRecommendationRecencyNewestFirst(bookmarkTabBooksRaw, lastRecommendedAt)
 	);
 
 	const niTabBooks = $derived.by(() =>
-		sortByRecommendationRecency(niTabBooksRaw, recSortOrder, lastRecommendedAt)
+		sortByRecommendationRecencyNewestFirst(niTabBooksRaw, lastRecommendedAt)
 	);
 
 	const tabItems = $derived([
@@ -138,12 +118,6 @@
 		{ id: 'bookmarked' as RecFilterId, label: t('rated.tabs.bookmarked') },
 		{ id: 'not-interested' as RecFilterId, label: t('rated.tabs.notInterested') }
 	]);
-
-	const recSortOptionLabel = $derived.by((): string =>
-		recSortOrder === 'newest'
-			? t('recommendations.sort.newestRecs')
-			: t('recommendations.sort.oldestRecs')
-	);
 
 	function countForTab(id: RecFilterId): number {
 		if (id === 'recommended') return recommendedTabBooks.length;
@@ -162,15 +136,6 @@
 		if (activeFilter === 'bookmarked') return bookmarkTabBooks;
 		return niTabBooks;
 	});
-
-	function setRecSortOrder(next: RecSortId) {
-		recSortOrder = next;
-		try {
-			localStorage.setItem(LS_SORT_KEY, next);
-		} catch {
-			// ignore
-		}
-	}
 
 	function selectRecTab(id: RecFilterId) {
 		activeFilter = id;
@@ -273,7 +238,7 @@
 			}
 			if (!niBooks.some((b) => b.id === book.id)) {
 				const rest = niBooks.filter((b) => b.id !== book.id);
-				niBooks = recSortOrder === 'oldest' ? [...rest, book] : [book, ...rest];
+				niBooks = [book, ...rest];
 			}
 		} else if (wasNotInterested && !nowNotInterested) {
 			niBooks = niBooks.filter((b) => b.book_id !== book.book_id);
@@ -293,8 +258,7 @@
 			niBooks = niBooks.filter((b) => b.book_id !== book.book_id);
 			if (!bookmarkBooks.some((b) => b.id === book.id)) {
 				const rest = bookmarkBooks.filter((b) => b.id !== book.id);
-				bookmarkBooks =
-					recSortOrder === 'oldest' ? [...rest, book] : [book, ...rest];
+				bookmarkBooks = [book, ...rest];
 			}
 		}
 		if (wasBookmarked) {
@@ -596,25 +560,6 @@
 				getCount={(id) => countForTab(id as RecFilterId)}
 				onSelect={(id) => selectRecTab(id as RecFilterId)}
 			/>
-			<div class="recommendations-page__sort">
-				<span class="recommendations-page__sort-sizer" aria-hidden="true">{recSortOptionLabel}</span>
-				<select
-					id="recommendations-sort"
-					class="recommendations-page__sort-select"
-					aria-label={t('recommendations.sort.ariaLabel')}
-					value={recSortOrder}
-					onchange={(e) => {
-						const v = (e.currentTarget as HTMLSelectElement).value;
-						if (isValidRecSortId(v)) setRecSortOrder(v);
-					}}
-				>
-					<option value="newest">{t('recommendations.sort.newestRecs')}</option>
-					<option value="oldest">{t('recommendations.sort.oldestRecs')}</option>
-				</select>
-				<span class="recommendations-page__sort-chevron" aria-hidden="true">
-					<ChevronDown size={18} strokeWidth={2} />
-				</span>
-			</div>
 		</div>
 
 		<div
@@ -730,7 +675,6 @@
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		justify-content: space-between;
 		gap: var(--space-3);
 		margin: 0 0 var(--space-5) 0;
 	}
@@ -741,79 +685,6 @@
 	}
 	.recommendations-page__tabs-wrap :global(.nav-style-tabs__list) {
 		width: auto;
-	}
-	.recommendations-page__sort {
-		position: relative;
-		display: inline-flex;
-		align-items: stretch;
-		flex-shrink: 0;
-		max-width: 100%;
-		vertical-align: middle;
-		border-radius: var(--radius-pill);
-		background: transparent;
-		cursor: pointer;
-		transition: background 0.15s ease;
-	}
-	.recommendations-page__sort:hover {
-		background: var(--color-interactive-hover-subtle);
-	}
-	.recommendations-page__sort-sizer {
-		display: inline-block;
-		padding: var(--chrome-menu-padding-block)
-			calc(var(--chrome-menu-padding-inline) + var(--space-1) + 1.125rem)
-			var(--chrome-menu-padding-block) var(--chrome-menu-padding-inline);
-		font-family: var(--typ-interactive-2-font-family);
-		font-size: var(--typ-interactive-2-font-size);
-		font-weight: var(--typ-interactive-2-font-weight);
-		line-height: var(--typ-interactive-2-line-height);
-		letter-spacing: var(--typ-interactive-2-letter-spacing);
-		white-space: nowrap;
-		visibility: hidden;
-		pointer-events: none;
-	}
-	.recommendations-page__sort-select {
-		appearance: none;
-		-webkit-appearance: none;
-		position: absolute;
-		inset: 0;
-		box-sizing: border-box;
-		width: 100%;
-		height: 100%;
-		margin: 0;
-		min-width: 0;
-		padding: var(--chrome-menu-padding-block)
-			calc(var(--chrome-menu-padding-inline) + var(--space-1) + 1.125rem)
-			var(--chrome-menu-padding-block) var(--chrome-menu-padding-inline);
-		font-family: var(--typ-interactive-2-font-family);
-		font-size: var(--typ-interactive-2-font-size);
-		font-weight: var(--typ-interactive-2-font-weight);
-		line-height: var(--typ-interactive-2-line-height);
-		letter-spacing: var(--typ-interactive-2-letter-spacing);
-		color: var(--color-text-muted);
-		background: transparent;
-		border: none;
-		border-radius: inherit;
-		cursor: pointer;
-		transition: color 0.15s ease;
-	}
-	.recommendations-page__sort:hover .recommendations-page__sort-select {
-		color: var(--color-text);
-	}
-	.recommendations-page__sort-select:focus-visible {
-		outline: 2px solid var(--color-focus);
-		outline-offset: 2px;
-	}
-	.recommendations-page__sort-chevron {
-		position: absolute;
-		right: var(--chrome-menu-padding-inline);
-		top: 50%;
-		transform: translateY(-50%);
-		display: flex;
-		color: var(--color-text-muted);
-		pointer-events: none;
-	}
-	.recommendations-page__sort:hover .recommendations-page__sort-chevron {
-		color: var(--color-text);
 	}
 	.recommendations-page__loading {
 		margin: 0 0 var(--space-3) 0;
