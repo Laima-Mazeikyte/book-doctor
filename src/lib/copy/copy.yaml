@@ -2,6 +2,7 @@
 # To add a locale later, add another top-level key (e.g. es:, fr:) with the same structure.
 en:
   home:
+    maintenanceBanner: "Our server is down for maintenance. Please come back tomorrow!"
     titlePrefix: "Life’s too short for"
     titleSuffix: "books"
     adjectives:
