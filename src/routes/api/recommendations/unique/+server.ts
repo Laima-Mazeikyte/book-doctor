@@ -24,7 +24,7 @@ export const GET: RequestHandler = async ({ request }) => {
 
 	const requestIds = (logs ?? []).map((r) => r.request_id).filter(Boolean);
 	if (requestIds.length === 0) {
-		return json({ books: [] });
+		return json({ books: [], allRecommendedBookIds: [], lastRecommendedAt: {} });
 	}
 
 	// Get all items for those runs (may contain duplicates across runs)
@@ -48,6 +48,7 @@ export const GET: RequestHandler = async ({ request }) => {
 	}
 
 	let uniqueBookIds = [...new Set([...itemsByRequestId.values()].flat())];
+	const allRecommendedBookIds = [...uniqueBookIds];
 
 	// Most recent run that contained each book (logs are newest-first)
 	const lastRecommendedMs = new Map<number, number>();
@@ -87,7 +88,15 @@ export const GET: RequestHandler = async ({ request }) => {
 	}
 
 	if (uniqueBookIds.length === 0) {
-		return json({ books: [] });
+		const lastRecommendedAt: Record<string, number> = {};
+		for (const [bid, ms] of lastRecommendedMs) {
+			lastRecommendedAt[String(bid)] = ms;
+		}
+		return json({
+			books: [],
+			allRecommendedBookIds,
+			lastRecommendedAt
+		});
 	}
 
 	const base = (PUBLIC_BUNNY_COVERS_BASE ?? '').replace(/\/$/, '');
@@ -125,5 +134,14 @@ export const GET: RequestHandler = async ({ request }) => {
 		return (a.title ?? '').localeCompare(b.title ?? '');
 	});
 
-	return json({ books });
+	const lastRecommendedAt: Record<string, number> = {};
+	for (const [bid, ms] of lastRecommendedMs) {
+		lastRecommendedAt[String(bid)] = ms;
+	}
+
+	return json({
+		books,
+		allRecommendedBookIds,
+		lastRecommendedAt
+	});
 };
