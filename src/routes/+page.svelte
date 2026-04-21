@@ -4,9 +4,6 @@
 	import { t } from '$lib/copy';
 	import copyByLocale from '$lib/copy/copy.yaml';
 
-	/** Set to false when maintenance is over. */
-	const SHOW_MAINTENANCE_BANNER = true;
-
 	const adjectives: string[] = (
 		(copyByLocale as Record<string, Record<string, unknown>>)?.en?.home as Record<string, unknown>
 	)?.adjectives as string[] ?? ['uninspired'];
@@ -27,9 +24,6 @@
 	Tokens: typ-h1 + typ-display1--inherit-size on the adjective; no one-off font-family outside semantic.css utilities.
 -->
 <div class="landing landing-typography">
-	{#if SHOW_MAINTENANCE_BANNER}
-		<p class="landing__maintenance typ-body" role="status">{t('home.maintenanceBanner')}</p>
-	{/if}
 	<div class="landing__hero">
 		<h1 class="landing__title typ-h1">
 			{t('home.titlePrefix')}<br />
@@ -64,18 +58,6 @@
 		text-align: center;
 		padding-top: var(--space-12);
 		width: 100%;
-	}
-
-	.landing__maintenance {
-		box-sizing: border-box;
-		width: 100%;
-		max-width: min(44ch, 100%);
-		margin: 0 0 var(--space-6);
-		padding: var(--space-3) var(--space-4);
-		border-radius: var(--radius-md);
-		border: 1px solid var(--color-border);
-		background: var(--color-accent-bg);
-		color: var(--color-text);
 	}
 
 	.landing__hero {
