@@ -157,6 +157,8 @@
 	let closeButtonEl = $state<HTMLButtonElement | null>(null);
 	let drawerBackButtonEl = $state<HTMLButtonElement | null>(null);
 	let detailBookId = $state<string | null>(null);
+	/** Keeps detail content mounted after the book drops out of the active shelf list (e.g. rating removed). */
+	let detailBookSnapshot = $state<Book | null>(null);
 	let detailFocusReturnEl = $state<HTMLElement | null>(null);
 	let hoverDetailRating = $state(0);
 	let drawerHadOpen = $state(false);
@@ -245,9 +247,17 @@
 		return ordered;
 	});
 
-	let detailEntry = $derived.by(() => {
+	let detailEntry = $derived.by((): RatedEntry | null => {
 		if (!detailBookId) return null;
-		return drawerOrderedEntries.find((e) => e.book.id === detailBookId) ?? null;
+		const fromList = drawerOrderedEntries.find((e) => e.book.id === detailBookId);
+		if (fromList) return fromList;
+		const book =
+			detailBookSnapshot?.id === detailBookId
+				? detailBookSnapshot
+				: (resolveBook?.(detailBookId) ?? null);
+		if (!book) return null;
+		const r = $ratingsStore.get(detailBookId);
+		return { book, rating: r ?? RATING_PLACEHOLDER };
 	});
 
 	let detailTitleId = $derived(
@@ -290,6 +300,7 @@
 		activeShelfTab = 'rated';
 		drawerOrderIds = ratedEntries.map((e) => e.book.id);
 		detailBookId = null;
+		detailBookSnapshot = null;
 		detailFocusReturnEl = null;
 		hoverDetailRating = 0;
 		open = true;
@@ -298,6 +309,7 @@
 	function selectShelfTab(id: ShelfFilterId) {
 		activeShelfTab = id;
 		detailBookId = null;
+		detailBookSnapshot = null;
 		detailFocusReturnEl = null;
 		hoverDetailRating = 0;
 		clearAllPendingRemovals();
@@ -366,6 +378,7 @@
 		open = false;
 		drawerOrderIds = null;
 		detailBookId = null;
+		detailBookSnapshot = null;
 		detailFocusReturnEl = null;
 		hoverDetailRating = 0;
 		activeShelfTab = 'rated';
@@ -375,11 +388,14 @@
 		detailFocusReturnEl = returnTarget;
 		detailBookId = bookId;
 		hoverDetailRating = 0;
+		const entry = drawerOrderedEntries.find((e) => e.book.id === bookId);
+		detailBookSnapshot = entry?.book ?? resolveBook?.(bookId) ?? null;
 	}
 
 	function closeDetail() {
 		const el = detailFocusReturnEl;
 		detailBookId = null;
+		detailBookSnapshot = null;
 		detailFocusReturnEl = null;
 		hoverDetailRating = 0;
 		tick().then(() => el?.focus());
@@ -507,15 +523,6 @@
 	$effect(() => {
 		if (!open || !detailBookId) return;
 		tick().then(() => drawerBackButtonEl?.focus());
-	});
-
-	$effect(() => {
-		if (!detailBookId || !open) return;
-		const exists = drawerOrderedEntries.some((e) => e.book.id === detailBookId);
-		if (!exists) {
-			detailBookId = null;
-			detailFocusReturnEl = null;
-		}
 	});
 
 	$effect(() => {
@@ -666,6 +673,7 @@
 									countsReady={true}
 									getCount={(id) => countForShelfTab(id as ShelfFilterId)}
 									onSelect={(id) => selectShelfTab(id as ShelfFilterId)}
+									scrollSingleRow={true}
 								/>
 							</div>
 						{/if}
@@ -1149,6 +1157,8 @@
 	}
 	.ratings-drawer__shelf-tabs-wrap {
 		flex-shrink: 0;
+		min-width: 0;
+		width: 100%;
 		padding: var(--space-2) var(--space-5) var(--space-2);
 	}
 	.ratings-drawer__shelf-scroll {

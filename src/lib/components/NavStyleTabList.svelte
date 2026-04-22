@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import Spinner from '$lib/components/Spinner.svelte';
+	import RatingsSyncDot from '$lib/components/RatingsSyncDot.svelte';
 
 	interface NavStyleTabItem {
 		id: string;
@@ -18,11 +18,16 @@
 		panelId: string;
 		/** Prefix for each tab button `id` (`${idPrefix}-${item.id}`). */
 		idPrefix?: string;
-		/** When false, counts are replaced by a small spinner (per-tab). */
+		/** When false, counts are replaced by the ratings sync–style dot (per-tab). */
 		countsReady?: boolean;
-		/** Return numeric count for a tab id (shown as `(n)`). */
+		/** Return numeric count for a tab id (shown in a small pill). */
 		getCount?: (id: string) => number;
 		onSelect?: (id: string) => void;
+		/**
+		 * One row + horizontal overflow (scrollbar hidden). Use in narrow panels (e.g. ratings drawer).
+		 * Pages rely on the mobile viewport rule instead unless this is set.
+		 */
+		scrollSingleRow?: boolean;
 	}
 
 	let {
@@ -33,7 +38,8 @@
 		idPrefix = 'tab',
 		countsReady = true,
 		getCount = () => 0,
-		onSelect
+		onSelect,
+		scrollSingleRow = false
 	}: Props = $props();
 
 	function handleSelect(id: string) {
@@ -82,11 +88,11 @@
 
 	function tabAriaLabel(item: NavStyleTabItem): string {
 		if (!countsReady) return item.label;
-		return `${item.label} (${getCount(item.id)})`;
+		return `${item.label}, ${getCount(item.id)}`;
 	}
 </script>
 
-<div class="nav-style-tabs__wrap">
+<div class="nav-style-tabs__wrap" class:nav-style-tabs__wrap--scroll-row={scrollSingleRow}>
 	<div class="nav-style-tabs__list" role="tablist" aria-label={ariaLabel}>
 		{#each items as item (item.id)}
 			<button
@@ -109,9 +115,9 @@
 					aria-hidden="true"
 				>
 					{#if !countsReady}
-						<span class="nav-style-tabs__spinner"><Spinner size="sm" /></span>
+						<span class="nav-style-tabs__sync-dot"><RatingsSyncDot variant="pending" /></span>
 					{:else}
-						({getCount(item.id)})
+						{getCount(item.id)}
 					{/if}
 				</span>
 			</button>
@@ -167,6 +173,7 @@
 	}
 	.nav-style-tabs__tab:hover .nav-style-tabs__count {
 		color: var(--color-text);
+		background: var(--color-book-card-pill-surface-bg-hover);
 	}
 	.nav-style-tabs__tab--active {
 		background: var(--color-accent-bg);
@@ -184,27 +191,99 @@
 	.nav-style-tabs__count {
 		display: inline-flex;
 		align-items: center;
+		justify-content: center;
 		gap: var(--space-1);
+		box-sizing: border-box;
+		min-width: 1.375rem;
+		min-height: calc(var(--primitive-type-size-14) * 1.25 + 0.125rem);
+		padding: 0.0625rem 0.375rem;
+		border-radius: var(--radius-pill);
+		font-size: var(--primitive-type-size-14);
+		line-height: 1.25;
 		font-weight: var(--font-weight-normal);
 		color: var(--color-text-muted);
+		background: var(--color-bg-muted);
 		font-variant-numeric: tabular-nums;
 		flex-shrink: 0;
+		transition:
+			color 0.15s ease,
+			background 0.15s ease;
 	}
-	/** Visually clip (100)–(999); full count remains on the tab `aria-label`. */
+	/** Visually clip 100–999; full count remains on the tab `aria-label`. */
 	.nav-style-tabs__count--triple {
-		max-width: 3.35rem;
+		max-width: 2.35rem;
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		display: inline-block;
-		vertical-align: bottom;
-		text-align: end;
+		display: inline-flex;
+		justify-content: center;
 	}
 	.nav-style-tabs__tab--active .nav-style-tabs__count {
 		color: var(--color-text);
+		background: color-mix(in srgb, var(--primitive-white) 20%, transparent);
 	}
-	.nav-style-tabs__spinner {
+	.nav-style-tabs__tab--active:hover .nav-style-tabs__count {
+		background: color-mix(in srgb, var(--primitive-white) 20%, transparent);
+	}
+	.nav-style-tabs__sync-dot {
 		display: inline-flex;
-		vertical-align: middle;
+		align-items: center;
+		justify-content: center;
+	}
+
+	/**
+	 * One row + horizontal pan; scrollbar hidden (Firefox / IE legacy / WebKit).
+	 * `.nav-style-tabs__wrap--scroll-row` = narrow panels; viewport rule = phone-sized pages.
+	 */
+	.nav-style-tabs__wrap--scroll-row {
+		overflow-x: auto;
+		overflow-y: hidden;
+		width: 100%;
+		max-width: 100%;
+		-webkit-overflow-scrolling: touch;
+		overscroll-behavior-x: contain;
+		scrollbar-width: none;
+		-ms-overflow-style: none;
+	}
+	.nav-style-tabs__wrap--scroll-row::-webkit-scrollbar {
+		display: none;
+		width: 0;
+		height: 0;
+	}
+	.nav-style-tabs__wrap--scroll-row .nav-style-tabs__list {
+		flex-wrap: nowrap;
+		width: max-content;
+		max-width: none;
+	}
+	.nav-style-tabs__wrap--scroll-row .nav-style-tabs__tab {
+		flex: 0 0 auto;
+		max-width: none;
+	}
+
+	@media (max-width: 767px) {
+		.nav-style-tabs__wrap:not(.nav-style-tabs__wrap--scroll-row) {
+			overflow-x: auto;
+			overflow-y: hidden;
+			width: 100%;
+			max-width: 100%;
+			-webkit-overflow-scrolling: touch;
+			overscroll-behavior-x: contain;
+			scrollbar-width: none;
+			-ms-overflow-style: none;
+		}
+		.nav-style-tabs__wrap:not(.nav-style-tabs__wrap--scroll-row)::-webkit-scrollbar {
+			display: none;
+			width: 0;
+			height: 0;
+		}
+		.nav-style-tabs__wrap:not(.nav-style-tabs__wrap--scroll-row) .nav-style-tabs__list {
+			flex-wrap: nowrap;
+			width: max-content;
+			max-width: none;
+		}
+		.nav-style-tabs__wrap:not(.nav-style-tabs__wrap--scroll-row) .nav-style-tabs__tab {
+			flex: 0 0 auto;
+			max-width: none;
+		}
 	}
 </style>

@@ -20,7 +20,7 @@
 </script>
 
 <!--
-	Landing typography exception (spec): Beth Ellen display + Crimson headings/body in one hero.
+	Landing typography exception (spec): Beth Ellen display + Bespoke Serif headings/body in one hero.
 	Tokens: typ-h1 + typ-display1--inherit-size on the adjective; no one-off font-family outside semantic.css utilities.
 -->
 <div class="landing landing-typography">
@@ -37,7 +37,7 @@
 		</h1>
 		<p class="landing__lead typ-body">{t('home.lead')}</p>
 
-		<Button href="/rate" variant="inverse" pill>{t('home.startRating')}</Button>
+		<Button href="/rate" variant="primary" pill>{t('home.startRating')}</Button>
 	</div>
 </div>
 
@@ -62,6 +62,7 @@
 
 	.landing__title {
 		margin: 0;
+		width: 652px;
 		font-size: clamp(var(--primitive-type-size-36), 5vw, var(--primitive-type-size-72));
 	}
 

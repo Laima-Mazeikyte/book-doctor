@@ -415,10 +415,19 @@
 		flex-wrap: wrap;
 		justify-content: flex-end;
 	}
-	/** Match `.chrome-nav-link` chip size (shared `--chrome-menu-padding-*`, no fixed min-height). */
+	/**
+	 * Match `.chrome-nav-link` padding; fixed height so Log in / Sign up stay one line tall
+	 * (plain `<button class="btn">` line boxes can differ by a pixel vs `min-height: auto`).
+	 */
 	.app-header__auth-actions :global(.btn.btn--compact) {
-		min-height: auto;
-		padding: var(--chrome-menu-padding-block) var(--chrome-menu-padding-inline);
+		min-height: 0;
+		height: calc(
+			var(--chrome-menu-padding-block) * 2 +
+				var(--typ-interactive-2-font-size) * var(--typ-interactive-2-line-height)
+		);
+		padding-block: var(--chrome-menu-padding-block);
+		padding-inline: var(--chrome-menu-padding-inline);
+		white-space: nowrap;
 	}
 	.app-header__account-trigger {
 		display: none;
@@ -503,7 +512,7 @@
 		/* Above rate page fixed bottom bar (z-index 100); below modal overlays / ratings drawer (200+) */
 		z-index: 180;
 		overflow: auto;
-		padding: var(--space-6) var(--space-4);
+		padding: var(--space-3) var(--space-4) var(--space-6);
 		box-shadow: var(--shadow-panel-edge);
 	}
 	.app-header__mobile-menu-inner {

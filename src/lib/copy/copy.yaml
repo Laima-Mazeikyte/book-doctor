@@ -92,8 +92,9 @@ en:
       recommended: "Recommended"
     sort:
       ariaLabel: "Sort recommendations"
-      newestRecs: "Latest recs"
-      oldestRecs: "Oldest recs"
+      newest: "Newest"
+      oldest: "Oldest"
+      bestFit: "Best fit"
     emptyRecommendedTab: "No recommendations in this list yet."
     emptyBookmarkedTab: "No bookmarked recommendations yet."
     emptyNotInterestedTab: "No recommended titles marked not interested yet."

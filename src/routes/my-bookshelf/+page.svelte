@@ -10,6 +10,7 @@
 	import { notInterestedStore } from '$lib/stores/notInterested';
 	import { bookmarksPageStore } from '$lib/stores/bookmarksPage';
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
+	import { ratedSummarySheetKeepAlive } from '$lib/stores/ratedSummarySheetKeepAlive';
 	import BookCard from '$lib/components/BookCard.svelte';
 	import BookCardSkeleton from '$lib/components/BookCardSkeleton.svelte';
 	import NavStyleTabList from '$lib/components/NavStyleTabList.svelte';
@@ -88,37 +89,56 @@
 	let sortOrder = $state<ShelfSortId>(readSortFromLs());
 
 	const ratedDisplayEntries = $derived.by(() => {
-		const entries = Array.from($ratingsStore.entries())
+		type RatedEntry = { book: Book; ratingAtLoad: RatingValue };
+		const baseEntries: RatedEntry[] = Array.from($ratingsStore.entries())
 			.map(([bookId, rating]) => {
 				const book = ratingsStore.getRatedBook(bookId);
 				return book ? { book, ratingAtLoad: rating } : null;
 			})
-			.filter((e): e is { book: Book; ratingAtLoad: RatingValue } => e !== null);
+			.filter((e): e is RatedEntry => e !== null);
 
-		if (sortOrder === 'newest') return entries;
+		let entries: RatedEntry[];
+		if (sortOrder === 'newest') {
+			entries = baseEntries;
+		} else {
+			const ratings = $ratingsStore;
+			const baseIdx = new Map(baseEntries.map((e, i) => [e.book.id, i]));
+			const score = (e: RatedEntry) => ratings.get(e.book.id) ?? e.ratingAtLoad;
 
-		const ratings = $ratingsStore;
-		const baseIdx = new Map(entries.map((e, i) => [e.book.id, i]));
-		const score = (e: { book: Book; ratingAtLoad: RatingValue }) =>
-			ratings.get(e.book.id) ?? e.ratingAtLoad;
-
-		if (sortOrder === 'oldest') return [...entries].reverse();
-
-		const sorted = [...entries];
-		if (sortOrder === 'rating-high') {
-			sorted.sort((a, b) => {
-				const diff = score(b) - score(a);
-				if (diff !== 0) return diff;
-				return (baseIdx.get(a.book.id) ?? 0) - (baseIdx.get(b.book.id) ?? 0);
-			});
-			return sorted;
+			if (sortOrder === 'oldest') {
+				entries = [...baseEntries].reverse();
+			} else {
+				const sorted = [...baseEntries];
+				if (sortOrder === 'rating-high') {
+					sorted.sort((a, b) => {
+						const diff = score(b) - score(a);
+						if (diff !== 0) return diff;
+						return (baseIdx.get(a.book.id) ?? 0) - (baseIdx.get(b.book.id) ?? 0);
+					});
+					entries = sorted;
+				} else {
+					sorted.sort((a, b) => {
+						const diff = score(a) - score(b);
+						if (diff !== 0) return diff;
+						return (baseIdx.get(a.book.id) ?? 0) - (baseIdx.get(b.book.id) ?? 0);
+					});
+					entries = sorted;
+				}
+			}
 		}
-		sorted.sort((a, b) => {
-			const diff = score(a) - score(b);
-			if (diff !== 0) return diff;
-			return (baseIdx.get(a.book.id) ?? 0) - (baseIdx.get(b.book.id) ?? 0);
-		});
-		return sorted;
+
+		const keep = $ratedSummarySheetKeepAlive;
+		if (keep && !entries.some((e) => e.book.id === keep.bookId)) {
+			const placeholder: RatingValue = 1;
+			return [...entries, { book: keep.book, ratingAtLoad: placeholder }];
+		}
+		return entries;
+	});
+
+	$effect(() => {
+		if (activeFilter !== 'rated') {
+			ratedSummarySheetKeepAlive.set(null);
+		}
 	});
 
 	$effect(() => {
@@ -367,7 +387,7 @@
 </script>
 
 <div class="bookshelf-page">
-	<h1 class="bookshelf-page__title typ-display2">{t('rated.title')}</h1>
+	<h1 class="bookshelf-page__title typ-display2 typ-display2--content">{t('rated.title')}</h1>
 
 	<div class="bookshelf-page__tabs-wrap">
 		<NavStyleTabList
@@ -380,6 +400,7 @@
 			getCount={(id) => countForTab(id as FilterId)}
 			onSelect={(id) => selectTab(id as FilterId)}
 		/>
+		<div class="bookshelf-page__tabs-sort-divider" aria-hidden="true"></div>
 		<div class="bookshelf-page__sort">
 			<span class="bookshelf-page__sort-sizer" aria-hidden="true">{sortOptionLabel}</span>
 			<select
@@ -468,17 +489,27 @@
 
 <style>
 	.bookshelf-page {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: flex-start;
+		width: 100%;
 		padding-bottom: var(--space-8);
 	}
 	.bookshelf-page__title {
-		margin: 0 0 var(--space-4) 0;
-		text-align: left;
+		margin: 0 0 var(--space-8) 0;
+		text-align: center;
+	}
+	.bookshelf-page__panel {
+		align-self: stretch;
+		min-width: 0;
 	}
 	.bookshelf-page__tabs-wrap {
 		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		justify-content: space-between;
+		flex-wrap: nowrap;
+		align-items: flex-end;
+		justify-content: flex-start;
+		width: fit-content;
 		gap: var(--space-3);
 		margin: 0 0 var(--space-5) 0;
 	}
@@ -489,6 +520,26 @@
 	}
 	.bookshelf-page__tabs-wrap :global(.nav-style-tabs__list) {
 		width: auto;
+	}
+	.bookshelf-page__tabs-sort-divider {
+		flex: 0 0 auto;
+		width: 1px;
+		height: 1.125rem;
+		align-self: center;
+		background: color-mix(in srgb, var(--color-border) 55%, transparent);
+	}
+	@media (max-width: 767px) {
+		.bookshelf-page__tabs-wrap {
+			align-self: stretch;
+			width: 100%;
+			max-width: 100%;
+			min-width: 0;
+		}
+		.bookshelf-page__tabs-wrap :global(.nav-style-tabs__wrap) {
+			flex: 1 1 auto;
+			min-width: 0;
+			max-width: 100%;
+		}
 	}
 	.bookshelf-page__sort {
 		position: relative;

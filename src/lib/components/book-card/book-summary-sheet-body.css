@@ -360,20 +360,21 @@ button.book-card__summary-remove-rating.book-card__summary-remove-rating--layout
 	text-overflow: ellipsis;
 }
 .book-card__summary-actions .book-card__action--saved {
-	background: var(--color-book-card-chip-on-bg);
+	background: var(--color-book-card-chip-on-bg-hover);
 	color: var(--color-book-card-chip-on-text);
-	border-color: var(--color-book-card-chip-on-border);
+	border-color: transparent;
 }
 .book-card__summary-actions .book-card__action--saved:hover {
-	background: var(--color-book-card-chip-on-bg-hover);
+	background: var(--color-book-card-chip-on-bg);
+	border-color: transparent;
 }
 .book-card__summary-actions .book-card__action.book-card__action--not-interested-active {
-	background: var(--color-book-card-chip-on-bg);
+	background: var(--color-book-card-chip-on-bg-hover);
 	color: var(--color-book-card-chip-on-text);
 	border-color: var(--color-book-card-chip-on-border);
 }
 .book-card__summary-actions .book-card__action.book-card__action--not-interested-active:hover {
-	background: var(--color-book-card-chip-on-bg-hover);
+	background: var(--color-book-card-chip-on-bg);
 	color: var(--color-book-card-chip-on-text);
 	border-color: var(--color-book-card-chip-on-border);
 }

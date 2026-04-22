@@ -14,6 +14,7 @@
 	import SearchBar from '$lib/components/SearchBar.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import Spinner from '$lib/components/Spinner.svelte';
+	import RatingsSyncDot from '$lib/components/RatingsSyncDot.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import { X } from 'lucide-svelte';
 	import { getBookById } from '$lib/data/dummyBooks';
@@ -1343,7 +1344,7 @@
 		inert={searchOverlayOpen && inertSupported}
 		aria-hidden={searchOverlayOpen ? true : undefined}
 	>
-		<h1 class="rate-page__title typ-display2">{t('rate.pageTitle')}</h1>
+		<h1 class="rate-page__title typ-display2 typ-display2--content">{t('rate.pageTitle')}</h1>
 		<header
 			class="rate-page__sticky-header"
 			class:rate-page__sticky-header--hidden={!headerVisible}
@@ -1442,17 +1443,7 @@
 				{#if canGetRecommendations}
 					<div class="rate-page__recommendations-cta">
 						{#snippet recommendationsCtaSyncIcon()}
-							{#if recommendationsSubmitSyncFailed}
-								<span
-									class="rate-page__rec-sync-dot rate-page__rec-sync-dot--failed"
-									aria-hidden="true">!</span
-								>
-							{:else}
-								<span
-									class="rate-page__rec-sync-dot rate-page__rec-sync-dot--pending"
-									aria-hidden="true"
-								></span>
-							{/if}
+							<RatingsSyncDot variant={recommendationsSubmitSyncFailed ? 'failed' : 'pending'} />
 						{/snippet}
 						<Button
 							variant="primary"
@@ -1493,17 +1484,7 @@
 								: undefined}
 						>
 							{#if !ratingsSyncedForRecommendations}
-								{#if recommendationsSubmitSyncFailed}
-									<span
-										class="rate-page__rec-sync-dot rate-page__rec-sync-dot--failed"
-										aria-hidden="true">!</span
-									>
-								{:else}
-									<span
-										class="rate-page__rec-sync-dot rate-page__rec-sync-dot--pending"
-										aria-hidden="true"
-									></span>
-								{/if}
+								<RatingsSyncDot variant={recommendationsSubmitSyncFailed ? 'failed' : 'pending'} />
 							{/if}
 							<span class="btn__label">{recommendationsHintLabel}</span>
 						</div>
@@ -1638,7 +1619,7 @@
 	.rate-page__title {
 		margin-top: 0;
 		padding-top: 0;
-		text-align: start;
+		text-align: center;
 	}
 	/* Stay visible while the search (or clear control) is focused so the field is not off-screen. */
 	.rate-page__sticky-header--hidden:not(:focus-within) {
@@ -1647,9 +1628,11 @@
 	}
 	.rate-page__toolbar {
 		display: flex;
-		flex-wrap: wrap;
+		flex-wrap: nowrap;
 		align-items: center;
-		justify-content: flex-start;
+		justify-content: center;
+		vertical-align: middle;
+		text-align: left;
 		gap: var(--space-3);
 		width: 100%;
 		min-height: var(--min-tap);
@@ -1961,40 +1944,5 @@
 		.rate-page__recommendations-submit.btn--primary.rate-page__recommendations-submit--syncing:hover
 	) {
 		background: var(--color-button-primary-bg);
-	}
-	.rate-page__rec-sync-dot {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-		width: 0.625rem;
-		height: 0.625rem;
-		border-radius: 999px;
-	}
-	.rate-page__rec-sync-dot--pending {
-		background: color-mix(in srgb, var(--color-book-rating-star) 72%, var(--color-bg));
-		animation: rate-page-rec-sync-pulse 1.4s ease-in-out infinite;
-	}
-	.rate-page__rec-sync-dot--failed {
-		width: 0.875rem;
-		height: 0.875rem;
-		background: var(--color-danger-tonal-bg);
-		border: 1px solid var(--color-danger-tonal-border);
-		color: var(--color-danger-tonal-text);
-		font-family: var(--typ-caption-font-family);
-		font-size: 0.625rem;
-		font-weight: var(--font-weight-semibold);
-		line-height: 1;
-	}
-	@keyframes rate-page-rec-sync-pulse {
-		0%,
-		100% {
-			opacity: 0.55;
-			transform: scale(0.92);
-		}
-		50% {
-			opacity: 1;
-			transform: scale(1);
-		}
 	}
 </style>

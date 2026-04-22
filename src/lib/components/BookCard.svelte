@@ -1,5 +1,6 @@
   <script lang="ts">
-	import { tick } from 'svelte';
+	import { onDestroy, tick } from 'svelte';
+	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -7,6 +8,7 @@
 	import { fly } from 'svelte/transition';
 	import { BookOpenText, X, Bookmark, Star, Ban } from 'lucide-svelte';
 	import { ratingsStore } from '$lib/stores/ratings';
+	import { ratedSummarySheetKeepAlive } from '$lib/stores/ratedSummarySheetKeepAlive';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
 	import type { BookCardListProps } from './book-card/types';
@@ -147,15 +149,26 @@
 	async function handleOpenSummary() {
 		setSummaryFlyDistance();
 		summaryOpen = true;
+		if (context === 'rated') {
+			ratedSummarySheetKeepAlive.set({ bookId: book.id, book });
+		}
 		await tick();
 		closeBtnRef?.focus();
 	}
 
 	async function handleCloseSummary() {
 		summaryOpen = false;
+		if (context === 'rated') {
+			ratedSummarySheetKeepAlive.set(null);
+		}
 		await tick();
 		summaryBtnRef?.focus();
 	}
+
+	onDestroy(() => {
+		const k = get(ratedSummarySheetKeepAlive);
+		if (k?.bookId === book.id) ratedSummarySheetKeepAlive.set(null);
+	});
 
 	function handleBookmarkClick(e: MouseEvent) {
 		e.stopPropagation();
@@ -730,20 +743,20 @@
 		}
 	}
 	.book-card__action--saved {
-		background: var(--color-book-card-chip-on-bg);
+		background: var(--color-book-card-chip-on-bg-hover);
 		color: var(--color-book-card-chip-on-text);
 		border-color: var(--color-book-card-chip-on-border);
 	}
 	.book-card__action--saved:hover {
-		background: var(--color-book-card-chip-on-bg-hover);
+		background: var(--color-book-card-chip-on-bg);
 	}
 	.book-card__action.book-card__action--not-interested-active {
-		background: var(--color-book-card-chip-on-bg);
+		background: var(--color-book-card-chip-on-bg-hover);
 		color: var(--color-book-card-chip-on-text);
 		border-color: var(--color-book-card-chip-on-border);
 	}
 	.book-card__action.book-card__action--not-interested-active:hover {
-		background: var(--color-book-card-chip-on-bg-hover);
+		background: var(--color-book-card-chip-on-bg);
 		color: var(--color-book-card-chip-on-text);
 		border-color: var(--color-book-card-chip-on-border);
 	}

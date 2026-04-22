@@ -24,13 +24,19 @@ export const GET: RequestHandler = async ({ request }) => {
 
 	const requestIds = (logs ?? []).map((r) => r.request_id).filter(Boolean);
 	if (requestIds.length === 0) {
-		return json({ books: [], allRecommendedBookIds: [], lastRecommendedAt: {} });
+		return json({
+			books: [],
+			allRecommendedBookIds: [],
+			lastRecommendedAt: {},
+			recommendationAppearanceCount: {},
+			bestRecommendationRank: {}
+		});
 	}
 
 	// Get all items for those runs (may contain duplicates across runs)
 	const { data: items, error: itemsError } = await supabase
 		.from('recommendation_items')
-		.select('book_id, request_id')
+		.select('book_id, request_id, rank')
 		.in('request_id', requestIds);
 
 	if (itemsError) {
@@ -39,12 +45,26 @@ export const GET: RequestHandler = async ({ request }) => {
 	}
 
 	const itemsByRequestId = new Map<string, number[]>();
+	const appearanceCountByBook = new Map<number, number>();
+	const bestRankByBook = new Map<number, number>();
+
 	for (const row of items ?? []) {
-		const bid = parseInt(row.book_id, 10);
+		const bid = parseInt(String(row.book_id), 10);
 		if (Number.isNaN(bid) || !row.request_id) continue;
 		const list = itemsByRequestId.get(row.request_id) ?? [];
 		list.push(bid);
 		itemsByRequestId.set(row.request_id, list);
+
+		appearanceCountByBook.set(bid, (appearanceCountByBook.get(bid) ?? 0) + 1);
+		const rankRaw = row.rank;
+		const r =
+			typeof rankRaw === 'number'
+				? rankRaw
+				: parseInt(String(rankRaw ?? ''), 10);
+		if (!Number.isNaN(r) && r > 0) {
+			const prev = bestRankByBook.get(bid);
+			if (prev == null || r < prev) bestRankByBook.set(bid, r);
+		}
 	}
 
 	let uniqueBookIds = [...new Set([...itemsByRequestId.values()].flat())];
@@ -87,6 +107,15 @@ export const GET: RequestHandler = async ({ request }) => {
 		uniqueBookIds = uniqueBookIds.filter((id) => !ratedSet.has(id));
 	}
 
+	const recommendationAppearanceCount: Record<string, number> = {};
+	for (const [bid, n] of appearanceCountByBook) {
+		recommendationAppearanceCount[String(bid)] = n;
+	}
+	const bestRecommendationRank: Record<string, number> = {};
+	for (const [bid, r] of bestRankByBook) {
+		bestRecommendationRank[String(bid)] = r;
+	}
+
 	if (uniqueBookIds.length === 0) {
 		const lastRecommendedAt: Record<string, number> = {};
 		for (const [bid, ms] of lastRecommendedMs) {
@@ -95,7 +124,9 @@ export const GET: RequestHandler = async ({ request }) => {
 		return json({
 			books: [],
 			allRecommendedBookIds,
-			lastRecommendedAt
+			lastRecommendedAt,
+			recommendationAppearanceCount,
+			bestRecommendationRank
 		});
 	}
 
@@ -142,6 +173,8 @@ export const GET: RequestHandler = async ({ request }) => {
 	return json({
 		books,
 		allRecommendedBookIds,
-		lastRecommendedAt
+		lastRecommendedAt,
+		recommendationAppearanceCount,
+		bestRecommendationRank
 	});
 };

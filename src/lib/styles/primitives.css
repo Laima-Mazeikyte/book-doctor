@@ -18,7 +18,7 @@
     --primitive-gray-500: #798686;
     --primitive-gray-900: #E5E6E6;
 	/** Brand CTA fill (pair with `--primitive-white` on-button). */
-	--primitive-accent-brand: #A8D6D5;
+	--primitive-accent-brand: #c0e3e3;
 	/** Solid accent for links, focus, chrome. */
 	--primitive-accent-solid: #e5e5e5;
 	/** Text on solid accent surfaces. */
@@ -77,7 +77,10 @@
 	--primitive-space-icon-offset: 2.75rem;
 
 	/* ── Typography ───────────────────────────────────────────────────────── */
-	--primitive-font-family-content: 'Crimson Text', Georgia, 'Times New Roman', serif;
+	--primitive-font-family-content: 'BespokeSerif-Variable', Georgia, 'Times New Roman', serif;
+	/** Static cuts for predictable rendering (summary sheet / typ scale). Pair with nominal font-weight. */
+	--primitive-font-family-content-regular: 'BespokeSerif-Regular', Georgia, 'Times New Roman', serif;
+	--primitive-font-family-content-bold: 'BespokeSerif-Bold', Georgia, 'Times New Roman', serif;
 	--primitive-font-family-display: 'Beth Ellen', cursive;
 	--primitive-font-family-interactive: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 
@@ -91,17 +94,21 @@
 	--primitive-type-size-16: 1rem;
 	--primitive-type-size-14: 0.875rem;
 
-	--primitive-font-weight-normal: 400;
-	--primitive-font-weight-medium: 500;
-	--primitive-font-weight-semibold: 600;
+	--primitive-font-weight-normal: 300;
+	--primitive-font-weight-medium: 400;
+	--primitive-font-weight-semibold: 400;
 	--primitive-font-weight-bold: 700;
 
 	/** 120% — H1, display1, H2, display2 */
 	--primitive-line-height-display: 1.2;
-	/** 100% — H3 */
-	--primitive-line-height-h3: 1;
-	/** 150% — body, caption */
-	--primitive-line-height-body: 1.5;
+	/** H3 / summary title — 40px line for 32px type (unitless for calc(var(--typ-h3-font-size) * …)) */
+	--primitive-line-height-h3: 1.5;
+	/** Body & caption — 32px at 16px type (2 × font-size) */
+	--primitive-line-height-body: 2;
+
+	--primitive-letter-spacing-h3: 0.9px;
+	--primitive-letter-spacing-body: 0.5px;
+	--primitive-letter-spacing-caption: 0.2px;
 	/**
 	 * Interactive UI line-height (cap-height / vertical trim intent).
 	 * Used for Inter controls; documented fixed value 1.2.

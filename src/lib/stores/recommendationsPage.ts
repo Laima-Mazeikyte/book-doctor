@@ -6,7 +6,24 @@ export type RecommendationRun = {
 	created_at: string;
 };
 
-interface RecommendationsHistoryState {
+/** Kept in sync with `/api/recommendations/unique` so best-fit sort can hydrate without a flash. */
+export type RecommendationsUniqueMeta = {
+	allRecommendedBookIds: number[];
+	lastRecommendedAt: Record<string, number>;
+	recommendationAppearanceCount: Record<string, number>;
+	bestRecommendationRank: Record<string, number>;
+};
+
+function emptyUniqueMeta(): RecommendationsUniqueMeta {
+	return {
+		allRecommendedBookIds: [],
+		lastRecommendedAt: {},
+		recommendationAppearanceCount: {},
+		bestRecommendationRank: {}
+	};
+}
+
+interface RecommendationsHistoryState extends RecommendationsUniqueMeta {
 	runs: RecommendationRun[];
 	uniqueBooks: Book[];
 	loaded: boolean;
@@ -18,7 +35,8 @@ function createRecommendationsPageStore() {
 		runs: [],
 		uniqueBooks: [],
 		loaded: false,
-		uniqueLoaded: false
+		uniqueLoaded: false,
+		...emptyUniqueMeta()
 	});
 	const runBooks = writable<Map<string, Book[]>>(new Map());
 
@@ -36,12 +54,13 @@ function createRecommendationsPageStore() {
 				loaded: true
 			}));
 		},
-		setUniqueBooks(books: Book[]) {
+		setUniqueBooks(books: Book[], meta: RecommendationsUniqueMeta = emptyUniqueMeta()) {
 			history.update((state) => ({
 				...state,
 				uniqueBooks: [...books],
 				loaded: true,
-				uniqueLoaded: true
+				uniqueLoaded: true,
+				...meta
 			}));
 		},
 		getRunBooks(requestId: string): Book[] | undefined {
@@ -59,7 +78,8 @@ function createRecommendationsPageStore() {
 				runs: [],
 				uniqueBooks: [],
 				loaded: false,
-				uniqueLoaded: false
+				uniqueLoaded: false,
+				...emptyUniqueMeta()
 			});
 			runBooks.set(new Map());
 		}

@@ -17,7 +17,10 @@
 	import { authStore, clearPasswordRecoveryFlag, passwordRecoveryActive } from '$lib/stores/auth';
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { ratingsStore } from '$lib/stores/ratings';
-	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
+	import {
+		recommendationsCountStore,
+		refreshRecommendationsCountFromApi
+	} from '$lib/stores/recommendationsCount';
 	import { notInterestedStore } from '$lib/stores/notInterested';
 	import { bookmarksPageStore } from '$lib/stores/bookmarksPage';
 	import { recommendationsPageStore } from '$lib/stores/recommendationsPage';
@@ -478,14 +481,7 @@
 		const token = session.access_token ?? null;
 
 		// Load recommendations count for header
-		if (token) {
-			fetch('/api/recommendations/count', {
-				headers: { Authorization: `Bearer ${token}` }
-			})
-				.then((res) => (res.ok ? res.json() : { count: 0 }))
-				.then((data: { count?: number }) => recommendationsCountStore.set(data.count ?? 0))
-				.catch(() => recommendationsCountStore.set(0));
-		}
+		if (token) void refreshRecommendationsCountFromApi(token);
 	});
 
 	// After anonymous→account migration, ratings are written server-side; reload them.
@@ -529,7 +525,7 @@
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
 	<link
-		href="https://fonts.googleapis.com/css2?family=Beth+Ellen&family=Crimson+Text:ital,wght@0,400;0,600;0,700&family=Inter:wght@400;500;600&display=swap"
+		href="https://fonts.googleapis.com/css2?family=Beth+Ellen&family=Inter:wght@400;500;600&display=swap"
 		rel="stylesheet"
 	/>
 </svelte:head>

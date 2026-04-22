@@ -215,23 +215,24 @@
 	--typ-display2-line-height: var(--primitive-line-height-display);
 	--typ-display2-letter-spacing: 0.05em;
 
-	--typ-h3-font-family: var(--font-family-content);
-	--typ-h3-font-weight: var(--primitive-font-weight-semibold);
-	--typ-h3-font-size: var(--primitive-type-size-32);
+	/** Static Bold cut — use medium slot (400) so the engine does not faux-bold the face */
+	--typ-h3-font-family: var(--primitive-font-family-content-bold);
+	--typ-h3-font-weight: var(--primitive-font-weight-medium);
+	--typ-h3-font-size: var(--primitive-type-size-20);
 	--typ-h3-line-height: var(--primitive-line-height-h3);
-	--typ-h3-letter-spacing: 0;
+	--typ-h3-letter-spacing: var(--primitive-letter-spacing-h3);
 
-	--typ-body-font-family: var(--font-family-content);
+	--typ-body-font-family: var(--primitive-font-family-content-regular);
 	--typ-body-font-weight: var(--primitive-font-weight-normal);
-	--typ-body-font-size: var(--primitive-type-size-20);
+	--typ-body-font-size: var(--primitive-type-size-16);
 	--typ-body-line-height: var(--primitive-line-height-body);
-	--typ-body-letter-spacing: 0;
+	--typ-body-letter-spacing: var(--primitive-letter-spacing-body);
 
-	--typ-caption-font-family: var(--font-family-content);
+	--typ-caption-font-family: var(--primitive-font-family-content-regular);
 	--typ-caption-font-weight: var(--primitive-font-weight-normal);
 	--typ-caption-font-size: var(--primitive-type-size-16);
 	--typ-caption-line-height: var(--primitive-line-height-body);
-	--typ-caption-letter-spacing: 0;
+	--typ-caption-letter-spacing: var(--primitive-letter-spacing-caption);
 
 	--typ-interactive-1-font-family: var(--font-family-interactive);
 	--typ-interactive-1-font-weight: var(--primitive-font-weight-normal);
@@ -260,7 +261,7 @@
 
 /**
  * Typography utilities — prefer these or --typ-* variables over ad-hoc font rules.
- * Landing: `routes/+page.svelte` uses `.landing-typography` + typ-h1 + typ-display1--inherit-size for the Beth Ellen + Crimson exception (see that file).
+ * Landing: `routes/+page.svelte` uses `.landing-typography` + typ-h1 + typ-display1--inherit-size for the Beth Ellen + Bespoke Serif exception (see that file).
  */
 .typ-h1 {
 	font-family: var(--typ-h1-font-family);
@@ -297,6 +298,12 @@
 	font-size: var(--typ-display2-font-size);
 	line-height: var(--typ-display2-line-height);
 	letter-spacing: var(--typ-display2-letter-spacing);
+}
+
+/** Same scale as `.typ-display2` but content (Bespoke) instead of display (Beth Ellen). Pair with `.typ-display2`. */
+.typ-display2--content {
+	font-family: var(--font-family-content);
+	letter-spacing: 0;
 }
 
 .typ-h3 {
