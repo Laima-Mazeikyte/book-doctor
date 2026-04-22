@@ -588,7 +588,8 @@
 
 	@media (min-width: 768px) {
 		.app-header__inner {
-			max-width: var(--content-width-wide);
+			max-width: none;
+			width: 100%;
 			padding: var(--space-3) var(--space-4);
 		}
 		.app-header__menu-toggle {
