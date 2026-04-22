@@ -12,7 +12,7 @@
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
 	import { ratedSummarySheetKeepAlive } from '$lib/stores/ratedSummarySheetKeepAlive';
 	import BookCard from '$lib/components/BookCard.svelte';
-	import BookCardSkeleton from '$lib/components/BookCardSkeleton.svelte';
+	import BookCardGridSkeleton from '$lib/components/BookCardGridSkeleton.svelte';
 	import NavStyleTabList from '$lib/components/NavStyleTabList.svelte';
 	import { ChevronDown } from 'lucide-svelte';
 	import { t } from '$lib/copy';
@@ -432,11 +432,10 @@
 	>
 		{#if listLoading}
 			<p class="bookshelf-page__loading typ-body">{t('rated.loadingList')}</p>
-			<ul class="bookshelf-page__list book-card-grid" aria-busy="true" aria-label={t('rated.title')}>
-				{#each Array(6) as _, index (index)}
-					<li><BookCardSkeleton /></li>
-				{/each}
-			</ul>
+			<BookCardGridSkeleton
+				class="bookshelf-page__list"
+				ariaLabel={t('rated.title')}
+			/>
 		{:else if activeFilter === 'rated' && ratedDisplayEntries.length === 0}
 			<p class="bookshelf-page__empty">{t('rated.empty')}</p>
 		{:else if activeFilter === 'bookmarked' && bookmarkTabBooks.length === 0}

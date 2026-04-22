@@ -6,7 +6,7 @@
 	import { goto } from '$app/navigation';
 	import Button from '$lib/components/Button.svelte';
 	import BookCard from '$lib/components/BookCard.svelte';
-	import BookCardSkeleton from '$lib/components/BookCardSkeleton.svelte';
+	import BookCardGridSkeleton from '$lib/components/BookCardGridSkeleton.svelte';
 	import RecommendationsEmpty from '$lib/components/RecommendationsEmpty.svelte';
 	import NavStyleTabList from '$lib/components/NavStyleTabList.svelte';
 	import { ChevronDown } from 'lucide-svelte';
@@ -448,8 +448,15 @@
 	/** Bookmarks + not-interested lists for recommendation tabs (history view). */
 	$effect(() => {
 		const token = $authStore.session?.access_token ?? null;
-		const url = page.url;
-		if (!token || viewMode !== 'history' || url.searchParams.get('request_id')?.trim()) {
+		// Tracked: token + `viewMode` only — not `?filter=`. Reading `page.url` here re-ran this
+		// effect on every client-side tab click (see `selectRecTab`), so `bmNiLoading` flashed
+		// true and showed skeletons on every switch. That matched bookshelf only if the URL
+		// never changed. Single-run / full-page views read `request_id` via `untrack`.
+		if (!token || viewMode !== 'history') {
+			bmNiLoading = false;
+			return;
+		}
+		if (untrack(() => page.url.searchParams.get('request_id')?.trim())) {
 			bmNiLoading = false;
 			return;
 		}
@@ -732,18 +739,16 @@
 			aria-labelledby="recommendations-tab-{activeFilter}"
 		>
 			{#if uniqueBooksLoading}
-				<ul class="recommendations-page__unique-grid book-card-grid" aria-busy="true" aria-label={t('recommendations.allUniqueTitles')}>
-					{#each Array(6) as _, index (index)}
-						<li><BookCardSkeleton /></li>
-					{/each}
-				</ul>
+				<BookCardGridSkeleton
+					class="recommendations-page__unique-grid"
+					ariaLabel={t('recommendations.allUniqueTitles')}
+				/>
 			{:else if listLoading}
 				<p class="recommendations-page__loading typ-body">{t('recommendations.loadingList')}</p>
-				<ul class="recommendations-page__unique-grid book-card-grid" aria-busy="true" aria-label={t('recommendations.allUniqueTitles')}>
-					{#each Array(6) as _, index (index)}
-						<li><BookCardSkeleton /></li>
-					{/each}
-				</ul>
+				<BookCardGridSkeleton
+					class="recommendations-page__unique-grid"
+					ariaLabel={t('recommendations.allUniqueTitles')}
+				/>
 			{:else if currentHistoryBooks.length === 0}
 				<p class="recommendations-page__empty">
 					{#if activeFilter === 'recommended'}
@@ -960,6 +965,8 @@
 		text-align: start;
 	}
 	.recommendations-page__unique {
+		align-self: stretch;
+		min-width: 0;
 		margin-bottom: var(--space-8);
 	}
 	.recommendations-page__unique-grid {

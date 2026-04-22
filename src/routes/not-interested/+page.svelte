@@ -6,7 +6,7 @@
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
 	import BookCard from '$lib/components/BookCard.svelte';
-	import BookCardSkeleton from '$lib/components/BookCardSkeleton.svelte';
+	import BookCardGridSkeleton from '$lib/components/BookCardGridSkeleton.svelte';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
 
@@ -81,11 +81,10 @@
 	<h1 class="not-interested-page__title typ-display2">{t('notInterested.title')}</h1>
 	<p class="not-interested-page__intro">{t('notInterested.intro')}</p>
 	{#if loading}
-		<ul class="not-interested-page__list book-card-grid" aria-busy="true" aria-label={t('notInterested.title')}>
-			{#each Array(6) as _}
-				<li><BookCardSkeleton /></li>
-			{/each}
-		</ul>
+		<BookCardGridSkeleton
+			class="not-interested-page__list"
+			ariaLabel={t('notInterested.title')}
+		/>
 	{:else if error}
 		<p class="not-interested-page__error" role="alert">{error}</p>
 	{:else if books.length === 0}

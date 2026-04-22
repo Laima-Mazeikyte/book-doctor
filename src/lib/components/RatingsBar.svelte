@@ -540,6 +540,152 @@
 	<LibraryBig size={14} aria-hidden="true" />
 {/snippet}
 
+{#snippet drawerListRow(entry: RatedEntry)}
+	{@const storedRating = $ratingsStore.get(entry.book.id)}
+	<li
+		class="ratings-drawer__item"
+		class:ratings-drawer__item--pending-remove={pendingRemoveIds.has(entry.book.id)}
+	>
+		<div class="ratings-drawer__item-main">
+			<div class="ratings-drawer__item-cover">
+				<button
+					type="button"
+					class="ratings-drawer__item-cover-hit"
+					aria-label={seeSummaryOpenAriaLabel(entry.book)}
+					onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
+				>
+					{#if entry.book.coverUrl && !coverFailedIds.has(entry.book.id)}
+						<img
+							src={entry.book.coverUrl}
+							alt=""
+							class="ratings-drawer__cover-img"
+							onerror={() => setCoverFailed(entry.book.id)}
+						/>
+					{:else}
+						<div class="ratings-drawer__cover-placeholder">
+							<span class="ratings-drawer__cover-text">{entry.book.title}</span>
+						</div>
+					{/if}
+				</button>
+			</div>
+			<div class="ratings-drawer__item-info">
+				<div class="ratings-drawer__item-meta">
+					<button
+						type="button"
+						class="ratings-drawer__item-title-hit"
+						aria-label={seeSummaryOpenAriaLabel(entry.book)}
+						onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
+					>
+						<span class="ratings-drawer__item-title">{entry.book.title}</span>
+					</button>
+					{#if entry.book.author?.trim()}
+						<button
+							type="button"
+							class="ratings-drawer__item-author ratings-drawer__item-author-hit"
+							aria-label={seeSummaryOpenAriaLabel(entry.book)}
+							onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
+						>
+							{entry.book.author}
+						</button>
+					{/if}
+				</div>
+				<div
+					class="ratings-drawer__item-actions"
+					onmouseleave={() => {
+						hoverEntryId = null;
+						hoverRating = 0;
+					}}
+				>
+					<BookRatingStarsRow
+						ratingWrapWidth="auto"
+						displayRating={pendingRemoveIds.has(entry.book.id)
+							? hoverEntryId === entry.book.id && hoverRating > 0
+								? hoverRating
+								: 0
+							: hoverEntryId === entry.book.id && hoverRating > 0
+								? hoverRating
+								: (storedRating ?? 0)}
+						ariaGroupLabel={t('shared.bookCard.rateThisBook')}
+						starAriaLabel={(value) =>
+							storedRating === value
+								? t('shared.bookCard.rateOutOf5Clear', { value })
+								: t('shared.bookCard.rateOutOf5', { value })}
+						starAriaPressed={(value) =>
+							pendingRemoveIds.has(entry.book.id) ? false : storedRating === value}
+						onmouseleave={() => {
+							hoverEntryId = null;
+							hoverRating = 0;
+						}}
+						onstarEnter={(value) => drawerStarMouseEnter(entry.book.id, value)}
+						onstarClick={(value) => {
+							hoverEntryId = null;
+							hoverRating = 0;
+							const bookId = entry.book.id;
+							const bookIdNum = entry.book.book_id;
+							if (pendingRemoveIds.has(bookId)) {
+								if (value === storedRating) {
+									clearPendingRemove(bookId);
+									return;
+								}
+								clearPendingRemove(bookId);
+								ratingsStore.setRating(bookId, value, bookIdNum, entry.book);
+								summaryHooks?.onAfterRate?.(entry.book);
+								return;
+							}
+							if (storedRating != null && value === storedRating) {
+								schedulePendingRemove(entry.book);
+								return;
+							}
+							ratingsStore.setRating(bookId, value, bookIdNum, entry.book);
+							summaryHooks?.onAfterRate?.(entry.book);
+						}}
+					/>
+					{#if pendingRemoveIds.has(entry.book.id)}
+						<Button
+							variant="tertiary"
+							compact
+							type="button"
+							aria-label={`${t('shared.ratingsBar.undoRemoveRatingFor', { title: entry.book.title })}. ${t('shared.ratingsBar.removePendingHint')}`}
+							onclick={() => clearPendingRemove(entry.book.id)}
+						>
+							{t('shared.ratingsBar.undo')}
+						</Button>
+					{:else}
+						<Button
+							variant="tertiary"
+							compact
+							type="button"
+							aria-label={t('shared.ratingsBar.removeRatingFor', { title: entry.book.title })}
+							onclick={() => schedulePendingRemove(entry.book)}
+						>
+							{t('shared.ratingsBar.remove')}
+						</Button>
+					{/if}
+				</div>
+			</div>
+		</div>
+		{#if pendingRemoveIds.has(entry.book.id)}
+			{@const fillRatio = pendingRemoveFillRatio(entry.book.id)}
+			{@const removeProgressPct = Math.round((1 - fillRatio) * 100)}
+			<div class="ratings-drawer__pending-remove-meter">
+				<div
+					class="ratings-drawer__pending-remove-meter__track"
+					role="progressbar"
+					aria-valuemin={0}
+					aria-valuemax={100}
+					aria-valuenow={removeProgressPct}
+					aria-label={t('shared.ratingsBar.removeProgressBarLabel')}
+				>
+					<div
+						class="ratings-drawer__pending-remove-meter__fill"
+						style="width: {fillRatio * 100}%"
+					></div>
+				</div>
+			</div>
+		{/if}
+	</li>
+{/snippet}
+
 <svelte:window onkeydown={handleKeydown} />
 
 <!-- Direct child of bottom bar (pointer-events); same Button variant as recommendations CTA -->
@@ -689,149 +835,7 @@
 								{:else}
 									<ul class="ratings-drawer__list">
 										{#each drawerOrderedEntries as entry (entry.book.id)}
-											{@const storedRating = $ratingsStore.get(entry.book.id)}
-											<li
-												class="ratings-drawer__item"
-												class:ratings-drawer__item--pending-remove={pendingRemoveIds.has(entry.book.id)}
-											>
-												<div class="ratings-drawer__item-main">
-													<div class="ratings-drawer__item-cover">
-														<button
-															type="button"
-															class="ratings-drawer__item-cover-hit"
-															aria-label={seeSummaryOpenAriaLabel(entry.book)}
-															onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
-														>
-															{#if entry.book.coverUrl && !coverFailedIds.has(entry.book.id)}
-																<img
-																	src={entry.book.coverUrl}
-																	alt=""
-																	class="ratings-drawer__cover-img"
-																	onerror={() => setCoverFailed(entry.book.id)}
-																/>
-															{:else}
-																<div class="ratings-drawer__cover-placeholder">
-																	<span class="ratings-drawer__cover-text">{entry.book.title}</span>
-																</div>
-															{/if}
-														</button>
-													</div>
-													<div class="ratings-drawer__item-info">
-														<button
-															type="button"
-															class="ratings-drawer__item-title-hit"
-															aria-label={seeSummaryOpenAriaLabel(entry.book)}
-															onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
-														>
-															<span class="ratings-drawer__item-title">{entry.book.title}</span>
-														</button>
-														{#if entry.book.author?.trim()}
-															<button
-																type="button"
-																class="ratings-drawer__item-author ratings-drawer__item-author-hit"
-																aria-label={seeSummaryOpenAriaLabel(entry.book)}
-																onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
-															>
-																{entry.book.author}
-															</button>
-														{/if}
-														<div
-															class="ratings-drawer__item-actions"
-															onmouseleave={() => {
-																hoverEntryId = null;
-																hoverRating = 0;
-															}}
-														>
-															<BookRatingStarsRow
-																ratingWrapWidth="auto"
-																displayRating={pendingRemoveIds.has(entry.book.id)
-																	? hoverEntryId === entry.book.id && hoverRating > 0
-																		? hoverRating
-																		: 0
-																	: hoverEntryId === entry.book.id && hoverRating > 0
-																		? hoverRating
-																		: (storedRating ?? 0)}
-																ariaGroupLabel={t('shared.bookCard.rateThisBook')}
-																starAriaLabel={(value) =>
-																	storedRating === value
-																		? t('shared.bookCard.rateOutOf5Clear', { value })
-																		: t('shared.bookCard.rateOutOf5', { value })}
-																starAriaPressed={(value) =>
-																	pendingRemoveIds.has(entry.book.id)
-																		? false
-																		: storedRating === value}
-																onmouseleave={() => {
-																	hoverEntryId = null;
-																	hoverRating = 0;
-																}}
-																onstarEnter={(value) => drawerStarMouseEnter(entry.book.id, value)}
-																onstarClick={(value) => {
-																	hoverEntryId = null;
-																	hoverRating = 0;
-																	const bookId = entry.book.id;
-																	const bookIdNum = entry.book.book_id;
-																	if (pendingRemoveIds.has(bookId)) {
-																		if (value === storedRating) {
-																			clearPendingRemove(bookId);
-																			return;
-																		}
-																		clearPendingRemove(bookId);
-																		ratingsStore.setRating(bookId, value, bookIdNum, entry.book);
-																		summaryHooks?.onAfterRate?.(entry.book);
-																		return;
-																	}
-																	if (storedRating != null && value === storedRating) {
-																		schedulePendingRemove(entry.book);
-																		return;
-																	}
-																	ratingsStore.setRating(bookId, value, bookIdNum, entry.book);
-																	summaryHooks?.onAfterRate?.(entry.book);
-																}}
-															/>
-															{#if pendingRemoveIds.has(entry.book.id)}
-																<Button
-																	variant="tertiary"
-																	compact
-																	type="button"
-																	aria-label={`${t('shared.ratingsBar.undoRemoveRatingFor', { title: entry.book.title })}. ${t('shared.ratingsBar.removePendingHint')}`}
-																	onclick={() => clearPendingRemove(entry.book.id)}
-																>
-																	{t('shared.ratingsBar.undo')}
-																</Button>
-															{:else}
-																<Button
-																	variant="tertiary"
-																	compact
-																	type="button"
-																	aria-label={t('shared.ratingsBar.removeRatingFor', { title: entry.book.title })}
-																	onclick={() => schedulePendingRemove(entry.book)}
-																>
-																	{t('shared.ratingsBar.remove')}
-																</Button>
-															{/if}
-														</div>
-													</div>
-												</div>
-												{#if pendingRemoveIds.has(entry.book.id)}
-													{@const fillRatio = pendingRemoveFillRatio(entry.book.id)}
-													{@const removeProgressPct = Math.round((1 - fillRatio) * 100)}
-													<div class="ratings-drawer__pending-remove-meter">
-														<div
-															class="ratings-drawer__pending-remove-meter__track"
-															role="progressbar"
-															aria-valuemin={0}
-															aria-valuemax={100}
-															aria-valuenow={removeProgressPct}
-															aria-label={t('shared.ratingsBar.removeProgressBarLabel')}
-														>
-															<div
-																class="ratings-drawer__pending-remove-meter__fill"
-																style="width: {fillRatio * 100}%"
-															></div>
-														</div>
-													</div>
-												{/if}
-											</li>
+											{@render drawerListRow(entry)}
 										{/each}
 									</ul>
 								{/if}
@@ -839,147 +843,7 @@
 						{:else}
 							<ul class="ratings-drawer__list">
 								{#each drawerOrderedEntries as entry (entry.book.id)}
-									{@const storedRating = $ratingsStore.get(entry.book.id)}
-									<li
-										class="ratings-drawer__item"
-										class:ratings-drawer__item--pending-remove={pendingRemoveIds.has(entry.book.id)}
-									>
-										<div class="ratings-drawer__item-main">
-											<div class="ratings-drawer__item-cover">
-												<button
-													type="button"
-													class="ratings-drawer__item-cover-hit"
-													aria-label={seeSummaryOpenAriaLabel(entry.book)}
-													onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
-												>
-													{#if entry.book.coverUrl && !coverFailedIds.has(entry.book.id)}
-														<img
-															src={entry.book.coverUrl}
-															alt=""
-															class="ratings-drawer__cover-img"
-															onerror={() => setCoverFailed(entry.book.id)}
-														/>
-													{:else}
-														<div class="ratings-drawer__cover-placeholder">
-															<span class="ratings-drawer__cover-text">{entry.book.title}</span>
-														</div>
-													{/if}
-												</button>
-											</div>
-											<div class="ratings-drawer__item-info">
-												<button
-													type="button"
-													class="ratings-drawer__item-title-hit"
-													aria-label={seeSummaryOpenAriaLabel(entry.book)}
-													onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
-												>
-													<span class="ratings-drawer__item-title">{entry.book.title}</span>
-												</button>
-												{#if entry.book.author?.trim()}
-													<button
-														type="button"
-														class="ratings-drawer__item-author ratings-drawer__item-author-hit"
-														aria-label={seeSummaryOpenAriaLabel(entry.book)}
-														onclick={(e) => openDetail(entry.book.id, e.currentTarget)}
-													>
-														{entry.book.author}
-													</button>
-												{/if}
-												<div
-													class="ratings-drawer__item-actions"
-													onmouseleave={() => {
-														hoverEntryId = null;
-														hoverRating = 0;
-													}}
-												>
-													<BookRatingStarsRow
-														ratingWrapWidth="auto"
-														displayRating={pendingRemoveIds.has(entry.book.id)
-															? hoverEntryId === entry.book.id && hoverRating > 0
-																? hoverRating
-																: 0
-															: hoverEntryId === entry.book.id && hoverRating > 0
-																? hoverRating
-																: (storedRating ?? 0)}
-														ariaGroupLabel={t('shared.bookCard.rateThisBook')}
-														starAriaLabel={(value) =>
-															storedRating === value
-																? t('shared.bookCard.rateOutOf5Clear', { value })
-																: t('shared.bookCard.rateOutOf5', { value })}
-														starAriaPressed={(value) =>
-															pendingRemoveIds.has(entry.book.id) ? false : storedRating === value}
-														onmouseleave={() => {
-															hoverEntryId = null;
-															hoverRating = 0;
-														}}
-														onstarEnter={(value) => drawerStarMouseEnter(entry.book.id, value)}
-														onstarClick={(value) => {
-															hoverEntryId = null;
-															hoverRating = 0;
-															const bookId = entry.book.id;
-															const bookIdNum = entry.book.book_id;
-															if (pendingRemoveIds.has(bookId)) {
-																if (value === storedRating) {
-																	clearPendingRemove(bookId);
-																	return;
-																}
-																clearPendingRemove(bookId);
-																ratingsStore.setRating(bookId, value, bookIdNum, entry.book);
-																summaryHooks?.onAfterRate?.(entry.book);
-																return;
-															}
-															if (storedRating != null && value === storedRating) {
-																schedulePendingRemove(entry.book);
-																return;
-															}
-															ratingsStore.setRating(bookId, value, bookIdNum, entry.book);
-															summaryHooks?.onAfterRate?.(entry.book);
-														}}
-													/>
-													{#if pendingRemoveIds.has(entry.book.id)}
-														<Button
-															variant="tertiary"
-															compact
-															type="button"
-															aria-label={`${t('shared.ratingsBar.undoRemoveRatingFor', { title: entry.book.title })}. ${t('shared.ratingsBar.removePendingHint')}`}
-															onclick={() => clearPendingRemove(entry.book.id)}
-														>
-															{t('shared.ratingsBar.undo')}
-														</Button>
-													{:else}
-														<Button
-															variant="tertiary"
-															compact
-															type="button"
-															aria-label={t('shared.ratingsBar.removeRatingFor', { title: entry.book.title })}
-															onclick={() => schedulePendingRemove(entry.book)}
-														>
-															{t('shared.ratingsBar.remove')}
-														</Button>
-													{/if}
-												</div>
-											</div>
-										</div>
-										{#if pendingRemoveIds.has(entry.book.id)}
-											{@const fillRatio = pendingRemoveFillRatio(entry.book.id)}
-											{@const removeProgressPct = Math.round((1 - fillRatio) * 100)}
-											<div class="ratings-drawer__pending-remove-meter">
-												<div
-													class="ratings-drawer__pending-remove-meter__track"
-													role="progressbar"
-													aria-valuemin={0}
-													aria-valuemax={100}
-													aria-valuenow={removeProgressPct}
-													aria-label={t('shared.ratingsBar.removeProgressBarLabel')}
-												>
-													<div
-														class="ratings-drawer__pending-remove-meter__fill"
-														style="width: {fillRatio * 100}%"
-													></div>
-												</div>
-											</div>
-										{/if}
-									</li>
+									{@render drawerListRow(entry)}
 								{/each}
 							</ul>
 						{/if}
@@ -1167,15 +1031,23 @@
 		overflow-y: auto;
 		padding: 0 var(--space-5) var(--space-4);
 	}
-	.ratings-drawer__header.ratings-drawer__header--detail {
-		flex-direction: column;
-		align-items: flex-start;
-		justify-content: center;
-		gap: var(--space-3);
+	/* Detail view: same row as shelf header so sync sits beside Back (not stacked above the sheet). */
+	.ratings-drawer__header.ratings-drawer__header--detail .ratings-drawer__header-sync {
+		flex-wrap: nowrap;
+		max-width: min(18rem, 52%);
+	}
+	.ratings-drawer__header.ratings-drawer__header--detail .ratings-drawer__back {
+		max-width: min(14rem, 48%);
+		overflow: hidden;
 	}
 	.ratings-drawer__back {
 		gap: var(--space-2);
-		align-self: flex-start;
+		min-width: 0;
+		flex-shrink: 1;
+	}
+	.ratings-drawer__header.ratings-drawer__header--detail .ratings-drawer__back-label {
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.ratings-drawer__back-label {
 		min-width: 0;
@@ -1344,11 +1216,17 @@
 		flex: 1;
 		min-width: 0;
 	}
+	.ratings-drawer__item-meta {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
+		min-width: 0;
+	}
 	.ratings-drawer__item-title {
 		font-family: var(--typ-caption-font-family);
 		font-size: var(--typ-caption-font-size);
 		font-weight: var(--font-weight-semibold);
-		line-height: var(--typ-caption-line-height);
+		line-height: 24px;
 		letter-spacing: var(--typ-caption-letter-spacing);
 		color: var(--color-book-title);
 		display: block;
@@ -1357,23 +1235,22 @@
 		font-family: var(--typ-caption-font-family);
 		font-size: var(--typ-caption-font-size);
 		font-weight: var(--typ-caption-font-weight);
-		line-height: var(--typ-caption-line-height);
+		line-height: var(--line-height-tight);
 		letter-spacing: var(--typ-caption-letter-spacing);
 		color: var(--color-text-muted);
 		display: block;
-		margin-top: var(--space-1);
 	}
 	button.ratings-drawer__item-author-hit {
 		display: block;
 		width: 100%;
 		padding: 0;
 		margin: 0;
-		margin-top: var(--space-1);
 		border: none;
 		background: transparent;
 		text-align: left;
 		cursor: pointer;
 		appearance: none;
+		line-height: var(--line-height-tight);
 	}
 	button.ratings-drawer__item-author-hit:focus-visible {
 		outline: 2px solid var(--color-focus);

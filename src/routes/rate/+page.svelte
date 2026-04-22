@@ -9,7 +9,7 @@
 	import { ensureAnonymousSessionStarted } from '$lib/auth/anonymous-session';
 	import { getSupabase } from '$lib/supabase';
 	import { authStore } from '$lib/stores/auth';
-	import BookCardSkeleton from '$lib/components/BookCardSkeleton.svelte';
+	import BookCardGridSkeleton from '$lib/components/BookCardGridSkeleton.svelte';
 	import RatingsBar from '$lib/components/RatingsBar.svelte';
 	import SearchBar from '$lib/components/SearchBar.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
@@ -1369,15 +1369,11 @@
 				{/if}
 
 				{#if loadingInitial}
-					<ul
-						class="rate-page__list book-card-grid"
-						aria-label={t('rate.aria.loadingBooks')}
-						aria-live="polite"
-					>
-						{#each Array(8) as _}
-							<li><BookCardSkeleton /></li>
-						{/each}
-					</ul>
+					<BookCardGridSkeleton
+						class="rate-page__list"
+						ariaLabel={t('rate.aria.loadingBooks')}
+						ariaLive="polite"
+					/>
 				{:else}
 					<ul class="rate-page__list book-card-grid">
 						{#each popularBooks as book (book.id)}
@@ -1544,11 +1540,10 @@
 						<p class="rate-search-overlay__helper">{t('rate.search.minCharsHint')}</p>
 					{:else if debouncedQuery.trim().length >= SEARCH_MIN_QUERY_LENGTH}
 						{#if loadingSearch}
-							<ul class="rate-page__list book-card-grid" aria-label={t('rate.aria.searching')}>
-								{#each Array(6) as _}
-									<li><BookCardSkeleton /></li>
-								{/each}
-							</ul>
+							<BookCardGridSkeleton
+								class="rate-page__list"
+								ariaLabel={t('rate.aria.searching')}
+							/>
 						{:else if searchError}
 							<!-- Error surfaced via ErrorBanner (role="alert") above -->
 						{:else if searchResults.length === 0}
