@@ -12,9 +12,8 @@ en:
         For the data people: our proprietary two-stage machine learning model uses a Two-Towers retriever + FiBiNET ranker.
 
     - id: is_powered_by_llm
-      question: "Is this app powered by a large language model?"
-      answer: "No."
-
+      question: "Is this app powered by an LLM?"
+      answer: "No. The app is powered by a proprietary two-stage machine learning model."
 
     - id: why_not_llm
       question: "Can’t I just use an LLM?"
