@@ -1,0 +1,76 @@
+# FAQ — edit questions and answers here. Main app microcopy stays in copy.yaml.
+# Paragraphs: separate with a blank line. Use **text** for bold. Links: [label](https://...) or [email](mailto:x@y.z)
+# Replace the example feedback URL and email in the last item when you have real endpoints.
+en:
+  items:
+
+    - id: how_know_taste
+      question: "How do you actually know what I’ll like?"
+      answer: |
+        We get your book ratings and build a distinct personal profile. Then we choose and rank the top 10 books for your reader profile everytime you request a personal recommendation. There are at least 20 different levers that are taken into account when choosing those books.
+
+        For the data people: our proprietary two-stage machine learning model uses a Two-Towers retriever + FiBiNET ranker.
+
+    - id: is_powered_by_llm
+      question: "Is this app powered by a large language model?"
+      answer: "No."
+
+
+    - id: why_not_llm
+      question: "Can’t I just use an LLM?"
+      answer: |
+        You can, but it will not provide personal recommendations. It will provide popular books.
+
+        Unread machine learning model was benchmarked as **12 times better** at predicting your next favorite book than Gemini 3.1.
+
+    - id: why_not_friends
+      question: "Can’t I just ask my friends?"
+      answer: "Of course! But not everyone has matching tastes with their friends! This is why we created this in the first place."
+
+    - id: book_not_found
+      question: "I could not find a book."
+      answer: |
+        First of all, sorry, this is entirely possible.
+
+        Currently we have over 70k books from the English speaking world in our database, but this is only in the beta stage.
+
+        We are currently working on adding more books to our database as well as capturing new book releases.
+
+    - id: same_book_again
+      question: "Why do I get the same book recommended a few times in a row?"
+      answer: |
+        It means it is even more likely you will enjoy it.
+
+        The recommendations are deterministic, meaning you will get suggestions based on our current knowledge about your current taste (based on ratings, bookmarks and ‘not interested’). If another person would rate the same exact books the same exact way they would get the same exact book recommendations. This means that sometimes the books will repeat.
+
+    - id: import_data
+      question: "Can I import my data from other sites?"
+      answer: "Not currently, but it is part of our roadmap in the future."
+
+    - id: avoid_genres
+      question: "How do I make sure I won’t get recommendations for genres I hate?"
+      answer: |
+        Currently, the best way to do that is by marking a book as ‘not interested’ when you get a recommendation that is completely not up your alley or while browsing the book feed.
+
+        Ability to finetune your recommendations by mood, theme, genre and others is part of our roadmap.
+
+    - id: mobile_web
+      question: "Can I use this on my phone, or is it web only?"
+      answer: |
+        It is fully supported on desktop and mobile web.
+
+        You can also use it as a web app by adding the website onto your homepage. Here is how: Safari, Chrome, Firefox.
+    
+    - id: is_free
+      question: "Is it free?"
+      answer: "Yes."
+    - id: share_feedback
+      question: "Where can I share feedback or thoughts about my experience?"
+      answer: |
+        We are grateful for any and all feedback!
+
+        You can fill out [this form](https://example.com/feedback), or send us an email: [hello@example.com](mailto:hello@example.com).
+
+    - id: change_ratings
+      question: "Can I change my ratings?"
+      answer: "Yes, any rating, bookmark or not interested can be changed whenever you feel like it. This will impact your future recommendations."

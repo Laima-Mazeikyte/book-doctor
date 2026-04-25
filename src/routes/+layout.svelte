@@ -65,6 +65,7 @@
 		return (
 			pathname === '/my-bookshelf' ||
 			pathname === '/not-interested' ||
+			pathname === '/faq' ||
 			pathname === '/rate' ||
 			pathname.startsWith('/rate/')
 		);

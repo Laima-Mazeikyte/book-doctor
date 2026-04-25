@@ -1,5 +1,5 @@
 /* Base layer – mobile-first, minimal, accessible. Uses semantic tokens only. */
-@import '/fonts/bespoke-serif/bespoke-serif.css';
+/* Bespoke @font-face: linked from app.html (earlier than @import — less FOUT on refresh). */
 @import './lib/styles/primitives.css';
 @import './lib/styles/semantic.css';
 @import './lib/styles/button.css';
@@ -41,8 +41,8 @@ body {
 	margin: 0;
 }
 
-/* Page h1 rhythm: extra space below title (landing uses flex gap; search dialog title is sr-only; bookshelf / recommendations set their own gap above tabs). */
-main h1:not(.landing__title):not(.rate-search-overlay__sr-only):not(.bookshelf-page__title):not(.recommendations-page__title) {
+/* Page h1 rhythm: extra space below title (landing uses flex gap; search dialog title is sr-only; bookshelf / recommendations / faq set their own gap). */
+main h1:not(.landing__title):not(.rate-search-overlay__sr-only):not(.bookshelf-page__title):not(.recommendations-page__title):not(.faq-page__title) {
 	margin-bottom: var(--space-6);
 }
 
@@ -104,7 +104,7 @@ main.landing-page {
 	max-width: var(--content-width-narrow);
 }
 
-/* Book-list routes: use viewport width so the card grid can show more columns */
+/* Book-list and FAQ: full-width main, same vertical padding (card grid or centered page title + body) */
 main.main-book-grid-shell {
 	max-width: none;
 	padding-top: 40px;

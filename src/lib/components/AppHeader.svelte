@@ -16,6 +16,7 @@
 		if (href === '/rate') return pathname === '/rate';
 		if (href === '/rate/recommendations') return pathname.startsWith('/rate/recommendations');
 		if (href === '/my-bookshelf') return pathname === '/my-bookshelf';
+		if (href === '/faq') return pathname === '/faq';
 		return false;
 	}
 
@@ -160,19 +161,19 @@
 		{/if}
 
 		<div class="app-header__right">
+			<a
+				href="/faq"
+				class="chrome-nav-link"
+				aria-current={isNavHrefActive('/faq', pathname) ? 'page' : undefined}
+			>
+				{t('shared.footer.faq')}
+			</a>
 			<div class="app-header__account" data-state={accountDropdownOpen ? 'open' : 'closed'}>
 				{#if showAuthActions}
 					<div class="app-header__auth-actions">
 						<button
 							type="button"
 							class="btn btn--tertiary btn--compact"
-							onclick={() => openAuthModal('signin')}
-						>
-							{t('shared.authModal.signIn')}
-						</button>
-						<button
-							type="button"
-							class="btn btn--primary btn--compact"
 							onclick={() => openAuthModal('signup')}
 						>
 							{t('shared.authModal.createAccount')}
@@ -416,8 +417,7 @@
 		justify-content: flex-end;
 	}
 	/**
-	 * Match `.chrome-nav-link` padding; fixed height so Log in / Sign up stay one line tall
-	 * (plain `<button class="btn">` line boxes can differ by a pixel vs `min-height: auto`).
+	 * Match `.chrome-nav-link` padding; fixed height so the Sign up control stays one line tall.
 	 */
 	.app-header__auth-actions :global(.btn.btn--compact) {
 		min-height: 0;
