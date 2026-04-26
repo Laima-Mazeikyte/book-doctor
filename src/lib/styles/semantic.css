@@ -50,6 +50,8 @@
 
 	/* ── Accent & focus ───────────────────────────────────────────────────── */
 	--color-accent: var(--primitive-accent-solid);
+	/** Brand mint — primary CTA, hero emphasis, same hue as `--color-button-primary-bg`. */
+	--color-accent-brand: var(--primitive-accent-brand);
 	--color-accent-bg: var(--primitive-accent-muted);
 	--color-focus: var(--primitive-accent-solid);
 

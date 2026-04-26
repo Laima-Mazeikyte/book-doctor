@@ -2,22 +2,8 @@
 # To add a locale later, add another top-level key (e.g. es:, fr:) with the same structure.
 en:
   home:
-    titlePrefix: "Life’s too short for"
-    titleSuffix: "books"
-    adjectives:
-      - uninspired
-      - boring
-      - trivial
-      - dull
-      - banal
-      - cliche
-      - ponderous
-      - shallow
-      - contrived
-      - pretentious
-      - cheesy
-      - serious
-    lead: "Discover your next favorite book"
+    title: "Books worth reading"
+    lead: "A place for readers to discover books that match their unique taste."
     startRating: "Start rating"
 
   rate:
