@@ -249,9 +249,9 @@ button.book-card__summary-remove-rating.book-card__summary-remove-rating--layout
 }
 .book-card__summary {
 	font-family: var(--typ-body-font-family);
-	font-size: var(--typ-body-font-size);
+	font-size: 16px;
 	font-weight: var(--typ-body-font-weight);
-	line-height: var(--typ-body-line-height);
+	line-height: 150%;
 	letter-spacing: var(--typ-body-letter-spacing);
 	color: var(--color-text);
 	margin: 0;

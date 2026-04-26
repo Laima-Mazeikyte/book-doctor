@@ -192,6 +192,8 @@
 		color: var(--primitive-accent-brand);
 		overflow-wrap: break-word;
 		word-break: break-word;
+		font-size: 16px;
+		line-height: 100%;
 	}
 
 	.accordion__icon {
@@ -258,6 +260,11 @@
 		overflow-wrap: break-word;
 		word-break: break-word;
 		letter-spacing: 0.3px;
+	}
+
+	p.accordion__answer {
+		font-size: 16px;
+		line-height: 150%;
 	}
 
 	.accordion__answer--quote {
