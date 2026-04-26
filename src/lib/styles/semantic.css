@@ -188,7 +188,7 @@
 
 	/*
 	 * Named tokens (design spec). Maintenance scale:
-	 * 72px → H1, display1 | 48px → H2 | 32px → display2 | 36px → H3 | 20px → body | 16px → caption
+	 * 72px → H1, display1 | 48px → H2 | 32px → display2 | 20px → H3 | 14px → body | 16px → caption
 	 * All interactive UI: Inter 14px (--typ-interactive-1; --typ-interactive-2 aliases same size for compact/dense slots).
 	 */
 	--typ-h1-font-family: var(--font-family-content);
@@ -222,10 +222,10 @@
 	--typ-h3-line-height: var(--primitive-line-height-h3);
 	--typ-h3-letter-spacing: var(--primitive-letter-spacing-h3);
 
-	--typ-body-font-family: var(--primitive-font-family-content-regular);
-	--typ-body-font-weight: var(--primitive-font-weight-normal);
-	--typ-body-font-size: var(--primitive-type-size-16);
-	--typ-body-line-height: var(--primitive-line-height-body);
+	--typ-body-font-family: var(--primitive-font-family-content-light);
+	--typ-body-font-weight: var(--primitive-font-weight-light);
+	--typ-body-font-size: var(--primitive-type-size-14);
+	--typ-body-line-height: 24px;
 	--typ-body-letter-spacing: var(--primitive-letter-spacing-body);
 
 	--typ-caption-font-family: var(--primitive-font-family-content-regular);

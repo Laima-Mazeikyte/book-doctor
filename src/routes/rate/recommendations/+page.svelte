@@ -23,6 +23,7 @@
 		recommendationsPageStore,
 		type RecommendationRun
 	} from '$lib/stores/recommendationsPage';
+	import { ratedSummarySheetKeepAlive } from '$lib/stores/ratedSummarySheetKeepAlive';
 	import { t } from '$lib/copy';
 	import type { Book } from '$lib/types/book';
 
@@ -142,7 +143,16 @@
 	let bmNiLoadRequestId = 0;
 
 	let activeFilter = $state<RecFilterId>('recommended');
+	let prevRecFilterForSummaryKeepAlive = $state<RecFilterId | undefined>(undefined);
 	let sortOrder = $state<RecSortId>(readRecSortFromLs());
+
+	$effect(() => {
+		const f = activeFilter;
+		if (prevRecFilterForSummaryKeepAlive !== undefined && prevRecFilterForSummaryKeepAlive !== f) {
+			ratedSummarySheetKeepAlive.set(null);
+		}
+		prevRecFilterForSummaryKeepAlive = f;
+	});
 
 	const niNums = $derived.by(() => new Set([...$notInterestedStore]));
 
@@ -238,9 +248,18 @@
 	);
 
 	const currentHistoryBooks = $derived.by((): Book[] => {
-		if (activeFilter === 'recommended') return recommendedTabBooks;
-		if (activeFilter === 'bookmarked') return bookmarkTabBooks;
-		return niTabBooks;
+		const list: Book[] =
+			activeFilter === 'recommended'
+				? recommendedTabBooks
+				: activeFilter === 'bookmarked'
+					? bookmarkTabBooks
+					: niTabBooks;
+
+		const keep = $ratedSummarySheetKeepAlive;
+		if (keep && !list.some((b) => b.id === keep.bookId)) {
+			return [...list, keep.book];
+		}
+		return list;
 	});
 
 	function selectRecTab(id: RecFilterId) {

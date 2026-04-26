@@ -27,7 +27,7 @@
 		align-items: stretch;
 		justify-content: flex-start;
 		width: 100%;
-		max-width: var(--content-width-narrow);
+		max-width: 600px;
 		margin-inline: auto;
 		padding-bottom: var(--space-8);
 		box-sizing: border-box;

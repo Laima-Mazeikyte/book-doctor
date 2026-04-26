@@ -3,9 +3,17 @@ export type FaqAnswerFormat = 'markdown' | 'html';
 export type FaqSegment =
 	| { type: 'text'; text: string }
 	| { type: 'bold'; text: string }
-	| { type: 'link'; text: string; href: string; external: boolean };
+	| {
+			type: 'link';
+			text: string;
+			href: string;
+			external: boolean;
+			internalAction?: 'bugReport';
+		};
 
-const LINK_PREFIX_RE = /^\[([^\]]*)\]\(((?:https?:\/\/|mailto:)[^)\s]+)\)/;
+/** [label](https://...), [label](mailto:...), or [label](app:feedback) to open the bug/feedback dialog. */
+const LINK_PREFIX_RE =
+	/^\[([^\]]*)\]\(((?:https?:\/\/|mailto:)[^)\s]+|app:feedback)\)/;
 
 export function faqAnswerParagraphs(answer: string): string[] {
 	return answer
@@ -15,8 +23,31 @@ export function faqAnswerParagraphs(answer: string): string[] {
 		.filter(Boolean);
 }
 
+/** Blockquote paragraph: any non-empty line may start with `> ` (markdown-style). */
+const BLOCKQUOTE_LINE_RE = /^\s*>\s?/;
+
 /**
- * FAQ YAML is trusted in-repo copy. Segments avoid `{@html}` while supporting **bold** and [label](url) / [label](mailto:).
+ * If the paragraph is a block quote (first non-empty line starts with `>`), returns
+ * `blockquote` and the body with `> ` stripped from each line. Otherwise the paragraph
+ * is unchanged and kind is `p`.
+ */
+export function faqParagraphBlock(
+	paragraph: string
+): { kind: 'p' | 'blockquote'; text: string } {
+	const lines = paragraph.split('\n');
+	const firstNonEmpty = lines.find((l) => l.trim() !== '');
+	if (!firstNonEmpty || !BLOCKQUOTE_LINE_RE.test(firstNonEmpty)) {
+		return { kind: 'p', text: paragraph };
+	}
+	const stripped = lines
+		.map((line) => (line.trim() === '' ? line : line.replace(BLOCKQUOTE_LINE_RE, '')))
+		.join('\n');
+	return { kind: 'blockquote', text: stripped.trim() };
+}
+
+/**
+ * FAQ YAML is trusted in-repo copy. Segments avoid `{@html}` while supporting **bold**,
+ * [label](url) / [label](mailto:), and [label](app:feedback) for the in-app feedback form.
  */
 export function parseFaqParagraph(paragraph: string, format: FaqAnswerFormat): FaqSegment[] {
 	if (format === 'html') {
@@ -37,12 +68,23 @@ export function parseFaqParagraph(paragraph: string, format: FaqAnswerFormat): F
 			const rest = paragraph.slice(i);
 			const m = rest.match(LINK_PREFIX_RE);
 			if (m) {
-				segments.push({
-					type: 'link',
-					text: m[1],
-					href: m[2],
-					external: m[2].startsWith('http')
-				});
+				const href = m[2];
+				if (href === 'app:feedback') {
+					segments.push({
+						type: 'link',
+						text: m[1],
+						href,
+						external: false,
+						internalAction: 'bugReport'
+					});
+				} else {
+					segments.push({
+						type: 'link',
+						text: m[1],
+						href,
+						external: href.startsWith('http')
+					});
+				}
 				i += m[0].length;
 				continue;
 			}

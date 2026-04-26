@@ -67,6 +67,8 @@
 
 	const summaryPanelId = $derived(`book-summary-panel-${book.id}`);
 	const summaryTitleId = $derived(`book-summary-title-${book.id}`);
+	/** Pin the card in the parent list while the summary is open (see `ratedSummarySheetKeepAlive`). */
+	const summarySheetKeepAlive = $derived(context === 'rated' || context === 'recommendations');
 
 	const bookIdentityAriaLabel = $derived(
 		book.author?.trim()
@@ -149,7 +151,7 @@
 	async function handleOpenSummary() {
 		setSummaryFlyDistance();
 		summaryOpen = true;
-		if (context === 'rated') {
+		if (summarySheetKeepAlive) {
 			ratedSummarySheetKeepAlive.set({ bookId: book.id, book });
 		}
 		await tick();
@@ -158,7 +160,7 @@
 
 	async function handleCloseSummary() {
 		summaryOpen = false;
-		if (context === 'rated') {
+		if (summarySheetKeepAlive) {
 			ratedSummarySheetKeepAlive.set(null);
 		}
 		await tick();

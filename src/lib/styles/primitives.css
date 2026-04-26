@@ -79,6 +79,7 @@
 	/* ── Typography ───────────────────────────────────────────────────────── */
 	--primitive-font-family-content: 'BespokeSerif-Variable', Georgia, 'Times New Roman', serif;
 	/** Static cuts for predictable rendering (summary sheet / typ scale). Pair with nominal font-weight. */
+	--primitive-font-family-content-light: 'BespokeSerif-Light', Georgia, 'Times New Roman', serif;
 	--primitive-font-family-content-regular: 'BespokeSerif-Regular', Georgia, 'Times New Roman', serif;
 	--primitive-font-family-content-bold: 'BespokeSerif-Bold', Georgia, 'Times New Roman', serif;
 	--primitive-font-family-display: 'Beth Ellen', cursive;
@@ -94,6 +95,8 @@
 	--primitive-type-size-16: 1rem;
 	--primitive-type-size-14: 0.875rem;
 
+	/** Static Light cut (FAQ / default reading text); pair with BespokeSerif-Light. */
+	--primitive-font-weight-light: 200;
 	--primitive-font-weight-normal: 300;
 	--primitive-font-weight-medium: 400;
 	--primitive-font-weight-semibold: 400;

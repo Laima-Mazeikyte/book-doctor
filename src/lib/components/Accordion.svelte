@@ -1,11 +1,15 @@
 <script lang="ts">
+	import { getOpenBugReportContext } from '$lib/bugReportContext';
 	import faqYaml from '$lib/copy/faq.yaml';
 	import {
 		faqAnswerParagraphs,
+		faqParagraphBlock,
 		parseFaqParagraph,
 		type FaqAnswerFormat
 	} from '$lib/copy/faqAnswer';
 	import { ChevronDown } from 'lucide-svelte';
+
+	const openBugReport = getOpenBugReportContext();
 
 	type FaqItem = {
 		id: string;
@@ -43,7 +47,7 @@
 				<span class="accordion__icon" aria-hidden="true">
 					<ChevronDown size={20} strokeWidth={2} class="accordion__chevron" />
 				</span>
-				<span class="accordion__question typ-body">{row.question}</span>
+				<span class="accordion__question">{row.question}</span>
 			</button>
 			<div
 				id="accordion-{row.id}-panel"
@@ -55,23 +59,71 @@
 			>
 				<div class="accordion__panel-inner">
 					{#each paragraphsFor(row) as para, i (`${row.id}-${i}`)}
-						<p class="accordion__answer typ-body">
-							{#each parseFaqParagraph(para, row.answerFormat ?? 'markdown') as seg, j (`${row.id}-${i}-${j}`)}
-								{#if seg.type === 'text'}
-									{seg.text}
-								{:else if seg.type === 'bold'}
-									<strong>{seg.text}</strong>
-								{:else if seg.external}
-									<a
-										href={seg.href}
-										class="accordion__inline-link"
-										target="_blank"
-										rel="noopener noreferrer">{seg.text}</a>
-								{:else}
-									<a href={seg.href} class="accordion__inline-link">{seg.text}</a>
-								{/if}
-							{/each}
-						</p>
+						{@const block = faqParagraphBlock(para)}
+						{#if block.kind === 'blockquote'}
+							<blockquote class="accordion__answer accordion__answer--quote typ-body">
+								{#each parseFaqParagraph(
+									block.text,
+									row.answerFormat ?? 'markdown'
+								) as seg, j (`${row.id}-${i}-${j}`)}
+									{#if seg.type === 'text'}
+										{seg.text}
+									{:else if seg.type === 'bold'}
+										<strong>{seg.text}</strong>
+									{:else if seg.type === 'link' && seg.internalAction === 'bugReport'}
+										{#if openBugReport}
+											<button
+												type="button"
+												class="accordion__inline-link"
+												onclick={openBugReport}
+											>
+												{seg.text}
+											</button>
+										{:else}
+											{seg.text}
+										{/if}
+									{:else if seg.type === 'link' && seg.external}
+										<a
+											href={seg.href}
+											class="accordion__inline-link"
+											target="_blank"
+											rel="noopener noreferrer">{seg.text}</a>
+									{:else if seg.type === 'link'}
+										<a href={seg.href} class="accordion__inline-link">{seg.text}</a>
+									{/if}
+								{/each}
+							</blockquote>
+						{:else}
+							<p class="accordion__answer typ-body">
+								{#each parseFaqParagraph(para, row.answerFormat ?? 'markdown') as seg, j (`${row.id}-${i}-${j}`)}
+									{#if seg.type === 'text'}
+										{seg.text}
+									{:else if seg.type === 'bold'}
+										<strong>{seg.text}</strong>
+									{:else if seg.type === 'link' && seg.internalAction === 'bugReport'}
+										{#if openBugReport}
+											<button
+												type="button"
+												class="accordion__inline-link"
+												onclick={openBugReport}
+											>
+												{seg.text}
+											</button>
+										{:else}
+											{seg.text}
+										{/if}
+									{:else if seg.type === 'link' && seg.external}
+										<a
+											href={seg.href}
+											class="accordion__inline-link"
+											target="_blank"
+											rel="noopener noreferrer">{seg.text}</a>
+									{:else if seg.type === 'link'}
+										<a href={seg.href} class="accordion__inline-link">{seg.text}</a>
+									{/if}
+								{/each}
+							</p>
+						{/if}
 					{/each}
 				</div>
 			</div>
@@ -203,18 +255,42 @@
 	.accordion__answer {
 		margin: 0;
 		max-width: min(65ch, 100%);
-		color: color-mix(in srgb, var(--color-text) 80%, transparent);
 		overflow-wrap: break-word;
 		word-break: break-word;
+		letter-spacing: 0.3px;
 	}
 
-	.accordion__panel-inner .accordion__inline-link {
+	.accordion__answer--quote {
+		margin: 0;
+		padding: 0 0 0 var(--space-4);
+		border-left: 3px solid var(--color-text-muted);
+		font-style: normal;
+	}
+
+	/* Light face has no heavier master; map emphasis to the Bold cut. */
+	.accordion__answer :global(strong) {
+		font-family: var(--primitive-font-family-content-bold);
+		font-weight: 700;
+	}
+
+	.accordion__panel-inner :is(a, button).accordion__inline-link {
 		color: var(--color-text);
 		text-decoration: underline;
 		text-underline-offset: 0.15em;
 	}
 
-	.accordion__panel-inner .accordion__inline-link:hover {
+	.accordion__panel-inner .accordion__inline-link {
+		font: inherit;
+		letter-spacing: inherit;
+		background: none;
+		border: none;
+		padding: 0;
+		margin: 0;
+		cursor: pointer;
+		text-align: inherit;
+	}
+
+	.accordion__panel-inner :is(a, button).accordion__inline-link:hover {
 		color: var(--color-text);
 		opacity: 0.85;
 	}

@@ -1,75 +1,75 @@
 # FAQ — edit questions and answers here. Main app microcopy stays in copy.yaml.
 # Paragraphs: separate with a blank line. Use **text** for bold. Links: [label](https://...) or [email](mailto:x@y.z)
-# Replace the example feedback URL and email in the last item when you have real endpoints.
+# Block quote (indented, left border): start a paragraph with "> " (see first FAQ).
+# "Feedback form" in the last item uses [text](app:feedback) to open the in-app feedback dialog; replace mailto: if needed.
 en:
   items:
 
     - id: how_know_taste
-      question: "How do you actually know what I’ll like?"
+      question: "How do you know what I’ll like?"
       answer: |
-        We get your book ratings and build a distinct personal profile. Then we choose and rank the top 10 books for your reader profile everytime you request a personal recommendation. There are at least 20 different levers that are taken into account when choosing those books.
+        When you rate books, we build a unique personal profile just for you. Every time you ask for a recommendation, we analyze at least 20 different "style levers" to choose and rank your top 10 books.
 
-        For the data people: our proprietary two-stage machine learning model uses a Two-Towers retriever + FiBiNET ranker.
-
-    - id: is_powered_by_llm
-      question: "Is this app powered by an LLM?"
-      answer: "No. The app is powered by a proprietary two-stage machine learning model."
-
-    - id: why_not_llm
-      question: "Can’t I just use an LLM?"
-      answer: |
-        You can, but it will not provide personal recommendations. It will provide popular books.
-
-        Unread machine learning model was benchmarked as **12 times better** at predicting your next favorite book than Gemini 3.1.
-
-    - id: why_not_friends
-      question: "Can’t I just ask my friends?"
-      answer: "Of course! But not everyone has matching tastes with their friends! This is why we created this in the first place."
-
-    - id: book_not_found
-      question: "I could not find a book."
-      answer: |
-        First of all, sorry, this is entirely possible.
-
-        Currently we have over 70k books from the English speaking world in our database, but this is only in the beta stage.
-
-        We are currently working on adding more books to our database as well as capturing new book releases.
+        > **For the Data Scientists:** Our proprietary two-stage model uses a Two-Towers retriever paired with a FiBiNET ranker to ensure high-precision matching.
 
     - id: same_book_again
-      question: "Why do I get the same book recommended a few times in a row?"
+      question: "Why do I keep seeing the same book in my recommendations?"
       answer: |
-        It means it is even more likely you will enjoy it.
+        If a book keeps popping up, it means your are more likely to love it!
 
-        The recommendations are deterministic, meaning you will get suggestions based on our current knowledge about your current taste (based on ratings, bookmarks and ‘not interested’). If another person would rate the same exact books the same exact way they would get the same exact book recommendations. This means that sometimes the books will repeat.
-
-    - id: import_data
-      question: "Can I import my data from other sites?"
-      answer: "Not currently, but it is part of our roadmap in the future."
+        Our recommendations are **deterministic**. This means the suggestions are a reflection of your current ratings, bookmarks, and "not interested" tags. If someone else had your exact same library and ratings, they would see the same results. If you're seeing repeats, it just means that book is currently a great match, based on what we know today.
 
     - id: avoid_genres
-      question: "How do I make sure I won’t get recommendations for genres I hate?"
+      question: "Can I block specific genres or authors?"
       answer: |
-        Currently, the best way to do that is by marking a book as ‘not interested’ when you get a recommendation that is completely not up your alley or while browsing the book feed.
+        If you see a book you know you won't like, simply mark it as **‘not interested.’** This sends a strong signal to our system to filter out similar books and authors in the future.
 
-        Ability to finetune your recommendations by mood, theme, genre and others is part of our roadmap.
+    - id: mood_vibes
+      question: "Can I search by mood or 'vibes'?"
+      answer: |
+        Not just yet. While we don't have a "vibe" toggle today, the ability to fine-tune your results by mood, theme, and sub-genre is at the very top of our roadmap. Stay tuned!
+
+    - id: sell_books
+      question: "Do you sell books?"
+      answer: "No. We are a discovery platform dedicated to helping you find your next great read. We help you find them, whether you buy or pick them up at a library is up to you!"
+
+    - id: change_ratings
+      question: "Can I change my ratings?"
+      answer: "Of course. Your taste evolves, and so should your recommendations. You can update any rating, bookmark, or ‘not interested’ tag whenever you like, and your future suggestions will update accordingly."
+
+    - id: book_not_found
+      question: "What if I can't find a specific book?"
+      answer: |
+        We’re sorry about that! We are currently in *beta* and our database houses about 74,000 English-language titles. While it is a lot, some might be missing. We are actively working on adding more books every day.
+
+    - id: is_powered_by_llm
+      question: "Is this app powered by an LLM (like ChatGPT)?"
+      answer: |
+        Actually, no. While LLMs can be great, they usually do not tailor their suggestions to your personal taste.
+
+        We use a proprietary two-stage machine learning model specifically designed for book discovery. In our benchmarks, our model was 12 times more accurate at predicting a user's next favorite book than Gemini 3.1.
+
+    - id: why_not_friends
+      question: "Can’t I just ask my friends for suggestions?"
+      answer: "You definitely should! But close friends don't always share taste in books! We’re here to fill the gap when you need a recommendation tailored to you."
+
+    - id: import_data
+      question: "Can I import my data from other sites (like Goodreads)?"
+      answer: "Not yet, but we hear you! Data import is on our roadmap."
 
     - id: mobile_web
       question: "Can I use this on my phone, or is it web only?"
       answer: |
-        It is fully supported on desktop and mobile web.
+        The app is optimized for both desktop and mobile web. For the best experience on your phone, you can add us to your home screen as a Web App:
 
-        You can also use it as a web app by adding the website onto your homepage. Here is how: Safari, Chrome, Firefox.
-    
+        Safari: Tap the 'Share' icon and select 'Add to Home Screen.'
+        Chrome/Firefox: Tap the three dots and select 'Add to Home Screen.'
+
     - id: is_free
       question: "Is it free?"
-      answer: "Yes."
+      answer: "Yes, the app is free to use."
+
     - id: share_feedback
-      question: "Where can I share feedback or thoughts about my experience?"
+      question: "How can I share feedback?"
       answer: |
-        We are grateful for any and all feedback!
-
-        You can fill out [this form](https://example.com/feedback), or send us an email: [hello@example.com](mailto:hello@example.com).
-
-    - id: change_ratings
-      question: "Can I change my ratings?"
-      answer: "Yes, any rating, bookmark or not interested can be changed whenever you feel like it. This will impact your future recommendations."
+        We love hearing from our readers! You can help us grow by filling out our [Feedback Form](app:feedback).

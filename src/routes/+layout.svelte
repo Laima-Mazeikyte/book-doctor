@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { setOpenBugReportContext } from '$lib/bugReportContext';
 	import { get } from 'svelte/store';
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
@@ -51,6 +52,8 @@
 	function closeBugModal() {
 		bugModalOpen = false;
 	}
+
+	setOpenBugReportContext(openBugModal);
 
 	function skipToRateBottomBar(e: MouseEvent) {
 		e.preventDefault();
