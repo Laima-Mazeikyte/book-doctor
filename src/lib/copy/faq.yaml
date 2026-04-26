@@ -57,14 +57,6 @@ en:
       question: "Can I import my data from other sites (like Goodreads)?"
       answer: "Not yet, but we hear you! Data import is on our roadmap."
 
-    - id: mobile_web
-      question: "Can I use this on my phone, or is it web only?"
-      answer: |
-        The app is optimized for both desktop and mobile web. For the best experience on your phone, you can add us to your home screen as a Web App:
-
-        Safari: Tap the 'Share' icon and select 'Add to Home Screen.'
-        Chrome/Firefox: Tap the three dots and select 'Add to Home Screen.'
-
     - id: is_free
       question: "Is it free?"
       answer: "Yes, the app is free to use."
