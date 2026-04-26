@@ -140,7 +140,7 @@
 		--accordion-panel-max-height: min(100dvh, 60rem);
 		display: flex;
 		flex-direction: column;
-		gap: 0;
+		gap: var(--space-3);
 		width: 100%;
 		max-width: 100%;
 		min-width: 0;
@@ -193,7 +193,7 @@
 		overflow-wrap: break-word;
 		word-break: break-word;
 		font-size: 16px;
-		line-height: 120%;
+		line-height: 150%;
 	}
 
 	.accordion__icon {
