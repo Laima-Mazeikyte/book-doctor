@@ -193,7 +193,7 @@
 		overflow-wrap: break-word;
 		word-break: break-word;
 		font-size: 16px;
-		line-height: 100%;
+		line-height: 120%;
 	}
 
 	.accordion__icon {
