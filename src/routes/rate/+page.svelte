@@ -2,7 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
-	import { afterNavigate, beforeNavigate, goto, pushState } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, goto, pushState, replaceState } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/stores';
 	import BookCard from '$lib/components/BookCard.svelte';
@@ -22,6 +22,7 @@
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { notInterestedStore } from '$lib/stores/notInterested';
 	import { planToReadStore } from '$lib/stores/planToRead';
+	import { rateBookSummaryHistory } from '$lib/stores/rateBookSummaryHistory';
 	import {
 		clearRateSearchExternalEntry,
 		consumeRateSearchExternalEntry
@@ -72,6 +73,14 @@
 	 * invalidate an in-flight initial load (and vice versa).
 	 */
 	let searchRequestGeneration = 0;
+
+	/** Ratings drawer instance: shallow-history sync on browser Back (see `onWindowPopstate`). */
+	let ratingsBar:
+		| {
+				closeRatingsDrawerDetailFromBrowserBack: () => boolean;
+				syncRatingsBarFromHistoryState: (state: App.PageState) => void;
+		  }
+		| undefined = $state(undefined);
 
 	$effect(() => {
 		const q = searchQuery;
@@ -130,6 +139,12 @@
 	function captureFeedScrollForSearchReturn() {
 		if (searchOverlayOpen) return;
 		savedScrollY = Math.max(savedScrollY, window.scrollY);
+	}
+
+	/** Align `$page.state` with the current URL without changing the path (shallow routing). */
+	function replaceShallowPageState(next: App.PageState) {
+		if (!browser) return;
+		replaceState(`${resolve('/rate')}${get(page).url.search}`, next);
 	}
 
 	/** Compare location to resolved /rate (includes `base`). */
@@ -232,6 +247,58 @@
 		restoreFeedScrollAfterOverlayClose();
 	}
 
+	/**
+	 * Single place to align overlays / bookshelf with `$page.state` after the user goes Back.
+	 * Must run when `page.state` is already updated:
+	 * - For shallow `pushState` pops, SvelteKit updates `page` synchronously — `queueMicrotask` is enough.
+	 * - After a full reload, Back often takes the `navigate({ type: 'popstate' })` path; then `page`
+	 *   updates only when navigation finishes — use `afterNavigate` (see below), not only microtasks.
+	 */
+	function syncRatePageShallowHistoryAfterPopstate() {
+		if (!browser || !locationIsRatePage()) return;
+		const st = get(page).state as App.PageState;
+
+		if (!get(rateBookSummaryHistory) && st.rateBookSummaryLayer === true) {
+			const next = { ...st };
+			delete next.rateBookSummaryLayer;
+			replaceShallowPageState(next);
+			return;
+		}
+
+		const bookH = get(rateBookSummaryHistory);
+		if (bookH && st.rateBookSummaryLayer !== true) {
+			bookH.applyClose();
+			rateBookSummaryHistory.set(null);
+			return;
+		}
+
+		if (!searchOverlayOpen && st.rateSearchLayer === true) {
+			const next = { ...st };
+			delete next.rateSearchLayer;
+			replaceShallowPageState(next);
+			return;
+		}
+
+		if (searchOverlayOpen && st.rateSearchLayer !== true) {
+			closeSearchOverlay({ fromPopstate: true });
+			return;
+		}
+
+		ratingsBar?.syncRatingsBarFromHistoryState(st);
+	}
+
+	function closeBookSummaryFromBrowserBack(): boolean {
+		const bookH = get(rateBookSummaryHistory);
+		if (!bookH) return false;
+		bookH.applyClose();
+		rateBookSummaryHistory.set(null);
+		return true;
+	}
+
+	function closeRatingsDrawerDetailFromBrowserBack(): boolean {
+		return ratingsBar?.closeRatingsDrawerDetailFromBrowserBack() === true;
+	}
+
 	async function handleSearchAuthor(author: string) {
 		clearRateSearchExternalEntry();
 		savedScrollY = Math.max(savedScrollY, window.scrollY);
@@ -270,8 +337,8 @@
 			clearRateSearchExternalEntry();
 		}
 
-		if (nav.type === 'popstate' && nav.delta === -1 && searchOverlayOpen) {
-			closeSearchOverlay({ fromPopstate: true });
+		if (nav.type === 'popstate' && nav.delta === -1) {
+			syncRatePageShallowHistoryAfterPopstate();
 			return;
 		}
 
@@ -1315,15 +1382,15 @@
 		window.addEventListener('scroll', handleScroll, { passive: true });
 
 		/**
-		 * Shallow `pushState` from `$app/navigation` (search overlay entry) is popped without calling
-		 * `navigate()`, so `afterNavigate({ type: 'popstate' })` never runs. Close the overlay here
-		 * when we’re still on `/rate`; if history left `/rate`, don’t fight the router.
+		 * Shallow `pushState` pops update `page.state` synchronously without `navigate()`, so
+		 * `afterNavigate({ type: 'popstate' })` does not run — keep this listener for that path.
+		 * Async `popstate` (e.g. first Back after full reload) is handled in `afterNavigate` instead.
 		 */
 		const onWindowPopstate = () => {
+			if (closeBookSummaryFromBrowserBack()) return;
+			if (closeRatingsDrawerDetailFromBrowserBack()) return;
 			queueMicrotask(() => {
-				if (!searchOverlayOpen) return;
-				if (!locationIsRatePage()) return;
-				closeSearchOverlay({ fromPopstate: true });
+				syncRatePageShallowHistoryAfterPopstate();
 			});
 		};
 		window.addEventListener('popstate', onWindowPopstate);
@@ -1422,6 +1489,7 @@
 		{#if showBottomBar}
 			<div id="rate-bottom-bar" class="rate-page__bottom-bar" tabindex="-1">
 				<RatingsBar
+					bind:this={ratingsBar}
 					{ratedEntries}
 					resolveBook={findBookById}
 					resolveBookByBookNum={findBookByBookIdNum}

@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { onDestroy, tick } from 'svelte';
+	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
-	import { goto } from '$app/navigation';
+	import { goto, pushState, replaceState } from '$app/navigation';
+	import { page } from '$app/stores';
 	import { resolve } from '$app/paths';
 	import { fly } from 'svelte/transition';
 	import { ArrowLeft, LibraryBig, X } from 'lucide-svelte';
@@ -170,6 +172,20 @@
 	/** Slide distance in px; negative x → panel flies in from the left (desktop and mobile). Match desktop panel max width. */
 	const DRAWER_SLIDE_PX_DESKTOP = 520;
 
+	function shallowPageState(): App.PageState {
+		return { ...(get(page).state as App.PageState) };
+	}
+
+	function currentRatePageUrl(): string {
+		return `${resolve('/rate')}${get(page).url.search}`;
+	}
+
+	function clearDrawerDetailState(state: App.PageState): App.PageState {
+		const next = { ...state };
+		delete next.rateRatingsDrawerDetail;
+		return next;
+	}
+
 	function drawerSlidePx(): number {
 		if (typeof window === 'undefined') return -DRAWER_SLIDE_PX_DESKTOP;
 		return window.matchMedia('(min-width: 768px)').matches
@@ -297,6 +313,7 @@
 
 	function openDrawer() {
 		flyX = drawerSlidePx();
+		const wasOpen = open;
 		activeShelfTab = 'rated';
 		drawerOrderIds = ratedEntries.map((e) => e.book.id);
 		detailBookId = null;
@@ -304,9 +321,18 @@
 		detailFocusReturnEl = null;
 		hoverDetailRating = 0;
 		open = true;
+		if (!wasOpen && browser) {
+			pushState('', { ...shallowPageState(), rateRatingsDrawer: true });
+		}
 	}
 
 	function selectShelfTab(id: ShelfFilterId) {
+		if (detailBookId && browser) {
+			const st = shallowPageState();
+			if (st.rateRatingsDrawerDetail === true) {
+				replaceState(currentRatePageUrl(), clearDrawerDetailState(st));
+			}
+		}
 		activeShelfTab = id;
 		detailBookId = null;
 		detailBookSnapshot = null;
@@ -374,7 +400,7 @@
 		return Math.max(0, Math.min(1, msLeft / PENDING_REMOVE_MS));
 	}
 
-	function closeDrawer() {
+	function closeDrawerSync() {
 		open = false;
 		drawerOrderIds = null;
 		detailBookId = null;
@@ -384,7 +410,45 @@
 		activeShelfTab = 'rated';
 	}
 
+	/**
+	 * User dismissed the drawer (X, overlay, Escape): strip shallow state and sync history depth.
+	 * UI closes immediately; optional `history.go` collapses only our `pushState` entries (not `history.back()`).
+	 */
+	function closeDrawerFromUser() {
+		const st = shallowPageState();
+		const hadDetail = st.rateRatingsDrawerDetail === true;
+		const hadDrawer = st.rateRatingsDrawer === true;
+		if (!hadDrawer) {
+			closeDrawerSync();
+			return;
+		}
+		const next = { ...st };
+		delete next.rateRatingsDrawerDetail;
+		delete next.rateRatingsDrawer;
+		closeDrawerSync();
+		if (!browser) return;
+		replaceState(currentRatePageUrl(), next);
+		const pops = hadDetail ? 2 : 1;
+		queueMicrotask(() => {
+			history.go(-pops);
+		});
+	}
+
 	function openDetail(bookId: string, returnTarget: HTMLElement) {
+		if (detailBookId === bookId) return;
+		if (browser && open) {
+			const st = shallowPageState();
+			let baseState = st;
+			if (st.rateRatingsDrawerDetail === true) {
+				baseState = clearDrawerDetailState(st);
+				replaceState(currentRatePageUrl(), baseState);
+			}
+			pushState('', {
+				...baseState,
+				rateRatingsDrawer: true,
+				rateRatingsDrawerDetail: true
+			});
+		}
 		detailFocusReturnEl = returnTarget;
 		detailBookId = bookId;
 		hoverDetailRating = 0;
@@ -392,13 +456,24 @@
 		detailBookSnapshot = entry?.book ?? resolveBook?.(bookId) ?? null;
 	}
 
-	function closeDetail() {
+	function closeDetailSync() {
 		const el = detailFocusReturnEl;
 		detailBookId = null;
 		detailBookSnapshot = null;
 		detailFocusReturnEl = null;
 		hoverDetailRating = 0;
 		tick().then(() => el?.focus());
+	}
+
+	function closeDetailFromUser() {
+		const st = shallowPageState();
+		const hadDetailLayer = st.rateRatingsDrawerDetail === true;
+		closeDetailSync();
+		if (!browser || !hadDetailLayer) return;
+		replaceState(currentRatePageUrl(), clearDrawerDetailState(st));
+		queueMicrotask(() => {
+			history.go(-1);
+		});
 	}
 
 	function handleDrawerAuthorPillClick(e: MouseEvent) {
@@ -412,7 +487,7 @@
 			markRateSearchOpenedFromOtherRoute();
 			void goto(resolve(`/rate?q=${encodeURIComponent(author)}`));
 		}
-		closeDrawer();
+		closeDrawerFromUser();
 	}
 
 	function detailStarMouseEnter(value: RatingValue) {
@@ -472,14 +547,14 @@
 	});
 
 	function handleOverlayClick(e: MouseEvent) {
-		if (e.target === e.currentTarget) closeDrawer();
+		if (e.target === e.currentTarget) closeDrawerFromUser();
 	}
 
 	function handleOverlayKeydown(e: KeyboardEvent) {
 		if (e.target !== e.currentTarget) return;
 		if (e.key === 'Enter' || e.key === ' ') {
 			e.preventDefault();
-			closeDrawer();
+			closeDrawerFromUser();
 		}
 	}
 
@@ -487,9 +562,9 @@
 		if (e.key !== 'Escape') return;
 		if (detailBookId) {
 			e.preventDefault();
-			closeDetail();
+			closeDetailFromUser();
 		} else {
-			closeDrawer();
+			closeDrawerFromUser();
 		}
 	}
 
@@ -534,6 +609,33 @@
 			};
 		}
 	});
+
+	/** Sync after shallow `popstate` (browser Back); see rate/+page.svelte */
+	export function closeRatingsDrawerDetailFromBrowserBack(): boolean {
+		if (detailBookId == null) return false;
+		closeDetailSync();
+		return true;
+	}
+
+	export function syncRatingsBarFromHistoryState(state: App.PageState) {
+		if (
+			!open &&
+			(state.rateRatingsDrawer === true || state.rateRatingsDrawerDetail === true)
+		) {
+			const next = { ...state };
+			delete next.rateRatingsDrawerDetail;
+			delete next.rateRatingsDrawer;
+			replaceState(currentRatePageUrl(), next);
+			return;
+		}
+		if (detailBookId != null && state.rateRatingsDrawerDetail !== true) {
+			closeDetailSync();
+			return;
+		}
+		if (open && state.rateRatingsDrawer !== true) {
+			closeDrawerSync();
+		}
+	}
 </script>
 
 {#snippet ratingsBarTriggerIcon()}
@@ -727,7 +829,7 @@
 					type="button"
 					class="ratings-drawer__close"
 					aria-label={t('shared.ratingsBar.close')}
-					onclick={closeDrawer}
+					onclick={closeDrawerFromUser}
 				>
 					<X size={18} aria-hidden="true" />
 				</button>
@@ -738,7 +840,7 @@
 							type="button"
 							class="chrome-nav-link ratings-drawer__back"
 							aria-label={t('shared.ratingsBar.backToRatings')}
-							onclick={closeDetail}
+							onclick={closeDetailFromUser}
 						>
 							<ArrowLeft size={18} aria-hidden="true" />
 							<span class="ratings-drawer__back-label">{t('shared.ratingsBar.backToRatings')}</span>

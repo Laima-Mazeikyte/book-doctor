@@ -2,12 +2,14 @@
 	import { onDestroy, tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
-	import { goto } from '$app/navigation';
+	import { goto, pushState, replaceState } from '$app/navigation';
+	import { page } from '$app/stores';
 	import { resolve } from '$app/paths';
 	import { markRateSearchOpenedFromOtherRoute } from '$lib/rateSearchExternalNav';
 	import { fly } from 'svelte/transition';
 	import { BookOpenText, X, Bookmark, Star, Ban } from 'lucide-svelte';
 	import { ratingsStore } from '$lib/stores/ratings';
+	import { rateBookSummaryHistory } from '$lib/stores/rateBookSummaryHistory';
 	import { ratedSummarySheetKeepAlive } from '$lib/stores/ratedSummarySheetKeepAlive';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
@@ -293,7 +295,24 @@
 	}
 
 	async function handleOpenSummary() {
+		if (summaryOpen) return;
 		setSummaryFlyDistance();
+		if (isRateContext && browser) {
+			const st = get(page).state as App.PageState;
+			let baseState = st;
+			if (st.rateBookSummaryLayer === true) {
+				baseState = { ...st };
+				delete baseState.rateBookSummaryLayer;
+				replaceState(ratePageShallowUrl(), baseState);
+			}
+			pushState('', { ...baseState, rateBookSummaryLayer: true });
+			rateBookSummaryHistory.set({
+				bookId: book.id,
+				applyClose: () => {
+					void handleCloseSummary({ skipFlyOut: true, fromHistoryApply: true });
+				}
+			});
+		}
 		summaryOpen = true;
 		if (summarySheetKeepAlive) {
 			ratedSummarySheetKeepAlive.set({ bookId: book.id, book });
@@ -302,7 +321,25 @@
 		closeBtnRef?.focus();
 	}
 
-	async function handleCloseSummary(opts?: { skipFlyOut?: boolean }) {
+	function ratePageShallowUrl(): string {
+		return `${resolve('/rate')}${get(page).url.search}`;
+	}
+
+	async function handleCloseSummary(opts?: { skipFlyOut?: boolean; fromHistoryApply?: boolean }) {
+		if (
+			!opts?.fromHistoryApply &&
+			isRateContext &&
+			browser &&
+			(get(page).state as App.PageState).rateBookSummaryLayer === true
+		) {
+			const next = { ...(get(page).state as App.PageState) };
+			delete next.rateBookSummaryLayer;
+			replaceState(ratePageShallowUrl(), next);
+		}
+		if (isRateContext) {
+			const h = get(rateBookSummaryHistory);
+			if (h?.bookId === book.id) rateBookSummaryHistory.set(null);
+		}
 		if (opts?.skipFlyOut) {
 			summarySheetSkipFlyOut = true;
 		}
@@ -316,6 +353,8 @@
 	}
 
 	onDestroy(() => {
+		const h = get(rateBookSummaryHistory);
+		if (h?.bookId === book.id) rateBookSummaryHistory.set(null);
 		const k = get(ratedSummarySheetKeepAlive);
 		if (k?.bookId === book.id) ratedSummarySheetKeepAlive.set(null);
 	});
