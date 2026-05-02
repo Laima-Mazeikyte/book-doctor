@@ -35,6 +35,10 @@
 		bookmarked: boolean;
 		onBookmarkClick: (e: MouseEvent) => void;
 		onNotInterestedClick: (e: MouseEvent) => void;
+		/** Mobile sheet: parent handles edge-swipe / drag-to-dismiss from scroll root. */
+		onSummaryPointerDown?: (e: PointerEvent) => void;
+		/** When bound, parents can read the scroll root (e.g. mobile drag-to-dismiss). */
+		summaryContentEl?: HTMLElement | undefined;
 	}
 
 	let {
@@ -61,7 +65,9 @@
 		showNotInterestedAction,
 		bookmarked,
 		onBookmarkClick,
-		onNotInterestedClick
+		onNotInterestedClick,
+		onSummaryPointerDown,
+		summaryContentEl = $bindable(undefined)
 	}: Props = $props();
 
 	const showSummaryRemoveSlot = $derived(canRemoveRatingInSheet || reserveSummaryRemoveLayoutSlot);
@@ -74,7 +80,13 @@
 	</span>
 {/snippet}
 
-<div class="book-card__summary-content">
+<div
+	class="book-card__summary-content"
+	bind:this={summaryContentEl}
+	onpointerdown={onSummaryPointerDown}
+	role={onSummaryPointerDown ? 'region' : undefined}
+	aria-labelledby={onSummaryPointerDown ? summaryTitleId : undefined}
+>
 	<div
 		class="book-card__summary-muted"
 		class:book-card__summary-muted--not-interested={notInterested}

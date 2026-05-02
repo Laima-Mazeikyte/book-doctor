@@ -91,9 +91,25 @@
 	const SUMMARY_DRAWER_DESKTOP_PX = 400;
 	/** Cap fly distance on very tall viewports (full-screen mobile slide). */
 	const SUMMARY_SHEET_SLIDE_MAX_PX = 900;
+	const SUMMARY_SHEET_DISMISS_DRAG_PX = 100;
+	const SUMMARY_SHEET_DISMISS_VELOCITY = 0.35;
+	const SUMMARY_SHEET_DRAG_AXIS_LOCK_PX = 12;
 
 	let flySlideX = $state(0);
 	let flySlideY = $state(0);
+	let summarySheetContentEl = $state<HTMLElement | undefined>(undefined);
+	let summaryDialogPanelEl = $state<HTMLElement | undefined>(undefined);
+	let summarySheetDragY = $state(0);
+	let summarySheetDragging = $state(false);
+	let summarySheetSkipFlyOut = $state(false);
+	type SummarySheetDragTrack = {
+		pointerId: number;
+		startY: number;
+		startX: number;
+		lastY: number;
+		lastT: number;
+	};
+	let summarySheetDragTrack = $state<SummarySheetDragTrack | null>(null);
 
 	function portal(node: HTMLElement, target: HTMLElement = document.body) {
 		target.appendChild(node);
@@ -128,6 +144,134 @@
 		};
 	});
 
+	$effect(() => {
+		if (!summaryOpen) {
+			summarySheetDetachDragListeners();
+			summarySheetDragTrack = null;
+			summarySheetDragging = false;
+			summarySheetDragY = 0;
+		}
+	});
+
+	function summarySheetIsMobileViewport(): boolean {
+		if (!browser) return false;
+		return !window.matchMedia('(min-width: 768px)').matches;
+	}
+
+	function summarySheetDetachDragListeners() {
+		window.removeEventListener('pointermove', onSummarySheetDragMove);
+		window.removeEventListener('pointerup', onSummarySheetDragEnd);
+		window.removeEventListener('pointercancel', onSummarySheetDragEnd);
+	}
+
+	function handleSummarySheetPointerDown(e: PointerEvent) {
+		if (!summarySheetIsMobileViewport()) return;
+		const content = summarySheetContentEl;
+		if (!content) return;
+		if (content.scrollTop > 0) return;
+		const el = e.target as HTMLElement;
+		if (el.closest('button, a[href], input, textarea, select, label')) return;
+		if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+		summarySheetDragTrack = {
+			pointerId: e.pointerId,
+			startY: e.clientY,
+			startX: e.clientX,
+			lastY: e.clientY,
+			lastT: e.timeStamp
+		};
+		window.addEventListener('pointermove', onSummarySheetDragMove);
+		window.addEventListener('pointerup', onSummarySheetDragEnd);
+		window.addEventListener('pointercancel', onSummarySheetDragEnd);
+	}
+
+	function onSummarySheetDragMove(e: PointerEvent) {
+		const tr = summarySheetDragTrack;
+		if (!tr || e.pointerId !== tr.pointerId) return;
+		const dy = e.clientY - tr.startY;
+		const dx = e.clientX - tr.startX;
+
+		if (!summarySheetDragging) {
+			if (dy <= SUMMARY_SHEET_DRAG_AXIS_LOCK_PX) return;
+			if (Math.abs(dx) > dy) return;
+			summarySheetDragging = true;
+			summarySheetContentEl?.setPointerCapture(e.pointerId);
+		}
+
+		if (summarySheetDragging && (e.pointerType === 'touch' || e.pointerType === 'pen')) {
+			e.preventDefault();
+		}
+
+		const y = Math.max(0, dy);
+		summarySheetDragY = y;
+		tr.lastY = e.clientY;
+		tr.lastT = e.timeStamp;
+	}
+
+	function onSummarySheetDragEnd(e: PointerEvent) {
+		const tr = summarySheetDragTrack;
+		if (!tr || e.pointerId !== tr.pointerId) return;
+		summarySheetDetachDragListeners();
+		try {
+			summarySheetContentEl?.releasePointerCapture(e.pointerId);
+		} catch {
+			/* not captured */
+		}
+
+		const wasDragging = summarySheetDragging;
+		summarySheetDragTrack = null;
+		if (!wasDragging) return;
+
+		summarySheetDragging = false;
+		const velocity = (e.clientY - tr.lastY) / Math.max(1, e.timeStamp - tr.lastT);
+		const passed =
+			summarySheetDragY > SUMMARY_SHEET_DISMISS_DRAG_PX ||
+			velocity > SUMMARY_SHEET_DISMISS_VELOCITY;
+
+		if (passed) {
+			void completeSummarySheetDragDismiss();
+		} else {
+			summarySheetDragY = 0;
+		}
+	}
+
+	async function completeSummarySheetDragDismiss() {
+		const el = summaryDialogPanelEl;
+		const start = summarySheetDragY;
+		summarySheetDragY = 0;
+
+		if (!browser || !el || !summarySheetIsMobileViewport()) {
+			await handleCloseSummary({ skipFlyOut: true });
+			return;
+		}
+		if (
+			start <= 0 ||
+			window.matchMedia('(prefers-reduced-motion: reduce)').matches
+		) {
+			await handleCloseSummary({ skipFlyOut: true });
+			return;
+		}
+
+		try {
+			await el
+				.animate(
+					[
+						{ transform: `translateY(${start}px)` },
+						{ transform: `translateY(${window.innerHeight}px)` }
+					],
+					{
+						duration: 220,
+						easing: 'cubic-bezier(0.32, 0.72, 0, 1)',
+						fill: 'forwards'
+					}
+				)
+				.finished;
+		} catch {
+			/* aborted */
+		}
+		await handleCloseSummary({ skipFlyOut: true });
+	}
+
 	function handleSummaryWindowKeydown(e: KeyboardEvent) {
 		if (!summaryOpen) return;
 		if (e.key === 'Escape') {
@@ -158,12 +302,16 @@
 		closeBtnRef?.focus();
 	}
 
-	async function handleCloseSummary() {
+	async function handleCloseSummary(opts?: { skipFlyOut?: boolean }) {
+		if (opts?.skipFlyOut) {
+			summarySheetSkipFlyOut = true;
+		}
 		summaryOpen = false;
 		if (summarySheetKeepAlive) {
 			ratedSummarySheetKeepAlive.set(null);
 		}
 		await tick();
+		summarySheetSkipFlyOut = false;
 		summaryBtnRef?.focus();
 	}
 
@@ -394,21 +542,28 @@
 		onkeydown={handleSummaryOverlayKeydown}
 	>
 		<div
+			bind:this={summaryDialogPanelEl}
 			id={summaryPanelId}
 			class="book-card__summary-dialog-panel"
+			class:book-card__summary-dialog-panel--dragging={summarySheetDragging}
+			style:transform={summarySheetDragY > 0 ? `translateY(${summarySheetDragY}px)` : undefined}
 			in:fly={{ x: flySlideX, y: flySlideY, duration: 200 }}
-			out:fly={{ x: flySlideX, y: flySlideY, duration: 150 }}
+			out:fly={summarySheetSkipFlyOut
+				? { duration: 0, x: 0, y: 0 }
+				: { x: flySlideX, y: flySlideY, duration: 150 }}
 		>
 			<button
 				bind:this={closeBtnRef}
 				type="button"
 				class="book-card__summary-close"
 				aria-label={t('shared.recommendationCard.closeSummary')}
-				onclick={handleCloseSummary}
+				onclick={() => void handleCloseSummary()}
 			>
 				<X size={18} aria-hidden="true" />
 			</button>
 			<BookSummarySheetBody
+				bind:summaryContentEl={summarySheetContentEl}
+				onSummaryPointerDown={handleSummarySheetPointerDown}
 				{book}
 				summaryTitleId={summaryTitleId}
 				displaySummary={displaySummary}
@@ -796,6 +951,10 @@
 		overflow: hidden;
 		border-radius: 0;
 		padding-bottom: env(safe-area-inset-bottom, 0px);
+		transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+	}
+	.book-card__summary-dialog-panel--dragging {
+		transition: none;
 	}
 	@media (min-width: 768px) {
 		.book-card__summary-dialog-overlay {
@@ -816,6 +975,10 @@
 			max-height: none;
 			box-shadow: var(--shadow-drawer);
 			padding-bottom: 0;
+			transition: none;
+		}
+		.book-card__summary-dialog-panel--dragging {
+			transition: none;
 		}
 	}
 	.book-card__summary-close {
