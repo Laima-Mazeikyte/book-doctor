@@ -1139,17 +1139,13 @@
 		max-width: min(18rem, 52%);
 	}
 	.ratings-drawer__header.ratings-drawer__header--detail .ratings-drawer__back {
-		max-width: min(14rem, 48%);
-		overflow: hidden;
+		flex-shrink: 0;
+		min-width: auto;
 	}
 	.ratings-drawer__back {
 		gap: var(--space-2);
 		min-width: 0;
 		flex-shrink: 1;
-	}
-	.ratings-drawer__header.ratings-drawer__header--detail .ratings-drawer__back-label {
-		overflow: hidden;
-		text-overflow: ellipsis;
 	}
 	.ratings-drawer__back-label {
 		min-width: 0;
