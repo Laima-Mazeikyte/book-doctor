@@ -28,15 +28,9 @@
 		background: var(--color-bg);
 	}
 	.app-footer__inner {
-		max-width: var(--content-width-narrow);
-		margin: 0 auto;
+		width: 100%;
+		box-sizing: border-box;
 		padding: var(--space-5) var(--space-4);
-	}
-	@media (min-width: 768px) {
-		.app-footer__inner {
-			max-width: var(--content-width-wide);
-			padding: var(--space-5) var(--space-5);
-		}
 	}
 	.app-footer__links {
 		list-style: none;

@@ -16,7 +16,6 @@
 		if (href === '/rate') return pathname === '/rate';
 		if (href === '/rate/recommendations') return pathname.startsWith('/rate/recommendations');
 		if (href === '/my-bookshelf') return pathname === '/my-bookshelf';
-		if (href === '/faq') return pathname === '/faq';
 		return false;
 	}
 
@@ -161,13 +160,6 @@
 		{/if}
 
 		<div class="app-header__right">
-			<a
-				href="/faq"
-				class="chrome-nav-link"
-				aria-current={isNavHrefActive('/faq', pathname) ? 'page' : undefined}
-			>
-				{t('shared.footer.faq')}
-			</a>
 			<div class="app-header__account" data-state={accountDropdownOpen ? 'open' : 'closed'}>
 				{#if showAuthActions}
 					<div class="app-header__auth-actions">
@@ -325,8 +317,8 @@
 		position: relative;
 	}
 	.app-header__inner {
-		max-width: var(--content-width-narrow);
-		margin: 0 auto;
+		width: 100%;
+		box-sizing: border-box;
 		padding: var(--space-3) var(--space-4);
 		display: flex;
 		align-items: center;
@@ -357,7 +349,7 @@
 	}
 	.app-header__logo-img {
 		display: block;
-		height: 1.625rem;
+		height: var(--app-header__logo-img-height);
 		width: auto;
 		flex-shrink: 0;
 	}
@@ -375,6 +367,9 @@
 		gap: var(--space-2);
 		margin-left: auto;
 		flex-shrink: 0;
+	}
+	:global(.app-chrome--landing) .app-header__start {
+		display: none;
 	}
 	.app-header__account-panel[hidden] {
 		display: none;
@@ -587,11 +582,6 @@
 	}
 
 	@media (min-width: 768px) {
-		.app-header__inner {
-			max-width: none;
-			width: 100%;
-			padding: var(--space-3) var(--space-4);
-		}
 		.app-header__menu-toggle {
 			display: none;
 		}
