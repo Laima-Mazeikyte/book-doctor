@@ -47,7 +47,7 @@ en:
       answer: |
         Actually, no. While LLMs can be great, they usually do not tailor their suggestions to your personal taste.
 
-        We use a proprietary two-stage machine learning model specifically designed for book discovery. In our benchmarks, our model was 12 times more accurate at predicting a user's next favorite book than Gemini 3.1.
+        We use a proprietary two-stage machine learning model specifically designed for book discovery. In our benchmarks, our model was 20 times more accurate at predicting a user's next favorite book than Gemini 3.1.
 
     - id: why_not_friends
       question: "Can’t I just ask my friends for suggestions?"
