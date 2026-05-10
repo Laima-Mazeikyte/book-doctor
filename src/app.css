@@ -124,6 +124,7 @@ main.main-book-grid-shell {
 	/* Header/footer chrome — matches `.chrome-nav-link` (typ-interactive-2 + padding) */
 	--chrome-menu-padding-block: var(--space-2);
 	--chrome-menu-padding-inline: var(--space-3);
+	--app-header__logo-img-height: 1.5rem;
 	--book-card-radius: var(--radius);
 	--book-card-body-padding: 8px;
 	--book-card-action-height: 2.25rem;

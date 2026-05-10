@@ -544,7 +544,7 @@
 		{t('rate.skipToBottomBar')}
 	</a>
 {/if}
-<div class="app-chrome">
+<div class="app-chrome" class:app-chrome--landing={page.url.pathname === '/'}>
 	<AppHeader onOpenBugReport={openBugModal} />
 	<main
 		id="main"
