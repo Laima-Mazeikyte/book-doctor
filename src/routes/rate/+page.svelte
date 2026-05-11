@@ -816,14 +816,21 @@
 		return (await res.json()) as LatestFeedStateResponse;
 	}
 
-	/** Assign main list from API payload only (no client-side filter/dedupe). */
+	function mainListKey(book: Book): string {
+		return book.book_id != null ? `book:${book.book_id}` : `row:${book.id}`;
+	}
+
+	/** Assign main list from API payload; append keeps the rendered keyspace unique. */
 	function setMainListBooks(incoming: Book[], mode: 'replace' | 'append'): Book[] {
 		if (mode === 'replace') {
 			popularBooks = incoming;
-		} else {
-			popularBooks = [...popularBooks, ...incoming];
+			return incoming;
 		}
-		return incoming;
+
+		const existing = new Set(popularBooks.map(mainListKey));
+		const appended = incoming.filter((book) => !existing.has(mainListKey(book)));
+		popularBooks = [...popularBooks, ...appended];
+		return appended;
 	}
 
 	function setPendingFromAppended(appended: Book[]) {
@@ -1443,7 +1450,7 @@
 					/>
 				{:else}
 					<ul class="rate-page__list book-card-grid">
-						{#each popularBooks as book (book.id)}
+						{#each popularBooks as book (mainListKey(book))}
 							<li>
 								<BookCard
 									context="rate"
