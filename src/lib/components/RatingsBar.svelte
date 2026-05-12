@@ -14,6 +14,7 @@
 	import { getBookDisplaySummary } from '$lib/components/book-card/summaryStub';
 	import type { RatingsBarSummaryHooks } from '$lib/components/ratings-bar-summary-hooks';
 	import { markRateSearchOpenedFromOtherRoute } from '$lib/rateSearchExternalNav';
+	import { authStore } from '$lib/stores/auth';
 	import { notInterestedStore } from '$lib/stores/notInterested';
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { ratingsStore } from '$lib/stores/ratings';
@@ -43,21 +44,77 @@
 	const shelfTabsEnabled = $derived(Boolean(resolveBook && resolveBookByBookNum));
 
 	let activeShelfTab = $state<ShelfFilterId>('rated');
+	let fetchedBookmarkBooks = $state.raw<Book[]>([]);
+	let fetchedNotInterestedBooks = $state.raw<Book[]>([]);
+	let shelfDetailsLoadedForUserId = $state<string | null>(null);
+	let shelfDetailsLoading = $state(false);
+	let shelfDetailsRequestId = 0;
 
 	function shelfNotInterested(book: Book, niNums: Set<number>): boolean {
 		return niNums.has(book.book_id ?? 0);
+	}
+
+	function bookFallbackById(bookId: string): Book | undefined {
+		return ratingsStore.getRatedBook(bookId) ?? resolveBook?.(bookId);
+	}
+
+	function bookFallbackByNum(bookIdNum: number): Book | undefined {
+		if (!Number.isFinite(bookIdNum) || bookIdNum === 0) return undefined;
+		for (const bookId of get(ratingsStore).keys()) {
+			const b = ratingsStore.getRatedBook(bookId);
+			if ((b?.book_id ?? 0) === bookIdNum) return b;
+		}
+		return resolveBookByBookNum?.(bookIdNum);
+	}
+
+	async function fetchShelfDetails(): Promise<void> {
+		if (!browser || !shelfTabsEnabled) return;
+		const auth = get(authStore);
+		const token = auth.session?.access_token ?? null;
+		const userId = auth.user?.id ?? null;
+		if (!token || !userId) return;
+		if (shelfDetailsLoading || shelfDetailsLoadedForUserId === userId) return;
+
+		const requestId = ++shelfDetailsRequestId;
+		shelfDetailsLoading = true;
+		try {
+			const headers = { Authorization: `Bearer ${token}` };
+			const [bookmarksRes, notInterestedRes] = await Promise.all([
+				fetch(resolve('/api/bookmarks'), { headers }),
+				fetch(resolve('/api/not-interested/books'), { headers })
+			]);
+
+			if (requestId !== shelfDetailsRequestId) return;
+			if (bookmarksRes.ok) {
+				const data = (await bookmarksRes.json()) as { books?: Book[] };
+				fetchedBookmarkBooks = data.books ?? [];
+			}
+			if (notInterestedRes.ok) {
+				const data = (await notInterestedRes.json()) as { books?: Book[] };
+				fetchedNotInterestedBooks = data.books ?? [];
+			}
+			shelfDetailsLoadedForUserId = userId;
+		} catch (e) {
+			console.error('[ratings-drawer] Failed to load shelf details:', e);
+		} finally {
+			if (requestId === shelfDetailsRequestId) {
+				shelfDetailsLoading = false;
+			}
+		}
 	}
 
 	const unionBooksById = $derived.by(() => {
 		const m = new Map<string, Book>();
 		if (!shelfTabsEnabled) return m;
 		for (const e of ratedEntries) m.set(e.book.id, e.book);
+		for (const b of fetchedBookmarkBooks) m.set(b.id, b);
+		for (const b of fetchedNotInterestedBooks) m.set(b.id, b);
 		for (const id of $planToReadStore) {
-			const b = resolveBook?.(id);
+			const b = bookFallbackById(id);
 			if (b && !m.has(b.id)) m.set(b.id, b);
 		}
 		for (const num of $notInterestedStore) {
-			const b = resolveBookByBookNum?.(num);
+			const b = bookFallbackByNum(num);
 			if (b && !m.has(b.id)) m.set(b.id, b);
 		}
 		return m;
@@ -103,15 +160,24 @@
 	const RATING_PLACEHOLDER = 1 as RatingValue;
 
 	const bookmarkedShelfEntries = $derived.by((): RatedEntry[] => {
-		if (!shelfTabsEnabled || !resolveBook) return [];
+		if (!shelfTabsEnabled) return [];
 		const ratings = $ratingsStore;
 		const planIds = $planToReadStore;
 		const niNums = $notInterestedStore;
 		const out: RatedEntry[] = [];
 		const seen = new Set<string>();
-		for (const id of planIds) {
-			const book = resolveBook(id);
+		const fetchedIds = new Set(fetchedBookmarkBooks.map((book) => book.id));
+		for (const id of [...planIds].reverse()) {
+			if (fetchedIds.has(id)) continue;
+			const book = bookFallbackById(id);
 			if (!book || seen.has(book.id)) continue;
+			if (shelfNotInterested(book, niNums)) continue;
+			seen.add(book.id);
+			const r = ratings.get(book.id);
+			out.push({ book, rating: r ?? RATING_PLACEHOLDER });
+		}
+		for (const book of fetchedBookmarkBooks) {
+			if (seen.has(book.id) || !planIds.has(book.id)) continue;
 			if (shelfNotInterested(book, niNums)) continue;
 			seen.add(book.id);
 			const r = ratings.get(book.id);
@@ -121,16 +187,28 @@
 	});
 
 	const niShelfEntries = $derived.by((): RatedEntry[] => {
-		if (!shelfTabsEnabled || !resolveBookByBookNum) return [];
+		if (!shelfTabsEnabled) return [];
 		const ratings = $ratingsStore;
-		const planIds = $planToReadStore;
 		const niNums = $notInterestedStore;
 		const out: RatedEntry[] = [];
 		const seen = new Set<string>();
-		for (const num of niNums) {
-			const book = resolveBookByBookNum(num);
+		const fetchedNums = new Set(
+			fetchedNotInterestedBooks
+				.map((book) => book.book_id)
+				.filter((id): id is number => id != null && Number.isInteger(id))
+		);
+		for (const num of [...niNums].reverse()) {
+			if (fetchedNums.has(num)) continue;
+			const book = bookFallbackByNum(num);
 			if (!book || seen.has(book.id)) continue;
 			if (!niNums.has(book.book_id ?? 0)) continue;
+			seen.add(book.id);
+			const r = ratings.get(book.id);
+			out.push({ book, rating: r ?? RATING_PLACEHOLDER });
+		}
+		for (const book of fetchedNotInterestedBooks) {
+			const bookIdNum = book.book_id ?? 0;
+			if (seen.has(book.id) || !niNums.has(bookIdNum)) continue;
 			seen.add(book.id);
 			const r = ratings.get(book.id);
 			out.push({ book, rating: r ?? RATING_PLACEHOLDER });
@@ -223,7 +301,7 @@
 	});
 
 	const triggerBadgeCount = $derived(
-		shelfTabsEnabled ? unionBooksById.size : ratedEntries.length
+		shelfTabsEnabled ? partitionCounts.rated : ratedEntries.length
 	);
 
 	const triggerAriaLabel = $derived(
@@ -321,6 +399,7 @@
 		detailFocusReturnEl = null;
 		hoverDetailRating = 0;
 		open = true;
+		void fetchShelfDetails();
 		if (!wasOpen && browser) {
 			pushState('', { ...shallowPageState(), rateRatingsDrawer: true });
 		}
@@ -584,6 +663,17 @@
 	}
 
 	$effect(() => {
+		const userId = $authStore.user?.id ?? null;
+		if (shelfDetailsLoadedForUserId != null && shelfDetailsLoadedForUserId !== userId) {
+			fetchedBookmarkBooks = [];
+			fetchedNotInterestedBooks = [];
+			shelfDetailsLoadedForUserId = null;
+			shelfDetailsRequestId += 1;
+			shelfDetailsLoading = false;
+		}
+	});
+
+	$effect(() => {
 		if (!open) {
 			drawerHadOpen = false;
 			return;
@@ -644,9 +734,11 @@
 
 {#snippet drawerListRow(entry: RatedEntry)}
 	{@const storedRating = $ratingsStore.get(entry.book.id)}
+	{@const drawerRowNotInterested = shelfNotInterested(entry.book, $notInterestedStore)}
 	<li
 		class="ratings-drawer__item"
 		class:ratings-drawer__item--pending-remove={pendingRemoveIds.has(entry.book.id)}
+		class:ratings-drawer__item--not-interested={drawerRowNotInterested}
 	>
 		<div class="ratings-drawer__item-main">
 			<div class="ratings-drawer__item-cover">
@@ -693,6 +785,8 @@
 				</div>
 				<div
 					class="ratings-drawer__item-actions"
+					role="group"
+					aria-label={t('shared.bookCard.rateThisBook')}
 					onmouseleave={() => {
 						hoverEntryId = null;
 						hoverRating = 0;
@@ -752,7 +846,7 @@
 						>
 							{t('shared.ratingsBar.undo')}
 						</Button>
-					{:else}
+					{:else if storedRating != null}
 						<Button
 							variant="tertiary"
 							compact
@@ -897,7 +991,7 @@
 							onStarMouseEnter={detailStarMouseEnter}
 							onStarClick={detailStarClick}
 							onRatingGroupMouseLeave={() => (hoverDetailRating = 0)}
-							canRemoveRatingInSheet={detailRatingFromStore != null}
+							canRemoveRatingInSheet={$ratingsStore.has(detailEntry.book.id)}
 							onRemoveRatingClick={detailSheetRemoveRating}
 							showBookmarkAction={Boolean(summaryHooks?.onBookmark)}
 							showNotInterestedAction={Boolean(summaryHooks?.onNotInterested)}
@@ -1238,6 +1332,9 @@
 	.ratings-drawer__item {
 		padding: var(--space-3) 0;
 		border-bottom: 1px solid var(--color-border);
+	}
+	.ratings-drawer__item--not-interested:not(.ratings-drawer__item--pending-remove) {
+		opacity: 0.58;
 	}
 	.ratings-drawer__item--pending-remove {
 		position: relative;
