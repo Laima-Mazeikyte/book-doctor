@@ -301,7 +301,7 @@
 	});
 
 	const triggerBadgeCount = $derived(
-		shelfTabsEnabled ? unionBooksById.size : ratedEntries.length
+		shelfTabsEnabled ? partitionCounts.rated : ratedEntries.length
 	);
 
 	const triggerAriaLabel = $derived(
@@ -734,9 +734,11 @@
 
 {#snippet drawerListRow(entry: RatedEntry)}
 	{@const storedRating = $ratingsStore.get(entry.book.id)}
+	{@const drawerRowNotInterested = shelfNotInterested(entry.book, $notInterestedStore)}
 	<li
 		class="ratings-drawer__item"
 		class:ratings-drawer__item--pending-remove={pendingRemoveIds.has(entry.book.id)}
+		class:ratings-drawer__item--not-interested={drawerRowNotInterested}
 	>
 		<div class="ratings-drawer__item-main">
 			<div class="ratings-drawer__item-cover">
@@ -844,7 +846,7 @@
 						>
 							{t('shared.ratingsBar.undo')}
 						</Button>
-					{:else}
+					{:else if storedRating != null}
 						<Button
 							variant="tertiary"
 							compact
@@ -989,7 +991,7 @@
 							onStarMouseEnter={detailStarMouseEnter}
 							onStarClick={detailStarClick}
 							onRatingGroupMouseLeave={() => (hoverDetailRating = 0)}
-							canRemoveRatingInSheet={detailRatingFromStore != null}
+							canRemoveRatingInSheet={$ratingsStore.has(detailEntry.book.id)}
 							onRemoveRatingClick={detailSheetRemoveRating}
 							showBookmarkAction={Boolean(summaryHooks?.onBookmark)}
 							showNotInterestedAction={Boolean(summaryHooks?.onNotInterested)}
@@ -1330,6 +1332,9 @@
 	.ratings-drawer__item {
 		padding: var(--space-3) 0;
 		border-bottom: 1px solid var(--color-border);
+	}
+	.ratings-drawer__item--not-interested:not(.ratings-drawer__item--pending-remove) {
+		opacity: 0.58;
 	}
 	.ratings-drawer__item--pending-remove {
 		position: relative;
