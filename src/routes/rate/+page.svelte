@@ -1411,6 +1411,11 @@
 	});
 </script>
 
+<svelte:head>
+	<title>{t('rate.pageTitle')} — {t('shared.header.siteName')}</title>
+	<meta name="description" content={t('rate.metaDescription')} />
+</svelte:head>
+
 <div class="rate-page" class:rate-page--mobile-menu-open={$mobileMenuOpen}>
 	<div
 		class="rate-page__below-overlay"

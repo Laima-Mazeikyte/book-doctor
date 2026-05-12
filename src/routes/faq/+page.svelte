@@ -5,6 +5,7 @@
 
 <svelte:head>
 	<title>{t('faq.title')} — {t('shared.header.siteName')}</title>
+	<meta name="description" content={t('faq.metaDescription')} />
 </svelte:head>
 
 <div class="faq-page">

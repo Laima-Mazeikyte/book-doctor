@@ -4,6 +4,11 @@
 	import { t } from '$lib/copy';
 </script>
 
+<svelte:head>
+	<title>{t('home.title')} — {t('shared.header.siteName')}</title>
+	<meta name="description" content={t('home.metaDescription')} />
+</svelte:head>
+
 <div class="landing landing-typography">
 	<div class="landing__hero">
 		<img

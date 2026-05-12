@@ -698,6 +698,11 @@
 	});
 </script>
 
+<svelte:head>
+	<title>{t('recommendations.title')} — {t('shared.header.siteName')}</title>
+	<meta name="description" content={t('recommendations.metaDescription')} />
+</svelte:head>
+
 <div class="recommendations-page">
 	{#if viewMode === 'loading'}
 		<h1 class="recommendations-page__title recommendations-page__title--spaced typ-display2 typ-display2--content">{t('recommendations.title')}</h1>

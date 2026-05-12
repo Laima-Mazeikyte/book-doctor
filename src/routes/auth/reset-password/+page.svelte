@@ -67,6 +67,11 @@
 	}
 </script>
 
+<svelte:head>
+	<title>{t('shared.resetPasswordPage.title')} — {t('shared.header.siteName')}</title>
+	<meta name="description" content={t('shared.resetPasswordPage.metaDescription')} />
+</svelte:head>
+
 <div class="reset-password">
 	<div class="reset-password__panel">
 		<h1 class="reset-password__title typ-h3">{t('shared.resetPasswordPage.title')}</h1>

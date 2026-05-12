@@ -386,6 +386,11 @@
 	}
 </script>
 
+<svelte:head>
+	<title>{t('rated.title')} — {t('shared.header.siteName')}</title>
+	<meta name="description" content={t('rated.metaDescription')} />
+</svelte:head>
+
 <div class="bookshelf-page">
 	<h1 class="bookshelf-page__title typ-display2 typ-display2--content">{t('rated.title')}</h1>
 

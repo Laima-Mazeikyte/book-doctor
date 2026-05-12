@@ -4,10 +4,12 @@ en:
   home:
     title: "Books worth reading"
     lead: "A place for readers to discover books that match their unique taste."
+    metaDescription: "Discover books matched to your taste with Unread. Search titles, add ratings, and discover books that are worth reading."
     startRating: "Start rating"
 
   rate:
     pageTitle: "Browse & Rate"
+    metaDescription: "Browse books and rate titles on Unread. Your curated feed adjusts to your ratings with time."
     skipToBottomBar: "Skip to ratings and recommendations"
     search:
       placeholder: "Search books by title or author"
@@ -36,10 +38,12 @@ en:
 
   notInterested:
     title: "Not interested"
+    metaDescription: "Review books you've selected as 'not interested'."
     intro: "Books you've marked as not interested. Click the button again to show them in recommendations."
     empty: "No books marked as not interested yet."
   rated:
     title: "Bookshelf"
+    metaDescription: "Your Unread bookshelf: rated titles, bookmarks, and books marked not interested. Easy to browse and manage."
     empty: "No books rated yet. Rate at least 10 to get recommendations."
     loadingList: "Loading your library…"
     emptyBookmarked: "No bookmarked books yet. Titles you save stay here even if you also rate them."
@@ -59,6 +63,7 @@ en:
 
   recommendations:
     title: "Recommendations"
+    metaDescription: "What to read next? Your unique book recommendations on Unread, shaped by books you've rated so far."
     myRecommendations: "What to read next?"
     backToRating: "Back to rating"
     backToList: "Back to list"
@@ -88,15 +93,16 @@ en:
 
   faq:
     title: "Frequently Asked Questions"
+    metaDescription: "Answers about Unread: how recommendations work and other common questions answered."
 
   shared:
     skipToContent: "Skip to main content"
     listBookCount: "{{count}} book"
     listBookCountPlural: "s"
     header:
-      siteName: "Book Doctor"
-      logoAlt: "Book Doctor"
-      homeAriaLabel: "Book Doctor, home"
+      siteName: "Unread"
+      logoAlt: "Unread"
+      homeAriaLabel: "Unread, home"
       mainNavigation: "Main"
       mobileMenuLabel: "Menu"
       browse: "Rate books"
@@ -200,6 +206,7 @@ en:
     resetPasswordPage:
       loading: "Loading…"
       title: "Choose a new password"
+      metaDescription: "Choose a new password for your Unread account. Complete your reset securely using the recovery link from your email."
       newPassword: "New password"
       confirmPassword: "Confirm password"
       passwordHint: "At least 6 characters."

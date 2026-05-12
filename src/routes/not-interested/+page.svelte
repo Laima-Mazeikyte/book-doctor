@@ -77,6 +77,11 @@
 	}
 </script>
 
+<svelte:head>
+	<title>{t('notInterested.title')} — {t('shared.header.siteName')}</title>
+	<meta name="description" content={t('notInterested.metaDescription')} />
+</svelte:head>
+
 <div class="not-interested-page">
 	<h1 class="not-interested-page__title typ-display2">{t('notInterested.title')}</h1>
 	<p class="not-interested-page__intro">{t('notInterested.intro')}</p>
