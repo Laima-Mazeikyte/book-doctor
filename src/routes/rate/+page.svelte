@@ -431,6 +431,14 @@
 
 	const paginationFeedOnly = $derived(startedFromLatestFeed || everHadSessionSignal);
 
+	const showMainListLoadMoreTile = $derived.by(() => {
+		if (popularBooks.length === 0 || loadingInitial) return false;
+		return (
+			!hasMore ||
+			(paginationFeedOnly && lastAppendWasFeed && !engagedWithPendingBatch)
+		);
+	});
+
 	function armFeedBatchStrictGrace() {
 		suppressStrictFeedEndUntil = Date.now() + STRICT_FEED_END_GRACE_MS;
 	}
@@ -1469,14 +1477,14 @@
 								/>
 							</li>
 						{/each}
-						{#if !hasMore && popularBooks.length > 0}
+						{#if showMainListLoadMoreTile}
 							<li class="book-card-grid__cell rate-page__load-more-cell">
 								<button
 									type="button"
 									class="rate-page__load-more-card typ-interactive-1"
 									onclick={handleManualLoadMoreBooks}
-									disabled={loadingMore}
-									aria-busy={loadingMore ? 'true' : undefined}
+									disabled={loadingMore || loadingInitial || holdInitialPagination}
+									aria-busy={loadingMore || loadingInitial ? 'true' : undefined}
 									aria-label={t('rate.loadMoreBooksAriaLabel')}
 								>
 									{t('rate.loadMoreBooks')}

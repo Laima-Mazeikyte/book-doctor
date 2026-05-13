@@ -541,7 +541,7 @@
 		detailBookSnapshot = null;
 		detailFocusReturnEl = null;
 		hoverDetailRating = 0;
-		tick().then(() => el?.focus());
+		tick().then(() => el?.focus({ preventScroll: true }));
 	}
 
 	function closeDetailFromUser() {

@@ -318,7 +318,7 @@
 			ratedSummarySheetKeepAlive.set({ bookId: book.id, book });
 		}
 		await tick();
-		closeBtnRef?.focus();
+		closeBtnRef?.focus({ preventScroll: true });
 	}
 
 	function ratePageShallowUrl(): string {
@@ -349,7 +349,7 @@
 		}
 		await tick();
 		summarySheetSkipFlyOut = false;
-		summaryBtnRef?.focus();
+		summaryBtnRef?.focus({ preventScroll: true });
 	}
 
 	onDestroy(() => {
