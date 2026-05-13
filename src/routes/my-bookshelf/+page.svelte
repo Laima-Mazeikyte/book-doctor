@@ -83,6 +83,8 @@
 	let bookmarkBooks = $state<Book[]>([]);
 	let niBooks = $state<Book[]>([]);
 	let bmNiLoading = $state(false);
+	/** First bm/ni fetch for this user may block the bookmark & NI tabs; later session refreshes refetch in the background. */
+	let bmNiBlockingCompletedUserId = $state<string | null>(null);
 	let loadRequestId = 0;
 
 	let activeFilter = $state<FilterId>('rated');
@@ -149,12 +151,15 @@
 
 		if (!token) {
 			bmNiLoading = false;
+			bmNiBlockingCompletedUserId = null;
 			bookmarkBooks = snapshot.loaded ? snapshot.books : [];
 			niBooks = [];
 			return;
 		}
 
-		bmNiLoading = true;
+		const userId = session.user?.id ?? null;
+		const needsBlockingBmNi = !userId || bmNiBlockingCompletedUserId !== userId;
+		bmNiLoading = needsBlockingBmNi;
 		if (snapshot.loaded) {
 			bookmarkBooks = snapshot.books;
 		}
@@ -185,6 +190,7 @@
 			niBooks = ni;
 			bookmarksPageStore.setBooks(bm);
 			bmNiLoading = false;
+			if (userId) bmNiBlockingCompletedUserId = userId;
 		});
 	});
 

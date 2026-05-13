@@ -140,6 +140,8 @@
 	let bookmarkBooks = $state<Book[]>([]);
 	let niBooks = $state<Book[]>([]);
 	let bmNiLoading = $state(false);
+	/** First bm/ni fetch for this user may block the bookmark & NI tabs; later session refreshes refetch in the background. */
+	let bmNiBlockingCompletedUserId = $state<string | null>(null);
 	let bmNiLoadRequestId = 0;
 
 	let activeFilter = $state<RecFilterId>('recommended');
@@ -466,13 +468,16 @@
 
 	/** Bookmarks + not-interested lists for recommendation tabs (history view). */
 	$effect(() => {
-		const token = $authStore.session?.access_token ?? null;
+		const session = $authStore.session;
+		const token = session?.access_token ?? null;
+		const userId = session?.user?.id ?? null;
 		// Tracked: token + `viewMode` only — not `?filter=`. Reading `page.url` here re-ran this
 		// effect on every client-side tab click (see `selectRecTab`), so `bmNiLoading` flashed
 		// true and showed skeletons on every switch. That matched bookshelf only if the URL
 		// never changed. Single-run / full-page views read `request_id` via `untrack`.
 		if (!token || viewMode !== 'history') {
 			bmNiLoading = false;
+			if (!token) bmNiBlockingCompletedUserId = null;
 			return;
 		}
 		if (untrack(() => page.url.searchParams.get('request_id')?.trim())) {
@@ -481,7 +486,8 @@
 		}
 
 		const requestId = ++bmNiLoadRequestId;
-		bmNiLoading = true;
+		const needsBlockingBmNi = !userId || bmNiBlockingCompletedUserId !== userId;
+		bmNiLoading = needsBlockingBmNi;
 
 		const bmPromise = fetch('/api/bookmarks', {
 			headers: { Authorization: `Bearer ${token}` }
@@ -508,6 +514,7 @@
 			bookmarkBooks = bm;
 			niBooks = ni;
 			bmNiLoading = false;
+			if (userId) bmNiBlockingCompletedUserId = userId;
 		});
 	});
 
