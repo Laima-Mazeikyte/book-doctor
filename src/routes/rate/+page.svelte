@@ -828,15 +828,27 @@
 		return book.book_id != null ? `book:${book.book_id}` : `row:${book.id}`;
 	}
 
+	function filterReactedBooksForRateFeed(books: Book[]): Book[] {
+		const ratings = get(ratingsStore);
+		const notInterested = get(notInterestedStore);
+		const bookmarks = get(planToReadStore);
+
+		return books.filter((book) => {
+			const numericId = book.book_id ?? 0;
+			return !ratings.has(book.id) && !notInterested.has(numericId) && !bookmarks.has(book.id);
+		});
+	}
+
 	/** Assign main list from API payload; append keeps the rendered keyspace unique. */
 	function setMainListBooks(incoming: Book[], mode: 'replace' | 'append'): Book[] {
+		const eligibleBooks = filterReactedBooksForRateFeed(incoming);
 		if (mode === 'replace') {
-			popularBooks = incoming;
-			return incoming;
+			popularBooks = eligibleBooks;
+			return eligibleBooks;
 		}
 
 		const existing = new Set(popularBooks.map(mainListKey));
-		const appended = incoming.filter((book) => !existing.has(mainListKey(book)));
+		const appended = eligibleBooks.filter((book) => !existing.has(mainListKey(book)));
 		popularBooks = [...popularBooks, ...appended];
 		return appended;
 	}

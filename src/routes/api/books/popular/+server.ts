@@ -1,7 +1,12 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { PUBLIC_BUNNY_COVERS_BASE } from '$env/static/public';
-import { catalogTypeFromRow, genresFromGenreColumns, type BookGenreSlotRow } from '$lib/book-catalog-fields';
+import {
+	catalogTypeFromRow,
+	genresFromGenreColumns,
+	type BookGenreSlotRow
+} from '$lib/book-catalog-fields';
+import { excludeRateFeedBookIds, getRateFeedExcludedBookIds } from '$lib/server/rateFeedExclusions';
 import { supabase, createSupabaseWithAuth } from '$lib/server/supabase';
 
 const PAGE_SIZE = 20;
@@ -73,13 +78,10 @@ export const GET: RequestHandler = async ({ url, request }) => {
 
 	const authHeader = request.headers.get('Authorization');
 	const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-	let ratedSet = new Set<number>();
+	let excludedBookIds = new Set<number>();
 	if (accessToken) {
 		const supabaseAuth = createSupabaseWithAuth(accessToken);
-		const { data: ratedRows } = await supabaseAuth.from('user_ratings').select('book_id');
-		ratedSet = new Set(
-			(ratedRows ?? []).map((r) => r.book_id).filter((id): id is number => Number.isInteger(id))
-		);
+		excludedBookIds = await getRateFeedExcludedBookIds(supabaseAuth);
 	}
 
 	// Batches 1–5 (offset 0–80): 2 per genre per batch; which 2 from each genre is randomised per session
@@ -106,11 +108,13 @@ export const GET: RequestHandler = async ({ url, request }) => {
 			year: number | null;
 		} & BookGenreSlotRow & { type?: string | null };
 		type Row = { genre: string; books: BookRow | null };
-		const withGenre = (rows ?? []).map((row) => row as unknown as Row).filter((r) => r.books != null) as { genre: string; books: BookRow }[];
+		const withGenre = (rows ?? [])
+			.map((row) => row as unknown as Row)
+			.filter((r) => r.books != null) as { genre: string; books: BookRow }[];
 
 		// Group by genre (stable order)
 		const genreOrder = [...new Set(withGenre.map((r) => r.genre))].sort();
-		const byGenre: BookRow[][] = genreOrder.map((g) => []);
+		const byGenre: BookRow[][] = genreOrder.map(() => []);
 		for (const r of withGenre) {
 			const i = genreOrder.indexOf(r.genre);
 			if (i >= 0) byGenre[i].push(r.books);
@@ -118,7 +122,9 @@ export const GET: RequestHandler = async ({ url, request }) => {
 
 		const seed = seedParam && seedParam.length > 0 ? seedParam : crypto.randomUUID();
 		// Shuffle within each genre so which 2 books go to batch 1, 2, … is random per session
-		const shuffledByGenre = byGenre.map((arr, i) => shuffleWithSeed(arr, `${seed}:${genreOrder[i]}`));
+		const shuffledByGenre = byGenre.map((arr, i) =>
+			shuffleWithSeed(arr, `${seed}:${genreOrder[i]}`)
+		);
 
 		// Build list: 2 per genre per batch → positions 0–19 = round 0, 20–39 = round 1, …
 		const ordered: BookRow[] = [];
@@ -129,15 +135,20 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		}
 
 		const page = ordered.slice(offset, offset + PAGE_SIZE);
-		let books = page.map((b) => mapRowToBook(b));
-		if (ratedSet.size > 0) {
-			books = books.filter((b) => !ratedSet.has(b.book_id));
-		}
+		const books = excludeRateFeedBookIds(
+			page.map((b) => mapRowToBook(b)),
+			excludedBookIds
+		);
 
-		const nextOffset = offset + books.length;
-		const hasMore = nextOffset < TOP_100_SIZE || nextOffset === TOP_100_SIZE;
+		const nextOffset = offset + page.length;
+		const hasMore = nextOffset < TOP_100_SIZE;
 
-		const payload: { books: ReturnType<typeof mapRowToBook>[]; nextOffset: number; hasMore: boolean; seed?: string } = {
+		const payload: {
+			books: ReturnType<typeof mapRowToBook>[];
+			nextOffset: number;
+			hasMore: boolean;
+			seed?: string;
+		} = {
 			books,
 			nextOffset,
 			hasMore
@@ -150,7 +161,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	// Use RPC to avoid PostgREST URL length limit when excluding 100+ IDs
 	const { data: top100Rows } = await supabase.from('top_100_books').select('book_id');
 	const top100Ids = (top100Rows ?? []).map((r) => r.book_id);
-	const excludeSet = new Set([...top100Ids, ...excludeIds]);
+	const excludeSet = new Set([...top100Ids, ...excludeIds, ...excludedBookIds]);
 	const excludeArr = Array.from(excludeSet);
 
 	const candidateLimit = Math.max(PAGE_SIZE * 3, 60);
@@ -180,10 +191,10 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	};
 	const shuffledHas = shuffleOne(hasCover, 'cover');
 	const shuffledNo = shuffleOne(noCover, 'nocover');
-	let books = [...shuffledHas, ...shuffledNo].slice(0, PAGE_SIZE).map((b) => mapRowToBook(b));
-	if (ratedSet.size > 0) {
-		books = books.filter((b) => !ratedSet.has(b.book_id));
-	}
+	const books = excludeRateFeedBookIds(
+		[...shuffledHas, ...shuffledNo].slice(0, PAGE_SIZE).map((b) => mapRowToBook(b)),
+		excludedBookIds
+	);
 
 	const hasMore = books.length === PAGE_SIZE;
 	const nextOffset = offset + books.length;

@@ -1,4 +1,4 @@
-  <script lang="ts">
+<script lang="ts">
 	import { onDestroy, tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
@@ -42,7 +42,7 @@
 
 	const ratingFromStore = $derived($ratingsStore.get(book.id));
 	const currentRating = $derived(
-		isRateContext ? ratingFromStore ?? null : (currentRatingProp ?? null)
+		isRateContext ? (ratingFromStore ?? null) : (currentRatingProp ?? null)
 	);
 
 	const starRowAriaGroupLabel = $derived(
@@ -50,11 +50,7 @@
 	);
 
 	const displayRating = $derived(
-		hoverRating > 0
-			? hoverRating
-			: isRateContext
-				? (ratingFromStore ?? 0)
-				: (currentRating ?? 0)
+		hoverRating > 0 ? hoverRating : isRateContext ? (ratingFromStore ?? 0) : (currentRating ?? 0)
 	);
 
 	const showCoverImage = $derived(Boolean(book.coverUrl) && !coverImageFailed);
@@ -246,28 +242,23 @@
 			await handleCloseSummary({ skipFlyOut: true });
 			return;
 		}
-		if (
-			start <= 0 ||
-			window.matchMedia('(prefers-reduced-motion: reduce)').matches
-		) {
+		if (start <= 0 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
 			await handleCloseSummary({ skipFlyOut: true });
 			return;
 		}
 
 		try {
-			await el
-				.animate(
-					[
-						{ transform: `translateY(${start}px)` },
-						{ transform: `translateY(${window.innerHeight}px)` }
-					],
-					{
-						duration: 220,
-						easing: 'cubic-bezier(0.32, 0.72, 0, 1)',
-						fill: 'forwards'
-					}
-				)
-				.finished;
+			await el.animate(
+				[
+					{ transform: `translateY(${start}px)` },
+					{ transform: `translateY(${window.innerHeight}px)` }
+				],
+				{
+					duration: 220,
+					easing: 'cubic-bezier(0.32, 0.72, 0, 1)',
+					fill: 'forwards'
+				}
+			).finished;
 		} catch {
 			/* aborted */
 		}
@@ -446,7 +437,10 @@
 	aria-label={bookIdentityAriaLabel}
 >
 	<div class="book-card__media" role="group" aria-label={bookIdentityAriaLabel}>
-		<div class="book-card__media-inner" class:book-card__media-inner--not-interested={notInterested}>
+		<div
+			class="book-card__media-inner"
+			class:book-card__media-inner--not-interested={notInterested}
+		>
 			{#if showCoverImage}
 				<button
 					type="button"
@@ -472,7 +466,9 @@
 					aria-controls={summaryOpen ? summaryPanelId : undefined}
 					onclick={() => void handleOpenSummary()}
 				>
-					<span class="book-card__placeholder-title book-card__summary-sheet-title typ-h3">{book.title}</span>
+					<span class="book-card__placeholder-title book-card__summary-sheet-title typ-h3"
+						>{book.title}</span
+					>
 					{#if book.author?.trim()}
 						<span class="book-card__placeholder-author typ-body">{book.author}</span>
 					{/if}
@@ -497,7 +493,10 @@
 						{#if bookmarked}
 							<span class="book-card__action-label">{t('shared.recommendationCard.saved')}</span>
 						{:else}
-							<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">
+							<span
+								class="book-card__action-label book-card__action-label--reco-hover-hint"
+								aria-hidden="true"
+							>
 								{t('shared.recommendationCard.bookmark')}
 							</span>
 						{/if}
@@ -521,9 +520,14 @@
 					>
 						<Ban size={14} aria-hidden="true" />
 						{#if notInterested}
-							<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span>
+							<span class="book-card__action-label"
+								>{t('shared.recommendationCard.notInterested')}</span
+							>
 						{:else}
-							<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">
+							<span
+								class="book-card__action-label book-card__action-label--reco-hover-hint"
+								aria-hidden="true"
+							>
 								{t('shared.recommendationCard.notInterested')}
 							</span>
 						{/if}
@@ -542,7 +546,10 @@
 					onclick={handleOpenSummary}
 				>
 					<BookOpenText size={14} aria-hidden="true" />
-					<span class="book-card__action-label book-card__action-label--reco-hover-hint" aria-hidden="true">
+					<span
+						class="book-card__action-label book-card__action-label--reco-hover-hint"
+						aria-hidden="true"
+					>
 						{t('shared.recommendationCard.summary')}
 					</span>
 				</button>
@@ -553,10 +560,10 @@
 	<div class="book-card__body">
 		<BookRatingStarsRow
 			ratingWrapWidth="auto"
-			displayRating={displayRating}
+			{displayRating}
 			ariaGroupLabel={starRowAriaGroupLabel}
-			starAriaLabel={starAriaLabel}
-			starAriaPressed={starAriaPressed}
+			{starAriaLabel}
+			{starAriaPressed}
 			onmouseleave={() => (hoverRating = 0)}
 			onstarEnter={handleStarMouseEnter}
 			onstarClick={(value) => {
@@ -604,27 +611,27 @@
 				bind:summaryContentEl={summarySheetContentEl}
 				onSummaryPointerDown={handleSummarySheetPointerDown}
 				{book}
-				summaryTitleId={summaryTitleId}
-				displaySummary={displaySummary}
-				showCoverImage={showCoverImage}
+				{summaryTitleId}
+				{displaySummary}
+				{showCoverImage}
 				onCoverImageError={() => (coverImageFailed = true)}
-				showAuthorInSheetMeta={showAuthorInSheetMeta}
-				showSearchAuthorInOverlay={showSearchAuthorInOverlay}
+				{showAuthorInSheetMeta}
+				{showSearchAuthorInOverlay}
 				onAuthorPillClick={showSearchAuthorInOverlay ? handleSummaryAuthorPillClick : undefined}
 				{notInterested}
 				ratingGroupAriaLabel={isRateContext
 					? t('shared.bookCard.rateThisBook')
 					: t('shared.recommendationCard.rateThisBook')}
 				{displayRating}
-				starAriaLabel={starAriaLabel}
-				starAriaPressed={starAriaPressed}
+				{starAriaLabel}
+				{starAriaPressed}
 				onStarMouseEnter={handleStarMouseEnter}
 				onStarClick={(value) => {
 					hoverRating = 0;
 					handleStarClick(value);
 				}}
 				onRatingGroupMouseLeave={() => (hoverRating = 0)}
-				canRemoveRatingInSheet={canRemoveRatingInSheet}
+				{canRemoveRatingInSheet}
 				reserveSummaryRemoveLayoutSlot={isRateContext}
 				onRemoveRatingClick={handleSheetRemoveRating}
 				showBookmarkAction={showSummaryBookmarkAction}
@@ -651,7 +658,8 @@
 		background: var(--color-card-bg);
 		border: 1px solid var(--color-border);
 		box-shadow: var(--shadow-card);
-		transition: box-shadow var(--duration-normal) var(--ease-default),
+		transition:
+			box-shadow var(--duration-normal) var(--ease-default),
 			border-color var(--duration-normal) var(--ease-default);
 	}
 	.book-card:hover {
@@ -682,7 +690,8 @@
 		object-fit: cover;
 		object-position: center center;
 		border-radius: var(--radius-sm);
-		transition: transform var(--duration-normal) var(--ease-default),
+		transition:
+			transform var(--duration-normal) var(--ease-default),
 			opacity var(--duration-fast) var(--ease-default);
 	}
 	.book-card__cover-hit {
@@ -737,8 +746,12 @@
 	.book-card__media-inner--not-interested .book-card__cover:not(.book-card__cover--no-image) {
 		opacity: 0.3;
 	}
-	.book-card__media-inner--not-interested .book-card__cover--no-image .book-card__placeholder-author,
-	.book-card__media-inner--not-interested .book-card__cover--no-image .book-card__placeholder-title {
+	.book-card__media-inner--not-interested
+		.book-card__cover--no-image
+		.book-card__placeholder-author,
+	.book-card__media-inner--not-interested
+		.book-card__cover--no-image
+		.book-card__placeholder-title {
 		opacity: 0.3;
 	}
 	.book-card:hover .book-card__cover:not(.book-card__cover--no-image) {
@@ -783,10 +796,6 @@
 		line-clamp: 4;
 		text-align: left;
 	}
-	.book-card__year {
-		opacity: 0.75;
-	}
-
 	.book-card__cover-actions {
 		position: absolute;
 		z-index: 2;
@@ -833,7 +842,9 @@
 
 	@media (prefers-reduced-motion: reduce) {
 		.book-card__media-inner .book-card__action--reco-hoverable,
-		.book-card__media-inner .book-card__action--reco-hoverable .book-card__action-label--reco-hover-hint {
+		.book-card__media-inner
+			.book-card__action--reco-hoverable
+			.book-card__action-label--reco-hover-hint {
 			transition-duration: 0.01ms !important;
 			transition-delay: 0ms !important;
 		}
@@ -854,7 +865,8 @@
 		background: var(--color-bg-muted);
 		color: var(--color-text);
 		cursor: pointer;
-		transition: background var(--duration-fast) var(--ease-default),
+		transition:
+			background var(--duration-fast) var(--ease-default),
 			color var(--duration-fast) var(--ease-default),
 			border-color var(--duration-fast) var(--ease-default);
 	}
@@ -914,7 +926,9 @@
 				color var(--duration-fast) var(--ease-default),
 				border-color var(--duration-fast) var(--ease-default);
 		}
-		.book-card__media-inner .book-card__action--reco-hoverable .book-card__action-label--reco-hover-hint {
+		.book-card__media-inner
+			.book-card__action--reco-hoverable
+			.book-card__action-label--reco-hover-hint {
 			display: inline-block;
 			max-width: 0;
 			opacity: 0;
@@ -924,7 +938,9 @@
 				max-width 0.32s var(--ease-default),
 				opacity 0.22s var(--ease-default);
 		}
-		.book-card__media-inner .book-card__action--reco-hoverable:hover .book-card__action-label--reco-hover-hint,
+		.book-card__media-inner
+			.book-card__action--reco-hoverable:hover
+			.book-card__action-label--reco-hover-hint,
 		.book-card__media-inner
 			.book-card__action--reco-hoverable:focus-visible
 			.book-card__action-label--reco-hover-hint {
@@ -955,15 +971,6 @@
 		background: var(--color-book-card-chip-on-bg);
 		color: var(--color-book-card-chip-on-text);
 		border-color: var(--color-book-card-chip-on-border);
-	}
-
-	.book-card[data-context='rate'] .book-card__rating-wrap,
-	.book-card[data-context='recommendations'] .book-card__rating-wrap,
-	.book-card[data-context='bookmarks'] .book-card__rating-wrap,
-	.book-card[data-context='rated'] .book-card__rating-wrap,
-	.book-card[data-context='not-interested'] .book-card__rating-wrap {
-		align-items: center;
-		width: auto;
 	}
 
 	.book-card__summary-dialog-overlay {
@@ -1092,16 +1099,21 @@
 		color: var(--color-book-card-chip-on-text);
 	}
 
-	.book-card__media-inner .book-card__cover-actions
-		.book-card__action:not(.book-card__action--saved):not(.book-card__action--not-interested-active) {
+	.book-card__media-inner
+		.book-card__cover-actions
+		.book-card__action:not(.book-card__action--saved):not(
+			.book-card__action--not-interested-active
+		) {
 		background: color-mix(in srgb, var(--book-card-cover-tint) 12%, transparent);
 	}
 
-	.book-card__media-inner .book-card__cover-actions
+	.book-card__media-inner
+		.book-card__cover-actions
 		.book-card__action:not(.book-card__action--saved):not(
 			.book-card__action--not-interested-active
 		):hover,
-	.book-card__media-inner .book-card__cover-actions
+	.book-card__media-inner
+		.book-card__cover-actions
 		.book-card__action:not(.book-card__action--saved):not(
 			.book-card__action--not-interested-active
 		):focus-visible {
