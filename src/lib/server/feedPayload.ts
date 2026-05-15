@@ -5,6 +5,7 @@ import {
 	genresFromGenreColumns,
 	type BookGenreSlotRow
 } from '$lib/book-catalog-fields';
+import { getRateFeedExcludedBookIds } from '$lib/server/rateFeedExclusions';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export type FeedBookPayload = {
@@ -87,26 +88,11 @@ export async function buildFeedPayloadForRequest(
 		};
 	}
 
-	let bookIds = items
-		.map((i) => parseInt(i.book_id, 10))
-		.filter((id) => !Number.isNaN(id));
+	let bookIds = items.map((i) => parseInt(i.book_id, 10)).filter((id) => !Number.isNaN(id));
 
 	if (bookIds.length > 0) {
-		const { data: notInterestedRows } = await supabase
-			.from('user_not_interested')
-			.select('book_id');
-		const notInterestedSet = new Set(
-			(notInterestedRows ?? []).map((r) => r.book_id).filter((id): id is number => Number.isInteger(id))
-		);
-		bookIds = bookIds.filter((id) => !notInterestedSet.has(id));
-	}
-
-	if (bookIds.length > 0) {
-		const { data: ratedRows } = await supabase.from('user_ratings').select('book_id');
-		const ratedSet = new Set(
-			(ratedRows ?? []).map((r) => r.book_id).filter((id): id is number => Number.isInteger(id))
-		);
-		bookIds = bookIds.filter((id) => !ratedSet.has(id));
+		const excludedBookIds = await getRateFeedExcludedBookIds(supabase);
+		bookIds = bookIds.filter((id) => !excludedBookIds.has(id));
 	}
 
 	if (bookIds.length === 0) {
@@ -152,7 +138,7 @@ export async function buildFeedPayloadForRequest(
 	const books = items
 		.map((i) => {
 			const id = parseInt(i.book_id, 10);
-			return Number.isNaN(id) ? null : byBookId.get(id) ?? null;
+			return Number.isNaN(id) ? null : (byBookId.get(id) ?? null);
 		})
 		.filter((b): b is NonNullable<typeof b> => b != null);
 
