@@ -67,6 +67,7 @@
 	// ── Search ─────────────────────────────────────────────────────────────────
 	let searchQuery = $state('');
 	let debouncedQuery = $state('');
+	const normalizedDebouncedQuery = $derived(debouncedQuery.trim());
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	/**
 	 * Bumped only when a new first-page search starts so pagination requests do not
@@ -94,7 +95,7 @@
 	});
 
 	$effect(() => {
-		const q = debouncedQuery.trim();
+		const q = normalizedDebouncedQuery;
 		if (q.length >= SEARCH_MIN_QUERY_LENGTH) {
 			doSearch(q, 0);
 		} else {
@@ -105,7 +106,7 @@
 		}
 	});
 
-	const isSearching = $derived(debouncedQuery.trim().length >= SEARCH_MIN_QUERY_LENGTH);
+	const isSearching = $derived(normalizedDebouncedQuery.length >= SEARCH_MIN_QUERY_LENGTH);
 
 	let searchOverlayOpen = $state(false);
 	let inertSupported = $state(true);
@@ -349,8 +350,10 @@
 			if (!wasOpen) {
 				resetSearchSessionFeedFlags();
 			}
-			searchQuery = q;
-			debouncedQuery = q;
+			if (searchQuery.trim() !== q) {
+				searchQuery = q;
+				debouncedQuery = q;
+			}
 			void queueFocusOverlaySearch();
 		}
 	});
@@ -358,7 +361,7 @@
 	$effect(() => {
 		if (!browser || !searchOverlayOpen) return;
 		void overlayDialogEl;
-		const q = debouncedQuery.trim();
+		const q = normalizedDebouncedQuery;
 		const path = q.length > 0 ? resolve(`/rate?q=${encodeURIComponent(q)}`) : resolve('/rate');
 		const cur = $page.url;
 		const curQ = cur.searchParams.get('q')?.trim() ?? '';
@@ -383,7 +386,7 @@
 	const searchStatusMessage = $derived.by(() => {
 		if (!searchOverlayOpen) return '';
 		if (searchError) return '';
-		const raw = debouncedQuery.trim();
+		const raw = normalizedDebouncedQuery;
 		if (raw.length === 0) return t('rate.search.minCharsHint');
 		if (raw.length < SEARCH_MIN_QUERY_LENGTH) return '';
 		if (loadingSearch) return t('rate.search.statusSearching');
@@ -433,10 +436,7 @@
 
 	const showMainListLoadMoreTile = $derived.by(() => {
 		if (popularBooks.length === 0 || loadingInitial) return false;
-		return (
-			!hasMore ||
-			(paginationFeedOnly && lastAppendWasFeed && !engagedWithPendingBatch)
-		);
+		return !hasMore || (paginationFeedOnly && lastAppendWasFeed && !engagedWithPendingBatch);
 	});
 
 	function armFeedBatchStrictGrace() {
@@ -569,7 +569,7 @@
 		const root = searchOverlayScrollEl;
 		if (!root || !searchOverlayOpen) return;
 		if (!searchHasMore || loadingSearch || loadingSearchMore || searchError) return;
-		const q = debouncedQuery.trim();
+		const q = normalizedDebouncedQuery;
 		if (q.length < SEARCH_MIN_QUERY_LENGTH) return;
 		const distance = root.scrollHeight - root.scrollTop - root.clientHeight;
 		if (distance <= SEARCH_SCROLL_LOAD_THRESHOLD_PX) {
@@ -1250,7 +1250,7 @@
 		try {
 			const data = await searchBooks(query, offset);
 			if (generation !== searchRequestGeneration) return;
-			if (trimmedQuery !== debouncedQuery.trim()) return;
+			if (trimmedQuery !== normalizedDebouncedQuery) return;
 
 			if (offset === 0) {
 				const seen = new Set<string>();
@@ -1274,7 +1274,7 @@
 			queueMicrotask(() => tryLoadMoreSearchNearBottom());
 		} catch {
 			if (generation !== searchRequestGeneration) return;
-			if (trimmedQuery !== debouncedQuery.trim()) return;
+			if (trimmedQuery !== normalizedDebouncedQuery) return;
 			searchError = t('rate.errors.searchFailed');
 			if (offset === 0) searchResults = [];
 		} finally {
@@ -1624,19 +1624,16 @@
 						<ErrorBanner message={searchError} onDismiss={() => (searchError = null)} />
 					{/if}
 
-					{#if debouncedQuery.trim().length === 0}
+					{#if normalizedDebouncedQuery.length === 0}
 						<p class="rate-search-overlay__helper">{t('rate.search.minCharsHint')}</p>
-					{:else if debouncedQuery.trim().length >= SEARCH_MIN_QUERY_LENGTH}
+					{:else if normalizedDebouncedQuery.length >= SEARCH_MIN_QUERY_LENGTH}
 						{#if loadingSearch}
-							<BookCardGridSkeleton
-								class="rate-page__list"
-								ariaLabel={t('rate.aria.searching')}
-							/>
+							<BookCardGridSkeleton class="rate-page__list" ariaLabel={t('rate.aria.searching')} />
 						{:else if searchError}
 							<!-- Error surfaced via ErrorBanner (role="alert") above -->
 						{:else if searchResults.length === 0}
 							<p class="rate-page__empty">
-								{t('rate.emptySearch', { query: debouncedQuery.trim() })}
+								{t('rate.emptySearch', { query: normalizedDebouncedQuery })}
 							</p>
 						{:else}
 							<p id="rate-search-results-summary" class="rate-search-overlay__results-summary">
