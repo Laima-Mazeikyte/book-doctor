@@ -9,7 +9,7 @@ export const SEARCH_PAGE_SIZE = 50;
 /** Hard cap passed to Edge / Meilisearch `limit` (cost and PostgREST `.in()` size). */
 export const SEARCH_MAX_LIMIT = 50;
 
-export type SearchResultSource = 'edge';
+export type SearchResultSource = 'edge' | 'db-author';
 
 export interface SearchResultPage {
 	books: Book[];
