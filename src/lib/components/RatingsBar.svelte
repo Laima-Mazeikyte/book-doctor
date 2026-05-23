@@ -13,7 +13,10 @@
 	import NavStyleTabList from '$lib/components/NavStyleTabList.svelte';
 	import { getBookDisplaySummary } from '$lib/components/book-card/summaryStub';
 	import type { RatingsBarSummaryHooks } from '$lib/components/ratings-bar-summary-hooks';
-	import { markRateSearchOpenedFromOtherRoute } from '$lib/rateSearchExternalNav';
+	import {
+		markRateAuthorSearch,
+		markRateSearchOpenedFromOtherRoute
+	} from '$lib/rateSearchExternalNav';
 	import { authStore } from '$lib/stores/auth';
 	import { notInterestedStore } from '$lib/stores/notInterested';
 	import { planToReadStore } from '$lib/stores/planToRead';
@@ -564,6 +567,7 @@
 			summaryHooks.onSearchAuthor(detailEntry.book.author);
 		} else if (browser) {
 			markRateSearchOpenedFromOtherRoute();
+			markRateAuthorSearch(author);
 			void goto(resolve(`/rate?q=${encodeURIComponent(author)}`));
 		}
 		closeDrawerFromUser();
