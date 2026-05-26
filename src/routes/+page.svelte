@@ -1,5 +1,6 @@
 <script lang="ts">
 	import homeLogo from '$lib/assets/unread-logo.svg';
+	import homeLogoVideo from '$lib/assets/Unread-animated.mp4';
 	import Button from '$lib/components/Button.svelte';
 	import { t } from '$lib/copy';
 </script>
@@ -11,8 +12,19 @@
 
 <div class="landing landing-typography">
 	<div class="landing__hero">
+		<div class="landing__logo-clip landing__logo-clip--video">
+			<video
+				class="landing__logo landing__logo--video"
+				src={homeLogoVideo}
+				autoplay
+				loop
+				muted
+				playsinline
+				aria-hidden="true"
+			></video>
+		</div>
 		<img
-			class="landing__logo"
+			class="landing__logo landing__logo--static"
 			src={homeLogo}
 			alt={t('shared.header.logoAlt')}
 			width="55"
@@ -46,11 +58,37 @@
 		max-width: 52ch;
 	}
 
+	.landing__logo-clip {
+		height: clamp(6.5rem, 22vw, 10.5rem);
+		flex-shrink: 0;
+		overflow: hidden;
+	}
+
 	.landing__logo {
 		display: block;
 		width: auto;
+		mix-blend-mode: screen;
+	}
+
+	.landing__logo--video {
+		height: calc(100% + 80px);
+		margin-top: -40px;
+	}
+
+	.landing__logo--static {
 		height: clamp(6.5rem, 22vw, 10.5rem);
 		flex-shrink: 0;
+		display: none;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.landing__logo-clip--video {
+			display: none;
+		}
+
+		.landing__logo--static {
+			display: block;
+		}
 	}
 
 	.landing__title {
