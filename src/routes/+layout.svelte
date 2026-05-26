@@ -2,7 +2,13 @@
 	import { onMount } from 'svelte';
 	import { setOpenBugReportContext } from '$lib/bugReportContext';
 	import { get } from 'svelte/store';
-	import { afterNavigate } from '$app/navigation';
+	import { afterNavigate, beforeNavigate } from '$app/navigation';
+	import { fade } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
+	import {
+		prefersReducedMotion,
+		shouldMainNavPageTransition
+	} from '$lib/navigation/mainNavTransition';
 	import { page } from '$app/state';
 	import { PUBLIC_BUNNY_COVERS_BASE } from '$env/static/public';
 	import '../app.css';
@@ -44,6 +50,7 @@
 	let { children } = $props();
 
 	let bugModalOpen = $state(false);
+	let pageEnterTransition = $state(false);
 
 	function openBugModal() {
 		bugModalOpen = true;
@@ -439,6 +446,12 @@
 		};
 	});
 
+	beforeNavigate(({ from, to }) => {
+		pageEnterTransition =
+			shouldMainNavPageTransition(from?.url.pathname ?? '', to?.url.pathname ?? '') &&
+			!prefersReducedMotion();
+	});
+
 	afterNavigate(({ from, to }) => {
 		if (
 			from?.url.pathname === '/auth/reset-password' &&
@@ -553,7 +566,15 @@
 		class:main-book-grid-shell={isBookGridShell}
 	>
 		<div class="main-min">
-			{@render children()}
+			{#if pageEnterTransition}
+				{#key page.url.pathname}
+					<div class="page-enter" in:fade={{ duration: 150, easing: cubicOut }}>
+						{@render children()}
+					</div>
+				{/key}
+			{:else}
+				{@render children()}
+			{/if}
 		</div>
 	</main>
 	{#if showAppFooter}
@@ -590,6 +611,16 @@
 	.app-chrome--landing .main-min {
 		flex: 1;
 		min-height: 0;
+		display: flex;
+		flex-direction: column;
+	}
+	.page-enter {
+		min-height: 0;
+		min-width: 0;
+		width: 100%;
+	}
+	.app-chrome--landing .page-enter {
+		flex: 1;
 		display: flex;
 		flex-direction: column;
 	}
