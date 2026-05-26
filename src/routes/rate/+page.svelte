@@ -27,7 +27,8 @@
 		clearRateAuthorSearch,
 		clearRateSearchExternalEntry,
 		consumeRateAuthorSearch,
-		consumeRateSearchExternalEntry
+		consumeRateSearchExternalEntry,
+		markRateAuthorSearch
 	} from '$lib/rateSearchExternalNav';
 	import { searchBooks, searchBooksByAuthor, SEARCH_MIN_QUERY_LENGTH } from '$lib/search';
 	import { insertFeedRequestRow, pollCuratedFeedRequest } from '$lib/feed/warmCuratedFeed';
@@ -112,7 +113,7 @@
 		const mode = searchMode;
 		const active = q.length > 0 && (mode === 'author' || q.length >= SEARCH_MIN_QUERY_LENGTH);
 		if (active) {
-			doSearch(q, 0);
+			doSearch(q, 0, mode);
 		} else {
 			searchResults = [];
 			searchNextOffset = 0;
@@ -327,6 +328,9 @@
 		clearRateSearchExternalEntry();
 		savedScrollY = Math.max(savedScrollY, window.scrollY);
 		const trimmed = author.trim();
+		if (browser && trimmed) {
+			markRateAuthorSearch(trimmed);
+		}
 		searchMode = 'author';
 		authorSearchAnchor = trimmed;
 		searchQuery = trimmed;
@@ -380,7 +384,10 @@
 			if (authorAnchor && authorAnchor.toLowerCase() === q.toLowerCase()) {
 				searchMode = 'author';
 				authorSearchAnchor = authorAnchor;
-			} else {
+			} else if (
+				searchMode !== 'author' ||
+				authorSearchAnchor.toLowerCase() !== q.toLowerCase()
+			) {
 				searchMode = 'fulltext';
 				authorSearchAnchor = '';
 			}
@@ -607,7 +614,7 @@
 		if (!isSearching) return;
 		const distance = root.scrollHeight - root.scrollTop - root.clientHeight;
 		if (distance <= SEARCH_SCROLL_LOAD_THRESHOLD_PX) {
-			void doSearch(q, searchNextOffset);
+			void doSearch(q, searchNextOffset, searchMode);
 		}
 	}
 
@@ -1280,7 +1287,11 @@
 		}
 	}
 
-	async function doSearch(query: string, offset = 0) {
+	async function doSearch(
+		query: string,
+		offset = 0,
+		mode: 'fulltext' | 'author' = searchMode
+	) {
 		const trimmedQuery = query.trim();
 		if (offset === 0) {
 			searchRequestGeneration += 1;
@@ -1295,7 +1306,7 @@
 
 		try {
 			const data =
-				searchMode === 'author'
+				mode === 'author'
 					? await searchBooksByAuthor(query, offset)
 					: await searchBooks(query, offset);
 			if (generation !== searchRequestGeneration) return;
