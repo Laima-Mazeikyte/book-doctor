@@ -71,8 +71,8 @@
 	}
 
 	.landing__logo--video {
-		height: calc(100% + 80px);
-		margin-top: -40px;
+		height: calc(100% + 110px);
+		margin-top: -55px;
 	}
 
 	.landing__logo--static {
