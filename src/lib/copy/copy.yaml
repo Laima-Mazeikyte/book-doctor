@@ -181,7 +181,7 @@ en:
     authModal:
       dialogAccessibleName: "Log in or create account"
       signIn: "Log in"
-      createAccount: "Sign up"
+      createAccount: "Join Unread"
       forgotPassword: "Forgot password?"
       resetPasswordTitle: "Reset password"
       resetPasswordLead: "Enter your email and we’ll send a link to choose a new password."

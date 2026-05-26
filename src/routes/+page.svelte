@@ -29,10 +29,11 @@
 <style>
 	.landing {
 		display: flex;
+		flex: 1;
 		flex-direction: column;
 		align-items: center;
+		justify-content: center;
 		text-align: center;
-		padding-top: var(--space-12);
 		width: 100%;
 	}
 
@@ -66,10 +67,4 @@
 		line-height: 150%;
 	}
 
-	@media (min-width: 480px) {
-		.landing {
-			padding-top: var(--space-24);
-		}
-
-	}
 </style>

@@ -570,12 +570,27 @@
 		/* Matches AppHeader __inner: min-height 3.25rem + vertical padding (2× --space-3) */
 		--app-header-chrome-height: 4.75rem;
 	}
+	.app-chrome--landing {
+		min-height: 100dvh;
+	}
 	.app-chrome :global(main) {
 		min-width: 0;
 		width: 100%;
 	}
+	.app-chrome--landing :global(main) {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+	}
 	.main-min {
 		min-width: 0;
 		min-height: calc(100dvh - var(--app-header-chrome-height));
+	}
+	.app-chrome--landing .main-min {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
 	}
 </style>
