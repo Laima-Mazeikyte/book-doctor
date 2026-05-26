@@ -5,7 +5,10 @@
 	import { goto, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { resolve } from '$app/paths';
-	import { markRateSearchOpenedFromOtherRoute } from '$lib/rateSearchExternalNav';
+	import {
+		markRateAuthorSearch,
+		markRateSearchOpenedFromOtherRoute
+	} from '$lib/rateSearchExternalNav';
 	import { fly } from 'svelte/transition';
 	import { BookOpenText, X, Bookmark, Star, Ban } from 'lucide-svelte';
 	import { ratingsStore } from '$lib/stores/ratings';
@@ -367,7 +370,10 @@
 		if (onSearchAuthor) {
 			onSearchAuthor(book.author);
 		} else {
-			if (browser) markRateSearchOpenedFromOtherRoute();
+			if (browser) {
+				markRateSearchOpenedFromOtherRoute();
+				markRateAuthorSearch(author);
+			}
 			void goto(resolve(`/rate?q=${encodeURIComponent(author)}`));
 		}
 		handleCloseSummary();

@@ -166,6 +166,13 @@
 						<button
 							type="button"
 							class="btn btn--tertiary btn--compact"
+							onclick={() => openAuthModal('signin')}
+						>
+							{t('shared.authModal.signIn')}
+						</button>
+						<button
+							type="button"
+							class="btn btn--tertiary btn--compact"
 							onclick={() => openAuthModal('signup')}
 						>
 							{t('shared.authModal.createAccount')}

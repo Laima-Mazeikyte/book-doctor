@@ -24,10 +24,12 @@
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { rateBookSummaryHistory } from '$lib/stores/rateBookSummaryHistory';
 	import {
+		clearRateAuthorSearch,
 		clearRateSearchExternalEntry,
+		consumeRateAuthorSearch,
 		consumeRateSearchExternalEntry
 	} from '$lib/rateSearchExternalNav';
-	import { searchBooks, SEARCH_MIN_QUERY_LENGTH } from '$lib/search';
+	import { searchBooks, searchBooksByAuthor, SEARCH_MIN_QUERY_LENGTH } from '$lib/search';
 	import { insertFeedRequestRow, pollCuratedFeedRequest } from '$lib/feed/warmCuratedFeed';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
@@ -68,6 +70,10 @@
 	let searchQuery = $state('');
 	let debouncedQuery = $state('');
 	const normalizedDebouncedQuery = $derived(debouncedQuery.trim());
+	/** Author pill uses exact DB match; typed search uses Meilisearch. */
+	let searchMode = $state<'fulltext' | 'author'>('fulltext');
+	/** Author name from the last pill click; edits to the query reset to fulltext. */
+	let authorSearchAnchor = $state('');
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	/**
 	 * Bumped only when a new first-page search starts so pagination requests do not
@@ -95,8 +101,17 @@
 	});
 
 	$effect(() => {
+		const q = searchQuery.trim();
+		if (searchMode === 'author' && q.toLowerCase() !== authorSearchAnchor.toLowerCase()) {
+			searchMode = 'fulltext';
+		}
+	});
+
+	$effect(() => {
 		const q = normalizedDebouncedQuery;
-		if (q.length >= SEARCH_MIN_QUERY_LENGTH) {
+		const mode = searchMode;
+		const active = q.length > 0 && (mode === 'author' || q.length >= SEARCH_MIN_QUERY_LENGTH);
+		if (active) {
 			doSearch(q, 0);
 		} else {
 			searchResults = [];
@@ -106,7 +121,12 @@
 		}
 	});
 
-	const isSearching = $derived(normalizedDebouncedQuery.length >= SEARCH_MIN_QUERY_LENGTH);
+	const isSearching = $derived.by(() => {
+		const q = normalizedDebouncedQuery;
+		if (q.length === 0) return false;
+		if (searchMode === 'author') return true;
+		return q.length >= SEARCH_MIN_QUERY_LENGTH;
+	});
 
 	let searchOverlayOpen = $state(false);
 	let inertSupported = $state(true);
@@ -228,6 +248,9 @@
 		searchOverlayOpen = false;
 		searchQuery = '';
 		debouncedQuery = '';
+		searchMode = 'fulltext';
+		authorSearchAnchor = '';
+		clearRateAuthorSearch();
 		clearSearchResultsState();
 
 		if (browser && consumeRateSearchExternalEntry()) {
@@ -304,11 +327,13 @@
 		clearRateSearchExternalEntry();
 		savedScrollY = Math.max(savedScrollY, window.scrollY);
 		const trimmed = author.trim();
+		searchMode = 'author';
+		authorSearchAnchor = trimmed;
+		searchQuery = trimmed;
+		debouncedQuery = trimmed;
 		if (!searchOverlayOpen) {
 			await openSearchOverlay({ pushHistory: true });
 		}
-		searchQuery = trimmed;
-		debouncedQuery = trimmed;
 		if (browser && trimmed) {
 			const active = document.activeElement;
 			const inOverlay =
@@ -328,6 +353,7 @@
 		if (!toPath) return;
 		if (from?.url.pathname === '/rate' && toPath !== '/rate') {
 			clearRateSearchExternalEntry();
+			clearRateAuthorSearch();
 		}
 	});
 
@@ -349,6 +375,14 @@
 			searchOverlayOpen = true;
 			if (!wasOpen) {
 				resetSearchSessionFeedFlags();
+			}
+			const authorAnchor = consumeRateAuthorSearch();
+			if (authorAnchor && authorAnchor.toLowerCase() === q.toLowerCase()) {
+				searchMode = 'author';
+				authorSearchAnchor = authorAnchor;
+			} else {
+				searchMode = 'fulltext';
+				authorSearchAnchor = '';
 			}
 			if (searchQuery.trim() !== q) {
 				searchQuery = q;
@@ -388,7 +422,7 @@
 		if (searchError) return '';
 		const raw = normalizedDebouncedQuery;
 		if (raw.length === 0) return t('rate.search.minCharsHint');
-		if (raw.length < SEARCH_MIN_QUERY_LENGTH) return '';
+		if (raw.length < SEARCH_MIN_QUERY_LENGTH && searchMode !== 'author') return '';
 		if (loadingSearch) return t('rate.search.statusSearching');
 		/** Skip updates while appending so `aria-live` does not re-announce the count every page. */
 		if (loadingSearchMore) return '';
@@ -570,7 +604,7 @@
 		if (!root || !searchOverlayOpen) return;
 		if (!searchHasMore || loadingSearch || loadingSearchMore || searchError) return;
 		const q = normalizedDebouncedQuery;
-		if (q.length < SEARCH_MIN_QUERY_LENGTH) return;
+		if (!isSearching) return;
 		const distance = root.scrollHeight - root.scrollTop - root.clientHeight;
 		if (distance <= SEARCH_SCROLL_LOAD_THRESHOLD_PX) {
 			void doSearch(q, searchNextOffset);
@@ -1260,7 +1294,10 @@
 		searchError = null;
 
 		try {
-			const data = await searchBooks(query, offset);
+			const data =
+				searchMode === 'author'
+					? await searchBooksByAuthor(query, offset)
+					: await searchBooks(query, offset);
 			if (generation !== searchRequestGeneration) return;
 			if (trimmedQuery !== normalizedDebouncedQuery) return;
 
@@ -1638,7 +1675,7 @@
 
 					{#if normalizedDebouncedQuery.length === 0}
 						<p class="rate-search-overlay__helper">{t('rate.search.minCharsHint')}</p>
-					{:else if normalizedDebouncedQuery.length >= SEARCH_MIN_QUERY_LENGTH}
+					{:else if isSearching}
 						{#if loadingSearch}
 							<BookCardGridSkeleton class="rate-page__list" ariaLabel={t('rate.aria.searching')} />
 						{:else if searchError}

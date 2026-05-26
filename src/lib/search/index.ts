@@ -1,4 +1,6 @@
 export { searchBooks } from './client';
+export { searchBooksByAuthor } from './searchBooksByAuthor';
+export { mapBookRowToBook, type BookCatalogRow } from './mapBookRowToBook';
 export {
 	BOOK_SEARCH_FUNCTION,
 	extractBookIdFromHit,
