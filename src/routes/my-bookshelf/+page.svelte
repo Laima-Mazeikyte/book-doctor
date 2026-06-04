@@ -36,8 +36,8 @@
 	}
 
 	/** Not interested is exclusive; rated and bookmarked can overlap. */
-	function isNotInterested(book: Book, niNums: Set<number>): boolean {
-		return niNums.has(book.book_id ?? 0);
+	function isNotInterested(book: Book, notInterestedIds: Set<string>): boolean {
+		return notInterestedIds.has(book.book_id);
 	}
 
 	function readSortFromLs(): ShelfSortId {
@@ -157,7 +157,7 @@
 			return;
 		}
 
-		const userId = session.user?.id ?? null;
+		const userId = session?.user?.id ?? null;
 		const needsBlockingBmNi = !userId || bmNiBlockingCompletedUserId !== userId;
 		bmNiLoading = needsBlockingBmNi;
 		if (snapshot.loaded) {
@@ -235,12 +235,12 @@
 		for (const b of ratedBooksForPartition) m.set(b.id, b);
 		for (const b of bookmarkBooks) if (!m.has(b.id)) m.set(b.id, b);
 		for (const b of niBooks) {
-			if ($notInterestedStore.has(b.book_id ?? 0) && !m.has(b.id)) m.set(b.id, b);
+			if ($notInterestedStore.has(b.book_id) && !m.has(b.id)) m.set(b.id, b);
 		}
 		return m;
 	});
 
-	const niNums = $derived.by(() => new Set([...$notInterestedStore]));
+	const notInterestedIds = $derived.by(() => new Set([...$notInterestedStore]));
 	const planIds = $derived($planToReadStore);
 
 	const countsReady = $derived(!$authStore.session?.access_token || !bmNiLoading);
@@ -252,7 +252,7 @@
 		let bookmarked = 0;
 		const ratings = $ratingsStore;
 		for (const book of unionBooksById.values()) {
-			if (isNotInterested(book, niNums)) {
+			if (isNotInterested(book, notInterestedIds)) {
 				ni++;
 				continue;
 			}
@@ -291,11 +291,9 @@
 		}
 	});
 
-	const bookmarkTabBooks = $derived(
-		bookmarkBooks.filter((b) => !isNotInterested(b, niNums))
-	);
+	const bookmarkTabBooks = $derived(bookmarkBooks.filter((b) => !isNotInterested(b, notInterestedIds)));
 
-	const niTabBooks = $derived(niBooks.filter((b) => $notInterestedStore.has(b.book_id ?? 0)));
+	const niTabBooks = $derived(niBooks.filter((b) => $notInterestedStore.has(b.book_id)));
 
 	const sortedBookmarkTabBooks = $derived.by(() =>
 		sortBooksByShelfOrder(bookmarkTabBooks, sortOrder, $ratingsStore)
@@ -347,7 +345,7 @@
 	function handleBookmark(book: Book, id: string) {
 		const wasBookmarked = planToReadStore.has(book.id);
 		planToReadStore.toggle(id, book.book_id);
-		if (!wasBookmarked && book.book_id != null) {
+		if (!wasBookmarked) {
 			notInterestedStore.remove(book.book_id);
 			niBooks = niBooks.filter((b) => b.book_id !== book.book_id);
 			if (!bookmarkBooks.some((b) => b.id === book.id)) {
@@ -364,7 +362,7 @@
 	}
 
 	function handleNotInterested(book: Book) {
-		const bid = book.book_id ?? 0;
+		const bid = book.book_id;
 		const wasNotInterested = notInterestedStore.has(bid);
 		const nowNotInterested = notInterestedStore.toggle(bid);
 		if (nowNotInterested && !wasNotInterested) {
@@ -386,7 +384,7 @@
 	}
 
 	function handleRateFromNi(book: Book, id: string, value: RatingValue) {
-		ratingsStore.setRating(id, value, book.book_id ?? 0, book);
+		ratingsStore.setRating(id, value, book.book_id, book);
 		niBooks = niBooks.filter((b) => b.book_id !== book.book_id);
 		recommendationsCountStore.update((n) => n + 1);
 	}
@@ -466,7 +464,7 @@
 								currentRating={$ratingsStore.get(book.id) ?? null}
 								onRate={(id, value) => ratingsStore.setRating(id, value, book.book_id, book)}
 								onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id)}
-								notInterested={$notInterestedStore.has(book.book_id ?? 0)}
+								notInterested={$notInterestedStore.has(book.book_id)}
 								onNotInterested={() => handleNotInterested(book)}
 							/>
 						</li>
@@ -485,8 +483,8 @@
 									ctx === 'not-interested'
 										? handleRateFromNi(book, id, value)
 										: ratingsStore.setRating(id, value, book.book_id, book)}
-								onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id ?? 0)}
-								notInterested={$notInterestedStore.has(book.book_id ?? 0)}
+								onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id)}
+								notInterested={$notInterestedStore.has(book.book_id)}
 								onNotInterested={() => handleNotInterested(book)}
 							/>
 						</li>

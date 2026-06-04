@@ -23,7 +23,7 @@ export const GET: RequestHandler = async ({ request }) => {
 
 	const bookIds = (rows ?? [])
 		.map((r) => r.book_id)
-		.filter((id): id is number => id != null && Number.isInteger(id));
+		.filter((id): id is string => typeof id === 'string' && id.trim() !== '');
 
 	return json({ book_ids: bookIds });
 };
@@ -35,14 +35,14 @@ export const POST: RequestHandler = async ({ request }) => {
 	const userId = await getUserIdFromToken(accessToken);
 	if (!userId) throw error(401, 'Invalid or expired token');
 
-	let body: { book_id?: number };
+	let body: { book_id?: string };
 	try {
 		body = await request.json();
 	} catch {
 		throw error(400, 'Invalid JSON body');
 	}
-	const bookId = body.book_id;
-	if (typeof bookId !== 'number' || !Number.isInteger(bookId)) {
+	const bookId = body.book_id?.trim();
+	if (!bookId) {
 		throw error(400, 'Missing or invalid book_id');
 	}
 
@@ -64,8 +64,8 @@ export const DELETE: RequestHandler = async ({ request, url }) => {
 	if (!accessToken) throw error(401, 'Missing Authorization');
 
 	const bookIdParam = url.searchParams.get('book_id');
-	const bookId = bookIdParam ? parseInt(bookIdParam, 10) : NaN;
-	if (!Number.isInteger(bookId)) {
+	const bookId = bookIdParam?.trim() ?? '';
+	if (!bookId) {
 		throw error(400, 'Missing or invalid book_id');
 	}
 

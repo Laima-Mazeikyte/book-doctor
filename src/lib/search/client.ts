@@ -3,7 +3,7 @@ import { browser } from '$app/environment';
 import { getSupabase } from '$lib/supabase';
 
 import { invokeBookSearch } from './bookSearchEdge';
-import { resolveBooksByNumericIdsInOrder } from './resolveBooksFromSupabase';
+import { resolveBooksByIdsInOrder } from './resolveBooksFromSupabase';
 import { SEARCH_MAX_LIMIT, type SearchResultPage } from './types';
 
 /**
@@ -68,7 +68,7 @@ export async function searchBooks(
 		offset
 	});
 
-	const books = await resolveBooksByNumericIdsInOrder(supabase, bookIds);
+	const books = await resolveBooksByIdsInOrder(supabase, bookIds);
 	// Advance Meilisearch `offset` by raw hit count so it stays aligned with ranking (dedupe is display-only).
 	const nextOffset = offset + scannedHitCount;
 	const hasMore = computeSearchHasMore(

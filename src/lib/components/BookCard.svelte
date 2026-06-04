@@ -783,10 +783,6 @@
 		line-clamp: 4;
 		text-align: left;
 	}
-	.book-card__year {
-		opacity: 0.75;
-	}
-
 	.book-card__cover-actions {
 		position: absolute;
 		z-index: 2;
@@ -955,15 +951,6 @@
 		background: var(--color-book-card-chip-on-bg);
 		color: var(--color-book-card-chip-on-text);
 		border-color: var(--color-book-card-chip-on-border);
-	}
-
-	.book-card[data-context='rate'] .book-card__rating-wrap,
-	.book-card[data-context='recommendations'] .book-card__rating-wrap,
-	.book-card[data-context='bookmarks'] .book-card__rating-wrap,
-	.book-card[data-context='rated'] .book-card__rating-wrap,
-	.book-card[data-context='not-interested'] .book-card__rating-wrap {
-		align-items: center;
-		width: auto;
 	}
 
 	.book-card__summary-dialog-overlay {

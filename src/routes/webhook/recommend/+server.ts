@@ -70,7 +70,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	// Call BookDoc recommendation API if configured; otherwise return empty list
-	let bookIds: number[] = [];
+	let bookIds: string[] = [];
 	const bookdocUrl = env.BOOKDOC_RECOMMEND_URL;
 	if (bookdocUrl && ratings && ratings.length >= 10) {
 		try {
@@ -83,8 +83,13 @@ export const POST: RequestHandler = async ({ request }) => {
 				})
 			});
 			if (res.ok) {
-				const data = (await res.json()) as { book_ids?: number[] };
-				bookIds = Array.isArray(data?.book_ids) ? data.book_ids.slice(0, 10) : [];
+				const data = (await res.json()) as { book_ids?: unknown[] };
+				bookIds = Array.isArray(data?.book_ids)
+					? data.book_ids
+							.map((bookId) => (typeof bookId === 'string' ? bookId.trim() : ''))
+							.filter(Boolean)
+							.slice(0, 10)
+					: [];
 			}
 		} catch (e) {
 			console.error('Webhook: BookDoc API call failed', e);
@@ -113,7 +118,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	const items = bookIds.map((bookId, i) => ({
 		request_id: requestId,
 		user_id: userId,
-		book_id: String(bookId),
+		book_id: bookId,
 		rank: i + 1,
 		created_at: new Date().toISOString()
 	}));

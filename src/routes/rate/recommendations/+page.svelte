@@ -55,8 +55,8 @@
 		return 'best-fit';
 	}
 
-	function isNotInterested(book: Book, niNums: Set<number>): boolean {
-		return niNums.has(book.book_id ?? 0);
+	function isNotInterested(book: Book, notInterestedIds: Set<string>): boolean {
+		return notInterestedIds.has(book.book_id);
 	}
 
 	/**
@@ -71,7 +71,7 @@
 		bestRank: Record<string, number>
 	): Book[] {
 		const arr = [...books];
-		const key = (b: Book) => String(b.book_id ?? 0);
+		const key = (b: Book) => b.book_id;
 		const ms = (b: Book) => lastAt[key(b)] ?? 0;
 		const cnt = (b: Book) => appearances[key(b)] ?? 0;
 		const br = (b: Book) => bestRank[key(b)] ?? 999;
@@ -129,7 +129,7 @@
 	let gridEl = $state<HTMLDivElement | null>(null);
 	let activeRouteLoadId = 0;
 
-	let allRecommendedBookIds = $state<number[]>(initialHistorySnapshot.allRecommendedBookIds ?? []);
+	let allRecommendedBookIds = $state<string[]>(initialHistorySnapshot.allRecommendedBookIds ?? []);
 	let lastRecommendedAt = $state<Record<string, number>>(initialHistorySnapshot.lastRecommendedAt ?? {});
 	let recommendationAppearanceCount = $state<Record<string, number>>(
 		initialHistorySnapshot.recommendationAppearanceCount ?? {}
@@ -156,25 +156,25 @@
 		prevRecFilterForSummaryKeepAlive = f;
 	});
 
-	const niNums = $derived.by(() => new Set([...$notInterestedStore]));
+	const notInterestedIds = $derived.by(() => new Set([...$notInterestedStore]));
 
 	const allRecIdSet = $derived(new Set(allRecommendedBookIds));
 
 	const countsReady = $derived(!$authStore.session?.access_token || !bmNiLoading);
 
 	const recommendedRawList = $derived.by(() =>
-		uniqueBooks.filter((b) => !isNotInterested(b, niNums))
+		uniqueBooks.filter((b) => !isNotInterested(b, notInterestedIds))
 	);
 
 	const bookmarkTabBooksRaw = $derived.by(() =>
 		bookmarkBooks.filter(
 			(b) =>
-				allRecIdSet.has(b.book_id ?? 0) && !isNotInterested(b, niNums)
+				allRecIdSet.has(b.book_id) && !isNotInterested(b, notInterestedIds)
 		)
 	);
 
 	const niTabBooksRaw = $derived.by(() =>
-		niBooks.filter((b) => allRecIdSet.has(b.book_id ?? 0) && $notInterestedStore.has(b.book_id ?? 0))
+		niBooks.filter((b) => allRecIdSet.has(b.book_id) && $notInterestedStore.has(b.book_id))
 	);
 
 	const recommendedTabBooks = $derived.by(() =>
@@ -328,7 +328,7 @@
 
 	async function fetchUniqueBooks(accessToken: string | null): Promise<{
 		books: Book[];
-		allRecommendedBookIds: number[];
+		allRecommendedBookIds: string[];
 		lastRecommendedAt: Record<string, number>;
 		recommendationAppearanceCount: Record<string, number>;
 		bestRecommendationRank: Record<string, number>;
@@ -349,7 +349,7 @@
 		}
 		const data: {
 			books: Book[];
-			allRecommendedBookIds?: number[];
+			allRecommendedBookIds?: string[];
 			lastRecommendedAt?: Record<string, number>;
 			recommendationAppearanceCount?: Record<string, number>;
 			bestRecommendationRank?: Record<string, number>;
@@ -364,7 +364,7 @@
 	}
 
 	function handleNotInterested(book: Book) {
-		const bid = book.book_id ?? 0;
+		const bid = book.book_id;
 		const wasNotInterested = notInterestedStore.has(bid);
 		const nowNotInterested = notInterestedStore.toggle(bid);
 		if (nowNotInterested && !wasNotInterested) {
@@ -392,7 +392,7 @@
 	function handleBookmark(book: Book, id: string) {
 		const wasBookmarked = planToReadStore.has(book.id);
 		planToReadStore.toggle(id, book.book_id);
-		if (!wasBookmarked && book.book_id != null) {
+		if (!wasBookmarked) {
 			notInterestedStore.remove(book.book_id);
 			niBooks = niBooks.filter((b) => b.book_id !== book.book_id);
 			if (!bookmarkBooks.some((b) => b.id === book.id)) {
@@ -804,7 +804,7 @@
 									ratingsStore.setRating(id, value, book.book_id, book);
 								}}
 								onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id)}
-								notInterested={$notInterestedStore.has(book.book_id ?? 0)}
+								notInterested={$notInterestedStore.has(book.book_id)}
 								onNotInterested={() => handleNotInterested(book)}
 							/>
 						</li>
@@ -849,7 +849,7 @@
 								ratingsStore.setRating(id, value, book.book_id, book);
 							}}
 							onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id)}
-							notInterested={$notInterestedStore.has(book.book_id ?? 0)}
+							notInterested={$notInterestedStore.has(book.book_id)}
 							onNotInterested={() => handleNotInterested(book)}
 						/>
 					</div>

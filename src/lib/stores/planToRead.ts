@@ -1,23 +1,23 @@
 import { get, writable } from 'svelte/store';
 
 export interface PlanToReadPersistence {
-	add(bookIdNum: number): void | Promise<void>;
-	remove(bookIdNum: number): void | Promise<void>;
+	add(bookId: string): void | Promise<void>;
+	remove(bookId: string): void | Promise<void>;
 }
 
 /**
  * Store for "Plan to Read" bookmarks.
  * Holds a Set of book IDs (books.id UUID). Persist to Supabase via setPersistence() from the layout.
- * Use: $planToReadStore.has(bookId) for reactive check; planToReadStore.toggle(bookId, bookIdNum) to toggle.
+ * Use: $planToReadStore.has(bookId) for reactive check; planToReadStore.toggle(bookId, bookUlid) to toggle.
  */
 function createPlanToReadStore() {
 	const { subscribe, set, update } = writable<Set<string>>(new Set());
-	const bookIdToNum = writable<Map<string, number>>(new Map());
+	const bookIdToUlid = writable<Map<string, string>>(new Map());
 	let persistence: PlanToReadPersistence | null = null;
-	const pendingOps = new Map<string, { action: 'add' | 'remove'; bookIdNum: number }>();
+	const pendingOps = new Map<string, { action: 'add' | 'remove'; bookUlid: string }>();
 
-	function queuePendingOp(bookId: string, bookIdNum: number, action: 'add' | 'remove') {
-		pendingOps.set(bookId, { action, bookIdNum });
+	function queuePendingOp(bookId: string, bookUlid: string, action: 'add' | 'remove') {
+		pendingOps.set(bookId, { action, bookUlid });
 	}
 
 	function applyPendingOps(base: Set<string>): Set<string> {
@@ -32,8 +32,8 @@ function createPlanToReadStore() {
 	function flushPendingOps() {
 		if (!persistence || pendingOps.size === 0) return;
 		for (const op of pendingOps.values()) {
-			if (op.action === 'add') void Promise.resolve(persistence.add(op.bookIdNum));
-			else void Promise.resolve(persistence.remove(op.bookIdNum));
+			if (op.action === 'add') void Promise.resolve(persistence.add(op.bookUlid));
+			else void Promise.resolve(persistence.remove(op.bookUlid));
 		}
 		pendingOps.clear();
 	}
@@ -51,50 +51,50 @@ function createPlanToReadStore() {
 		},
 		/**
 		 * Hydrate the store from server data (e.g. after loading /api/bookmarks).
-		 * bookIds = array of books.id (UUID); optional idToNum map for persistence (id -> book_id integer).
+		 * bookIds = array of books.id (UUID); optional idToUlid map for persistence (id -> book_id ULID).
 		 */
-		hydrate(bookIds: string[], idToNum?: Map<string, number>) {
-			const nextIdToNum = idToNum != null ? new Map(idToNum) : new Map(get(bookIdToNum));
+		hydrate(bookIds: string[], idToUlid?: Map<string, string>) {
+			const nextIdToUlid = idToUlid != null ? new Map(idToUlid) : new Map(get(bookIdToUlid));
 			for (const [bookId, op] of pendingOps) {
-				nextIdToNum.set(bookId, op.bookIdNum);
+				nextIdToUlid.set(bookId, op.bookUlid);
 			}
 			set(applyPendingOps(new Set(bookIds)));
-			bookIdToNum.set(nextIdToNum);
+			bookIdToUlid.set(nextIdToUlid);
 		},
 		/**
 		 * Toggle bookmark for a book.
-		 * bookId = books.id (UUID); bookIdNum = books.book_id (integer) for API persistence.
+		 * bookId = books.id (UUID); bookUlid = books.book_id (ULID) for API persistence.
 		 */
-		toggle: (bookId: string, bookIdNum?: number) => {
-			let nextNum: Map<string, number> = new Map();
+		toggle: (bookId: string, bookUlid?: string) => {
+			let nextUlid: Map<string, string> = new Map();
 			update((s) => {
 				const next = new Set(s);
-				const currentNum = get(bookIdToNum);
-				const num = bookIdNum ?? currentNum.get(bookId);
+				const currentUlid = get(bookIdToUlid);
+				const ulid = bookUlid ?? currentUlid.get(bookId);
 				if (next.has(bookId)) {
 					next.delete(bookId);
-					nextNum = new Map(currentNum);
-					nextNum.delete(bookId);
-					if (num != null) {
-						if (persistence) void Promise.resolve(persistence.remove(num));
-						else queuePendingOp(bookId, num, 'remove');
+					nextUlid = new Map(currentUlid);
+					nextUlid.delete(bookId);
+					if (ulid != null) {
+						if (persistence) void Promise.resolve(persistence.remove(ulid));
+						else queuePendingOp(bookId, ulid, 'remove');
 					}
 				} else {
 					next.add(bookId);
-					if (num != null) {
-						nextNum = new Map(currentNum);
-						nextNum.set(bookId, num);
-						if (persistence) void Promise.resolve(persistence.add(num));
-						else queuePendingOp(bookId, num, 'add');
+					if (ulid != null) {
+						nextUlid = new Map(currentUlid);
+						nextUlid.set(bookId, ulid);
+						if (persistence) void Promise.resolve(persistence.add(ulid));
+						else queuePendingOp(bookId, ulid, 'add');
 					}
 				}
 				return next;
 			});
-			bookIdToNum.update((m) => (nextNum.size > 0 ? nextNum : m));
+			bookIdToUlid.update((m) => (nextUlid.size > 0 ? nextUlid : m));
 		},
 		reset: () => {
 			set(new Set());
-			bookIdToNum.set(new Map());
+			bookIdToUlid.set(new Map());
 			pendingOps.clear();
 		}
 	};

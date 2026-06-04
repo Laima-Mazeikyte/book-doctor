@@ -47,8 +47,8 @@
 	});
 
 	function handleNotInterested(book: Book) {
-		const wasNotInterested = notInterestedStore.has(book.book_id ?? 0);
-		notInterestedStore.toggle(book.book_id ?? 0);
+		const wasNotInterested = notInterestedStore.has(book.book_id);
+		notInterestedStore.toggle(book.book_id);
 		if (wasNotInterested) {
 			recommendationsCountStore.update((n) => n + 1);
 		} else {
@@ -62,16 +62,16 @@
 
 	function handleBookmark(book: Book, id: string) {
 		const wasBookmarked = planToReadStore.has(book.id);
-		planToReadStore.toggle(id, book.book_id ?? 0);
+		planToReadStore.toggle(id, book.book_id);
 		if (!wasBookmarked) {
-			notInterestedStore.remove(book.book_id ?? 0);
+			notInterestedStore.remove(book.book_id);
 			books = books.filter((b) => b.book_id !== book.book_id);
 			recommendationsCountStore.update((n) => n + 1);
 		}
 	}
 
 	function handleRate(book: Book, id: string, value: RatingValue) {
-		ratingsStore.setRating(id, value, book.book_id ?? 0, book);
+		ratingsStore.setRating(id, value, book.book_id, book);
 		books = books.filter((b) => b.book_id !== book.book_id);
 		recommendationsCountStore.update((n) => n + 1);
 	}
@@ -105,7 +105,7 @@
 						onBookmark={(id) => handleBookmark(book, id)}
 						currentRating={$ratingsStore.get(book.id) ?? null}
 						onRate={(id, value) => handleRate(book, id, value)}
-						onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id ?? 0)}
+						onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id)}
 						notInterested={true}
 						onNotInterested={() => handleNotInterested(book)}
 					/>

@@ -1,51 +1,51 @@
 import { get, writable } from 'svelte/store';
 
-const LOCAL_STORAGE_KEY = 'book-doctor:not-interested';
+const LOCAL_STORAGE_KEY = 'book-doctor:not-interested:v2';
 
 export interface NotInterestedPersistence {
-	add(bookIdNum: number): void | Promise<void>;
-	remove(bookIdNum: number): void | Promise<void>;
+	add(bookId: string): void | Promise<void>;
+	remove(bookId: string): void | Promise<void>;
 }
 
 /**
  * Store for "Not interested" books (recommendations the user dismissed).
- * Holds a Set of book_id (number). Persist via API when authenticated, or localStorage when anonymous.
+ * Holds a Set of book_id ULIDs. Persist via API when authenticated, or localStorage when anonymous.
  */
 function createNotInterestedStore() {
-	const { subscribe, set, update } = writable<Set<number>>(new Set());
+	const { subscribe, set, update } = writable<Set<string>>(new Set());
 	let persistence: NotInterestedPersistence | null = null;
-	const pendingOps = new Map<number, 'add' | 'remove'>();
+	const pendingOps = new Map<string, 'add' | 'remove'>();
 
-	function queuePendingOp(bookIdNum: number, action: 'add' | 'remove') {
-		pendingOps.set(bookIdNum, action);
+	function queuePendingOp(bookId: string, action: 'add' | 'remove') {
+		pendingOps.set(bookId, action);
 	}
 
-	function applyPendingOps(base: Set<number>): Set<number> {
+	function applyPendingOps(base: Set<string>): Set<string> {
 		const next = new Set(base);
-		for (const [bookIdNum, action] of pendingOps) {
-			if (action === 'add') next.add(bookIdNum);
-			else next.delete(bookIdNum);
+		for (const [bookId, action] of pendingOps) {
+			if (action === 'add') next.add(bookId);
+			else next.delete(bookId);
 		}
 		return next;
 	}
 
 	function flushPendingOps() {
 		if (!persistence || pendingOps.size === 0) return;
-		for (const [bookIdNum, action] of pendingOps) {
-			if (action === 'add') void Promise.resolve(persistence.add(bookIdNum));
-			else void Promise.resolve(persistence.remove(bookIdNum));
+		for (const [bookId, action] of pendingOps) {
+			if (action === 'add') void Promise.resolve(persistence.add(bookId));
+			else void Promise.resolve(persistence.remove(bookId));
 		}
 		pendingOps.clear();
 	}
 
 	return {
 		subscribe,
-		/** Check if a book (by book_id number) is marked not interested. */
-		has(bookIdNum: number): boolean {
-			return get({ subscribe }).has(bookIdNum);
+		/** Check if a book (by book_id ULID) is marked not interested. */
+		has(bookId: string): boolean {
+			return get({ subscribe }).has(bookId);
 		},
 		/** Get current book_id list (for persistence sync). */
-		getBookIds(): number[] {
+		getBookIds(): string[] {
 			return [...get({ subscribe })];
 		},
 		setPersistence(p: NotInterestedPersistence | null) {
@@ -53,7 +53,7 @@ function createNotInterestedStore() {
 			if (persistence) flushPendingOps();
 		},
 		/** Hydrate from server (GET /api/not-interested) or after merge. */
-		hydrate(bookIds: number[]) {
+		hydrate(bookIds: string[]) {
 			set(applyPendingOps(new Set(bookIds)));
 		},
 		/** Hydrate from localStorage (anonymous user). */
@@ -63,7 +63,7 @@ function createNotInterestedStore() {
 				const raw = window.localStorage.getItem(LOCAL_STORAGE_KEY);
 				if (raw) {
 					const arr = JSON.parse(raw) as unknown;
-					if (Array.isArray(arr) && arr.every((x) => typeof x === 'number')) {
+					if (Array.isArray(arr) && arr.every((x) => typeof x === 'string')) {
 						set(new Set(arr));
 					}
 				}
@@ -99,42 +99,42 @@ function createNotInterestedStore() {
 		 * If currently not interested, removes (undo). Otherwise adds.
 		 * Returns new state: true if now not interested, false if cleared.
 		 */
-		toggle(bookIdNum: number): boolean {
+		toggle(bookId: string): boolean {
 			let next = false;
 			update((s) => {
 				const nextSet = new Set(s);
-				if (nextSet.has(bookIdNum)) {
-					nextSet.delete(bookIdNum);
+				if (nextSet.has(bookId)) {
+					nextSet.delete(bookId);
 					next = false;
-					if (persistence) void Promise.resolve(persistence.remove(bookIdNum));
-					else queuePendingOp(bookIdNum, 'remove');
+					if (persistence) void Promise.resolve(persistence.remove(bookId));
+					else queuePendingOp(bookId, 'remove');
 				} else {
-					nextSet.add(bookIdNum);
+					nextSet.add(bookId);
 					next = true;
-					if (persistence) void Promise.resolve(persistence.add(bookIdNum));
-					else queuePendingOp(bookIdNum, 'add');
+					if (persistence) void Promise.resolve(persistence.add(bookId));
+					else queuePendingOp(bookId, 'add');
 				}
 				return nextSet;
 			});
 			return next;
 		},
-		add(bookIdNum: number) {
+		add(bookId: string) {
 			update((s) => {
-				if (s.has(bookIdNum)) return s;
+				if (s.has(bookId)) return s;
 				const next = new Set(s);
-				next.add(bookIdNum);
-				if (persistence) void Promise.resolve(persistence.add(bookIdNum));
-				else queuePendingOp(bookIdNum, 'add');
+				next.add(bookId);
+				if (persistence) void Promise.resolve(persistence.add(bookId));
+				else queuePendingOp(bookId, 'add');
 				return next;
 			});
 		},
-		remove(bookIdNum: number) {
+		remove(bookId: string) {
 			update((s) => {
-				if (!s.has(bookIdNum)) return s;
+				if (!s.has(bookId)) return s;
 				const next = new Set(s);
-				next.delete(bookIdNum);
-				if (persistence) void Promise.resolve(persistence.remove(bookIdNum));
-				else queuePendingOp(bookIdNum, 'remove');
+				next.delete(bookId);
+				if (persistence) void Promise.resolve(persistence.remove(bookId));
+				else queuePendingOp(bookId, 'remove');
 				return next;
 			});
 		},

@@ -20,7 +20,7 @@
 	let error = $state<string | null>(null);
 	let successMessage = $state(false);
 	let closeButtonEl = $state<HTMLButtonElement | null>(null);
-	let firstInputEl = $state<HTMLInputElement | null>(null);
+	let firstInputEl = $state<HTMLTextAreaElement | null>(null);
 
 	const titleId = 'bug-modal-title';
 	const author = $derived(
@@ -88,7 +88,7 @@
 			description: desc,
 			author,
 			viewport_width,
-			device_info
+			device_info: { ...device_info }
 		});
 
 		loading = false;

@@ -1,7 +1,7 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { PUBLIC_BUNNY_COVERS_BASE } from '$env/static/public';
 import { BOOK_GENRE_TYPE_SELECT, catalogTypeFromRow, genresFromGenreColumns, type BookGenreSlotRow } from '$lib/book-catalog-fields';
+import { coverUrlForBookId } from '$lib/book-cover';
 import { createSupabaseWithAuth } from '$lib/server/supabase';
 
 export const GET: RequestHandler = async ({ url, request }) => {
@@ -48,10 +48,9 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		return json({ books: [], request_id: targetRequestId });
 	}
 
-	// Parse book_id to integer for lookup in books (books.book_id is integer)
 	let bookIds = items
-		.map((i) => parseInt(i.book_id, 10))
-		.filter((id) => !Number.isNaN(id));
+		.map((i) => String(i.book_id ?? '').trim())
+		.filter(Boolean);
 
 	// Exclude not-interested when authenticated and fetching "latest" (no request_id), so batch view can show all for undo
 	if (accessToken && !requestId && bookIds.length > 0) {
@@ -59,7 +58,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 			.from('user_not_interested')
 			.select('book_id');
 		const notInterestedSet = new Set(
-			(notInterestedRows ?? []).map((r) => r.book_id).filter((id): id is number => Number.isInteger(id))
+			(notInterestedRows ?? []).map((r) => r.book_id).filter((id): id is string => typeof id === 'string')
 		);
 		bookIds = bookIds.filter((id) => !notInterestedSet.has(id));
 	}
@@ -70,7 +69,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 			.from('user_ratings')
 			.select('book_id');
 		const ratedSet = new Set(
-			(ratedRows ?? []).map((r) => r.book_id).filter((id): id is number => Number.isInteger(id))
+			(ratedRows ?? []).map((r) => r.book_id).filter((id): id is string => typeof id === 'string')
 		);
 		bookIds = bookIds.filter((id) => !ratedSet.has(id));
 	}
@@ -79,10 +78,9 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		return json({ books: [], request_id: targetRequestId });
 	}
 
-	const base = (PUBLIC_BUNNY_COVERS_BASE ?? '').replace(/\/$/, '');
 	const { data: booksData, error: booksError } = await supabase
 		.from('books')
-		.select(`id, book_id, book_name, author, cover_url, summary, year, ${BOOK_GENRE_TYPE_SELECT}`)
+		.select(`id, book_id, book_name, author, summary, year, ${BOOK_GENRE_TYPE_SELECT}`)
 		.in('book_id', bookIds);
 
 	if (booksError) {
@@ -101,7 +99,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 					book_id: b.book_id,
 					title: b.book_name,
 					author: b.author,
-					coverUrl: b.cover_url ?? (base ? `${base}/${b.book_id}.avif` : undefined),
+					coverUrl: coverUrlForBookId(b.book_id),
 					summary: b.summary ?? undefined,
 					year: b.year != null ? String(b.year) : undefined,
 					genres: genresFromGenreColumns(row),
@@ -114,8 +112,8 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	// Preserve order by rank
 	const books = items
 		.map((i) => {
-			const id = parseInt(i.book_id, 10);
-			return Number.isNaN(id) ? null : byBookId.get(id) ?? null;
+			const id = String(i.book_id ?? '').trim();
+			return id ? byBookId.get(id) ?? null : null;
 		})
 		.filter((b): b is NonNullable<typeof b> => b != null);
 

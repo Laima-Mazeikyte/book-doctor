@@ -36,8 +36,8 @@ export const GET: RequestHandler = async ({ request }) => {
 
 	let uniqueBookIds = new Set(
 		(items ?? [])
-			.map((i) => parseInt(i.book_id, 10))
-			.filter((id) => !Number.isNaN(id))
+			.map((i) => String(i.book_id ?? '').trim())
+			.filter(Boolean)
 	);
 
 	// Exclude not-interested when authenticated
@@ -46,7 +46,7 @@ export const GET: RequestHandler = async ({ request }) => {
 			.from('user_not_interested')
 			.select('book_id');
 		const notInterestedSet = new Set(
-			(notInterestedRows ?? []).map((r) => r.book_id).filter((id): id is number => Number.isInteger(id))
+			(notInterestedRows ?? []).map((r) => r.book_id).filter((id): id is string => typeof id === 'string')
 		);
 		uniqueBookIds = new Set([...uniqueBookIds].filter((id) => !notInterestedSet.has(id)));
 	}
@@ -57,7 +57,7 @@ export const GET: RequestHandler = async ({ request }) => {
 			.from('user_ratings')
 			.select('book_id');
 		const ratedSet = new Set(
-			(ratedRows ?? []).map((r) => r.book_id).filter((id): id is number => Number.isInteger(id))
+			(ratedRows ?? []).map((r) => r.book_id).filter((id): id is string => typeof id === 'string')
 		);
 		uniqueBookIds = new Set([...uniqueBookIds].filter((id) => !ratedSet.has(id)));
 	}
