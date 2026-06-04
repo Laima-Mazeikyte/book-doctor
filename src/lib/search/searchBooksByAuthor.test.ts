@@ -52,10 +52,9 @@ describe('searchBooksByAuthor', () => {
 		const rows = [
 			{
 				id: 'uuid-a',
-				book_id: 1,
+				book_id: '01KR2ADTNG29NSQV23VAGV8FXB',
 				book_name: 'Alpha',
 				author: 'Kitty Thomas',
-				cover_url: null,
 				summary: null,
 				year: 2020,
 				genre1: null,
@@ -87,10 +86,9 @@ describe('searchBooksByAuthor', () => {
 		const rows = [
 			{
 				id: 'uuid-a',
-				book_id: 1,
+				book_id: '01KR2ADTR2Q50VTH28JN60PW18',
 				book_name: 'Alpha',
 				author: 'Jo',
-				cover_url: null,
 				summary: null,
 				year: null,
 				genre1: null,

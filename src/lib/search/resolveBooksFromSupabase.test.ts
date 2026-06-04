@@ -1,17 +1,16 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { describe, expect, it, vi } from 'vitest';
 
-import { resolveBooksByNumericIdsInOrder } from './resolveBooksFromSupabase';
+import { resolveBooksByIdsInOrder } from './resolveBooksFromSupabase';
 
-describe('resolveBooksByNumericIdsInOrder', () => {
+describe('resolveBooksByIdsInOrder', () => {
 	it('returns books in the same order as bookIds', async () => {
 		const rows = [
 			{
 				id: 'uuid-b',
-				book_id: 2,
+				book_id: '01KR2ADTR2Q50VTH28JN60PW18',
 				book_name: 'B',
 				author: 'Auth',
-				cover_url: null,
 				summary: null,
 				year: 2000,
 				genre1: null,
@@ -25,10 +24,9 @@ describe('resolveBooksByNumericIdsInOrder', () => {
 			},
 			{
 				id: 'uuid-a',
-				book_id: 1,
+				book_id: '01KR2ADTNG29NSQV23VAGV8FXB',
 				book_name: 'A',
 				author: 'Auth',
-				cover_url: null,
 				summary: null,
 				year: null,
 				genre1: null,
@@ -48,19 +46,30 @@ describe('resolveBooksByNumericIdsInOrder', () => {
 
 		const supabase = { from: fromFn } as unknown as SupabaseClient;
 
-		const ordered = await resolveBooksByNumericIdsInOrder(supabase, [1, 2, 99]);
+		const ordered = await resolveBooksByIdsInOrder(supabase, [
+			'01KR2ADTNG29NSQV23VAGV8FXB',
+			'01KR2ADTR2Q50VTH28JN60PW18',
+			'01KR2ADTR3AK1D2EYC59RZM9MX'
+		]);
 
-		expect(ordered.map((b) => b.book_id)).toEqual([1, 2]);
+		expect(ordered.map((b) => b.book_id)).toEqual([
+			'01KR2ADTNG29NSQV23VAGV8FXB',
+			'01KR2ADTR2Q50VTH28JN60PW18'
+		]);
 		expect(ordered[0].title).toBe('A');
 		expect(ordered[1].title).toBe('B');
-		expect(inFn).toHaveBeenCalledWith('book_id', [1, 2, 99]);
+		expect(inFn).toHaveBeenCalledWith('book_id', [
+			'01KR2ADTNG29NSQV23VAGV8FXB',
+			'01KR2ADTR2Q50VTH28JN60PW18',
+			'01KR2ADTR3AK1D2EYC59RZM9MX'
+		]);
 	});
 
 	it('returns empty array for empty input without querying', async () => {
 		const fromFn = vi.fn();
 		const supabase = { from: fromFn } as unknown as SupabaseClient;
 
-		const out = await resolveBooksByNumericIdsInOrder(supabase, []);
+		const out = await resolveBooksByIdsInOrder(supabase, []);
 		expect(out).toEqual([]);
 		expect(fromFn).not.toHaveBeenCalled();
 	});

@@ -1,7 +1,7 @@
 export interface Book {
 	id: string;
-	/** Integer business ID; required for persisting ratings to user_ratings. */
-	book_id?: number;
+	/** ULID business/catalog ID; used for persistence and Bunny cover filenames. */
+	book_id: string;
 	title: string;
 	author: string;
 	coverUrl?: string;

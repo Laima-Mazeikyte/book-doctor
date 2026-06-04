@@ -46,7 +46,7 @@ export async function searchBooksByAuthor(
 
 	const { data, error, count } = await supabase
 		.from('books')
-		.select(`id, book_id, book_name, author, cover_url, summary, year, ${BOOK_GENRE_TYPE_SELECT}`, {
+		.select(`id, book_id, book_name, author, summary, year, ${BOOK_GENRE_TYPE_SELECT}`, {
 			count: 'exact'
 		})
 		.ilike('author', trimmed)

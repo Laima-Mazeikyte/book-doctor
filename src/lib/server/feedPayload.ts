@@ -1,16 +1,14 @@
-import { PUBLIC_BUNNY_COVERS_BASE } from '$env/static/public';
 import {
 	BOOK_GENRE_TYPE_SELECT,
-	catalogTypeFromRow,
-	genresFromGenreColumns,
 	type BookGenreSlotRow
 } from '$lib/book-catalog-fields';
+import { mapBookRowToBook } from '$lib/search/mapBookRowToBook';
 import { getRateFeedExcludedBookIds } from '$lib/server/rateFeedExclusions';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export type FeedBookPayload = {
 	id: string;
-	book_id: number;
+	book_id: string;
 	title: string;
 	author: string;
 	coverUrl?: string;
@@ -88,7 +86,9 @@ export async function buildFeedPayloadForRequest(
 		};
 	}
 
-	let bookIds = items.map((i) => parseInt(i.book_id, 10)).filter((id) => !Number.isNaN(id));
+	let bookIds = items
+		.map((i) => String(i.book_id ?? '').trim())
+		.filter((id) => id.length > 0);
 
 	if (bookIds.length > 0) {
 		const excludedBookIds = await getRateFeedExcludedBookIds(supabase);
@@ -104,10 +104,9 @@ export async function buildFeedPayloadForRequest(
 		};
 	}
 
-	const base = (PUBLIC_BUNNY_COVERS_BASE ?? '').replace(/\/$/, '');
 	const { data: booksData, error: booksError } = await supabase
 		.from('books')
-		.select(`id, book_id, book_name, author, cover_url, summary, year, ${BOOK_GENRE_TYPE_SELECT}`)
+		.select(`id, book_id, book_name, author, summary, year, ${BOOK_GENRE_TYPE_SELECT}`)
 		.in('book_id', bookIds);
 
 	if (booksError) {
@@ -117,28 +116,14 @@ export async function buildFeedPayloadForRequest(
 	const byBookId = new Map(
 		(booksData ?? []).map((b) => {
 			const row = b as typeof b & BookGenreSlotRow & { type?: string | null };
-			const type = catalogTypeFromRow(row);
-			return [
-				b.book_id,
-				{
-					id: String(b.id),
-					book_id: b.book_id,
-					title: b.book_name ?? '',
-					author: b.author,
-					coverUrl: b.cover_url ?? (base ? `${base}/${b.book_id}.avif` : undefined),
-					summary: b.summary ?? undefined,
-					year: b.year != null ? String(b.year) : undefined,
-					genres: genresFromGenreColumns(row),
-					...(type ? { type } : {})
-				}
-			] as const;
+			return [b.book_id, mapBookRowToBook(row)] as const;
 		})
 	);
 
 	const books = items
 		.map((i) => {
-			const id = parseInt(i.book_id, 10);
-			return Number.isNaN(id) ? null : (byBookId.get(id) ?? null);
+			const id = String(i.book_id ?? '').trim();
+			return id ? byBookId.get(id) ?? null : null;
 		})
 		.filter((b): b is NonNullable<typeof b> => b != null);
 

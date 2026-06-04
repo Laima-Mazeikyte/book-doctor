@@ -8,7 +8,7 @@ export type RecommendationRun = {
 
 /** Kept in sync with `/api/recommendations/unique` so best-fit sort can hydrate without a flash. */
 export type RecommendationsUniqueMeta = {
-	allRecommendedBookIds: number[];
+	allRecommendedBookIds: string[];
 	lastRecommendedAt: Record<string, number>;
 	recommendationAppearanceCount: Record<string, number>;
 	bestRecommendationRank: Record<string, number>;

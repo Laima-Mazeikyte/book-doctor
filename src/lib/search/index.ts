@@ -10,7 +10,7 @@ export {
 	type BookSearchInvokeBody,
 	type MeilisearchHit
 } from './bookSearchEdge';
-export { resolveBooksByNumericIdsInOrder } from './resolveBooksFromSupabase';
+export { resolveBooksByIdsInOrder } from './resolveBooksFromSupabase';
 export {
 	SEARCH_MAX_LIMIT,
 	SEARCH_MIN_QUERY_LENGTH,

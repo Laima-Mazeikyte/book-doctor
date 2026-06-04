@@ -43,7 +43,7 @@
 	const INITIAL_CACHE_VALIDATION_GRACE_MS = 250;
 	/** After a new feed batch mounts, ignore strict “end of list” briefly so a sentinel already at the viewport bottom does not clear `hasMore` before the user can interact. */
 	const STRICT_FEED_END_GRACE_MS = 750;
-	const CURATED_FEED_CACHE_KEY = 'book-doctor:rate:curated-feed:v1';
+	const CURATED_FEED_CACHE_KEY = 'book-doctor:rate:curated-feed:v2';
 
 	type InitialListSource = 'cached_curated' | 'fresh_curated' | 'top100';
 	type LatestFeedMode = 'cache_current' | 'cache_pending_newer' | 'newer_completed' | 'cold_start';
@@ -455,7 +455,6 @@
 	let lastAppendWasFeed = $state(false);
 	let engagedWithPendingBatch = $state(false);
 	let pendingBatchIds = $state<string[]>([]);
-	let pendingBatchNumericIds = $state<number[]>([]);
 	let suppressStrictFeedEndUntil = $state(0);
 	/** Cold `loadInitialMainList` used Top 100 because no access token was ready in time; retry feed once auth exists. */
 	let mainListFellBackDueToMissingAuthToken = $state(false);
@@ -697,7 +696,6 @@
 				: (firstNonEmpty((b) => b.year) ?? base.year);
 		const mergedGenres =
 			(base.genres?.length ?? 0) > 0 ? base.genres : (richestGenres() ?? base.genres);
-		const mergedBookId = base.book_id ?? candidates.find((b) => b.book_id != null)?.book_id;
 		const mergedType = base.type ?? candidates.find((b) => b.type)?.type;
 
 		return {
@@ -706,21 +704,20 @@
 			coverUrl: mergedCover,
 			year: mergedYear,
 			genres: mergedGenres,
-			book_id: mergedBookId,
 			type: mergedType ?? base.type
 		};
 	}
 
-	/** Resolve a book by integer `book_id` for ratings drawer (NI tab, etc.). */
-	function findBookByBookIdNum(bookIdNum: number): Book | undefined {
-		if (!Number.isFinite(bookIdNum) || bookIdNum === 0) return undefined;
+	/** Resolve a book by ULID `book_id` for ratings drawer (NI tab, etc.). */
+	function findBookByBookId(bookUlid: string): Book | undefined {
+		if (!bookUlid) return undefined;
 		for (const bookId of get(ratingsStore).keys()) {
 			const b = ratingsStore.getRatedBook(bookId);
-			if ((b?.book_id ?? 0) === bookIdNum) return b;
+			if (b?.book_id === bookUlid) return b;
 		}
-		const fromPopular = popularBooks.find((b) => (b.book_id ?? 0) === bookIdNum);
+		const fromPopular = popularBooks.find((b) => b.book_id === bookUlid);
 		if (fromPopular) return fromPopular;
-		return searchResults.find((b) => (b.book_id ?? 0) === bookIdNum);
+		return searchResults.find((b) => b.book_id === bookUlid);
 	}
 
 	const ratedEntries = $derived(
@@ -866,7 +863,7 @@
 	}
 
 	function mainListKey(book: Book): string {
-		return book.book_id != null ? `book:${book.book_id}` : `row:${book.id}`;
+		return `book:${book.book_id}`;
 	}
 
 	function filterReactedBooksForRateFeed(books: Book[]): Book[] {
@@ -875,8 +872,8 @@
 		const bookmarks = get(planToReadStore);
 
 		return books.filter((book) => {
-			const numericId = book.book_id ?? 0;
-			return !ratings.has(book.id) && !notInterested.has(numericId) && !bookmarks.has(book.id);
+			const bookId = book.book_id;
+			return !ratings.has(book.id) && !notInterested.has(bookId) && !bookmarks.has(book.id);
 		});
 	}
 
@@ -896,9 +893,6 @@
 
 	function setPendingFromAppended(appended: Book[]) {
 		pendingBatchIds = appended.map((b) => b.id);
-		pendingBatchNumericIds = appended
-			.map((b) => b.book_id)
-			.filter((n): n is number => n != null && Number.isInteger(n));
 		engagedWithPendingBatch = false;
 		armFeedBatchStrictGrace();
 	}
@@ -960,7 +954,7 @@
 	function handleRateBookmark(book: Book, id: string) {
 		const wasBookmarked = planToReadStore.has(book.id);
 		planToReadStore.toggle(id, book.book_id);
-		if (!wasBookmarked && book.book_id != null) {
+		if (!wasBookmarked) {
 			notInterestedStore.remove(book.book_id);
 		}
 		if (searchOverlayOpen) {
@@ -969,7 +963,7 @@
 	}
 
 	function handleMainListNotInterested(book: Book) {
-		const bid = book.book_id ?? 0;
+		const bid = book.book_id;
 		const now = notInterestedStore.toggle(bid);
 		if (now) {
 			if (planToReadStore.has(book.id)) {
@@ -995,7 +989,7 @@
 	}
 
 	function handleSearchNotInterested(book: Book) {
-		const bid = book.book_id ?? 0;
+		const bid = book.book_id;
 		const now = notInterestedStore.toggle(bid);
 		if (now) {
 			if (planToReadStore.has(book.id)) {
@@ -1195,7 +1189,7 @@
 			if (offset >= 100 && popularBooks.length > 0) {
 				const exclude = popularBooks
 					.map((b) => b.book_id)
-					.filter((id): id is number => id != null && Number.isInteger(id))
+					.filter(Boolean)
 					.join(',');
 				if (exclude) params.set('exclude', exclude);
 			}
@@ -1218,7 +1212,6 @@
 			popularContinuationOffset = data.nextOffset;
 			lastAppendWasFeed = false;
 			pendingBatchIds = [];
-			pendingBatchNumericIds = [];
 			engagedWithPendingBatch = false;
 
 			hasMore = data.hasMore ?? data.books.length > 0;
@@ -1531,7 +1524,7 @@
 									onSearchAuthor={handleSearchAuthor}
 									bookmarked={$planToReadStore.has(book.id)}
 									onBookmark={(id) => handleRateBookmark(book, id)}
-									notInterested={$notInterestedStore.has(book.book_id ?? 0)}
+									notInterested={$notInterestedStore.has(book.book_id)}
 									onNotInterested={() => handleMainListNotInterested(book)}
 									onAfterRate={() => handleMainListAfterRate(book)}
 								/>
@@ -1572,7 +1565,7 @@
 					bind:this={ratingsBar}
 					{ratedEntries}
 					resolveBook={findBookById}
-					resolveBookByBookNum={findBookByBookIdNum}
+					resolveBookByBookId={findBookByBookId}
 					summaryHooks={{
 						onSearchAuthor: handleSearchAuthor,
 						onBookmark: (book) => handleRateBookmark(book, book.id),
@@ -1711,7 +1704,7 @@
 											onSearchAuthor={handleSearchAuthor}
 											bookmarked={$planToReadStore.has(book.id)}
 											onBookmark={(id) => handleRateBookmark(book, id)}
-											notInterested={$notInterestedStore.has(book.book_id ?? 0)}
+											notInterested={$notInterestedStore.has(book.book_id)}
 											onNotInterested={() => handleSearchNotInterested(book)}
 											onAfterRate={() => handleSearchAfterRate()}
 										/>

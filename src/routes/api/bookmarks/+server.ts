@@ -1,8 +1,8 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { PUBLIC_BUNNY_COVERS_BASE } from '$env/static/public';
 import { getUserIdFromToken } from '$lib/server/auth';
 import { BOOK_GENRE_TYPE_SELECT, catalogTypeFromRow, genresFromGenreColumns, type BookGenreSlotRow } from '$lib/book-catalog-fields';
+import { coverUrlForBookId } from '$lib/book-cover';
 import { createSupabaseWithAuth } from '$lib/server/supabase';
 
 function getAccessToken(request: Request): string | null {
@@ -26,15 +26,14 @@ export const GET: RequestHandler = async ({ request }) => {
 
 	const orderedBookIds = (rows ?? [])
 		.map((r) => r.book_id)
-		.filter((id): id is number => id != null && Number.isInteger(id));
+		.filter((id): id is string => typeof id === 'string' && id.trim() !== '');
 	if (orderedBookIds.length === 0) {
 		return json({ books: [], bookIds: [] });
 	}
 
-	const base = (PUBLIC_BUNNY_COVERS_BASE ?? '').replace(/\/$/, '');
 	const { data: booksData, error: booksError } = await supabase
 		.from('books')
-		.select(`id, book_id, book_name, author, cover_url, summary, year, ${BOOK_GENRE_TYPE_SELECT}`)
+		.select(`id, book_id, book_name, author, summary, year, ${BOOK_GENRE_TYPE_SELECT}`)
 		.in('book_id', orderedBookIds);
 
 	if (booksError) {
@@ -42,7 +41,7 @@ export const GET: RequestHandler = async ({ request }) => {
 		throw error(500, 'Failed to load bookmarked books');
 	}
 
-	const bookByNum = new Map(
+	const bookById = new Map(
 		(booksData ?? []).map((b) => {
 			const row = b as typeof b & BookGenreSlotRow & { type?: string | null };
 			const type = catalogTypeFromRow(row);
@@ -53,7 +52,7 @@ export const GET: RequestHandler = async ({ request }) => {
 					book_id: b.book_id,
 					title: b.book_name ?? '',
 					author: b.author ?? '',
-					coverUrl: b.cover_url ?? (base ? `${base}/${b.book_id}.avif` : undefined),
+					coverUrl: coverUrlForBookId(b.book_id),
 					summary: b.summary ?? undefined,
 					year: b.year != null ? String(b.year) : undefined,
 					genres: genresFromGenreColumns(row),
@@ -64,7 +63,7 @@ export const GET: RequestHandler = async ({ request }) => {
 	);
 
 	const books = orderedBookIds
-		.map((bookId) => bookByNum.get(bookId))
+		.map((bookId) => bookById.get(bookId))
 		.filter((b): b is NonNullable<typeof b> => b != null);
 
 	return json({ books, bookIds: books.map((b) => b.id) });
@@ -77,14 +76,14 @@ export const POST: RequestHandler = async ({ request }) => {
 	const userId = await getUserIdFromToken(accessToken);
 	if (!userId) throw error(401, 'Invalid or expired token');
 
-	let body: { book_id?: number };
+	let body: { book_id?: string };
 	try {
 		body = await request.json();
 	} catch {
 		throw error(400, 'Invalid JSON body');
 	}
-	const bookId = body.book_id;
-	if (typeof bookId !== 'number' || !Number.isInteger(bookId)) {
+	const bookId = body.book_id?.trim();
+	if (!bookId) {
 		throw error(400, 'Missing or invalid book_id');
 	}
 
@@ -106,8 +105,8 @@ export const DELETE: RequestHandler = async ({ request, url }) => {
 	if (!accessToken) throw error(401, 'Missing Authorization');
 
 	const bookIdParam = url.searchParams.get('book_id');
-	const bookId = bookIdParam ? parseInt(bookIdParam, 10) : NaN;
-	if (!Number.isInteger(bookId)) {
+	const bookId = bookIdParam?.trim() ?? '';
+	if (!bookId) {
 		throw error(400, 'Missing or invalid book_id');
 	}
 

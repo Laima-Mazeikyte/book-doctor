@@ -2,13 +2,13 @@ import { get, writable } from 'svelte/store';
 import type { Book, RatingValue } from '$lib/types/book';
 import { notInterestedStore } from './notInterested';
 
-const LOCAL_STORAGE_KEY = 'book-doctor:ratings-pending';
+const LOCAL_STORAGE_KEY = 'book-doctor:ratings-pending:v2';
 const FLUSH_REQUEST_TIMEOUT_MS = 15_000;
 const FLUSH_STALE_AFTER_MS = 20_000;
 
 export interface RatingsPersistence {
-	set(bookIdNum: number, value: RatingValue): void | Promise<void>;
-	remove(bookIdNum: number): void | Promise<void>;
+	set(bookUlid: string, value: RatingValue): void | Promise<void>;
+	remove(bookUlid: string): void | Promise<void>;
 }
 
 export type RatingSyncState = 'saved' | 'pending' | 'failed' | 'idle';
@@ -16,7 +16,7 @@ export type RatingSyncState = 'saved' | 'pending' | 'failed' | 'idle';
 interface QueuedSetOperation {
 	type: 'set';
 	bookId: string;
-	bookIdNum: number;
+	bookUlid: string;
 	value: RatingValue;
 	book?: Book;
 	updatedAt: number;
@@ -27,7 +27,7 @@ interface QueuedSetOperation {
 interface QueuedRemoveOperation {
 	type: 'remove';
 	bookId: string;
-	bookIdNum: number;
+	bookUlid: string;
 	updatedAt: number;
 	attempts: number;
 	lastError?: string;
@@ -73,33 +73,33 @@ async function withTimeout<T>(
 	}
 }
 
-function serializeQueue(queue: Map<number, QueuedRatingOperation>): string {
+function serializeQueue(queue: Map<string, QueuedRatingOperation>): string {
 	return JSON.stringify([...queue.values()]);
 }
 
-function parseQueue(raw: string | null): Map<number, QueuedRatingOperation> {
+function parseQueue(raw: string | null): Map<string, QueuedRatingOperation> {
 	if (!raw) return new Map();
 	try {
 		const parsed = JSON.parse(raw) as unknown;
 		if (!Array.isArray(parsed)) return new Map();
-		const queue = new Map<number, QueuedRatingOperation>();
+		const queue = new Map<string, QueuedRatingOperation>();
 		for (const entry of parsed) {
 			if (!entry || typeof entry !== 'object') continue;
 			const op = entry as Partial<QueuedRatingOperation>;
 			if (
 				typeof op.bookId !== 'string' ||
-				typeof op.bookIdNum !== 'number' ||
-				!Number.isInteger(op.bookIdNum) ||
+				typeof op.bookUlid !== 'string' ||
+				op.bookUlid.trim() === '' ||
 				typeof op.updatedAt !== 'number'
 			) {
 				continue;
 			}
 			if (op.type === 'set') {
 				if (op.value == null || ![1, 2, 3, 4, 5].includes(op.value)) continue;
-				queue.set(op.bookIdNum, {
+				queue.set(op.bookUlid, {
 					type: 'set',
 					bookId: op.bookId,
-					bookIdNum: op.bookIdNum,
+					bookUlid: op.bookUlid,
 					value: op.value as RatingValue,
 					book: op.book,
 					updatedAt: op.updatedAt,
@@ -109,10 +109,10 @@ function parseQueue(raw: string | null): Map<number, QueuedRatingOperation> {
 				continue;
 			}
 			if (op.type === 'remove') {
-				queue.set(op.bookIdNum, {
+				queue.set(op.bookUlid, {
 					type: 'remove',
 					bookId: op.bookId,
-					bookIdNum: op.bookIdNum,
+					bookUlid: op.bookUlid,
 					updatedAt: op.updatedAt,
 					attempts: typeof op.attempts === 'number' ? op.attempts : 0,
 					lastError: typeof op.lastError === 'string' ? op.lastError : undefined
@@ -140,7 +140,7 @@ function createRatingsStore() {
 		isFlushing: false
 	});
 	let persistence: RatingsPersistence | null = null;
-	let queue = new Map<number, QueuedRatingOperation>();
+	let queue = new Map<string, QueuedRatingOperation>();
 	let queueHydrated = false;
 	let isFlushing = false;
 	let needsAnotherFlush = false;
@@ -217,21 +217,21 @@ function createRatingsStore() {
 	}
 
 	function upsertQueuedOperation(op: QueuedRatingOperation) {
-		queue.set(op.bookIdNum, op);
+		queue.set(op.bookUlid, op);
 		syncQueueToLocalStorage();
 		rebuildSyncStates();
 	}
 
-	function clearQueuedOperation(bookIdNum: number) {
-		queue.delete(bookIdNum);
+	function clearQueuedOperation(bookUlid: string) {
+		queue.delete(bookUlid);
 		syncQueueToLocalStorage();
 		rebuildSyncStates();
 	}
 
 	function markQueuedOperationFailed(op: QueuedRatingOperation, message: string) {
-		const latest = queue.get(op.bookIdNum);
+		const latest = queue.get(op.bookUlid);
 		if (!latest || latest.updatedAt !== op.updatedAt) return;
-		queue.set(op.bookIdNum, {
+		queue.set(op.bookUlid, {
 			...latest,
 			attempts: latest.attempts + 1,
 			lastError: message
@@ -240,9 +240,9 @@ function createRatingsStore() {
 	}
 
 	function clearQueuedOperationIfCurrent(op: QueuedRatingOperation) {
-		const latest = queue.get(op.bookIdNum);
+		const latest = queue.get(op.bookUlid);
 		if (!latest || latest.updatedAt !== op.updatedAt) return;
-		clearQueuedOperation(op.bookIdNum);
+		clearQueuedOperation(op.bookUlid);
 	}
 
 	function recoverStuckFlush(force = false): boolean {
@@ -275,31 +275,31 @@ function createRatingsStore() {
 			const queuedOps = [...queue.values()].sort((a, b) => a.updatedAt - b.updatedAt);
 			for (const op of queuedOps) {
 				if (activeFlushGeneration !== currentFlushGeneration) return;
-				const current = queue.get(op.bookIdNum);
+				const current = queue.get(op.bookUlid);
 				if (!current || current.updatedAt !== op.updatedAt) continue;
 				try {
-					console.debug('[ratings] Flushing queued rating:', current.type, current.bookIdNum);
+					console.debug('[ratings] Flushing queued rating:', current.type, current.bookUlid);
 					if (current.type === 'set') {
 						await withTimeout(
-							Promise.resolve(persistence.set(current.bookIdNum, current.value)),
+							Promise.resolve(persistence.set(current.bookUlid, current.value)),
 							FLUSH_REQUEST_TIMEOUT_MS,
-							`Saving rating ${current.bookIdNum}`
+							`Saving rating ${current.bookUlid}`
 						);
 					} else {
 						await withTimeout(
-							Promise.resolve(persistence.remove(current.bookIdNum)),
+							Promise.resolve(persistence.remove(current.bookUlid)),
 							FLUSH_REQUEST_TIMEOUT_MS,
-							`Removing rating ${current.bookIdNum}`
+							`Removing rating ${current.bookUlid}`
 						);
 					}
 					if (activeFlushGeneration !== currentFlushGeneration) return;
 					clearQueuedOperationIfCurrent(current);
-					console.debug('[ratings] Flush succeeded:', current.type, current.bookIdNum);
+					console.debug('[ratings] Flush succeeded:', current.type, current.bookUlid);
 				} catch (error) {
 					if (activeFlushGeneration !== currentFlushGeneration) return;
 					const message = errorMessageFromUnknown(error);
 					markQueuedOperationFailed(current, message);
-					console.error('[ratings] Flush failed:', current.bookIdNum, message);
+					console.error('[ratings] Flush failed:', current.bookUlid, message);
 				}
 			}
 		} finally {
@@ -369,8 +369,8 @@ function createRatingsStore() {
 				return;
 			}
 			queue = new Map(
-				[...queue.entries()].map(([bookIdNum, op]) => [
-					bookIdNum,
+				[...queue.entries()].map(([bookUlid, op]) => [
+					bookUlid,
 					{
 						...op,
 						lastError: undefined
@@ -381,7 +381,7 @@ function createRatingsStore() {
 			rebuildSyncStates();
 			await flushPending();
 		},
-		setRating(bookId: string, value: RatingValue, bookIdNum?: number, book?: Book) {
+		setRating(bookId: string, value: RatingValue, bookUlid?: string, book?: Book) {
 			update((m) => {
 				// Put this rating first so the side panel shows most recent at the top
 				const next = new Map<string, RatingValue>();
@@ -394,25 +394,25 @@ function createRatingsStore() {
 			if (book != null) {
 				ratedBooksDetails.update((m) => new Map(m).set(bookId, book));
 			}
-			if (bookIdNum != null) {
+			if (bookUlid != null) {
 				const op: QueuedSetOperation = {
 					type: 'set',
 					bookId,
-					bookIdNum,
+					bookUlid,
 					value,
 					book,
 					updatedAt: Date.now(),
 					attempts: 0
 				};
-				console.debug('[ratings] Queueing rating locally:', bookIdNum, value);
+				console.debug('[ratings] Queueing rating locally:', bookUlid, value);
 				upsertQueuedOperation(op);
 				void flushPending();
 			}
-			if (bookIdNum != null && bookIdNum !== 0) {
-				notInterestedStore.remove(bookIdNum);
+			if (bookUlid != null) {
+				notInterestedStore.remove(bookUlid);
 			}
 		},
-		removeRating(bookId: string, bookIdNum?: number) {
+		removeRating(bookId: string, bookUlid?: string) {
 			update((m) => {
 				const next = new Map(m);
 				next.delete(bookId);
@@ -423,15 +423,15 @@ function createRatingsStore() {
 				next.delete(bookId);
 				return next;
 			});
-			if (bookIdNum != null) {
+			if (bookUlid != null) {
 				const op: QueuedRemoveOperation = {
 					type: 'remove',
 					bookId,
-					bookIdNum,
+					bookUlid,
 					updatedAt: Date.now(),
 					attempts: 0
 				};
-				console.debug('[ratings] Queueing rating removal locally:', bookIdNum);
+				console.debug('[ratings] Queueing rating removal locally:', bookUlid);
 				upsertQueuedOperation(op);
 				void flushPending();
 			}

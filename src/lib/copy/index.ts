@@ -2,7 +2,11 @@ import copyByLocale from './copy.yaml';
 
 export const defaultLocale = 'en';
 
-type CopyTree = Record<string, string | CopyTree>;
+type CopyValue = string | CopyTree;
+
+interface CopyTree {
+	[key: string]: CopyValue;
+}
 
 function getByPath(obj: CopyTree, path: string): string | undefined {
 	const value = path.split('.').reduce<unknown>((acc, key) => {

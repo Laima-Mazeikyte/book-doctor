@@ -6,6 +6,7 @@ import type { Book } from '$lib/types/book';
 export const dummyBooks: Book[] = [
 	{
 		id: '1',
+		book_id: 'DUMMY-1',
 		title: 'The Great Gatsby',
 		author: 'F. Scott Fitzgerald',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -13,6 +14,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '2',
+		book_id: 'DUMMY-2',
 		title: 'To Kill a Mockingbird',
 		author: 'Harper Lee',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -20,6 +22,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '3',
+		book_id: 'DUMMY-3',
 		title: '1984',
 		author: 'George Orwell',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -27,6 +30,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '4',
+		book_id: 'DUMMY-4',
 		title: 'Pride and Prejudice',
 		author: 'Jane Austen',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -34,6 +38,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '5',
+		book_id: 'DUMMY-5',
 		title: 'The Catcher in the Rye',
 		author: 'J.D. Salinger',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -41,6 +46,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '6',
+		book_id: 'DUMMY-6',
 		title: 'Harry Potter and the Philosopher\'s Stone',
 		author: 'J.K. Rowling',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -48,6 +54,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '7',
+		book_id: 'DUMMY-7',
 		title: 'The Hobbit',
 		author: 'J.R.R. Tolkien',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -55,6 +62,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '8',
+		book_id: 'DUMMY-8',
 		title: 'Fahrenheit 451',
 		author: 'Ray Bradbury',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -62,6 +70,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '9',
+		book_id: 'DUMMY-9',
 		title: 'Jane Eyre',
 		author: 'Charlotte Brontë',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -69,6 +78,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '10',
+		book_id: 'DUMMY-10',
 		title: 'The Lord of the Rings',
 		author: 'J.R.R. Tolkien',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -76,6 +86,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '11',
+		book_id: 'DUMMY-11',
 		title: 'Animal Farm',
 		author: 'George Orwell',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -83,6 +94,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '12',
+		book_id: 'DUMMY-12',
 		title: 'Brave New World',
 		author: 'Aldous Huxley',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -90,6 +102,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '13',
+		book_id: 'DUMMY-13',
 		title: 'The Handmaid\'s Tale',
 		author: 'Margaret Atwood',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -97,6 +110,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '14',
+		book_id: 'DUMMY-14',
 		title: 'Dune',
 		author: 'Frank Herbert',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -104,6 +118,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '15',
+		book_id: 'DUMMY-15',
 		title: 'The Alchemist',
 		author: 'Paulo Coelho',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -111,6 +126,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '16',
+		book_id: 'DUMMY-16',
 		title: 'One Hundred Years of Solitude',
 		author: 'Gabriel García Márquez',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -118,6 +134,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '17',
+		book_id: 'DUMMY-17',
 		title: 'Beloved',
 		author: 'Toni Morrison',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -125,6 +142,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '18',
+		book_id: 'DUMMY-18',
 		title: 'The Kite Runner',
 		author: 'Khaled Hosseini',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -132,6 +150,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '19',
+		book_id: 'DUMMY-19',
 		title: 'Slaughterhouse-Five',
 		author: 'Kurt Vonnegut',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -139,6 +158,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '20',
+		book_id: 'DUMMY-20',
 		title: 'The Road',
 		author: 'Cormac McCarthy',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -146,6 +166,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '21',
+		book_id: 'DUMMY-21',
 		title: 'Where the Crawdads Sing',
 		author: 'Delia Owens',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -153,6 +174,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '22',
+		book_id: 'DUMMY-22',
 		title: 'Educated',
 		author: 'Tara Westover',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -160,6 +182,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '23',
+		book_id: 'DUMMY-23',
 		title: 'Project Hail Mary',
 		author: 'Andy Weir',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -167,6 +190,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '24',
+		book_id: 'DUMMY-24',
 		title: 'The Midnight Library',
 		author: 'Matt Haig',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -174,6 +198,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '25',
+		book_id: 'DUMMY-25',
 		title: 'Normal People',
 		author: 'Sally Rooney',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -181,6 +206,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '26',
+		book_id: 'DUMMY-26',
 		title: 'Klara and the Sun',
 		author: 'Kazuo Ishiguro',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -188,6 +214,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '27',
+		book_id: 'DUMMY-27',
 		title: 'Piranesi',
 		author: 'Susanna Clarke',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -195,6 +222,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '28',
+		book_id: 'DUMMY-28',
 		title: 'A Gentleman in Moscow',
 		author: 'Amor Towles',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -202,6 +230,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '29',
+		book_id: 'DUMMY-29',
 		title: 'The Seven Husbands of Evelyn Hugo',
 		author: 'Taylor Jenkins Reid',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -209,6 +238,7 @@ export const dummyBooks: Book[] = [
 	},
 	{
 		id: '30',
+		book_id: 'DUMMY-30',
 		title: 'Circe',
 		author: 'Madeline Miller',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
@@ -242,3 +272,4 @@ export function searchBooks(query: string): Book[] {
 export function getBookById(id: string): Book | undefined {
 	return dummyBooks.find((b) => b.id === id);
 }
+

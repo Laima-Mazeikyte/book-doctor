@@ -10,16 +10,10 @@ import {
 } from './bookSearchEdge';
 
 describe('extractBookIdFromHit', () => {
-	it('reads numeric book_id', () => {
-		expect(extractBookIdFromHit({ book_id: 7 })).toBe(7);
-	});
-
-	it('reads string book_id', () => {
-		expect(extractBookIdFromHit({ book_id: '12' })).toBe(12);
-	});
-
-	it('falls back to bookId camelCase', () => {
-		expect(extractBookIdFromHit({ bookId: 99 })).toBe(99);
+	it('reads ULID book_id', () => {
+		expect(extractBookIdFromHit({ book_id: '01KR2ADTNG29NSQV23VAGV8FXB' })).toBe(
+			'01KR2ADTNG29NSQV23VAGV8FXB'
+		);
 	});
 
 	it('returns null when missing', () => {
@@ -30,13 +24,17 @@ describe('extractBookIdFromHit', () => {
 describe('orderedUniqueBookIds', () => {
 	it('preserves order and drops duplicates', () => {
 		const hits: MeilisearchHit[] = [
-			{ book_id: 2 },
-			{ book_id: 2 },
-			{ book_id: 1 },
+			{ book_id: '01KR2ADTNG29NSQV23VAGV8FXB' },
+			{ book_id: '01KR2ADTNG29NSQV23VAGV8FXB' },
+			{ book_id: '01KR2ADTR2Q50VTH28JN60PW18' },
 			{ title: 'skip' },
-			{ book_id: 3 }
+			{ book_id: '01KR2ADTR3AK1D2EYC59RZM9MX' }
 		];
-		expect(orderedUniqueBookIds(hits)).toEqual([2, 1, 3]);
+		expect(orderedUniqueBookIds(hits)).toEqual([
+			'01KR2ADTNG29NSQV23VAGV8FXB',
+			'01KR2ADTR2Q50VTH28JN60PW18',
+			'01KR2ADTR3AK1D2EYC59RZM9MX'
+		]);
 	});
 });
 
@@ -44,7 +42,10 @@ describe('invokeBookSearch', () => {
 	it('parses top-level Meilisearch body', async () => {
 		const invoke = vi.fn().mockResolvedValue({
 			data: {
-				hits: [{ book_id: 1 }, { book_id: 2 }],
+				hits: [
+					{ book_id: '01KR2ADTNG29NSQV23VAGV8FXB' },
+					{ book_id: '01KR2ADTR2Q50VTH28JN60PW18' }
+				],
 				estimatedTotalHits: 40
 			},
 			error: null
@@ -53,7 +54,10 @@ describe('invokeBookSearch', () => {
 
 		const r = await invokeBookSearch(supabase, { q: 'ab', limit: 10, offset: 0 });
 
-		expect(r.bookIds).toEqual([1, 2]);
+		expect(r.bookIds).toEqual([
+			'01KR2ADTNG29NSQV23VAGV8FXB',
+			'01KR2ADTR2Q50VTH28JN60PW18'
+		]);
 		expect(r.estimatedTotalHits).toBe(40);
 		expect(r.scannedHitCount).toBe(2);
 		expect(invoke).toHaveBeenCalledWith(BOOK_SEARCH_FUNCTION, {
@@ -65,7 +69,7 @@ describe('invokeBookSearch', () => {
 		const invoke = vi.fn().mockResolvedValue({
 			data: {
 				result: {
-					hits: [{ book_id: 5 }],
+					hits: [{ book_id: '01KR2ADTR3AK1D2EYC59RZM9MX' }],
 					estimatedTotalHits: 1
 				}
 			},
@@ -74,7 +78,7 @@ describe('invokeBookSearch', () => {
 		const supabase = { functions: { invoke } } as unknown as SupabaseClient;
 
 		const r = await invokeBookSearch(supabase, { q: 'x', limit: 5, offset: 10 });
-		expect(r.bookIds).toEqual([5]);
+		expect(r.bookIds).toEqual(['01KR2ADTR3AK1D2EYC59RZM9MX']);
 		expect(r.estimatedTotalHits).toBe(1);
 		expect(r.scannedHitCount).toBe(1);
 	});
@@ -82,7 +86,10 @@ describe('invokeBookSearch', () => {
 	it('returns null estimatedTotalHits when absent', async () => {
 		const invoke = vi.fn().mockResolvedValue({
 			data: {
-				hits: [{ book_id: 1 }, { book_id: 2 }]
+				hits: [
+					{ book_id: '01KR2ADTNG29NSQV23VAGV8FXB' },
+					{ book_id: '01KR2ADTR2Q50VTH28JN60PW18' }
+				]
 			},
 			error: null
 		});

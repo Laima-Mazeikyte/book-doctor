@@ -34,17 +34,17 @@
 		summaryHooks?: RatingsBarSummaryHooks;
 		/** When both resolvers are set, the drawer shows Rated / Bookmarked / Not interested tabs (browse page). */
 		resolveBook?: (bookId: string) => Book | undefined;
-		resolveBookByBookNum?: (bookIdNum: number) => Book | undefined;
+		resolveBookByBookId?: (bookId: string) => Book | undefined;
 	}
 
-	let { ratedEntries, summaryHooks, resolveBook, resolveBookByBookNum }: Props = $props();
+	let { ratedEntries, summaryHooks, resolveBook, resolveBookByBookId }: Props = $props();
 
 	type ShelfFilterId = 'rated' | 'bookmarked' | 'not-interested';
 
 	const shelfListPanelId = 'ratings-drawer-shelf-panel';
 	const shelfTabIdPrefix = 'ratings-drawer-shelf-tab';
 
-	const shelfTabsEnabled = $derived(Boolean(resolveBook && resolveBookByBookNum));
+	const shelfTabsEnabled = $derived(Boolean(resolveBook && resolveBookByBookId));
 
 	let activeShelfTab = $state<ShelfFilterId>('rated');
 	let fetchedBookmarkBooks = $state.raw<Book[]>([]);
@@ -53,21 +53,21 @@
 	let shelfDetailsLoading = $state(false);
 	let shelfDetailsRequestId = 0;
 
-	function shelfNotInterested(book: Book, niNums: Set<number>): boolean {
-		return niNums.has(book.book_id ?? 0);
+	function shelfNotInterested(book: Book, notInterestedIds: Set<string>): boolean {
+		return notInterestedIds.has(book.book_id);
 	}
 
 	function bookFallbackById(bookId: string): Book | undefined {
 		return ratingsStore.getRatedBook(bookId) ?? resolveBook?.(bookId);
 	}
 
-	function bookFallbackByNum(bookIdNum: number): Book | undefined {
-		if (!Number.isFinite(bookIdNum) || bookIdNum === 0) return undefined;
-		for (const bookId of get(ratingsStore).keys()) {
-			const b = ratingsStore.getRatedBook(bookId);
-			if ((b?.book_id ?? 0) === bookIdNum) return b;
+	function bookFallbackByBookId(bookUlid: string): Book | undefined {
+		if (!bookUlid) return undefined;
+		for (const ratedBookId of get(ratingsStore).keys()) {
+			const b = ratingsStore.getRatedBook(ratedBookId);
+			if (b?.book_id === bookUlid) return b;
 		}
-		return resolveBookByBookNum?.(bookIdNum);
+		return resolveBookByBookId?.(bookUlid);
 	}
 
 	async function fetchShelfDetails(): Promise<void> {
@@ -116,8 +116,8 @@
 			const b = bookFallbackById(id);
 			if (b && !m.has(b.id)) m.set(b.id, b);
 		}
-		for (const num of $notInterestedStore) {
-			const b = bookFallbackByNum(num);
+		for (const bookId of $notInterestedStore) {
+			const b = bookFallbackByBookId(bookId);
 			if (b && !m.has(b.id)) m.set(b.id, b);
 		}
 		return m;
@@ -127,12 +127,12 @@
 		if (!shelfTabsEnabled) return { ni: 0, rated: 0, bookmarked: 0 };
 		const ratings = $ratingsStore;
 		const planIds = $planToReadStore;
-		const niNums = $notInterestedStore;
+		const notInterestedIds = $notInterestedStore;
 		let ni = 0;
 		let rated = 0;
 		let bookmarked = 0;
 		for (const book of unionBooksById.values()) {
-			if (shelfNotInterested(book, niNums)) {
+			if (shelfNotInterested(book, notInterestedIds)) {
 				ni++;
 				continue;
 			}
@@ -166,7 +166,7 @@
 		if (!shelfTabsEnabled) return [];
 		const ratings = $ratingsStore;
 		const planIds = $planToReadStore;
-		const niNums = $notInterestedStore;
+		const notInterestedIds = $notInterestedStore;
 		const out: RatedEntry[] = [];
 		const seen = new Set<string>();
 		const fetchedIds = new Set(fetchedBookmarkBooks.map((book) => book.id));
@@ -174,14 +174,14 @@
 			if (fetchedIds.has(id)) continue;
 			const book = bookFallbackById(id);
 			if (!book || seen.has(book.id)) continue;
-			if (shelfNotInterested(book, niNums)) continue;
+			if (shelfNotInterested(book, notInterestedIds)) continue;
 			seen.add(book.id);
 			const r = ratings.get(book.id);
 			out.push({ book, rating: r ?? RATING_PLACEHOLDER });
 		}
 		for (const book of fetchedBookmarkBooks) {
 			if (seen.has(book.id) || !planIds.has(book.id)) continue;
-			if (shelfNotInterested(book, niNums)) continue;
+			if (shelfNotInterested(book, notInterestedIds)) continue;
 			seen.add(book.id);
 			const r = ratings.get(book.id);
 			out.push({ book, rating: r ?? RATING_PLACEHOLDER });
@@ -192,26 +192,22 @@
 	const niShelfEntries = $derived.by((): RatedEntry[] => {
 		if (!shelfTabsEnabled) return [];
 		const ratings = $ratingsStore;
-		const niNums = $notInterestedStore;
+		const notInterestedIds = $notInterestedStore;
 		const out: RatedEntry[] = [];
 		const seen = new Set<string>();
-		const fetchedNums = new Set(
-			fetchedNotInterestedBooks
-				.map((book) => book.book_id)
-				.filter((id): id is number => id != null && Number.isInteger(id))
-		);
-		for (const num of [...niNums].reverse()) {
-			if (fetchedNums.has(num)) continue;
-			const book = bookFallbackByNum(num);
+		const fetchedIds = new Set(fetchedNotInterestedBooks.map((book) => book.book_id));
+		for (const bookId of [...notInterestedIds].reverse()) {
+			if (fetchedIds.has(bookId)) continue;
+			const book = bookFallbackByBookId(bookId);
 			if (!book || seen.has(book.id)) continue;
-			if (!niNums.has(book.book_id ?? 0)) continue;
+			if (!notInterestedIds.has(book.book_id)) continue;
 			seen.add(book.id);
 			const r = ratings.get(book.id);
 			out.push({ book, rating: r ?? RATING_PLACEHOLDER });
 		}
 		for (const book of fetchedNotInterestedBooks) {
-			const bookIdNum = book.book_id ?? 0;
-			if (seen.has(book.id) || !niNums.has(bookIdNum)) continue;
+			const bookId = book.book_id;
+			if (seen.has(book.id) || !notInterestedIds.has(bookId)) continue;
 			seen.add(book.id);
 			const r = ratings.get(book.id);
 			out.push({ book, rating: r ?? RATING_PLACEHOLDER });
@@ -384,7 +380,7 @@
 	);
 
 	let detailNotInterested = $derived(
-		detailEntry ? $notInterestedStore.has(detailEntry.book.book_id ?? 0) : false
+		detailEntry ? $notInterestedStore.has(detailEntry.book.book_id) : false
 	);
 
 	let detailShowAuthorSearchPill = $derived(
@@ -451,7 +447,7 @@
 
 	function schedulePendingRemove(book: Book) {
 		const bookId = book.id;
-		const bookIdNum = book.book_id;
+		const bookUlid = book.book_id;
 		clearPendingRemove(bookId);
 		pendingRemoveIds = new Set(pendingRemoveIds).add(bookId);
 		const endsAt = Date.now() + PENDING_REMOVE_MS;
@@ -462,7 +458,7 @@
 			const nextEnds = new Map(pendingRemoveEndByBookId);
 			nextEnds.delete(bookId);
 			pendingRemoveEndByBookId = nextEnds;
-			ratingsStore.removeRating(bookId, bookIdNum);
+			ratingsStore.removeRating(bookId, bookUlid);
 			summaryHooks?.onAfterRate?.(book);
 		}, PENDING_REMOVE_MS);
 		pendingRemoveTimers.set(bookId, tid);
@@ -821,14 +817,14 @@
 							hoverEntryId = null;
 							hoverRating = 0;
 							const bookId = entry.book.id;
-							const bookIdNum = entry.book.book_id;
+							const bookUlid = entry.book.book_id;
 							if (pendingRemoveIds.has(bookId)) {
 								if (value === storedRating) {
 									clearPendingRemove(bookId);
 									return;
 								}
 								clearPendingRemove(bookId);
-								ratingsStore.setRating(bookId, value, bookIdNum, entry.book);
+								ratingsStore.setRating(bookId, value, bookUlid, entry.book);
 								summaryHooks?.onAfterRate?.(entry.book);
 								return;
 							}
@@ -836,7 +832,7 @@
 								schedulePendingRemove(entry.book);
 								return;
 							}
-							ratingsStore.setRating(bookId, value, bookIdNum, entry.book);
+							ratingsStore.setRating(bookId, value, bookUlid, entry.book);
 							summaryHooks?.onAfterRate?.(entry.book);
 						}}
 					/>
@@ -1409,6 +1405,7 @@
 		overflow: hidden;
 		display: -webkit-box;
 		-webkit-line-clamp: 3;
+		line-clamp: 3;
 		-webkit-box-orient: vertical;
 	}
 	.ratings-drawer__item-info {

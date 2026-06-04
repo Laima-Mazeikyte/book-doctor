@@ -27,23 +27,16 @@ function unwrapSearchPayload(data: unknown): Record<string, unknown> {
 	return o;
 }
 
-/**
- * Read numeric catalog id from a Meilisearch hit (index is tuned for `book_id`).
- */
-export function extractBookIdFromHit(hit: MeilisearchHit): number | null {
-	const v = hit.book_id ?? hit.bookId;
-	if (typeof v === 'number' && Number.isInteger(v)) return v;
-	if (typeof v === 'string') {
-		const n = parseInt(v, 10);
-		return Number.isNaN(n) ? null : n;
-	}
-	return null;
+/** Read ULID catalog id from a Meilisearch hit. */
+export function extractBookIdFromHit(hit: MeilisearchHit): string | null {
+	const v = hit.book_id;
+	return typeof v === 'string' && v.trim() ? v.trim() : null;
 }
 
 /** Preserve hit order; drop invalid ids and accidental duplicates. */
-export function orderedUniqueBookIds(hits: MeilisearchHit[]): number[] {
-	const out: number[] = [];
-	const seen = new Set<number>();
+export function orderedUniqueBookIds(hits: MeilisearchHit[]): string[] {
+	const out: string[] = [];
+	const seen = new Set<string>();
 	for (const hit of hits) {
 		const id = extractBookIdFromHit(hit);
 		if (id == null || seen.has(id)) continue;
@@ -64,7 +57,7 @@ function readEstimatedTotal(payload: Record<string, unknown>): number | null {
 }
 
 export type BookSearchEdgeResult = {
-	bookIds: number[];
+	bookIds: string[];
 	/** From Meilisearch when present; otherwise callers infer `hasMore` from page size. */
 	estimatedTotalHits: number | null;
 	/** Raw `hits.length` — use this (not deduped id count) for the next `offset`. */
