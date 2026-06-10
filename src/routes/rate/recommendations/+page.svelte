@@ -4,17 +4,13 @@
 	import { page } from '$app/state';
 	import { get } from 'svelte/store';
 	import { goto } from '$app/navigation';
-	import Button from '$lib/components/Button.svelte';
 	import BookCard from '$lib/components/BookCard.svelte';
 	import BookCardGridSkeleton from '$lib/components/BookCardGridSkeleton.svelte';
 	import RecommendationsEmpty from '$lib/components/RecommendationsEmpty.svelte';
 	import NavStyleTabList from '$lib/components/NavStyleTabList.svelte';
 	import { ChevronDown } from 'lucide-svelte';
 	import { planToReadStore } from '$lib/stores/planToRead';
-	import {
-		recommendationsCountStore,
-		refreshRecommendationsCountFromApi
-	} from '$lib/stores/recommendationsCount';
+	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
 	import { notInterestedStore } from '$lib/stores/notInterested';
 	import RecommendationsLoading from '$lib/components/RecommendationsLoading.svelte';
 	import { authStore } from '$lib/stores/auth';
@@ -105,28 +101,21 @@
 		return arr;
 	}
 
-	const POLL_INTERVAL_MS = 3000;
-	const POLL_TIMEOUT_MS = 60000;
-
 	const initialHistorySnapshot = recommendationsPageStore.getHistorySnapshot();
 
-	let books = $state<Book[]>([]);
 	let uniqueBooks = $state<Book[]>(initialHistorySnapshot.uniqueBooks);
 	let uniqueBooksLoading = $state(
 		initialHistorySnapshot.runs.length > 0 && !initialHistorySnapshot.uniqueLoaded
 	);
 	let loading = $state(!initialHistorySnapshot.loaded);
 	let error = $state<string | null>(null);
-	let timedOut = $state(false);
-	let pollTimer: ReturnType<typeof setTimeout> | null = null;
-	let viewMode = $state<'loading' | 'history' | 'empty' | 'single' | 'timedOut' | 'error'>(
+	let viewMode = $state<'loading' | 'history' | 'empty' | 'error'>(
 		initialHistorySnapshot.loaded
 			? initialHistorySnapshot.runs.length === 0
 				? 'empty'
 				: 'history'
 			: 'loading'
 	);
-	let gridEl = $state<HTMLDivElement | null>(null);
 	let activeRouteLoadId = 0;
 
 	let allRecommendedBookIds = $state<string[]>(initialHistorySnapshot.allRecommendedBookIds ?? []);
@@ -278,43 +267,6 @@
 		});
 	}
 
-	function handleGridKeydown(e: KeyboardEvent) {
-		const key = e.key;
-		if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'ArrowUp' && key !== 'ArrowDown') return;
-		if (!gridEl || books.length === 0) return;
-
-		const cards = Array.from(gridEl.querySelectorAll<HTMLElement>('.book-card'));
-		const currentCard = cards.find((card) => card.contains(document.activeElement as Node));
-		const currentIndex = currentCard ? cards.indexOf(currentCard) : -1;
-		if (currentIndex === -1) return;
-
-		const prev = key === 'ArrowLeft' || key === 'ArrowUp';
-		const nextIndex = prev ? currentIndex - 1 : currentIndex + 1;
-		if (nextIndex < 0 || nextIndex >= cards.length) return;
-
-		e.preventDefault();
-		const targetCard = cards[nextIndex];
-		const firstFocusable = targetCard.querySelector<HTMLElement>('button, [role="button"]');
-		firstFocusable?.focus();
-	}
-
-	async function fetchRecommendations(
-		accessToken: string | null,
-		requestId: string | null
-	): Promise<{ books: Book[] }> {
-		const url = requestId
-			? `/api/recommendations?request_id=${encodeURIComponent(requestId)}`
-			: '/api/recommendations';
-		const headers: Record<string, string> = {};
-		if (accessToken) {
-			headers['Authorization'] = `Bearer ${accessToken}`;
-		}
-		const res = await fetch(url, { headers });
-		if (!res.ok) throw new Error(`HTTP ${res.status}`);
-		const data: { books: Book[]; request_id: string | null } = await res.json();
-		return { books: data.books ?? [] };
-	}
-
 	async function fetchHistory(accessToken: string | null): Promise<RecommendationRun[]> {
 		const headers: Record<string, string> = {};
 		if (accessToken) {
@@ -419,7 +371,6 @@
 		loading = !snapshot.loaded;
 		uniqueBooksLoading = snapshot.runs.length > 0 && !snapshot.uniqueLoaded;
 		error = null;
-		timedOut = false;
 		viewMode = snapshot.loaded ? (snapshot.runs.length === 0 ? 'empty' : 'history') : 'loading';
 		// Only sync header count when snapshot is trustworthy. Initial store state also has
 		// `runs.length === 0` before any fetch — syncing then cleared the count and hid the main nav
@@ -518,113 +469,27 @@
 		});
 	});
 
-	// React to URL changes (client-side navigation from history "View" link, etc.)
+	/** Legacy and external links: ?request_id= opens the shortlist route. */
+	$effect(() => {
+		if (!browser) return;
+		const url = page.url;
+		if (url.pathname !== '/rate/recommendations') return;
+		const requestId = url.searchParams.get('request_id')?.trim();
+		if (!requestId) return;
+		const params = new URLSearchParams({ request_id: requestId });
+		if (url.searchParams.get('from') === 'history') params.set('from', 'history');
+		void goto(`/rate/recommendations/shortlist?${params.toString()}`, { replaceState: true });
+	});
+
 	$effect(() => {
 		const url = page.url;
-		const requestId = url.searchParams.get('request_id')?.trim() ?? null;
-		const fromHistory = url.searchParams.get('from') === 'history';
+		if (url.pathname !== '/rate/recommendations') return;
+		if (url.searchParams.get('request_id')?.trim()) return;
+
 		const accessToken = $authStore.session?.access_token ?? null;
 		const loadId = ++activeRouteLoadId;
 
-		// Clean up previous poll when URL or effect re-runs
-		if (pollTimer != null) {
-			clearTimeout(pollTimer);
-			pollTimer = null;
-		}
-
-		if (requestId) {
-			if (fromHistory) {
-				const cachedBooks = recommendationsPageStore.getRunBooks(requestId);
-				books = cachedBooks ? [...cachedBooks] : [];
-				loading = !cachedBooks;
-				error = null;
-				timedOut = false;
-				viewMode = cachedBooks ? 'single' : 'loading';
-				if (cachedBooks && cachedBooks.length > 0) {
-					void refreshRecommendationsCountFromApi(accessToken);
-				}
-				const requestedId = requestId;
-				fetchRecommendations(accessToken, requestId)
-					.then(({ books: nextBooks }) => {
-						// Only apply if still on this request (user didn't navigate away)
-						if (isActiveRouteLoad(loadId, requestedId)) {
-							books = nextBooks;
-							recommendationsPageStore.setRunBooks(requestedId, nextBooks);
-							error = null;
-							viewMode = 'single';
-							if (nextBooks.length > 0) {
-								void refreshRecommendationsCountFromApi(accessToken);
-							}
-						}
-					})
-					.catch((e) => {
-						if (!isActiveRouteLoad(loadId, requestedId)) return;
-						if (cachedBooks) {
-							error = null;
-							return;
-						}
-						error = e instanceof Error ? e.message : t('recommendations.failedToLoad');
-						viewMode = 'error';
-					})
-					.finally(() => {
-						if (isActiveRouteLoad(loadId, requestedId)) {
-							loading = false;
-						}
-					});
-				return;
-			}
-
-			const start = Date.now();
-
-			const schedule = async () => {
-				if (!isActiveRouteLoad(loadId, requestId)) return;
-				let done = false;
-				try {
-					const { books: nextBooks } = await fetchRecommendations(accessToken, requestId);
-					if (!isActiveRouteLoad(loadId, requestId)) return;
-					if (nextBooks.length > 0) {
-						books = nextBooks;
-						recommendationsPageStore.setRunBooks(requestId, nextBooks);
-						loading = false;
-						error = null;
-						timedOut = false;
-						viewMode = 'single';
-						void refreshRecommendationsCountFromApi(accessToken);
-						done = true;
-					} else if (Date.now() - start >= POLL_TIMEOUT_MS) {
-						timedOut = true;
-						loading = false;
-						error = null;
-						viewMode = 'timedOut';
-						done = true;
-					}
-				} catch (e) {
-					if (!isActiveRouteLoad(loadId, requestId)) return;
-					error = e instanceof Error ? e.message : t('recommendations.failedToLoad');
-					viewMode = 'error';
-					loading = false;
-					done = true;
-				}
-
-				if (!isActiveRouteLoad(loadId, requestId)) return;
-				if (done) {
-					if (pollTimer != null) {
-						clearTimeout(pollTimer);
-						pollTimer = null;
-					}
-				} else {
-					pollTimer = setTimeout(schedule, POLL_INTERVAL_MS);
-				}
-			};
-
-			books = [];
-			loading = true;
-			error = null;
-			timedOut = false;
-			viewMode = 'loading';
-			void schedule();
-		} else {
-			const cachedHistory = recommendationsPageStore.getHistorySnapshot();
+		const cachedHistory = recommendationsPageStore.getHistorySnapshot();
 			applyHistorySnapshot();
 
 			const refreshUniqueBooks = async (): Promise<void> => {
@@ -701,7 +566,6 @@
 						loading = false;
 					}
 				});
-		}
 	});
 </script>
 
@@ -714,11 +578,6 @@
 	{#if viewMode === 'loading'}
 		<h1 class="recommendations-page__title recommendations-page__title--spaced typ-display2 typ-display2--content">{t('recommendations.title')}</h1>
 		<RecommendationsLoading />
-	{:else if viewMode === 'timedOut'}
-		<RecommendationsEmpty
-			ratedCount={$ratingsStore.size}
-			message={t('recommendations.timeoutMessage')}
-		/>
 	{:else if viewMode === 'error' || viewMode === 'empty'}
 		<RecommendationsEmpty
 			ratedCount={$ratingsStore.size}
@@ -812,50 +671,6 @@
 				</ul>
 			{/if}
 		</div>
-	{:else if viewMode === 'single'}
-		<h1 class="recommendations-page__title typ-display2 typ-display2--content">{t('recommendations.title')}</h1>
-		{#if page.url.searchParams.get('from') === 'history'}
-			<p class="recommendations-page__back-wrap">
-				<Button
-					variant="tertiary"
-					compact
-					aria-label={t('recommendations.backToList')}
-					onclick={() => goto('/rate/recommendations')}
-				>
-					{t('recommendations.backToList')}
-				</Button>
-			</p>
-		{/if}
-		{#if books.length === 0}
-			<p class="recommendations-page__empty-run">{t('recommendations.emptyRun')}</p>
-		{:else}
-			<div
-				role="grid"
-				tabindex="-1"
-				aria-label={t('recommendations.aria.recommendedBooks')}
-				class="recommendations-page__list book-card-grid"
-				bind:this={gridEl}
-				onkeydown={handleGridKeydown}
-			>
-				{#each books as book (book.id)}
-					<div class="book-card-grid__cell" role="gridcell">
-						<BookCard
-							context="recommendations"
-							{book}
-							bookmarked={$planToReadStore.has(book.id)}
-							onBookmark={(id) => handleBookmark(book, id)}
-							currentRating={$ratingsStore.get(book.id) ?? null}
-							onRate={(id, value) => {
-								ratingsStore.setRating(id, value, book.book_id, book);
-							}}
-							onRemoveRating={(id) => ratingsStore.removeRating(id, book.book_id)}
-							notInterested={$notInterestedStore.has(book.book_id)}
-							onNotInterested={() => handleNotInterested(book)}
-						/>
-					</div>
-				{/each}
-			</div>
-		{/if}
 	{/if}
 </div>
 
@@ -1004,14 +819,5 @@
 		list-style: none;
 		margin: 0;
 		padding: 0;
-	}
-	.recommendations-page__empty-run {
-		color: var(--color-text-muted);
-		margin: 0;
-		text-align: center;
-	}
-	.recommendations-page__back-wrap {
-		margin: 0 0 var(--space-4) 0;
-		text-align: center;
 	}
 </style>

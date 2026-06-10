@@ -90,6 +90,20 @@ en:
     emptyBookmarkedTab: "No bookmarked recommendations yet."
     emptyNotInterestedTab: "No recommended titles marked not interested yet."
     loadingList: "Loading…"
+    shortlist:
+      title: "Your shortlist"
+      metaDescription: "Swipe through your latest book recommendations on Unread."
+      loading: "Finding books for you…"
+      timeoutTitle: "Still working on it"
+      timeoutMessage: "This is taking longer than expected. Try again in a moment."
+      errorTitle: "Could not load your shortlist"
+      errorDefault: "Something went wrong while loading your recommendations."
+      retry: "Try again"
+      typeLabel: "Type"
+      carouselAriaLabel: "Your recommended books"
+      prevBook: "Previous book"
+      nextBook: "Next book"
+      slideAriaLabel: "{{title}}, book {{position}} of {{total}}"
 
   faq:
     title: "Frequently Asked Questions"

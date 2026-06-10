@@ -1357,7 +1357,9 @@
 					.select('id')
 					.single();
 				if (!error && data?.id != null) {
-					goto(`/rate/recommendations?request_id=${encodeURIComponent(String(data.id))}`);
+					goto(
+						`/rate/recommendations/shortlist?request_id=${encodeURIComponent(String(data.id))}`
+					);
 					return;
 				}
 			} catch {

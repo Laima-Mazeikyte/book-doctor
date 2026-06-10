@@ -63,9 +63,12 @@
 		el?.focus({ preventScroll: true });
 	}
 
+	const isShortlistShell = $derived(page.url.pathname === '/rate/recommendations/shortlist');
+
 	/** Routes with `.book-card-grid` — drop main max-width so more columns fit on large screens */
 	const isBookGridShell = $derived.by(() => {
 		const pathname = page.url.pathname;
+		if (isShortlistShell) return false;
 		return (
 			pathname === '/my-bookshelf' ||
 			pathname === '/not-interested' ||
@@ -77,6 +80,7 @@
 
 	const showAppFooter = $derived.by(() => {
 		const pathname = page.url.pathname;
+		if (isShortlistShell) return false;
 		if (pathname === '/rate/recommendations') return true;
 		return pathname !== '/rate' && !pathname.startsWith('/rate/');
 	});
@@ -534,12 +538,19 @@
 		{t('rate.skipToBottomBar')}
 	</a>
 {/if}
-<div class="app-chrome" class:app-chrome--landing={page.url.pathname === '/'}>
-	<AppHeader onOpenBugReport={openBugModal} />
+<div
+	class="app-chrome"
+	class:app-chrome--landing={page.url.pathname === '/'}
+	class:app-chrome--shortlist={isShortlistShell}
+>
+	{#if !isShortlistShell}
+		<AppHeader onOpenBugReport={openBugModal} />
+	{/if}
 	<main
 		id="main"
 		class:rate-page={page.url.pathname === '/rate'}
 		class:landing-page={page.url.pathname === '/'}
+		class:shortlist-page-main={isShortlistShell}
 		class:main-book-grid-shell={isBookGridShell}
 	>
 		<div class="main-min">
@@ -598,6 +609,29 @@
 	}
 	.app-chrome--landing .page-enter {
 		flex: 1;
+		display: flex;
+		flex-direction: column;
+	}
+	.app-chrome--shortlist {
+		min-height: 100dvh;
+	}
+	.app-chrome--shortlist :global(main.shortlist-page-main) {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		padding: 0;
+		max-width: none;
+	}
+	.app-chrome--shortlist .main-min {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+	}
+	.app-chrome--shortlist .page-enter {
+		flex: 1;
+		min-height: 0;
 		display: flex;
 		flex-direction: column;
 	}
