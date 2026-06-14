@@ -9,7 +9,10 @@
 	import { ensureAnonymousSessionStarted } from '$lib/auth/anonymous-session';
 	import { getSupabase } from '$lib/supabase';
 	import { authStore, waitForAuthReady } from '$lib/stores/auth';
-	import { waitForUserLibraryHydration } from '$lib/stores/userLibrary';
+	import {
+		refreshRecommendationsCountFromApi
+	} from '$lib/stores/recommendationsCount';
+	import { scheduleUserLibraryDetailsLoad, scheduleUserLibraryIdsLoad } from '$lib/stores/userLibrary';
 	import BookCardGridSkeleton from '$lib/components/BookCardGridSkeleton.svelte';
 	import RatingsBar from '$lib/components/RatingsBar.svelte';
 	import SearchBar from '$lib/components/SearchBar.svelte';
@@ -41,28 +44,16 @@
 	const EMPTY_PAGE_CHAIN_MAX = 25;
 	/** After a new feed batch mounts, ignore strict “end of list” briefly so a sentinel already at the viewport bottom does not clear `hasMore` before the user can interact. */
 	const STRICT_FEED_END_GRACE_MS = 750;
-	const CURATED_FEED_CACHE_KEY = 'book-doctor:rate:curated-feed:v2';
 
-	type InitialListSource = 'cached_curated' | 'fresh_curated' | 'top100';
-	type LatestFeedMode = 'cache_current' | 'cache_pending_newer' | 'newer_completed' | 'cold_start';
-	type LatestFeedPayload = {
-		status: string;
-		books: Book[];
-		request_id: string | null;
-		error_message: string | null;
-	};
+	type LatestFeedMode = 'newer_completed' | 'cold_start' | 'exhausted';
 	type LatestFeedStateResponse = {
 		mode: LatestFeedMode;
+		books: Book[];
+		request_id: string | null;
 		latest_request_id: string | null;
 		latest_request_status: string | null;
-		latest_completed_request_id: string | null;
-		latest_completed: LatestFeedPayload | null;
-	};
-	type CachedCuratedFeed = {
-		request_id: string;
-		books: Book[];
-		cached_at: string;
-		viewer_key: string;
+		status: string;
+		error_message: string | null;
 	};
 
 	// ── Search ─────────────────────────────────────────────────────────────────
@@ -136,24 +127,13 @@
 
 	/** Bumped when a new search overlay session starts; stale feed refreshes ignore flag writes. */
 	let searchFeedSessionId = $state(0);
-	/** Any rate / bookmark / not-interested while the overlay was open this session. */
-	let searchOverlaySessionDirty = $state(false);
 	/** First qualifying mutation consumed the one in-session warm-feed attempt. */
 	let searchSessionFeedRefreshIssued = $state(false);
-	let searchSessionFeedInsertAttempted = $state(false);
-	let searchSessionFeedRefreshPipelineCompleted = $state(false);
 	let searchSessionFeedRefreshInFlightPromise: Promise<void> | null = null;
-	/**
-	 * User closed search while a quiet (overlay-open) feed refresh was still running — show the
-	 * main-list skeleton until that request finishes so the list does not swap without warning.
-	 */
 
 	function resetSearchSessionFeedFlags() {
 		searchFeedSessionId += 1;
-		searchOverlaySessionDirty = false;
 		searchSessionFeedRefreshIssued = false;
-		searchSessionFeedInsertAttempted = false;
-		searchSessionFeedRefreshPipelineCompleted = false;
 	}
 
 	function captureFeedScrollForSearchReturn() {
@@ -224,7 +204,6 @@
 		void tick().then(() => {
 			requestAnimationFrame(() => {
 				window.scrollTo({ top: savedScrollY, left: 0, behavior: 'auto' });
-				searchOverlaySessionDirty = false;
 			});
 		});
 	}
@@ -452,11 +431,9 @@
 	let everHadSessionSignal = $state(false);
 	let lastAppendWasFeed = $state(false);
 	let engagedWithPendingBatch = $state(false);
-	let pendingBatchIds = $state<string[]>([]);
 	let suppressStrictFeedEndUntil = $state(0);
 	/** Cold `loadInitialMainList` used Top 100 because no access token was ready in time; retry feed once auth exists. */
 	let mainListFellBackDueToMissingAuthToken = $state(false);
-	let initialListSource = $state<InitialListSource | null>(null);
 	let initialListDecisionSettled = $state(false);
 	let initialMainListLoadInFlight: Promise<void> | null = null;
 
@@ -765,69 +742,8 @@
 		return get(authStore).session?.access_token ?? null;
 	}
 
-	function currentFeedViewerKey(): string | null {
-		const user = get(authStore).user;
-		if (!user?.id) return null;
-		return user.is_anonymous === true ? `anon:${user.id}` : `user:${user.id}`;
-	}
-
-	async function fetchCuratedFeedBooks(requestId: string, token: string): Promise<Book[]> {
-		const url = new URL(resolve('/api/feed'), location.href);
-		url.searchParams.set('request_id', requestId);
-		const res = await fetch(url.toString(), {
-			headers: { Authorization: `Bearer ${token}` }
-		});
-		if (!res.ok) {
-			throw new Error(`Failed to load curated feed: HTTP ${res.status}`);
-		}
-		const payload: { status: string; books: Book[] } = await res.json();
-		if (payload.status === 'completed' && payload.books?.length > 0) {
-			return payload.books;
-		}
-		return [];
-	}
-
-	async function commitInitialCuratedFromServer(
-		source: Extract<InitialListSource, 'cached_curated' | 'fresh_curated'>,
-		requestId: string,
-		token: string,
-		skipInitialLoading: boolean
-	) {
-		const books = await fetchCuratedFeedBooks(requestId, token);
-		if (books.length === 0) {
-			await commitInitialTop100Choice(skipInitialLoading);
-			return;
-		}
-		commitInitialCuratedChoice(source, requestId, books);
-	}
-
-	function persistCuratedFeedCache(payload: { request_id: string; books: Book[] }) {
-		if (!browser || payload.books.length === 0) return;
-		const viewerKey = currentFeedViewerKey();
-		if (!viewerKey) return;
-		try {
-			window.localStorage.setItem(
-				CURATED_FEED_CACHE_KEY,
-				JSON.stringify({
-					request_id: payload.request_id,
-					books: payload.books,
-					cached_at: new Date().toISOString(),
-					viewer_key: viewerKey
-				} satisfies CachedCuratedFeed)
-			);
-		} catch {
-			// Cache is only a first-paint optimization; ignore storage failures.
-		}
-	}
-
-	async function fetchLatestFeedState(
-		token: string,
-		knownRequestId?: string
-	): Promise<LatestFeedStateResponse> {
+	async function fetchLatestFeedState(token: string): Promise<LatestFeedStateResponse> {
 		const url = new URL(resolve('/api/feed/latest'), location.href);
-		if (knownRequestId) {
-			url.searchParams.set('known_request_id', knownRequestId);
-		}
 		const res = await fetch(url.toString(), {
 			headers: { Authorization: `Bearer ${token}` }
 		});
@@ -866,33 +782,22 @@
 		return appended;
 	}
 
-	function setPendingFromAppended(appended: Book[]) {
-		pendingBatchIds = appended.map((b) => b.id);
+	function armPendingFeedBatchEngagement() {
 		engagedWithPendingBatch = false;
 		armFeedBatchStrictGrace();
 	}
 
-	function commitInitialCuratedChoice(
-		source: Extract<InitialListSource, 'cached_curated' | 'fresh_curated'>,
-		requestId: string,
-		books: Book[],
-		opts?: { persistCache?: boolean }
-	) {
-		initialListSource = source;
+	function commitInitialCuratedChoice(books: Book[]) {
 		initialListDecisionSettled = true;
 		mainListFellBackDueToMissingAuthToken = false;
 		startedFromLatestFeed = true;
-		const applied = setMainListBooks(books, 'replace');
+		setMainListBooks(books, 'replace');
 		lastAppendWasFeed = true;
-		setPendingFromAppended(applied);
+		armPendingFeedBatchEngagement();
 		hasMore = true;
-		if (opts?.persistCache !== false) {
-			persistCuratedFeedCache({ request_id: requestId, books: applied });
-		}
 	}
 
 	async function commitInitialTop100Choice(skipInitialLoading: boolean) {
-		initialListSource = 'top100';
 		initialListDecisionSettled = true;
 		startedFromLatestFeed = false;
 		await loadPopular(0, 0, { skipInitialLoading });
@@ -974,14 +879,13 @@
 	}
 
 	function scheduleSearchSessionFeedRefresh() {
-		searchOverlaySessionDirty = true;
 		if (!searchOverlayOpen) return;
 		if (searchSessionFeedRefreshIssued) return;
 		searchSessionFeedRefreshIssued = true;
-		beginSearchSessionFeedRefresh({ quietUi: true });
+		beginSearchSessionFeedRefresh();
 	}
 
-	function beginSearchSessionFeedRefresh(opts?: { quietUi?: boolean }) {
+	function beginSearchSessionFeedRefresh() {
 		if (searchSessionFeedRefreshInFlightPromise != null) return;
 		const sid = searchFeedSessionId;
 		const p = refreshMainFeedAfterSearchSession({ sid });
@@ -991,9 +895,8 @@
 	}
 
 	/**
-	 * Persist ratings, insert one `feed_requests` row per search session, poll, and cache the
-	 * resulting feed for a future visit. This intentionally does not replace the current visible
-	 * `/rate` list mid-session.
+	 * Persist ratings, insert one `feed_requests` row per search session, and poll until complete.
+	 * This intentionally does not replace the current visible `/rate` list mid-session.
 	 */
 	async function refreshMainFeedAfterSearchSession(opts: { sid: number }) {
 		const { sid } = opts;
@@ -1018,23 +921,55 @@
 			if (sid !== searchFeedSessionId) return;
 			const requestId = await insertFeedRequestRow(supabase, user.id);
 			if (sid !== searchFeedSessionId) return;
-			searchSessionFeedInsertAttempted = true;
 
 			if (requestId == null) return;
 
-			const outcome = await pollCuratedFeedRequest(requestId, token);
+			await pollCuratedFeedRequest(requestId, token);
 			if (sid !== searchFeedSessionId) return;
-
-			if (outcome.kind === 'completed' && outcome.books.length > 0) {
-				persistCuratedFeedCache({ request_id: requestId, books: outcome.books });
-			}
 		} catch (e) {
 			console.error('[rate] refreshMainFeedAfterSearchSession', e);
-		} finally {
-			if (sid === searchFeedSessionId) {
-				searchSessionFeedRefreshPipelineCompleted = true;
-			}
 		}
+	}
+
+	function scheduleLibraryHydrationAfterFirstList() {
+		const userId = get(authStore).user?.id;
+		scheduleUserLibraryIdsLoad(userId);
+		scheduleUserLibraryDetailsLoad(userId);
+		const token = get(authStore).session?.access_token ?? null;
+		if (token) void refreshRecommendationsCountFromApi(token);
+	}
+
+	function resolveExhaustedFeedRefreshRequestId(feedState: LatestFeedStateResponse): string | null {
+		const latestId = feedState.latest_request_id;
+		const latestStatus = feedState.latest_request_status;
+		const completedId = feedState.request_id;
+		if (!latestId || !latestStatus || latestId === completedId) return null;
+		if (latestStatus === 'completed' || latestStatus === 'failed' || latestStatus === 'skipped') {
+			return null;
+		}
+		return latestId;
+	}
+
+	async function commitInitialExhaustedFeedChoice(
+		skipInitialLoading: boolean,
+		feedState: LatestFeedStateResponse
+	): Promise<boolean> {
+		const token = get(authStore).session?.access_token ?? null;
+		const supabase = getSupabase();
+		const user = get(authStore).user;
+		if (!token || !supabase || !user?.id) return false;
+
+		const requestId =
+			resolveExhaustedFeedRefreshRequestId(feedState) ??
+			(await insertFeedRequestRow(supabase, user.id));
+		if (requestId == null) return false;
+
+		const outcome = await pollCuratedFeedRequest(requestId, token);
+		if (outcome.kind === 'completed' && outcome.books.length > 0) {
+			commitInitialCuratedChoice(outcome.books);
+			return true;
+		}
+		return false;
 	}
 
 	async function loadInitialMainListInternal(listOpts?: { skipInitialLoading?: boolean }) {
@@ -1049,36 +984,32 @@
 			if (!token) {
 				mainListFellBackDueToMissingAuthToken = true;
 				await commitInitialTop100Choice(skip);
+				scheduleLibraryHydrationAfterFirstList();
 				return;
 			}
 
 			mainListFellBackDueToMissingAuthToken = false;
-			await waitForUserLibraryHydration(get(authStore).user?.id ?? null);
-
 			const data = await fetchLatestFeedState(token);
-			if (
-				data.mode === 'newer_completed' &&
-				data.latest_completed?.status === 'completed' &&
-				data.latest_completed.request_id &&
-				data.latest_completed.books?.length > 0
-			) {
-				commitInitialCuratedChoice(
-					'fresh_curated',
-					data.latest_completed.request_id,
-					data.latest_completed.books
-				);
+
+			if (data.mode === 'newer_completed' && data.books.length > 0) {
+				commitInitialCuratedChoice(data.books);
+				scheduleLibraryHydrationAfterFirstList();
 				return;
 			}
 
-			const requestId = data.latest_completed_request_id;
-			if (requestId && data.mode !== 'cold_start') {
-				await commitInitialCuratedFromServer('fresh_curated', requestId, token, skip);
-				return;
+			if (data.mode === 'exhausted') {
+				const refreshed = await commitInitialExhaustedFeedChoice(skip, data);
+				if (refreshed) {
+					scheduleLibraryHydrationAfterFirstList();
+					return;
+				}
 			}
 
 			await commitInitialTop100Choice(skip);
+			scheduleLibraryHydrationAfterFirstList();
 		} catch {
 			await commitInitialTop100Choice(skip);
+			scheduleLibraryHydrationAfterFirstList();
 		} finally {
 			if (!skip) {
 				loadingInitial = false;
@@ -1154,7 +1085,6 @@
 			nextOffset = data.nextOffset;
 			popularContinuationOffset = data.nextOffset;
 			lastAppendWasFeed = false;
-			pendingBatchIds = [];
 			engagedWithPendingBatch = false;
 
 			hasMore = data.hasMore ?? data.books.length > 0;
@@ -1206,7 +1136,7 @@
 				} else {
 					hasMore = books.length >= FEED_PAGE_SIZE;
 					lastAppendWasFeed = true;
-					setPendingFromAppended(books);
+					armPendingFeedBatchEngagement();
 				}
 				return;
 			}

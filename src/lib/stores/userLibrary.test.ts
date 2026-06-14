@@ -3,28 +3,49 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	clearUserLibraryHydration,
-	markUserLibraryHydrationReady,
-	markUserLibraryHydrationStarted,
-	userLibraryHydrationStore,
-	waitForUserLibraryHydration
+	markUserLibraryDetailsReady,
+	markUserLibraryIdsReady,
+	markUserLibraryIdsStarted,
+	userLibraryHydrationStore
 } from './userLibrary';
 
 describe('user library hydration', () => {
-	it('resolves immediately when userId is null', async () => {
-		await expect(waitForUserLibraryHydration(null)).resolves.toBeUndefined();
+	it('marks id hydration in progress for the active user', () => {
+		markUserLibraryIdsStarted('user-1');
+		expect(get(userLibraryHydrationStore)).toEqual({
+			userId: 'user-1',
+			idsReady: false,
+			detailsReady: false
+		});
 	});
 
-	it('resolves when hydration completes for the active user', async () => {
-		markUserLibraryHydrationStarted('user-1');
-		const pending = waitForUserLibraryHydration('user-1');
-		markUserLibraryHydrationReady('user-1');
-		await expect(pending).resolves.toBeUndefined();
-		expect(get(userLibraryHydrationStore)).toEqual({ userId: 'user-1', ready: true });
+	it('marks ids ready and leaves details pending', () => {
+		markUserLibraryIdsStarted('user-1');
+		markUserLibraryIdsReady('user-1');
+		expect(get(userLibraryHydrationStore)).toEqual({
+			userId: 'user-1',
+			idsReady: true,
+			detailsReady: false
+		});
 	});
 
-	it('treats cleared hydration as ready for signed-out restore', async () => {
+	it('marks details ready after deferred hydration completes', () => {
+		markUserLibraryIdsStarted('user-1');
+		markUserLibraryIdsReady('user-1');
+		markUserLibraryDetailsReady('user-1');
+		expect(get(userLibraryHydrationStore)).toEqual({
+			userId: 'user-1',
+			idsReady: true,
+			detailsReady: true
+		});
+	});
+
+	it('treats cleared hydration as ready for signed-out restore', () => {
 		clearUserLibraryHydration();
-		await expect(waitForUserLibraryHydration(null)).resolves.toBeUndefined();
-		expect(get(userLibraryHydrationStore)).toEqual({ userId: null, ready: true });
+		expect(get(userLibraryHydrationStore)).toEqual({
+			userId: null,
+			idsReady: true,
+			detailsReady: true
+		});
 	});
 });

@@ -19,12 +19,20 @@
 	import BugReportModal from '$lib/components/BugReportModal.svelte';
 	import { registerAnonymousSessionStarter } from '$lib/auth/anonymous-session';
 	import { notifyLibraryPersistedMutationForBrowseFeedWarm, onAfterNavigateForBrowseFeedWarm } from '$lib/feed/browseFeedWarm';
+	import { isRateShellPath } from '$lib/navigation/rateShell';
 	import { getSupabase } from '$lib/supabase';
 	import { authStore, clearPasswordRecoveryFlag, passwordRecoveryActive, markAuthInitChecking, markAuthInitError, markAuthInitReady, waitForAuthReady } from '$lib/stores/auth';
 	import {
 		clearUserLibraryHydration,
-		markUserLibraryHydrationReady,
-		markUserLibraryHydrationStarted
+		markUserLibraryDetailsReady,
+		markUserLibraryIdsReady,
+		markUserLibraryIdsStarted,
+		registerUserLibraryDetailsLoader,
+		registerUserLibraryIdsLoader,
+		scheduleUserLibraryDetailsLoad,
+		scheduleUserLibraryIdsLoad,
+		unregisterUserLibraryDetailsLoader,
+		unregisterUserLibraryIdsLoader
 	} from '$lib/stores/userLibrary';
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { ratingsStore } from '$lib/stores/ratings';
@@ -92,9 +100,317 @@
 	let ratingsPersistenceUserId: string | null = null;
 	let libraryHydratedForUserId: string | null = null;
 	let recommendationsCountLoadedForUserId: string | null = null;
+	let activeLibraryLoadRequestId = 0;
 
 	function isStaleRatingsLoad(requestId: number): boolean {
 		return requestId !== ratingsLoadRequestId;
+	}
+
+	type RatingIdRow = {
+		book_id: string;
+		book_rating: RatingValue;
+		books?: {
+			id: string;
+			book_id: string;
+		};
+	};
+
+	type BookmarkIdRow = {
+		book_id: string;
+		books?: {
+			id: string;
+			book_id: string;
+		};
+	};
+
+	function ratingUuidFromRow(row: RatingIdRow, uuidByUlid: Record<string, string>): string {
+		return row.books?.id != null ? String(row.books.id) : uuidByUlid[row.book_id] ?? row.book_id;
+	}
+
+	function bookmarkUuidFromRow(row: BookmarkIdRow, uuidByUlid: Record<string, string>): string {
+		return row.books?.id != null ? String(row.books.id) : uuidByUlid[row.book_id] ?? row.book_id;
+	}
+
+	function bookmarkUlidFromRow(row: BookmarkIdRow): string {
+		return row.books?.book_id ?? row.book_id;
+	}
+
+	async function fetchUuidByUlid(
+		supabase: SupabaseClient,
+		bookIds: string[],
+		requestId: number
+	): Promise<Record<string, string>> {
+		if (bookIds.length === 0) return {};
+		const { data: bookRows } = await supabase
+			.from('books')
+			.select('id, book_id')
+			.in('book_id', bookIds);
+		if (isStaleRatingsLoad(requestId)) return {};
+		return Object.fromEntries((bookRows ?? []).map((b) => [b.book_id, String(b.id)])) as Record<
+			string,
+			string
+		>;
+	}
+
+	function attachBookmarkPersistence(supabase: SupabaseClient, userId: string): void {
+		planToReadStore.setPersistence({
+			add(bookId) {
+				supabase
+					.from('user_bookmarks')
+					.upsert({ user_id: userId, book_id: bookId }, { onConflict: 'user_id,book_id' })
+					.then(({ error }) => {
+						if (error) console.error('[bookmarks] Failed to add:', error.message);
+						else notifyLibraryPersistedMutationForBrowseFeedWarm();
+					});
+			},
+			remove(bookId) {
+				supabase
+					.from('user_bookmarks')
+					.delete()
+					.eq('user_id', userId)
+					.eq('book_id', bookId)
+					.then(({ error }) => {
+						if (error) console.error('[bookmarks] Failed to remove:', error.message);
+						else notifyLibraryPersistedMutationForBrowseFeedWarm();
+					});
+			}
+		});
+	}
+
+	function attachNotInterestedPersistence(supabase: SupabaseClient, userId: string): void {
+		notInterestedStore.setPersistence({
+			add(bookId) {
+				supabase
+					.from('user_not_interested')
+					.upsert({ user_id: userId, book_id: bookId }, { onConflict: 'user_id,book_id' })
+					.then(({ error }) => {
+						if (error) console.error('[not-interested] Failed to add:', error.message);
+						else notifyLibraryPersistedMutationForBrowseFeedWarm();
+					});
+			},
+			remove(bookId) {
+				supabase
+					.from('user_not_interested')
+					.delete()
+					.eq('user_id', userId)
+					.eq('book_id', bookId)
+					.then(({ error }) => {
+						if (error) console.error('[not-interested] Failed to remove:', error.message);
+						else notifyLibraryPersistedMutationForBrowseFeedWarm();
+					});
+			}
+		});
+	}
+
+	async function loadUserLibraryIds(
+		supabase: SupabaseClient,
+		userId: string,
+		requestId: number
+	): Promise<void> {
+		try {
+			await loadUserLibraryIdsBody(supabase, userId, requestId);
+		} finally {
+			if (!isStaleRatingsLoad(requestId)) {
+				markUserLibraryIdsReady(userId);
+			}
+		}
+	}
+
+	async function loadUserLibraryIdsBody(
+		supabase: SupabaseClient,
+		userId: string,
+		requestId: number
+	): Promise<void> {
+		const [ratingsResult, bookmarksResult, notInterestedResult] = await Promise.all([
+			supabase
+				.from('user_ratings')
+				.select('book_id, book_rating, books(id, book_id)')
+				.eq('user_id', userId),
+			supabase
+				.from('user_bookmarks')
+				.select('book_id, books(id, book_id)')
+				.eq('user_id', userId),
+			supabase.from('user_not_interested').select('book_id').eq('user_id', userId)
+		]);
+
+		if (isStaleRatingsLoad(requestId)) return;
+
+		const { data: ratingRows, error: ratingsError } = ratingsResult;
+		if (ratingsError) {
+			console.error('[ratings] Failed to load user ratings:', ratingsError.message);
+			return;
+		}
+
+		const rawRatingRows = (ratingRows ?? []) as unknown as RatingIdRow[];
+		let ratingUuidByUlid: Record<string, string> = {};
+		if (rawRatingRows.some((row) => !row.books?.id) && rawRatingRows.length > 0) {
+			const bookIds = [...new Set(rawRatingRows.map((row) => row.book_id))];
+			ratingUuidByUlid = await fetchUuidByUlid(supabase, bookIds, requestId);
+			if (isStaleRatingsLoad(requestId)) return;
+		}
+
+		ratingsStore.hydrate(
+			rawRatingRows.map((row) => ({
+				bookId: ratingUuidFromRow(row, ratingUuidByUlid),
+				rating: row.book_rating
+			}))
+		);
+
+		const { data: bmRows, error: bmError } = bookmarksResult;
+		if (bmError) {
+			console.error('[bookmarks] Failed to load bookmarks:', bmError.message);
+		}
+
+		const rawBookmarkRows = (bmRows ?? []) as unknown as BookmarkIdRow[];
+		let bookmarkUuidByUlid: Record<string, string> = {};
+		if (rawBookmarkRows.some((row) => !row.books?.id) && rawBookmarkRows.length > 0) {
+			const bookIds = [...new Set(rawBookmarkRows.map((row) => row.book_id))];
+			bookmarkUuidByUlid = await fetchUuidByUlid(supabase, bookIds, requestId);
+			if (isStaleRatingsLoad(requestId)) return;
+		}
+
+		if (rawBookmarkRows.length > 0) {
+			const ids = rawBookmarkRows.map((row) => bookmarkUuidFromRow(row, bookmarkUuidByUlid));
+			const idToUlid = new Map(
+				rawBookmarkRows.map((row) => [
+					bookmarkUuidFromRow(row, bookmarkUuidByUlid),
+					bookmarkUlidFromRow(row)
+				])
+			);
+			planToReadStore.hydrate(ids, idToUlid);
+		} else {
+			planToReadStore.hydrate([], new Map());
+		}
+		attachBookmarkPersistence(supabase, userId);
+
+		const { data: niRows } = notInterestedResult;
+		notInterestedStore.hydrate(
+			(niRows ?? []).map((r) => r.book_id).filter((id): id is string => typeof id === 'string')
+		);
+		attachNotInterestedPersistence(supabase, userId);
+	}
+
+	async function loadUserLibraryDetails(
+		supabase: SupabaseClient,
+		userId: string,
+		requestId: number
+	): Promise<void> {
+		try {
+			await loadUserLibraryDetailsBody(supabase, userId, requestId);
+		} finally {
+			if (!isStaleRatingsLoad(requestId)) {
+				markUserLibraryDetailsReady(userId);
+			}
+		}
+	}
+
+	async function loadUserLibraryDetailsBody(
+		supabase: SupabaseClient,
+		userId: string,
+		requestId: number
+	): Promise<void> {
+		const { data: rows, error: ratingsError } = await supabase
+			.from('user_ratings')
+			.select(`book_id, book_rating, books(id, book_id, book_name, author, year, summary, ${BOOK_GENRE_TYPE_SELECT})`)
+			.eq('user_id', userId)
+			.order('updated_at', { ascending: false });
+
+		if (isStaleRatingsLoad(requestId)) return;
+
+		if (ratingsError) {
+			console.error('[ratings] Failed to load rated book details:', ratingsError.message);
+			return;
+		}
+
+		const rawRows = rows ?? [];
+		const needBookIds = rawRows.some((row) => !(row as { books?: { id?: string } }).books?.id);
+		let bookIdByUlid: Record<string, string> = {};
+		let fallbackBooks: Array<{
+			id: string;
+			book_id: string;
+			book_name: string;
+			author: string;
+			year?: number;
+			summary?: string | null;
+		} & BookGenreSlotRow & { type?: string | null }> = [];
+		if (needBookIds && rawRows.length > 0) {
+			const bookIds = [...new Set(rawRows.map((r) => r.book_id))];
+			const { data: bookRows } = await supabase
+				.from('books')
+				.select(`id, book_id, book_name, author, year, summary, ${BOOK_GENRE_TYPE_SELECT}`)
+				.in('book_id', bookIds);
+			if (isStaleRatingsLoad(requestId)) return;
+			if (bookRows) {
+				bookIdByUlid = Object.fromEntries(
+					bookRows.map((b) => [b.book_id, String(b.id)])
+				) as Record<string, string>;
+				fallbackBooks = bookRows.map((b) => ({
+					id: String(b.id),
+					book_id: b.book_id,
+					book_name: b.book_name ?? '',
+					author: b.author ?? '',
+					year: b.year,
+					summary: b.summary ?? undefined,
+					...pickGenreTypeFields(b as BookGenreSlotRow & { type?: string | null })
+				}));
+			}
+		}
+
+		const detailsMap = new Map<string, Book>();
+
+		for (const row of rawRows) {
+			const rowWithBooks = row as {
+				book_id: string;
+				book_rating: number;
+				books?: {
+					id?: string;
+					book_id?: string;
+					book_name?: string;
+					author?: string;
+					year?: number;
+					summary?: string | null;
+				} & BookGenreSlotRow & { type?: string | null };
+			};
+			const uuid =
+				rowWithBooks.books?.id != null
+					? String(rowWithBooks.books.id)
+					: bookIdByUlid[rowWithBooks.book_id] ?? rowWithBooks.book_id;
+			if (rowWithBooks.books?.id != null && rowWithBooks.books?.book_name != null) {
+				const b = rowWithBooks.books;
+				const detailBookId = b.book_id ?? rowWithBooks.book_id;
+				const type = catalogTypeFromRow(b);
+				detailsMap.set(uuid, {
+					id: uuid,
+					book_id: detailBookId,
+					title: b.book_name ?? '',
+					author: b.author ?? '',
+					coverUrl: coverUrlForBookId(detailBookId),
+					year: b.year != null ? String(b.year) : undefined,
+					summary: b.summary ?? undefined,
+					genres: genresFromGenreColumns(b),
+					...(type ? { type } : {})
+				});
+			} else if (fallbackBooks.length > 0) {
+				const fb = fallbackBooks.find((f) => f.id === uuid || f.book_id === rowWithBooks.book_id);
+				if (fb) {
+					const type = catalogTypeFromRow(fb);
+					detailsMap.set(uuid, {
+						id: uuid,
+						book_id: fb.book_id,
+						title: fb.book_name,
+						author: fb.author,
+						coverUrl: coverUrlForBookId(fb.book_id),
+						year: fb.year != null ? String(fb.year) : undefined,
+						summary: fb.summary ?? undefined,
+						genres: genresFromGenreColumns(fb),
+						...(type ? { type } : {})
+					});
+				}
+			}
+		}
+
+		if (isStaleRatingsLoad(requestId)) return;
+		ratingsStore.setRatedBooksDetails(detailsMap);
 	}
 
 	function attachRatingsPersistence(supabase: SupabaseClient, userId: string): void {
@@ -134,214 +450,6 @@
 					throw error;
 				}
 				notifyLibraryPersistedMutationForBrowseFeedWarm();
-			}
-		});
-	}
-
-	async function loadUserRatingsAndPersistence(
-		supabase: SupabaseClient,
-		userId: string,
-		requestId: number
-	): Promise<void> {
-		try {
-			await loadUserRatingsAndPersistenceBody(supabase, userId, requestId);
-		} finally {
-			if (!isStaleRatingsLoad(requestId)) {
-				markUserLibraryHydrationReady(userId);
-			}
-		}
-	}
-
-	async function loadUserRatingsAndPersistenceBody(
-		supabase: SupabaseClient,
-		userId: string,
-		requestId: number
-	): Promise<void> {
-		const { data: rows, error: ratingsError } = await supabase
-			.from('user_ratings')
-			.select(`book_id, book_rating, books(id, book_id, book_name, author, year, summary, ${BOOK_GENRE_TYPE_SELECT})`)
-			.eq('user_id', userId)
-			.order('updated_at', { ascending: false });
-
-		if (isStaleRatingsLoad(requestId)) return;
-
-		if (ratingsError) {
-			console.error('[ratings] Failed to load user ratings:', ratingsError.message);
-			return;
-		}
-
-		const rawRows = rows ?? [];
-		// Build bookId (UUID) for each row; app uses books.id (UUID) as key, not book_id ULID.
-		const needBookIds = rawRows.some((row) => !(row as { books?: { id?: string } }).books?.id);
-		let bookIdByUlid: Record<string, string> = {};
-		let fallbackBooks: Array<{
-			id: string;
-			book_id: string;
-			book_name: string;
-			author: string;
-			year?: number;
-			summary?: string | null;
-		} & BookGenreSlotRow & { type?: string | null }> = [];
-		if (needBookIds && rawRows.length > 0) {
-			const bookIds = [...new Set(rawRows.map((r) => r.book_id))];
-			const { data: bookRows } = await supabase
-				.from('books')
-				.select(`id, book_id, book_name, author, year, summary, ${BOOK_GENRE_TYPE_SELECT}`)
-				.in('book_id', bookIds);
-			if (isStaleRatingsLoad(requestId)) return;
-			if (bookRows) {
-				bookIdByUlid = Object.fromEntries(
-					bookRows.map((b) => [b.book_id, String(b.id)])
-				) as Record<string, string>;
-				fallbackBooks = bookRows.map((b) => ({
-					id: String(b.id),
-					book_id: b.book_id,
-					book_name: b.book_name ?? '',
-					author: b.author ?? '',
-					year: b.year,
-					summary: b.summary ?? undefined,
-					...pickGenreTypeFields(b as BookGenreSlotRow & { type?: string | null })
-				}));
-			}
-		}
-
-		const detailsMap = new Map<string, Book>();
-
-		const entries: Array<{ bookId: string; rating: RatingValue }> = rawRows.map((row) => {
-			const rowWithBooks = row as {
-				book_id: string;
-				book_rating: number;
-				books?: {
-					id?: string;
-					book_id?: string;
-					book_name?: string;
-					author?: string;
-					year?: number;
-					summary?: string | null;
-				} & BookGenreSlotRow & { type?: string | null };
-			};
-			const uuid =
-				rowWithBooks.books?.id != null
-					? String(rowWithBooks.books.id)
-					: bookIdByUlid[rowWithBooks.book_id] ?? rowWithBooks.book_id;
-			// So the rating list can show all rated books, store book details when we have them.
-			if (rowWithBooks.books?.id != null && rowWithBooks.books?.book_name != null) {
-				const b = rowWithBooks.books;
-				const detailBookId = b.book_id ?? rowWithBooks.book_id;
-				const type = catalogTypeFromRow(b);
-				detailsMap.set(uuid, {
-					id: uuid,
-					book_id: detailBookId,
-					title: b.book_name ?? '',
-					author: b.author ?? '',
-					coverUrl: coverUrlForBookId(detailBookId),
-					year: b.year != null ? String(b.year) : undefined,
-					summary: b.summary ?? undefined,
-					genres: genresFromGenreColumns(b),
-					...(type ? { type } : {})
-				});
-			} else if (fallbackBooks.length > 0) {
-				const fb = fallbackBooks.find((f) => f.id === uuid || f.book_id === rowWithBooks.book_id);
-				if (fb) {
-					const type = catalogTypeFromRow(fb);
-					detailsMap.set(uuid, {
-						id: uuid,
-						book_id: fb.book_id,
-						title: fb.book_name,
-						author: fb.author,
-						coverUrl: coverUrlForBookId(fb.book_id),
-						year: fb.year != null ? String(fb.year) : undefined,
-						summary: fb.summary ?? undefined,
-						genres: genresFromGenreColumns(fb),
-						...(type ? { type } : {})
-					});
-				}
-			}
-			return {
-				bookId: uuid,
-				rating: rowWithBooks.book_rating as RatingValue
-			};
-		});
-
-		if (isStaleRatingsLoad(requestId)) return;
-		ratingsStore.hydrate(entries);
-		ratingsStore.setRatedBooksDetails(detailsMap);
-
-		// Load bookmarks and set persistence
-		const { data: bmRows, error: bmError } = await supabase
-			.from('user_bookmarks')
-			.select('book_id')
-			.eq('user_id', userId);
-		if (isStaleRatingsLoad(requestId)) return;
-		if (bmError) {
-			console.error('[bookmarks] Failed to load bookmarks:', bmError.message);
-		}
-		if (bmRows?.length) {
-			const bmBookIds = bmRows.map((r) => r.book_id).filter((id): id is string => typeof id === 'string');
-			const { data: bookRows } = await supabase
-				.from('books')
-				.select('id, book_id')
-				.in('book_id', bmBookIds);
-			if (isStaleRatingsLoad(requestId)) return;
-			const ids = (bookRows ?? []).map((b) => String(b.id));
-			const idToUlid = new Map((bookRows ?? []).map((b) => [String(b.id), String(b.book_id)]));
-			planToReadStore.hydrate(ids, idToUlid);
-		} else {
-			planToReadStore.hydrate([], new Map());
-		}
-		planToReadStore.setPersistence({
-			add(bookId) {
-				supabase
-					.from('user_bookmarks')
-					.upsert({ user_id: userId, book_id: bookId }, { onConflict: 'user_id,book_id' })
-					.then(({ error }) => {
-						if (error) console.error('[bookmarks] Failed to add:', error.message);
-						else notifyLibraryPersistedMutationForBrowseFeedWarm();
-					});
-			},
-			remove(bookId) {
-				supabase
-					.from('user_bookmarks')
-					.delete()
-					.eq('user_id', userId)
-					.eq('book_id', bookId)
-					.then(({ error }) => {
-						if (error) console.error('[bookmarks] Failed to remove:', error.message);
-						else notifyLibraryPersistedMutationForBrowseFeedWarm();
-					});
-			}
-		});
-
-
-		const { data: niRows } = await supabase
-			.from('user_not_interested')
-			.select('book_id')
-			.eq('user_id', userId);
-		if (isStaleRatingsLoad(requestId)) return;
-		notInterestedStore.hydrate(
-			(niRows ?? []).map((r) => r.book_id).filter((id): id is string => typeof id === 'string')
-		);
-
-		notInterestedStore.setPersistence({
-			add(bookId) {
-				supabase
-					.from('user_not_interested')
-					.upsert({ user_id: userId, book_id: bookId }, { onConflict: 'user_id,book_id' })
-					.then(({ error }) => {
-						if (error) console.error('[not-interested] Failed to add:', error.message);
-						else notifyLibraryPersistedMutationForBrowseFeedWarm();
-					});
-			},
-			remove(bookId) {
-				supabase
-					.from('user_not_interested')
-					.delete()
-					.eq('user_id', userId)
-					.eq('book_id', bookId)
-					.then(({ error }) => {
-						if (error) console.error('[not-interested] Failed to remove:', error.message);
-						else notifyLibraryPersistedMutationForBrowseFeedWarm();
-					});
 			}
 		});
 	}
@@ -518,17 +626,18 @@
 		hadUserBefore = true;
 		attachRatingsPersistence(supabase, user.id);
 
-		if (libraryHydratedForUserId !== user.id) {
+		const pathname = page.url.pathname;
+		if (libraryHydratedForUserId !== user.id && !isRateShellPath(pathname)) {
 			libraryHydratedForUserId = user.id;
-			const requestId = ++ratingsLoadRequestId;
-			markUserLibraryHydrationStarted(user.id);
-			void loadUserRatingsAndPersistence(supabase, user.id, requestId);
+			activeLibraryLoadRequestId = ++ratingsLoadRequestId;
+			markUserLibraryIdsStarted(user.id);
+			void loadUserLibraryIds(supabase, user.id, activeLibraryLoadRequestId);
 		}
 
 		const token = session.access_token ?? null;
 
-		// Load recommendations count for header
-		if (token && recommendationsCountLoadedForUserId !== user.id) {
+		// Load recommendations count for header (defer on /rate until first list commits)
+		if (token && recommendationsCountLoadedForUserId !== user.id && !isRateShellPath(pathname)) {
 			const userId = user.id;
 			void refreshRecommendationsCountFromApi(token).then((ok) => {
 				if (ok && get(authStore).user?.id === userId) {
@@ -536,6 +645,28 @@
 				}
 			});
 		}
+	});
+
+	// Deferred library hydration — /rate schedules after first list; other routes load immediately.
+	onMount(() => {
+		registerUserLibraryIdsLoader((userId) => {
+			const supabase = getSupabase();
+			if (!supabase || get(authStore).user?.id !== userId) return;
+			if (libraryHydratedForUserId === userId) return;
+			libraryHydratedForUserId = userId;
+			activeLibraryLoadRequestId = ++ratingsLoadRequestId;
+			markUserLibraryIdsStarted(userId);
+			void loadUserLibraryIds(supabase, userId, activeLibraryLoadRequestId);
+		});
+		registerUserLibraryDetailsLoader((userId) => {
+			const supabase = getSupabase();
+			if (!supabase || get(authStore).user?.id !== userId) return;
+			void loadUserLibraryDetails(supabase, userId, activeLibraryLoadRequestId);
+		});
+		return () => {
+			unregisterUserLibraryIdsLoader();
+			unregisterUserLibraryDetailsLoader();
+		};
 	});
 
 	// After anonymous→account migration, ratings are written server-side; reload them.
@@ -547,9 +678,10 @@
 				attachRatingsPersistence(supabase, user.id);
 				void ratingsStore.flushPending();
 				libraryHydratedForUserId = null;
-				const requestId = ++ratingsLoadRequestId;
-				markUserLibraryHydrationStarted(user.id);
-				void loadUserRatingsAndPersistence(supabase, user.id, requestId);
+				activeLibraryLoadRequestId = ++ratingsLoadRequestId;
+				markUserLibraryIdsStarted(user.id);
+				void loadUserLibraryIds(supabase, user.id, activeLibraryLoadRequestId);
+				scheduleUserLibraryDetailsLoad(user.id);
 			}
 		};
 		window.addEventListener('auth:ratings-migrated', handler);
