@@ -29,13 +29,17 @@ function createPlanToReadStore() {
 		return next;
 	}
 
-	function flushPendingOps() {
-		if (!persistence || pendingOps.size === 0) return;
-		for (const op of pendingOps.values()) {
-			if (op.action === 'add') void Promise.resolve(persistence.add(op.bookUlid));
-			else void Promise.resolve(persistence.remove(op.bookUlid));
-		}
+	function flushPendingOps(): Promise<void> {
+		if (!persistence || pendingOps.size === 0) return Promise.resolve();
+		const ops = [...pendingOps.values()];
 		pendingOps.clear();
+		return Promise.all(
+			ops.map((op) =>
+				op.action === 'add'
+					? Promise.resolve(persistence!.add(op.bookUlid))
+					: Promise.resolve(persistence!.remove(op.bookUlid))
+			)
+		).then(() => undefined);
 	}
 
 	return {
@@ -47,7 +51,7 @@ function createPlanToReadStore() {
 		/** Set callbacks to persist bookmarks to Supabase. Called from layout after session exists. */
 		setPersistence(p: PlanToReadPersistence | null) {
 			persistence = p;
-			if (persistence) flushPendingOps();
+			if (persistence) void flushPendingOps();
 		},
 		/**
 		 * Hydrate the store from server data (e.g. after loading /api/bookmarks).
@@ -96,6 +100,9 @@ function createPlanToReadStore() {
 			set(new Set());
 			bookIdToUlid.set(new Map());
 			pendingOps.clear();
+		},
+		async flushPending() {
+			await flushPendingOps();
 		}
 	};
 }

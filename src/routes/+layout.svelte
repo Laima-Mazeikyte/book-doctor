@@ -20,7 +20,12 @@
 	import { registerAnonymousSessionStarter } from '$lib/auth/anonymous-session';
 	import { notifyLibraryPersistedMutationForBrowseFeedWarm, onAfterNavigateForBrowseFeedWarm } from '$lib/feed/browseFeedWarm';
 	import { getSupabase } from '$lib/supabase';
-	import { authStore, clearPasswordRecoveryFlag, passwordRecoveryActive } from '$lib/stores/auth';
+	import { authStore, clearPasswordRecoveryFlag, passwordRecoveryActive, markAuthInitChecking, markAuthInitError, markAuthInitReady, waitForAuthReady } from '$lib/stores/auth';
+	import {
+		clearUserLibraryHydration,
+		markUserLibraryHydrationReady,
+		markUserLibraryHydrationStarted
+	} from '$lib/stores/userLibrary';
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import {
@@ -30,7 +35,7 @@
 	import { notInterestedStore } from '$lib/stores/notInterested';
 	import { bookmarksPageStore } from '$lib/stores/bookmarksPage';
 	import { recommendationsPageStore } from '$lib/stores/recommendationsPage';
-	import type { SupabaseClient } from '@supabase/supabase-js';
+	import type { Session, SupabaseClient } from '@supabase/supabase-js';
 	import {
 		BOOK_GENRE_TYPE_SELECT,
 		catalogTypeFromRow,
@@ -85,6 +90,8 @@
 	let hadUserBefore = $state(false);
 	let ratingsLoadRequestId = 0;
 	let ratingsPersistenceUserId: string | null = null;
+	let libraryHydratedForUserId: string | null = null;
+	let recommendationsCountLoadedForUserId: string | null = null;
 
 	function isStaleRatingsLoad(requestId: number): boolean {
 		return requestId !== ratingsLoadRequestId;
@@ -132,6 +139,20 @@
 	}
 
 	async function loadUserRatingsAndPersistence(
+		supabase: SupabaseClient,
+		userId: string,
+		requestId: number
+	): Promise<void> {
+		try {
+			await loadUserRatingsAndPersistenceBody(supabase, userId, requestId);
+		} finally {
+			if (!isStaleRatingsLoad(requestId)) {
+				markUserLibraryHydrationReady(userId);
+			}
+		}
+	}
+
+	async function loadUserRatingsAndPersistenceBody(
 		supabase: SupabaseClient,
 		userId: string,
 		requestId: number
@@ -349,8 +370,29 @@
 		ratingsStore.hydratePendingFromLocalStorage();
 		notInterestedStore.hydrateFromLocalStorage();
 		const supabaseClient = getSupabase();
-		if (!supabaseClient) return;
+		if (!supabaseClient) {
+			markAuthInitReady();
+			return;
+		}
 		const supabase = supabaseClient;
+
+		let lastAppliedSessionKey: string | null = null;
+
+		function sessionKey(session: Session | null): string {
+			return session?.user?.id && session.access_token
+				? `${session.user.id}:${session.access_token}`
+				: 'none';
+		}
+
+		function applyAuthSession(session: Session | null): boolean {
+			const key = sessionKey(session);
+			if (key === lastAppliedSessionKey) return false;
+
+			lastAppliedSessionKey = key;
+			authStore.setSession(session);
+			if (session?.user) void ratingsStore.flushPending();
+			return true;
+		}
 
 		const {
 			data: { subscription }
@@ -358,63 +400,66 @@
 			if (event === 'PASSWORD_RECOVERY') {
 				passwordRecoveryActive.set(true);
 			}
-			authStore.setSession(session);
-			if (session?.user) void ratingsStore.flushPending();
+			applyAuthSession(session);
 		});
 
-		let authInitInFlight = false;
+		let anonymousSignInPromise: Promise<boolean> | null = null;
 
 		async function ensureAnonymousSession(): Promise<boolean> {
-			if (authInitInFlight) return !!get(authStore).session;
-			authInitInFlight = true;
-			try {
-				const session = await getSessionAfterUrlTokens(supabase);
-				if (session) {
-					authStore.setSession(session);
-					if (session.user) void ratingsStore.flushPending();
-					return true;
-				}
+			await waitForAuthReady();
+			if (get(authStore).session) return true;
+			if (anonymousSignInPromise) return anonymousSignInPromise;
 
-				if (get(authStore).session) return true;
+			anonymousSignInPromise = (async () => {
+				try {
+					const { data: signInData, error } = await supabase.auth.signInAnonymously();
 
-				const { data: signInData, error } = await supabase.auth.signInAnonymously();
-
-				if (!error && signInData?.session) {
-					authStore.setSession(signInData.session);
-					if (signInData.session.user) void ratingsStore.flushPending();
-					if (signInData.user) {
-						console.debug('[auth] Anonymous sign-in OK, user id:', signInData.user.id);
+					if (!error && signInData?.session) {
+						applyAuthSession(signInData.session);
+						if (signInData.user) {
+							console.debug('[auth] Anonymous sign-in OK, user id:', signInData.user.id);
+						}
+						return true;
 					}
-					return true;
-				}
 
-				if (error) {
-					console.error('[auth] Anonymous sign-in failed:', error.message, error);
-				}
+					if (error) {
+						console.error('[auth] Anonymous sign-in failed:', error.message, error);
+					}
 
-				const {
-					data: { session: sessionAfterFail }
-				} = await supabase.auth.getSession();
-				if (sessionAfterFail) {
-					authStore.setSession(sessionAfterFail);
-					if (sessionAfterFail.user) void ratingsStore.flushPending();
-					return true;
+					const {
+						data: { session: sessionAfterFail }
+					} = await supabase.auth.getSession();
+					if (sessionAfterFail) {
+						applyAuthSession(sessionAfterFail);
+						return true;
+					}
+					return !!get(authStore).session;
+				} catch (e) {
+					console.error('[auth] Lazy anonymous sign-in error', e);
+					return !!get(authStore).session;
+				} finally {
+					anonymousSignInPromise = null;
 				}
-				return !!get(authStore).session;
-			} catch (e) {
-				console.error('[auth] Lazy anonymous sign-in error', e);
-				return !!get(authStore).session;
-			} finally {
-				authInitInFlight = false;
-			}
+			})();
+
+			return anonymousSignInPromise;
 		}
 
 		registerAnonymousSessionStarter(ensureAnonymousSession);
+
 		void (async () => {
-			const session = await getSessionAfterUrlTokens(supabase);
-			if (!session) return;
-			authStore.setSession(session);
-			if (session.user) void ratingsStore.flushPending();
+			markAuthInitChecking();
+			try {
+				const session = await getSessionAfterUrlTokens(supabase);
+				if (session) {
+					applyAuthSession(session);
+				}
+				markAuthInitReady();
+			} catch (e) {
+				const message = e instanceof Error ? e.message : 'Session restore failed';
+				console.error('[auth] Session restore failed:', e);
+				markAuthInitError(message);
+			}
 		})();
 
 		return () => {
@@ -451,12 +496,15 @@
 		if (!hasUser) {
 			ratingsLoadRequestId += 1;
 			ratingsPersistenceUserId = null;
+			libraryHydratedForUserId = null;
+			recommendationsCountLoadedForUserId = null;
 			ratingsStore.setPersistence(null);
 			planToReadStore.setPersistence(null);
 			notInterestedStore.setPersistence(null);
 			bookmarksPageStore.reset();
 			recommendationsPageStore.reset();
 			recommendationsCountStore.set(0);
+			clearUserLibraryHydration();
 			if (hadUserBefore) {
 				ratingsStore.reset();
 				planToReadStore.reset();
@@ -469,13 +517,25 @@
 
 		hadUserBefore = true;
 		attachRatingsPersistence(supabase, user.id);
-		const requestId = ++ratingsLoadRequestId;
-		void loadUserRatingsAndPersistence(supabase, user.id, requestId);
+
+		if (libraryHydratedForUserId !== user.id) {
+			libraryHydratedForUserId = user.id;
+			const requestId = ++ratingsLoadRequestId;
+			markUserLibraryHydrationStarted(user.id);
+			void loadUserRatingsAndPersistence(supabase, user.id, requestId);
+		}
 
 		const token = session.access_token ?? null;
 
 		// Load recommendations count for header
-		if (token) void refreshRecommendationsCountFromApi(token);
+		if (token && recommendationsCountLoadedForUserId !== user.id) {
+			const userId = user.id;
+			void refreshRecommendationsCountFromApi(token).then((ok) => {
+				if (ok && get(authStore).user?.id === userId) {
+					recommendationsCountLoadedForUserId = userId;
+				}
+			});
+		}
 	});
 
 	// After anonymous→account migration, ratings are written server-side; reload them.
@@ -486,7 +546,9 @@
 			if (supabase && user?.id) {
 				attachRatingsPersistence(supabase, user.id);
 				void ratingsStore.flushPending();
+				libraryHydratedForUserId = null;
 				const requestId = ++ratingsLoadRequestId;
+				markUserLibraryHydrationStarted(user.id);
 				void loadUserRatingsAndPersistence(supabase, user.id, requestId);
 			}
 		};

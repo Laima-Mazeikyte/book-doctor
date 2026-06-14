@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { get } from 'svelte/store';
 	import { getSupabase } from '$lib/supabase';
-	import { authStore, isAnonymousOrSignedOut, signedInEmail } from '$lib/stores/auth';
+	import { authStore, authRestorePending, authReady, isAnonymousOrSignedOut, signedInEmail } from '$lib/stores/auth';
 	import { mobileMenuOpen } from '$lib/stores/mobileMenu';
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
 	import AuthModal from '$lib/components/AuthModal.svelte';
@@ -32,11 +32,13 @@
 	let accountPanelEl = $state<HTMLDivElement | null>(null);
 	let mobileMenuEl = $state<HTMLDivElement | null>(null);
 
-	let showAuthActions = $derived($isAnonymousOrSignedOut);
+	let showAuthActions = $derived($authReady && $isAnonymousOrSignedOut);
 	let email = $derived($signedInEmail);
 	let pathname = $derived($page.url.pathname);
 	/** Signed-in (non-anonymous) users always see primary nav; anonymous users only when they already have recommendations. */
-	let showMainNav = $derived(!$isAnonymousOrSignedOut || $recommendationsCountStore > 0);
+	let showMainNav = $derived(
+		$authReady && (!$isAnonymousOrSignedOut || $recommendationsCountStore > 0)
+	);
 	function openAuthModal(tab: 'signin' | 'signup' = 'signin') {
 		authModalInitialTab = tab;
 		authModalOpen = true;
@@ -161,7 +163,9 @@
 
 		<div class="app-header__right">
 			<div class="app-header__account" data-state={accountDropdownOpen ? 'open' : 'closed'}>
-				{#if showAuthActions}
+				{#if $authRestorePending}
+					<!-- Session restore in progress — avoid signed-out flash -->
+				{:else if showAuthActions}
 					<div class="app-header__auth-actions">
 						<button
 							type="button"
@@ -275,7 +279,9 @@
 					</nav>
 				{/if}
 				<div class="app-header__mobile-account">
-					{#if showAuthActions}
+					{#if $authRestorePending}
+						<!-- Session restore in progress -->
+					{:else if showAuthActions}
 						<button type="button" class="app-header__account-item" onclick={() => openAuthModal('signin')}>
 							{t('shared.authModal.signIn')}
 						</button>
