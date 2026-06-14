@@ -12,7 +12,7 @@
 	import {
 		refreshRecommendationsCountFromApi
 	} from '$lib/stores/recommendationsCount';
-	import { scheduleUserLibraryDetailsLoad, scheduleUserLibraryIdsLoad } from '$lib/stores/userLibrary';
+	import { scheduleUserLibraryDetailsLoad, userLibraryHydrationStore } from '$lib/stores/userLibrary';
 	import BookCardGridSkeleton from '$lib/components/BookCardGridSkeleton.svelte';
 	import RatingsBar from '$lib/components/RatingsBar.svelte';
 	import SearchBar from '$lib/components/SearchBar.svelte';
@@ -695,9 +695,17 @@
 
 	const MIN_RATINGS_FOR_RECOMMENDATIONS = 10;
 
+	const libraryIdsReady = $derived.by(() => {
+		const user = $authStore.user;
+		const hydration = $userLibraryHydrationStore;
+		if (!user?.id) return true;
+		if (hydration.userId !== user.id) return false;
+		return hydration.idsReady;
+	});
+
 	const ratingsSyncMeta = ratingsStore.syncMeta;
 	const ratedCount = $derived($ratingsStore.size);
-	const showBottomBar = $derived(ratedCount >= 1);
+	const showBottomBar = $derived(ratedCount >= 1 || !libraryIdsReady);
 	const canGetRecommendations = $derived(ratedCount >= MIN_RATINGS_FOR_RECOMMENDATIONS);
 	/** No queued rating writes and not mid-flush — safe to start a recommendations run. */
 	const ratingsSyncedForRecommendations = $derived(
@@ -933,7 +941,6 @@
 
 	function scheduleLibraryHydrationAfterFirstList() {
 		const userId = get(authStore).user?.id;
-		scheduleUserLibraryIdsLoad(userId);
 		scheduleUserLibraryDetailsLoad(userId);
 		const token = get(authStore).session?.access_token ?? null;
 		if (token) void refreshRecommendationsCountFromApi(token);

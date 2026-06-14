@@ -11,6 +11,8 @@
 	import BookRatingStarsRow from '$lib/components/book-card/BookRatingStarsRow.svelte';
 	import BookSummarySheetBody from '$lib/components/book-card/BookSummarySheetBody.svelte';
 	import NavStyleTabList from '$lib/components/NavStyleTabList.svelte';
+	import RatingsSyncDot from '$lib/components/RatingsSyncDot.svelte';
+	import Spinner from '$lib/components/Spinner.svelte';
 	import { getBookDisplaySummary } from '$lib/components/book-card/summaryStub';
 	import type { RatingsBarSummaryHooks } from '$lib/components/ratings-bar-summary-hooks';
 	import {
@@ -21,6 +23,7 @@
 	import { notInterestedStore } from '$lib/stores/notInterested';
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { ratingsStore } from '$lib/stores/ratings';
+	import { userLibraryHydrationStore } from '$lib/stores/userLibrary';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
 
@@ -106,40 +109,37 @@
 		}
 	}
 
-	const unionBooksById = $derived.by(() => {
-		const m = new Map<string, Book>();
-		if (!shelfTabsEnabled) return m;
-		for (const e of ratedEntries) m.set(e.book.id, e.book);
-		for (const b of fetchedBookmarkBooks) m.set(b.id, b);
-		for (const b of fetchedNotInterestedBooks) m.set(b.id, b);
-		for (const id of $planToReadStore) {
-			const b = bookFallbackById(id);
-			if (b && !m.has(b.id)) m.set(b.id, b);
-		}
-		for (const bookId of $notInterestedStore) {
-			const b = bookFallbackByBookId(bookId);
-			if (b && !m.has(b.id)) m.set(b.id, b);
-		}
-		return m;
+	const libraryIdsReady = $derived.by(() => {
+		const user = $authStore.user;
+		const hydration = $userLibraryHydrationStore;
+		if (!user?.id) return true;
+		if (hydration.userId !== user.id) return false;
+		return hydration.idsReady;
 	});
 
+	const libraryDetailsReady = $derived.by(() => {
+		const user = $authStore.user;
+		const hydration = $userLibraryHydrationStore;
+		if (!user?.id) return true;
+		if (hydration.userId !== user.id) return false;
+		return hydration.detailsReady;
+	});
+
+	/** Rated tab: ids hydrated but book rows not loaded yet (common on deferred /rate details). */
+	const ratedShelfDetailsPending = $derived(
+		libraryIdsReady &&
+			!libraryDetailsReady &&
+			$ratingsStore.size > 0 &&
+			ratedEntries.length === 0
+	);
+
 	const partitionCounts = $derived.by(() => {
-		if (!shelfTabsEnabled) return { ni: 0, rated: 0, bookmarked: 0 };
-		const ratings = $ratingsStore;
-		const planIds = $planToReadStore;
-		const notInterestedIds = $notInterestedStore;
-		let ni = 0;
-		let rated = 0;
-		let bookmarked = 0;
-		for (const book of unionBooksById.values()) {
-			if (shelfNotInterested(book, notInterestedIds)) {
-				ni++;
-				continue;
-			}
-			if (ratings.has(book.id) && ratingsStore.getRatedBook(book.id)) rated++;
-			if (planIds.has(book.id)) bookmarked++;
-		}
-		return { ni, rated, bookmarked };
+		if (!shelfTabsEnabled || !libraryIdsReady) return { ni: 0, rated: 0, bookmarked: 0 };
+		return {
+			rated: $ratingsStore.size,
+			bookmarked: $planToReadStore.size,
+			ni: $notInterestedStore.size
+		};
 	});
 
 	function countForShelfTab(id: ShelfFilterId): number {
@@ -304,7 +304,9 @@
 	);
 
 	const triggerAriaLabel = $derived(
-		`${t('shared.ratingsBar.yourRatings')} (${triggerBadgeCount})`
+		libraryIdsReady
+			? `${t('shared.ratingsBar.yourRatings')} (${triggerBadgeCount})`
+			: t('shared.ratingsBar.syncing')
 	);
 
 	/** Portal node to body so it's not inside the bottom bar (pointer-events: none) and can receive clicks. */
@@ -898,7 +900,13 @@
 	icon={ratingsBarTriggerIcon}
 	onclick={openDrawer}
 >
-	<span class="ratings-bar__count" aria-hidden="true">{triggerBadgeCount}</span>
+	<span class="ratings-bar__count" aria-hidden="true">
+		{#if !libraryIdsReady}
+			<span class="ratings-bar__count-sync"><RatingsSyncDot variant="pending" /></span>
+		{:else}
+			{triggerBadgeCount}
+		{/if}
+	</span>
 </Button>
 
 {#if open}
@@ -1000,9 +1008,16 @@
 							onNotInterestedClick={detailNotInterestedClick}
 						/>
 					{:else if !shelfTabsEnabled && drawerOrderedEntries.length === 0}
-						<p class="ratings-drawer__empty">
-							{t('shared.ratingsBar.empty')}
-						</p>
+						{#if ratedShelfDetailsPending}
+							<div class="ratings-drawer__loading" aria-live="polite">
+								<Spinner />
+								<p class="ratings-drawer__loading-text">{t('rated.loadingList')}</p>
+							</div>
+						{:else}
+							<p class="ratings-drawer__empty">
+								{t('shared.ratingsBar.empty')}
+							</p>
+						{/if}
 					{:else}
 						{#if shelfTabsEnabled}
 							<div class="ratings-drawer__shelf-tabs-wrap">
@@ -1012,7 +1027,7 @@
 									idPrefix={shelfTabIdPrefix}
 									items={shelfTabItems}
 									selectedId={activeShelfTab}
-									countsReady={true}
+									countsReady={libraryIdsReady}
 									getCount={(id) => countForShelfTab(id as ShelfFilterId)}
 									onSelect={(id) => selectShelfTab(id as ShelfFilterId)}
 									scrollSingleRow={true}
@@ -1027,7 +1042,14 @@
 								aria-labelledby={`${shelfTabIdPrefix}-${activeShelfTab}`}
 							>
 								{#if drawerOrderedEntries.length === 0}
-									<p class="ratings-drawer__empty">{shelfEmptyMessage}</p>
+									{#if activeShelfTab === 'rated' && ratedShelfDetailsPending}
+										<div class="ratings-drawer__loading" aria-live="polite">
+											<Spinner />
+											<p class="ratings-drawer__loading-text">{t('rated.loadingList')}</p>
+										</div>
+									{:else}
+										<p class="ratings-drawer__empty">{shelfEmptyMessage}</p>
+									{/if}
 								{:else}
 									<ul class="ratings-drawer__list">
 										{#each drawerOrderedEntries as entry (entry.book.id)}
@@ -1065,6 +1087,11 @@
 		line-height: 1;
 		font-variant-numeric: tabular-nums;
 		color: inherit;
+	}
+	.ratings-bar__count-sync {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 	}
 	@keyframes ratings-bar-sync-pulse {
 		0%, 100% {
@@ -1284,6 +1311,25 @@
 		font-weight: var(--typ-caption-font-weight);
 		line-height: var(--typ-caption-line-height);
 		letter-spacing: var(--typ-caption-letter-spacing);
+	}
+	.ratings-drawer__loading {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-3);
+		padding: var(--space-6) var(--space-4);
+		min-height: 8rem;
+	}
+	.ratings-drawer__loading-text {
+		margin: 0;
+		color: var(--color-text-muted);
+		font-family: var(--typ-caption-font-family);
+		font-size: var(--typ-caption-font-size);
+		font-weight: var(--typ-caption-font-weight);
+		line-height: var(--typ-caption-line-height);
+		letter-spacing: var(--typ-caption-letter-spacing);
+		text-align: center;
 	}
 	.ratings-drawer__sync-status {
 		display: inline-flex;

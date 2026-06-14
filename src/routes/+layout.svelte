@@ -627,7 +627,7 @@
 		attachRatingsPersistence(supabase, user.id);
 
 		const pathname = page.url.pathname;
-		if (libraryHydratedForUserId !== user.id && !isRateShellPath(pathname)) {
+		if (libraryHydratedForUserId !== user.id) {
 			libraryHydratedForUserId = user.id;
 			activeLibraryLoadRequestId = ++ratingsLoadRequestId;
 			markUserLibraryIdsStarted(user.id);
@@ -647,7 +647,7 @@
 		}
 	});
 
-	// Deferred library hydration — /rate schedules after first list; other routes load immediately.
+	// Deferred rated-book details — /rate schedules after first list; other routes load immediately.
 	onMount(() => {
 		registerUserLibraryIdsLoader((userId) => {
 			const supabase = getSupabase();
