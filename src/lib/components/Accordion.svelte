@@ -1,13 +1,16 @@
 <script lang="ts">
+	/* eslint-disable svelte/no-navigation-without-resolve -- FAQ links are external or mailto URLs from copy */
 	import { getOpenBugReportContext } from '$lib/bugReportContext';
 	import faqYaml from '$lib/copy/faq.yaml';
 	import {
 		faqAnswerParagraphs,
 		faqParagraphBlock,
 		parseFaqParagraph,
-		type FaqAnswerFormat
+		type FaqAnswerFormat,
+		type FaqSegment
 	} from '$lib/copy/faqAnswer';
 	import { ChevronDown } from 'lucide-svelte';
+	import { resolve } from '$app/paths';
 
 	const openBugReport = getOpenBugReportContext();
 
@@ -31,6 +34,10 @@
 		return faqAnswerParagraphs(row.answer);
 	}
 
+	function faqLinkHref(seg: Extract<FaqSegment, { type: 'link' }>): string {
+		if (seg.external || !seg.href.startsWith('/')) return seg.href;
+		return resolve(seg.href as '/');
+	}
 </script>
 
 <div class="accordion">
@@ -62,21 +69,14 @@
 						{@const block = faqParagraphBlock(para)}
 						{#if block.kind === 'blockquote'}
 							<blockquote class="accordion__answer accordion__answer--quote typ-body">
-								{#each parseFaqParagraph(
-									block.text,
-									row.answerFormat ?? 'markdown'
-								) as seg, j (`${row.id}-${i}-${j}`)}
+								{#each parseFaqParagraph(block.text, row.answerFormat ?? 'markdown') as seg, j (`${row.id}-${i}-${j}`)}
 									{#if seg.type === 'text'}
 										{seg.text}
 									{:else if seg.type === 'bold'}
 										<strong>{seg.text}</strong>
 									{:else if seg.type === 'link' && seg.internalAction === 'bugReport'}
 										{#if openBugReport}
-											<button
-												type="button"
-												class="accordion__inline-link"
-												onclick={openBugReport}
-											>
+											<button type="button" class="accordion__inline-link" onclick={openBugReport}>
 												{seg.text}
 											</button>
 										{:else}
@@ -84,12 +84,13 @@
 										{/if}
 									{:else if seg.type === 'link' && seg.external}
 										<a
-											href={seg.href}
+											href={faqLinkHref(seg)}
 											class="accordion__inline-link"
 											target="_blank"
-											rel="noopener noreferrer">{seg.text}</a>
+											rel="noopener noreferrer">{seg.text}</a
+										>
 									{:else if seg.type === 'link'}
-										<a href={seg.href} class="accordion__inline-link">{seg.text}</a>
+										<a href={faqLinkHref(seg)} class="accordion__inline-link">{seg.text}</a>
 									{/if}
 								{/each}
 							</blockquote>
@@ -102,11 +103,7 @@
 										<strong>{seg.text}</strong>
 									{:else if seg.type === 'link' && seg.internalAction === 'bugReport'}
 										{#if openBugReport}
-											<button
-												type="button"
-												class="accordion__inline-link"
-												onclick={openBugReport}
-											>
+											<button type="button" class="accordion__inline-link" onclick={openBugReport}>
 												{seg.text}
 											</button>
 										{:else}
@@ -114,12 +111,13 @@
 										{/if}
 									{:else if seg.type === 'link' && seg.external}
 										<a
-											href={seg.href}
+											href={faqLinkHref(seg)}
 											class="accordion__inline-link"
 											target="_blank"
-											rel="noopener noreferrer">{seg.text}</a>
+											rel="noopener noreferrer">{seg.text}</a
+										>
 									{:else if seg.type === 'link'}
-										<a href={seg.href} class="accordion__inline-link">{seg.text}</a>
+										<a href={faqLinkHref(seg)} class="accordion__inline-link">{seg.text}</a>
 									{/if}
 								{/each}
 							</p>

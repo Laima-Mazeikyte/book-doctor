@@ -23,9 +23,7 @@
 	let firstInputEl = $state<HTMLTextAreaElement | null>(null);
 
 	const titleId = 'bug-modal-title';
-	const author = $derived(
-		(name.trim() || $signedInEmail) ?? null
-	);
+	const author = $derived((name.trim() || $signedInEmail) ?? null);
 	const nameRequired = $derived($isAnonymousOrSignedOut);
 
 	function portal(node: HTMLElement, target: HTMLElement = document.body) {

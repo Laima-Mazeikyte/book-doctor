@@ -54,10 +54,7 @@ describe('invokeBookSearch', () => {
 
 		const r = await invokeBookSearch(supabase, { q: 'ab', limit: 10, offset: 0 });
 
-		expect(r.bookIds).toEqual([
-			'01KR2ADTNG29NSQV23VAGV8FXB',
-			'01KR2ADTR2Q50VTH28JN60PW18'
-		]);
+		expect(r.bookIds).toEqual(['01KR2ADTNG29NSQV23VAGV8FXB', '01KR2ADTR2Q50VTH28JN60PW18']);
 		expect(r.estimatedTotalHits).toBe(40);
 		expect(r.scannedHitCount).toBe(2);
 		expect(invoke).toHaveBeenCalledWith(BOOK_SEARCH_FUNCTION, {
@@ -86,10 +83,7 @@ describe('invokeBookSearch', () => {
 	it('returns null estimatedTotalHits when absent', async () => {
 		const invoke = vi.fn().mockResolvedValue({
 			data: {
-				hits: [
-					{ book_id: '01KR2ADTNG29NSQV23VAGV8FXB' },
-					{ book_id: '01KR2ADTR2Q50VTH28JN60PW18' }
-				]
+				hits: [{ book_id: '01KR2ADTNG29NSQV23VAGV8FXB' }, { book_id: '01KR2ADTR2Q50VTH28JN60PW18' }]
 			},
 			error: null
 		});

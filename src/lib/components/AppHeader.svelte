@@ -1,7 +1,12 @@
 <script lang="ts">
 	import { get } from 'svelte/store';
 	import { getSupabase } from '$lib/supabase';
-	import { authRestorePending, authReady, isAnonymousOrSignedOut, signedInEmail } from '$lib/stores/auth';
+	import {
+		authRestorePending,
+		authReady,
+		isAnonymousOrSignedOut,
+		signedInEmail
+	} from '$lib/stores/auth';
 	import { mobileMenuOpen } from '$lib/stores/mobileMenu';
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
 	import AuthModal from '$lib/components/AuthModal.svelte';
@@ -10,6 +15,7 @@
 	import { t } from '$lib/copy';
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
+	import { resolve } from '$app/paths';
 	import homeLogo from '$lib/assets/unread-logo.svg';
 
 	function isNavHrefActive(href: string, pathname: string): boolean {
@@ -45,8 +51,7 @@
 		const fromMobileMenu = get(mobileMenuOpen);
 		authModalRestoreFocusTarget = fromMobileMenu
 			? mobileMenuToggleEl
-			: (opener ??
-				(document.activeElement instanceof HTMLElement ? document.activeElement : null));
+			: (opener ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null));
 		authModalOpen = true;
 		closeAccountDropdown();
 		closeMobileMenu();
@@ -124,11 +129,7 @@
 <header class="app-header">
 	<div class="app-header__inner">
 		<div class="app-header__start">
-			<a
-				href="/"
-				class="app-header__logo"
-				aria-label={t('shared.header.homeAriaLabel')}
-			>
+			<a href={resolve('/')} class="app-header__logo" aria-label={t('shared.header.homeAriaLabel')}>
 				<img
 					class="app-header__logo-img"
 					src={homeLogo}
@@ -144,21 +145,21 @@
 		{#if showMainNav}
 			<nav class="app-header__nav" aria-label={t('shared.header.mainNavigation')}>
 				<a
-					href="/rate"
+					href={resolve('/rate')}
 					class="chrome-nav-link"
 					aria-current={isNavHrefActive('/rate', pathname) ? 'page' : undefined}
 				>
 					{t('shared.header.browse')}
 				</a>
 				<a
-					href="/my-bookshelf"
+					href={resolve('/my-bookshelf')}
 					class="chrome-nav-link"
 					aria-current={isNavHrefActive('/my-bookshelf', pathname) ? 'page' : undefined}
 				>
 					{t('shared.header.myBookshelf')}
 				</a>
 				<a
-					href="/rate/recommendations"
+					href={resolve('/rate/recommendations')}
 					class="chrome-nav-link"
 					aria-current={isNavHrefActive('/rate/recommendations', pathname) ? 'page' : undefined}
 				>
@@ -210,7 +211,12 @@
 					>
 						{#if email}
 							<div class="app-header__account-email" role="presentation">{email}</div>
-							<button type="button" role="menuitem" class="app-header__account-item" onclick={handleSignOut}>
+							<button
+								type="button"
+								role="menuitem"
+								class="app-header__account-item"
+								onclick={handleSignOut}
+							>
 								{t('shared.header.signOut')}
 							</button>
 						{/if}
@@ -241,7 +247,7 @@
 		>
 			<div class="app-header__mobile-menu-inner">
 				<a
-					href="/"
+					href={resolve('/')}
 					class="app-header__logo"
 					aria-label={t('shared.header.homeAriaLabel')}
 					onclick={closeMobileMenu}
@@ -259,7 +265,7 @@
 				{#if showMainNav}
 					<nav class="app-header__mobile-nav" aria-label={t('shared.header.mainNavigation')}>
 						<a
-							href="/rate"
+							href={resolve('/rate')}
 							class="chrome-nav-link"
 							aria-current={isNavHrefActive('/rate', pathname) ? 'page' : undefined}
 							onclick={closeMobileMenu}
@@ -267,7 +273,7 @@
 							{t('shared.header.browse')}
 						</a>
 						<a
-							href="/my-bookshelf"
+							href={resolve('/my-bookshelf')}
 							class="chrome-nav-link"
 							aria-current={isNavHrefActive('/my-bookshelf', pathname) ? 'page' : undefined}
 							onclick={closeMobileMenu}
@@ -275,7 +281,7 @@
 							{t('shared.header.myBookshelf')}
 						</a>
 						<a
-							href="/rate/recommendations"
+							href={resolve('/rate/recommendations')}
 							class="chrome-nav-link"
 							aria-current={isNavHrefActive('/rate/recommendations', pathname) ? 'page' : undefined}
 							onclick={closeMobileMenu}
@@ -288,10 +294,18 @@
 					{#if $authRestorePending}
 						<!-- Session restore in progress -->
 					{:else if showAuthActions}
-						<button type="button" class="app-header__account-item" onclick={() => openAuthModal('signin')}>
+						<button
+							type="button"
+							class="app-header__account-item"
+							onclick={() => openAuthModal('signin')}
+						>
 							{t('shared.authModal.signIn')}
 						</button>
-						<button type="button" class="app-header__account-item" onclick={() => openAuthModal('signup')}>
+						<button
+							type="button"
+							class="app-header__account-item"
+							onclick={() => openAuthModal('signup')}
+						>
 							{t('shared.authModal.createAccount')}
 						</button>
 					{:else if email}
@@ -319,12 +333,25 @@
 				aria-label={t('shared.header.closeMenu')}
 				onclick={closeMobileMenu}
 			>
-				<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+				<svg
+					width="24"
+					height="24"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					aria-hidden="true"
+				>
 					<path d="M18 6 6 18M6 6l12 12" />
 				</svg>
 			</button>
 		</div>
-		<div class="app-header__mobile-backdrop" role="presentation" onclick={closeMobileMenu} aria-hidden="true"></div>
+		<div
+			class="app-header__mobile-backdrop"
+			role="presentation"
+			onclick={closeMobileMenu}
+			aria-hidden="true"
+		></div>
 	{/if}
 </header>
 
@@ -416,7 +443,9 @@
 		border-radius: var(--radius-pill);
 		background: transparent;
 		cursor: pointer;
-		transition: color 0.15s ease, background 0.15s ease;
+		transition:
+			color 0.15s ease,
+			background 0.15s ease;
 	}
 	.app-header__menu-toggle:hover {
 		color: var(--color-text);
@@ -442,8 +471,8 @@
 	.app-header__auth-actions :global(.btn.btn--compact) {
 		min-height: 0;
 		height: calc(
-			var(--chrome-menu-padding-block) * 2 +
-				var(--typ-interactive-2-font-size) * var(--typ-interactive-2-line-height)
+			var(--chrome-menu-padding-block) * 2 + var(--typ-interactive-2-font-size) *
+				var(--typ-interactive-2-line-height)
 		);
 		padding-block: var(--chrome-menu-padding-block);
 		padding-inline: var(--chrome-menu-padding-inline);
@@ -461,7 +490,9 @@
 		border-radius: var(--radius-pill);
 		color: var(--color-button-tertiary-text);
 		cursor: pointer;
-		transition: color 0.15s ease, background 0.15s ease;
+		transition:
+			color 0.15s ease,
+			background 0.15s ease;
 	}
 	.app-header__account-trigger:hover {
 		background: var(--color-button-tertiary-hover-bg);

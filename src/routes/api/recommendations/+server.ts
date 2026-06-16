@@ -1,21 +1,18 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { BOOK_GENRE_TYPE_SELECT, catalogTypeFromRow, genresFromGenreColumns, type BookGenreSlotRow } from '$lib/book-catalog-fields';
-import { coverUrlForBookId } from '$lib/book-cover';
+import { fetchBooksByUlidsInOrder } from '$lib/server/catalogBooks';
+import { filterBookIdsExcludingUserLists } from '$lib/server/recommendationFilters';
+import { requireAccessToken } from '$lib/server/requestAuth';
 import { createSupabaseWithAuth } from '$lib/server/supabase';
 
 export const GET: RequestHandler = async ({ url, request }) => {
 	const requestId = url.searchParams.get('request_id')?.trim() ?? null;
-	const authHeader = request.headers.get('Authorization');
-	const accessToken = authHeader?.startsWith('Bearer ')
-		? authHeader.slice(7)
-		: null;
+	const accessToken = requireAccessToken(request);
 	const supabase = createSupabaseWithAuth(accessToken);
 
 	let targetRequestId: string | null = requestId;
 
 	if (!targetRequestId) {
-		// Latest for user: get most recent recommendation_log
 		const { data: logs, error: logError } = await supabase
 			.from('recommendation_log')
 			.select('request_id')
@@ -48,74 +45,28 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		return json({ books: [], request_id: targetRequestId });
 	}
 
-	let bookIds = items
-		.map((i) => String(i.book_id ?? '').trim())
-		.filter(Boolean);
+	let bookIds = items.map((i) => String(i.book_id ?? '').trim()).filter(Boolean);
 
-	// Exclude not-interested when authenticated and fetching "latest" (no request_id), so batch view can show all for undo
-	if (accessToken && !requestId && bookIds.length > 0) {
-		const { data: notInterestedRows } = await supabase
-			.from('user_not_interested')
-			.select('book_id');
-		const notInterestedSet = new Set(
-			(notInterestedRows ?? []).map((r) => r.book_id).filter((id): id is string => typeof id === 'string')
-		);
-		bookIds = bookIds.filter((id) => !notInterestedSet.has(id));
-	}
-
-	// Exclude rated books when authenticated (both latest and single-run views)
-	if (accessToken && bookIds.length > 0) {
-		const { data: ratedRows } = await supabase
-			.from('user_ratings')
-			.select('book_id');
-		const ratedSet = new Set(
-			(ratedRows ?? []).map((r) => r.book_id).filter((id): id is string => typeof id === 'string')
-		);
-		bookIds = bookIds.filter((id) => !ratedSet.has(id));
-	}
-
+	bookIds = await filterBookIdsExcludingUserLists(supabase, bookIds, {
+		excludeNotInterested: !requestId,
+		excludeRated: true
+	});
 	if (bookIds.length === 0) {
 		return json({ books: [], request_id: targetRequestId });
 	}
 
-	const { data: booksData, error: booksError } = await supabase
-		.from('books')
-		.select(`id, book_id, book_name, author, summary, year, ${BOOK_GENRE_TYPE_SELECT}`)
-		.in('book_id', bookIds);
-
-	if (booksError) {
+	try {
+		const fetchedBooks = await fetchBooksByUlidsInOrder(supabase, bookIds);
+		const byBookId = new Map(fetchedBooks.map((book) => [book.book_id, book]));
+		const books = items
+			.map((item) => {
+				const id = String(item.book_id ?? '').trim();
+				return id ? (byBookId.get(id) ?? null) : null;
+			})
+			.filter((book): book is NonNullable<typeof book> => book != null);
+		return json({ books, request_id: targetRequestId });
+	} catch (booksError) {
 		console.error(booksError);
 		throw error(500, 'Failed to load books');
 	}
-
-	const byBookId = new Map(
-		(booksData ?? []).map((b) => {
-			const row = b as typeof b & BookGenreSlotRow & { type?: string | null };
-			const type = catalogTypeFromRow(row);
-			return [
-				b.book_id,
-				{
-					id: String(b.id),
-					book_id: b.book_id,
-					title: b.book_name,
-					author: b.author,
-					coverUrl: coverUrlForBookId(b.book_id),
-					summary: b.summary ?? undefined,
-					year: b.year != null ? String(b.year) : undefined,
-					genres: genresFromGenreColumns(row),
-					...(type ? { type } : {})
-				}
-			] as const;
-		})
-	);
-
-	// Preserve order by rank
-	const books = items
-		.map((i) => {
-			const id = String(i.book_id ?? '').trim();
-			return id ? byBookId.get(id) ?? null : null;
-		})
-		.filter((b): b is NonNullable<typeof b> => b != null);
-
-	return json({ books, request_id: targetRequestId });
 };

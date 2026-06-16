@@ -4,6 +4,7 @@
 	import { page } from '$app/state';
 	import { get } from 'svelte/store';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import Button from '$lib/components/Button.svelte';
 	import BookCard from '$lib/components/BookCard.svelte';
 	import BookCardGridSkeleton from '$lib/components/BookCardGridSkeleton.svelte';
@@ -115,9 +116,7 @@
 	let uniqueBooksLoading = $state(
 		initialHistorySnapshot.runs.length > 0 && !initialHistorySnapshot.uniqueLoaded
 	);
-	let loading = $state(!initialHistorySnapshot.loaded);
 	let error = $state<string | null>(null);
-	let timedOut = $state(false);
 	let pollTimer: ReturnType<typeof setTimeout> | null = null;
 	let viewMode = $state<'loading' | 'history' | 'empty' | 'single' | 'timedOut' | 'error'>(
 		initialHistorySnapshot.loaded
@@ -130,7 +129,9 @@
 	let activeRouteLoadId = 0;
 
 	let allRecommendedBookIds = $state<string[]>(initialHistorySnapshot.allRecommendedBookIds ?? []);
-	let lastRecommendedAt = $state<Record<string, number>>(initialHistorySnapshot.lastRecommendedAt ?? {});
+	let lastRecommendedAt = $state<Record<string, number>>(
+		initialHistorySnapshot.lastRecommendedAt ?? {}
+	);
 	let recommendationAppearanceCount = $state<Record<string, number>>(
 		initialHistorySnapshot.recommendationAppearanceCount ?? {}
 	);
@@ -167,10 +168,7 @@
 	);
 
 	const bookmarkTabBooksRaw = $derived.by(() =>
-		bookmarkBooks.filter(
-			(b) =>
-				allRecIdSet.has(b.book_id) && !isNotInterested(b, notInterestedIds)
-		)
+		bookmarkBooks.filter((b) => allRecIdSet.has(b.book_id) && !isNotInterested(b, notInterestedIds))
 	);
 
 	const niTabBooksRaw = $derived.by(() =>
@@ -243,7 +241,9 @@
 		return niTabBooks.length;
 	}
 
-	const listNeedsBmNi = $derived(activeFilter === 'bookmarked' || activeFilter === 'not-interested');
+	const listNeedsBmNi = $derived(
+		activeFilter === 'bookmarked' || activeFilter === 'not-interested'
+	);
 
 	const listLoading = $derived(
 		$authStore.session?.access_token && viewMode === 'history' && listNeedsBmNi && bmNiLoading
@@ -271,7 +271,8 @@
 		} catch {
 			// ignore
 		}
-		void goto(`/rate/recommendations?filter=${encodeURIComponent(id)}`, {
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- persist active filter in query
+		void goto(`${resolve('/rate/recommendations')}?filter=${encodeURIComponent(id)}`, {
 			replaceState: true,
 			keepFocus: true,
 			noScroll: true
@@ -280,7 +281,8 @@
 
 	function handleGridKeydown(e: KeyboardEvent) {
 		const key = e.key;
-		if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'ArrowUp' && key !== 'ArrowDown') return;
+		if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'ArrowUp' && key !== 'ArrowDown')
+			return;
 		if (!gridEl || books.length === 0) return;
 
 		const cards = Array.from(gridEl.querySelectorAll<HTMLElement>('.book-card'));
@@ -406,7 +408,10 @@
 	}
 
 	function isActiveRouteLoad(loadId: number, requestId: string | null): boolean {
-		return loadId === activeRouteLoadId && (page.url.searchParams.get('request_id')?.trim() ?? null) === requestId;
+		return (
+			loadId === activeRouteLoadId &&
+			(page.url.searchParams.get('request_id')?.trim() ?? null) === requestId
+		);
 	}
 
 	function applyHistorySnapshot() {
@@ -416,18 +421,13 @@
 		lastRecommendedAt = snapshot.lastRecommendedAt ?? {};
 		recommendationAppearanceCount = snapshot.recommendationAppearanceCount ?? {};
 		bestRecommendationRank = snapshot.bestRecommendationRank ?? {};
-		loading = !snapshot.loaded;
 		uniqueBooksLoading = snapshot.runs.length > 0 && !snapshot.uniqueLoaded;
 		error = null;
-		timedOut = false;
 		viewMode = snapshot.loaded ? (snapshot.runs.length === 0 ? 'empty' : 'history') : 'loading';
 		// Only sync header count when snapshot is trustworthy. Initial store state also has
 		// `runs.length === 0` before any fetch — syncing then cleared the count and hid the main nav
 		// until history loaded (flash navigating bookshelf ↔ recommendations).
-		if (
-			snapshot.uniqueLoaded ||
-			(snapshot.loaded && snapshot.runs.length === 0)
-		) {
+		if (snapshot.uniqueLoaded || (snapshot.loaded && snapshot.runs.length === 0)) {
 			recommendationsCountStore.set(snapshot.uniqueBooks.length);
 		}
 	}
@@ -459,7 +459,8 @@
 		}
 		const current = untrack(() => activeFilter);
 		if (current !== next) activeFilter = next;
-		void goto(`/rate/recommendations?filter=${encodeURIComponent(next)}`, {
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- persist active filter in query
+		void goto(`${resolve('/rate/recommendations')}?filter=${encodeURIComponent(next)}`, {
 			replaceState: true,
 			keepFocus: true,
 			noScroll: true
@@ -536,9 +537,7 @@
 			if (fromHistory) {
 				const cachedBooks = recommendationsPageStore.getRunBooks(requestId);
 				books = cachedBooks ? [...cachedBooks] : [];
-				loading = !cachedBooks;
 				error = null;
-				timedOut = false;
 				viewMode = cachedBooks ? 'single' : 'loading';
 				if (cachedBooks && cachedBooks.length > 0) {
 					void refreshRecommendationsCountFromApi(accessToken);
@@ -565,11 +564,6 @@
 						}
 						error = e instanceof Error ? e.message : t('recommendations.failedToLoad');
 						viewMode = 'error';
-					})
-					.finally(() => {
-						if (isActiveRouteLoad(loadId, requestedId)) {
-							loading = false;
-						}
 					});
 				return;
 			}
@@ -585,15 +579,11 @@
 					if (nextBooks.length > 0) {
 						books = nextBooks;
 						recommendationsPageStore.setRunBooks(requestId, nextBooks);
-						loading = false;
 						error = null;
-						timedOut = false;
 						viewMode = 'single';
 						void refreshRecommendationsCountFromApi(accessToken);
 						done = true;
 					} else if (Date.now() - start >= POLL_TIMEOUT_MS) {
-						timedOut = true;
-						loading = false;
 						error = null;
 						viewMode = 'timedOut';
 						done = true;
@@ -602,7 +592,6 @@
 					if (!isActiveRouteLoad(loadId, requestId)) return;
 					error = e instanceof Error ? e.message : t('recommendations.failedToLoad');
 					viewMode = 'error';
-					loading = false;
 					done = true;
 				}
 
@@ -618,9 +607,7 @@
 			};
 
 			books = [];
-			loading = true;
 			error = null;
-			timedOut = false;
 			viewMode = 'loading';
 			void schedule();
 		} else {
@@ -695,11 +682,6 @@
 					}
 					error = e instanceof Error ? e.message : t('recommendations.failedToLoadHistory');
 					viewMode = 'error';
-				})
-				.finally(() => {
-					if (isActiveRouteLoad(loadId, null)) {
-						loading = false;
-					}
 				});
 		}
 	});
@@ -712,7 +694,11 @@
 
 <div class="recommendations-page">
 	{#if viewMode === 'loading'}
-		<h1 class="recommendations-page__title recommendations-page__title--spaced typ-display2 typ-display2--content">{t('recommendations.title')}</h1>
+		<h1
+			class="recommendations-page__title recommendations-page__title--spaced typ-display2 typ-display2--content"
+		>
+			{t('recommendations.title')}
+		</h1>
 		<RecommendationsLoading />
 	{:else if viewMode === 'timedOut'}
 		<RecommendationsEmpty
@@ -727,7 +713,9 @@
 	{:else if viewMode === 'history'}
 		<h1
 			class="recommendations-page__title recommendations-page__title--spaced typ-display2 typ-display2--content"
-		>{t('recommendations.myRecommendations')}</h1>
+		>
+			{t('recommendations.myRecommendations')}
+		</h1>
 
 		<div class="recommendations-page__tabs-wrap">
 			<NavStyleTabList
@@ -736,7 +724,7 @@
 				idPrefix="recommendations-tab"
 				items={tabItems}
 				selectedId={activeFilter}
-				countsReady={countsReady}
+				{countsReady}
 				getCount={(id) => countForTab(id as RecFilterId)}
 				onSelect={(id) => selectRecTab(id as RecFilterId)}
 			/>
@@ -791,7 +779,10 @@
 					{/if}
 				</p>
 			{:else}
-				<ul class="recommendations-page__unique-grid book-card-grid" aria-label={t('recommendations.allUniqueTitles')}>
+				<ul
+					class="recommendations-page__unique-grid book-card-grid"
+					aria-label={t('recommendations.allUniqueTitles')}
+				>
 					{#each currentHistoryBooks as book (book.id)}
 						<li>
 							<BookCard
@@ -813,14 +804,16 @@
 			{/if}
 		</div>
 	{:else if viewMode === 'single'}
-		<h1 class="recommendations-page__title typ-display2 typ-display2--content">{t('recommendations.title')}</h1>
+		<h1 class="recommendations-page__title typ-display2 typ-display2--content">
+			{t('recommendations.title')}
+		</h1>
 		{#if page.url.searchParams.get('from') === 'history'}
 			<p class="recommendations-page__back-wrap">
 				<Button
 					variant="tertiary"
 					compact
 					aria-label={t('recommendations.backToList')}
-					onclick={() => goto('/rate/recommendations')}
+					onclick={() => goto(resolve('/rate/recommendations'))}
 				>
 					{t('recommendations.backToList')}
 				</Button>

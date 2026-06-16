@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, tick } from 'svelte';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
 	import { goto, pushState, replaceState } from '$app/navigation';
@@ -127,10 +128,7 @@
 
 	/** Rated tab: ids hydrated but book rows not loaded yet (common on deferred /rate details). */
 	const ratedShelfDetailsPending = $derived(
-		libraryIdsReady &&
-			!libraryDetailsReady &&
-			$ratingsStore.size > 0 &&
-			ratedEntries.length === 0
+		libraryIdsReady && !libraryDetailsReady && $ratingsStore.size > 0 && ratedEntries.length === 0
 	);
 
 	const partitionCounts = $derived.by(() => {
@@ -168,8 +166,8 @@
 		const planIds = $planToReadStore;
 		const notInterestedIds = $notInterestedStore;
 		const out: RatedEntry[] = [];
-		const seen = new Set<string>();
-		const fetchedIds = new Set(fetchedBookmarkBooks.map((book) => book.id));
+		const seen = new SvelteSet<string>();
+		const fetchedIds = new SvelteSet(fetchedBookmarkBooks.map((book) => book.id));
 		for (const id of [...planIds].reverse()) {
 			if (fetchedIds.has(id)) continue;
 			const book = bookFallbackById(id);
@@ -194,8 +192,8 @@
 		const ratings = $ratingsStore;
 		const notInterestedIds = $notInterestedStore;
 		const out: RatedEntry[] = [];
-		const seen = new Set<string>();
-		const fetchedIds = new Set(fetchedNotInterestedBooks.map((book) => book.book_id));
+		const seen = new SvelteSet<string>();
+		const fetchedIds = new SvelteSet(fetchedNotInterestedBooks.map((book) => book.book_id));
 		for (const bookId of [...notInterestedIds].reverse()) {
 			if (fetchedIds.has(bookId)) continue;
 			const book = bookFallbackByBookId(bookId);
@@ -227,11 +225,11 @@
 	let drawerOrderIds = $state<string[] | null>(null);
 	let hoverEntryId = $state<string | null>(null);
 	let hoverRating = $state<number>(0);
-	let coverFailedIds = $state<Set<string>>(new Set());
+	let coverFailedIds = new SvelteSet<string>();
 	/** Book ids scheduled for removal after `PENDING_REMOVE_MS`; store still holds rating until the timer fires or user undoes. */
-	let pendingRemoveIds = $state<Set<string>>(new Set());
+	let pendingRemoveIds = new SvelteSet<string>();
 	/** `Date.now()` when each pending removal will commit (for progress UI). */
-	let pendingRemoveEndByBookId = $state(new Map<string, number>());
+	let pendingRemoveEndByBookId = new SvelteMap<string, number>();
 	let removalUiClock = $state(Date.now());
 	let closeButtonEl = $state<HTMLButtonElement | null>(null);
 	let drawerBackButtonEl = $state<HTMLButtonElement | null>(null);
@@ -245,16 +243,12 @@
 	const panelId = 'ratings-drawer-panel';
 	const triggerId = 'ratings-trigger';
 	const PENDING_REMOVE_MS = 3000;
-	const pendingRemoveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+	const pendingRemoveTimers = new SvelteMap<string, ReturnType<typeof setTimeout>>();
 	/** Slide distance in px; negative x → panel flies in from the left (desktop and mobile). Match desktop panel max width. */
 	const DRAWER_SLIDE_PX_DESKTOP = 520;
 
 	function shallowPageState(): App.PageState {
 		return { ...(get(page).state as App.PageState) };
-	}
-
-	function currentRatePageUrl(): string {
-		return `${resolve('/rate')}${get(page).url.search}`;
 	}
 
 	function clearDrawerDetailState(state: App.PageState): App.PageState {
@@ -273,7 +267,7 @@
 	let flyX = $state(-DRAWER_SLIDE_PX_DESKTOP);
 
 	function setCoverFailed(bookId: string) {
-		coverFailedIds = new Set(coverFailedIds).add(bookId);
+		coverFailedIds.add(bookId);
 	}
 
 	function seeSummaryOpenAriaLabel(book: Book): string {
@@ -323,9 +317,9 @@
 	const drawerOrderedEntries = $derived.by(() => {
 		const source = drawerSourceEntries;
 		if (!open || drawerOrderIds === null) return source;
-		const byId = new Map(source.map((e) => [e.book.id, e]));
+		const byId = new SvelteMap(source.map((e) => [e.book.id, e]));
 		const ordered: RatedEntry[] = [];
-		const seen = new Set<string>();
+		const seen = new SvelteSet<string>();
 		for (const id of drawerOrderIds) {
 			const e = byId.get(id);
 			if (e) {
@@ -359,9 +353,7 @@
 		detailEntry ? `ratings-drawer-detail-title-${detailEntry.book.id}` : 'ratings-drawer-title'
 	);
 
-	let detailDisplaySummary = $derived(
-		detailEntry ? getBookDisplaySummary(detailEntry.book) : ''
-	);
+	let detailDisplaySummary = $derived(detailEntry ? getBookDisplaySummary(detailEntry.book) : '');
 
 	let detailShowCoverImage = $derived(
 		detailEntry
@@ -377,17 +369,14 @@
 		hoverDetailRating > 0 ? hoverDetailRating : (detailRatingFromStore ?? 0)
 	);
 
-	let detailBookmarked = $derived(
-		detailEntry ? $planToReadStore.has(detailEntry.book.id) : false
-	);
+	let detailBookmarked = $derived(detailEntry ? $planToReadStore.has(detailEntry.book.id) : false);
 
 	let detailNotInterested = $derived(
 		detailEntry ? $notInterestedStore.has(detailEntry.book.book_id) : false
 	);
 
 	let detailShowAuthorSearchPill = $derived(
-		Boolean(detailEntry?.book.author?.trim()) &&
-			Boolean(summaryHooks?.onSearchAuthor || browser)
+		Boolean(detailEntry?.book.author?.trim()) && Boolean(summaryHooks?.onSearchAuthor || browser)
 	);
 
 	function openDrawer() {
@@ -402,7 +391,11 @@
 		open = true;
 		void fetchShelfDetails();
 		if (!wasOpen && browser) {
-			pushState('', { ...shallowPageState(), rateRatingsDrawer: true });
+			// eslint-disable-next-line svelte/no-navigation-without-resolve -- preserve search in shallow routing
+			pushState(`${resolve('/rate')}${get(page).url.search}`, {
+				...shallowPageState(),
+				rateRatingsDrawer: true
+			});
 		}
 	}
 
@@ -410,7 +403,8 @@
 		if (detailBookId && browser) {
 			const st = shallowPageState();
 			if (st.rateRatingsDrawerDetail === true) {
-				replaceState(currentRatePageUrl(), clearDrawerDetailState(st));
+				// eslint-disable-next-line svelte/no-navigation-without-resolve -- preserve search in shallow routing
+				replaceState(`${resolve('/rate')}${get(page).url.search}`, clearDrawerDetailState(st));
 			}
 		}
 		activeShelfTab = id;
@@ -431,35 +425,31 @@
 			pendingRemoveTimers.delete(bookId);
 		}
 		if (pendingRemoveIds.has(bookId)) {
-			pendingRemoveIds = new Set([...pendingRemoveIds].filter((id) => id !== bookId));
+			pendingRemoveIds.delete(bookId);
 		}
 		if (pendingRemoveEndByBookId.has(bookId)) {
-			const next = new Map(pendingRemoveEndByBookId);
-			next.delete(bookId);
-			pendingRemoveEndByBookId = next;
+			pendingRemoveEndByBookId.delete(bookId);
 		}
 	}
 
 	function clearAllPendingRemovals() {
 		for (const tid of pendingRemoveTimers.values()) clearTimeout(tid);
 		pendingRemoveTimers.clear();
-		pendingRemoveIds = new Set();
-		pendingRemoveEndByBookId = new Map();
+		pendingRemoveIds.clear();
+		pendingRemoveEndByBookId.clear();
 	}
 
 	function schedulePendingRemove(book: Book) {
 		const bookId = book.id;
 		const bookUlid = book.book_id;
 		clearPendingRemove(bookId);
-		pendingRemoveIds = new Set(pendingRemoveIds).add(bookId);
+		pendingRemoveIds.add(bookId);
 		const endsAt = Date.now() + PENDING_REMOVE_MS;
-		pendingRemoveEndByBookId = new Map(pendingRemoveEndByBookId).set(bookId, endsAt);
+		pendingRemoveEndByBookId.set(bookId, endsAt);
 		const tid = setTimeout(() => {
 			pendingRemoveTimers.delete(bookId);
-			pendingRemoveIds = new Set([...pendingRemoveIds].filter((id) => id !== bookId));
-			const nextEnds = new Map(pendingRemoveEndByBookId);
-			nextEnds.delete(bookId);
-			pendingRemoveEndByBookId = nextEnds;
+			pendingRemoveIds.delete(bookId);
+			pendingRemoveEndByBookId.delete(bookId);
 			ratingsStore.removeRating(bookId, bookUlid);
 			summaryHooks?.onAfterRate?.(book);
 		}, PENDING_REMOVE_MS);
@@ -507,7 +497,8 @@
 		delete next.rateRatingsDrawer;
 		closeDrawerSync();
 		if (!browser) return;
-		replaceState(currentRatePageUrl(), next);
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- preserve search in shallow routing
+		replaceState(`${resolve('/rate')}${get(page).url.search}`, next);
 		const pops = hadDetail ? 2 : 1;
 		queueMicrotask(() => {
 			history.go(-pops);
@@ -521,9 +512,11 @@
 			let baseState = st;
 			if (st.rateRatingsDrawerDetail === true) {
 				baseState = clearDrawerDetailState(st);
-				replaceState(currentRatePageUrl(), baseState);
+				// eslint-disable-next-line svelte/no-navigation-without-resolve -- preserve search in shallow routing
+				replaceState(`${resolve('/rate')}${get(page).url.search}`, baseState);
 			}
-			pushState('', {
+			// eslint-disable-next-line svelte/no-navigation-without-resolve -- preserve search in shallow routing
+			pushState(`${resolve('/rate')}${get(page).url.search}`, {
 				...baseState,
 				rateRatingsDrawer: true,
 				rateRatingsDrawerDetail: true
@@ -550,7 +543,8 @@
 		const hadDetailLayer = st.rateRatingsDrawerDetail === true;
 		closeDetailSync();
 		if (!browser || !hadDetailLayer) return;
-		replaceState(currentRatePageUrl(), clearDrawerDetailState(st));
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- preserve search in shallow routing
+		replaceState(`${resolve('/rate')}${get(page).url.search}`, clearDrawerDetailState(st));
 		queueMicrotask(() => {
 			history.go(-1);
 		});
@@ -710,14 +704,12 @@
 	}
 
 	export function syncRatingsBarFromHistoryState(state: App.PageState) {
-		if (
-			!open &&
-			(state.rateRatingsDrawer === true || state.rateRatingsDrawerDetail === true)
-		) {
+		if (!open && (state.rateRatingsDrawer === true || state.rateRatingsDrawerDetail === true)) {
 			const next = { ...state };
 			delete next.rateRatingsDrawerDetail;
 			delete next.rateRatingsDrawer;
-			replaceState(currentRatePageUrl(), next);
+			// eslint-disable-next-line svelte/no-navigation-without-resolve -- preserve search in shallow routing
+			replaceState(`${resolve('/rate')}${get(page).url.search}`, next);
 			return;
 		}
 		if (detailBookId != null && state.rateRatingsDrawerDetail !== true) {
@@ -910,163 +902,166 @@
 </Button>
 
 {#if open}
+	<div
+		use:portal
+		id={panelId}
+		class="ratings-drawer-overlay"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby={detailEntry ? `${detailTitleId}-sheet` : 'ratings-drawer-title'}
+		tabindex="-1"
+		onclick={handleOverlayClick}
+		onkeydown={handleOverlayKeydown}
+	>
 		<div
-			use:portal
-			id={panelId}
-			class="ratings-drawer-overlay"
-			role="dialog"
-			aria-modal="true"
-			aria-labelledby={detailEntry ? `${detailTitleId}-sheet` : 'ratings-drawer-title'}
-			tabindex="-1"
-			onclick={handleOverlayClick}
-			onkeydown={handleOverlayKeydown}
+			class="ratings-drawer-panel"
+			in:fly={{ x: flyX, duration: 200 }}
+			out:fly={{ x: flyX, duration: 150 }}
 		>
-			<div
-				class="ratings-drawer-panel"
-				in:fly={{ x: flyX, duration: 200 }}
-				out:fly={{ x: flyX, duration: 150 }}
+			<button
+				bind:this={closeButtonEl}
+				type="button"
+				class="ratings-drawer__close"
+				aria-label={t('shared.ratingsBar.close')}
+				onclick={closeDrawerFromUser}
 			>
-				<button
-					bind:this={closeButtonEl}
-					type="button"
-					class="ratings-drawer__close"
-					aria-label={t('shared.ratingsBar.close')}
-					onclick={closeDrawerFromUser}
-				>
-					<X size={18} aria-hidden="true" />
-				</button>
-				<div class="ratings-drawer__header" class:ratings-drawer__header--detail={detailEntry != null}>
-					{#if detailEntry}
-						<button
-							bind:this={drawerBackButtonEl}
-							type="button"
-							class="chrome-nav-link ratings-drawer__back"
-							aria-label={t('shared.ratingsBar.backToRatings')}
-							onclick={closeDetailFromUser}
-						>
-							<ArrowLeft size={18} aria-hidden="true" />
-							<span class="ratings-drawer__back-label">{t('shared.ratingsBar.backToRatings')}</span>
-						</button>
+				<X size={18} aria-hidden="true" />
+			</button>
+			<div
+				class="ratings-drawer__header"
+				class:ratings-drawer__header--detail={detailEntry != null}
+			>
+				{#if detailEntry}
+					<button
+						bind:this={drawerBackButtonEl}
+						type="button"
+						class="chrome-nav-link ratings-drawer__back"
+						aria-label={t('shared.ratingsBar.backToRatings')}
+						onclick={closeDetailFromUser}
+					>
+						<ArrowLeft size={18} aria-hidden="true" />
+						<span class="ratings-drawer__back-label">{t('shared.ratingsBar.backToRatings')}</span>
+					</button>
+				{:else}
+					<h2 id="ratings-drawer-title" class="ratings-drawer__title typ-h3">
+						{t('shared.ratingsBar.yourRatings')}
+					</h2>
+				{/if}
+				{#if drawerSyncState}
+					<div
+						class="ratings-drawer__header-sync"
+						class:ratings-drawer__header-sync--failed={drawerSyncState === 'failed'}
+					>
+						<div class="ratings-drawer__sync-status">
+							<span
+								class="ratings-drawer__sync-indicator"
+								class:ratings-drawer__sync-indicator--pending={drawerSyncState === 'pending'}
+								class:ratings-drawer__sync-indicator--failed={drawerSyncState === 'failed'}
+								aria-hidden="true"
+							>
+								{#if drawerSyncState === 'failed'}!{/if}
+							</span>
+							<span class="ratings-drawer__sync-text">{drawerSyncText}</span>
+						</div>
+						{#if drawerSyncState === 'failed'}
+							<Button variant="tertiary" compact type="button" onclick={retryPendingRatings}>
+								{t('shared.ratingsBar.syncRatings')}
+							</Button>
+						{/if}
+					</div>
+				{/if}
+			</div>
+			<div
+				class="ratings-drawer__body scrollbar-subtle"
+				class:ratings-drawer__body--detail={detailEntry != null}
+				class:ratings-drawer__body--shelf-tabs={shelfTabsEnabled && detailEntry == null}
+			>
+				{#if detailEntry}
+					<BookSummarySheetBody
+						book={detailEntry.book}
+						summaryTitleId={`${detailTitleId}-sheet`}
+						displaySummary={detailDisplaySummary}
+						showCoverImage={detailShowCoverImage}
+						onCoverImageError={() => setCoverFailed(detailEntry.book.id)}
+						showAuthorInSheetMeta={Boolean(detailEntry.book.author?.trim())}
+						showSearchAuthorInOverlay={detailShowAuthorSearchPill}
+						onAuthorPillClick={detailShowAuthorSearchPill ? handleDrawerAuthorPillClick : undefined}
+						notInterested={detailNotInterested}
+						ratingGroupAriaLabel={t('shared.bookCard.rateThisBook')}
+						displayRating={detailDisplayRating}
+						starAriaLabel={detailStarAriaLabel}
+						starAriaPressed={detailStarAriaPressed}
+						onStarMouseEnter={detailStarMouseEnter}
+						onStarClick={detailStarClick}
+						onRatingGroupMouseLeave={() => (hoverDetailRating = 0)}
+						canRemoveRatingInSheet={$ratingsStore.has(detailEntry.book.id)}
+						onRemoveRatingClick={detailSheetRemoveRating}
+						showBookmarkAction={Boolean(summaryHooks?.onBookmark)}
+						showNotInterestedAction={Boolean(summaryHooks?.onNotInterested)}
+						bookmarked={detailBookmarked}
+						onBookmarkClick={detailBookmarkClick}
+						onNotInterestedClick={detailNotInterestedClick}
+					/>
+				{:else if !shelfTabsEnabled && drawerOrderedEntries.length === 0}
+					{#if ratedShelfDetailsPending}
+						<div class="ratings-drawer__loading" aria-live="polite">
+							<Spinner />
+							<p class="ratings-drawer__loading-text">{t('rated.loadingList')}</p>
+						</div>
 					{:else}
-						<h2 id="ratings-drawer-title" class="ratings-drawer__title typ-h3">
-							{t('shared.ratingsBar.yourRatings')}
-						</h2>
+						<p class="ratings-drawer__empty">
+							{t('shared.ratingsBar.empty')}
+						</p>
 					{/if}
-					{#if drawerSyncState}
-						<div
-							class="ratings-drawer__header-sync"
-							class:ratings-drawer__header-sync--failed={drawerSyncState === 'failed'}
-						>
-							<div class="ratings-drawer__sync-status">
-								<span
-									class="ratings-drawer__sync-indicator"
-									class:ratings-drawer__sync-indicator--pending={drawerSyncState === 'pending'}
-									class:ratings-drawer__sync-indicator--failed={drawerSyncState === 'failed'}
-									aria-hidden="true"
-								>
-									{#if drawerSyncState === 'failed'}!{/if}
-								</span>
-								<span class="ratings-drawer__sync-text">{drawerSyncText}</span>
-							</div>
-							{#if drawerSyncState === 'failed'}
-								<Button variant="tertiary" compact type="button" onclick={retryPendingRatings}>
-									{t('shared.ratingsBar.syncRatings')}
-								</Button>
-							{/if}
+				{:else}
+					{#if shelfTabsEnabled}
+						<div class="ratings-drawer__shelf-tabs-wrap">
+							<NavStyleTabList
+								ariaLabel={t('rated.tabs.ariaLabel')}
+								panelId={shelfListPanelId}
+								idPrefix={shelfTabIdPrefix}
+								items={shelfTabItems}
+								selectedId={activeShelfTab}
+								countsReady={libraryIdsReady}
+								getCount={(id) => countForShelfTab(id as ShelfFilterId)}
+								onSelect={(id) => selectShelfTab(id as ShelfFilterId)}
+								scrollSingleRow={true}
+							/>
 						</div>
 					{/if}
-				</div>
-				<div
-					class="ratings-drawer__body scrollbar-subtle"
-					class:ratings-drawer__body--detail={detailEntry != null}
-					class:ratings-drawer__body--shelf-tabs={shelfTabsEnabled && detailEntry == null}
-				>
-					{#if detailEntry}
-						<BookSummarySheetBody
-							book={detailEntry.book}
-							summaryTitleId={`${detailTitleId}-sheet`}
-							displaySummary={detailDisplaySummary}
-							showCoverImage={detailShowCoverImage}
-							onCoverImageError={() => setCoverFailed(detailEntry.book.id)}
-							showAuthorInSheetMeta={Boolean(detailEntry.book.author?.trim())}
-							showSearchAuthorInOverlay={detailShowAuthorSearchPill}
-							onAuthorPillClick={detailShowAuthorSearchPill ? handleDrawerAuthorPillClick : undefined}
-							notInterested={detailNotInterested}
-							ratingGroupAriaLabel={t('shared.bookCard.rateThisBook')}
-							displayRating={detailDisplayRating}
-							starAriaLabel={detailStarAriaLabel}
-							starAriaPressed={detailStarAriaPressed}
-							onStarMouseEnter={detailStarMouseEnter}
-							onStarClick={detailStarClick}
-							onRatingGroupMouseLeave={() => (hoverDetailRating = 0)}
-							canRemoveRatingInSheet={$ratingsStore.has(detailEntry.book.id)}
-							onRemoveRatingClick={detailSheetRemoveRating}
-							showBookmarkAction={Boolean(summaryHooks?.onBookmark)}
-							showNotInterestedAction={Boolean(summaryHooks?.onNotInterested)}
-							bookmarked={detailBookmarked}
-							onBookmarkClick={detailBookmarkClick}
-							onNotInterestedClick={detailNotInterestedClick}
-						/>
-					{:else if !shelfTabsEnabled && drawerOrderedEntries.length === 0}
-						{#if ratedShelfDetailsPending}
-							<div class="ratings-drawer__loading" aria-live="polite">
-								<Spinner />
-								<p class="ratings-drawer__loading-text">{t('rated.loadingList')}</p>
-							</div>
-						{:else}
-							<p class="ratings-drawer__empty">
-								{t('shared.ratingsBar.empty')}
-							</p>
-						{/if}
-					{:else}
-						{#if shelfTabsEnabled}
-							<div class="ratings-drawer__shelf-tabs-wrap">
-								<NavStyleTabList
-									ariaLabel={t('rated.tabs.ariaLabel')}
-									panelId={shelfListPanelId}
-									idPrefix={shelfTabIdPrefix}
-									items={shelfTabItems}
-									selectedId={activeShelfTab}
-									countsReady={libraryIdsReady}
-									getCount={(id) => countForShelfTab(id as ShelfFilterId)}
-									onSelect={(id) => selectShelfTab(id as ShelfFilterId)}
-									scrollSingleRow={true}
-								/>
-							</div>
-						{/if}
-						{#if shelfTabsEnabled}
-							<div
-								id={shelfListPanelId}
-								class="ratings-drawer__shelf-scroll scrollbar-subtle"
-								role="tabpanel"
-								aria-labelledby={`${shelfTabIdPrefix}-${activeShelfTab}`}
-							>
-								{#if drawerOrderedEntries.length === 0}
-									{#if activeShelfTab === 'rated' && ratedShelfDetailsPending}
-										<div class="ratings-drawer__loading" aria-live="polite">
-											<Spinner />
-											<p class="ratings-drawer__loading-text">{t('rated.loadingList')}</p>
-										</div>
-									{:else}
-										<p class="ratings-drawer__empty">{shelfEmptyMessage}</p>
-									{/if}
+					{#if shelfTabsEnabled}
+						<div
+							id={shelfListPanelId}
+							class="ratings-drawer__shelf-scroll scrollbar-subtle"
+							role="tabpanel"
+							aria-labelledby={`${shelfTabIdPrefix}-${activeShelfTab}`}
+						>
+							{#if drawerOrderedEntries.length === 0}
+								{#if activeShelfTab === 'rated' && ratedShelfDetailsPending}
+									<div class="ratings-drawer__loading" aria-live="polite">
+										<Spinner />
+										<p class="ratings-drawer__loading-text">{t('rated.loadingList')}</p>
+									</div>
 								{:else}
-									<ul class="ratings-drawer__list">
-										{#each drawerOrderedEntries as entry (entry.book.id)}
-											{@render drawerListRow(entry)}
-										{/each}
-									</ul>
+									<p class="ratings-drawer__empty">{shelfEmptyMessage}</p>
 								{/if}
-							</div>
-						{:else}
-							<ul class="ratings-drawer__list">
-								{#each drawerOrderedEntries as entry (entry.book.id)}
-									{@render drawerListRow(entry)}
-								{/each}
-							</ul>
-						{/if}
+							{:else}
+								<ul class="ratings-drawer__list">
+									{#each drawerOrderedEntries as entry (entry.book.id)}
+										{@render drawerListRow(entry)}
+									{/each}
+								</ul>
+							{/if}
+						</div>
+					{:else}
+						<ul class="ratings-drawer__list">
+							{#each drawerOrderedEntries as entry (entry.book.id)}
+								{@render drawerListRow(entry)}
+							{/each}
+						</ul>
 					{/if}
-				</div>
+				{/if}
+			</div>
 		</div>
 	</div>
 {/if}
@@ -1094,7 +1089,8 @@
 		justify-content: center;
 	}
 	@keyframes ratings-bar-sync-pulse {
-		0%, 100% {
+		0%,
+		100% {
 			opacity: 0.55;
 			transform: scale(0.92);
 		}

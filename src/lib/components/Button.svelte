@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { resolve } from '$app/paths';
 
 	interface Props {
 		children?: Snippet;
@@ -64,7 +65,7 @@
 	<a
 		bind:this={anchorEl}
 		class="btn btn--{variant} {pill ? 'btn--pill' : ''} {compact ? 'btn--compact' : ''} {className}"
-		href={href}
+		href={resolve(href as '/')}
 		{id}
 		aria-expanded={ariaExpanded}
 		aria-controls={ariaControls}
@@ -94,7 +95,7 @@
 		class="btn btn--{variant} {pill ? 'btn--pill' : ''} {compact ? 'btn--compact' : ''} {className}"
 		{id}
 		{type}
-		disabled={disabled}
+		{disabled}
 		class:btn--disabled={disabled}
 		aria-expanded={ariaExpanded}
 		aria-controls={ariaControls}
@@ -103,7 +104,7 @@
 		aria-disabled={ariaDisabled}
 		aria-busy={ariaBusy}
 		{...rest}
-		onclick={onclick}
+		{onclick}
 	>
 		{#if icon}
 			<span class="btn__icon" aria-hidden="true">{@render icon()}</span>

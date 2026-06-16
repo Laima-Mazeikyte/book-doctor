@@ -1,17 +1,15 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getUserIdFromToken } from '$lib/server/auth';
-import { BOOK_GENRE_TYPE_SELECT, catalogTypeFromRow, genresFromGenreColumns, type BookGenreSlotRow } from '$lib/book-catalog-fields';
-import { coverUrlForBookId } from '$lib/book-cover';
+import { fetchBooksByUlidsInOrder } from '$lib/server/catalogBooks';
+import { requireAccessToken } from '$lib/server/requestAuth';
 import { createSupabaseWithAuth } from '$lib/server/supabase';
-
-function getAccessToken(request: Request): string | null {
-	const authHeader = request.headers.get('Authorization');
-	return authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-}
+import {
+	createUserLibraryDeleteHandler,
+	createUserLibraryPostHandler
+} from '$lib/server/userLibraryMutations';
 
 export const GET: RequestHandler = async ({ request }) => {
-	const accessToken = getAccessToken(request);
+	const accessToken = requireAccessToken(request);
 	const supabase = createSupabaseWithAuth(accessToken);
 
 	const { data: rows, error: selectError } = await supabase
@@ -27,100 +25,19 @@ export const GET: RequestHandler = async ({ request }) => {
 	const orderedBookIds = (rows ?? [])
 		.map((r) => r.book_id)
 		.filter((id): id is string => typeof id === 'string' && id.trim() !== '');
+
 	if (orderedBookIds.length === 0) {
 		return json({ books: [], bookIds: [] });
 	}
 
-	const { data: booksData, error: booksError } = await supabase
-		.from('books')
-		.select(`id, book_id, book_name, author, summary, year, ${BOOK_GENRE_TYPE_SELECT}`)
-		.in('book_id', orderedBookIds);
-
-	if (booksError) {
+	try {
+		const books = await fetchBooksByUlidsInOrder(supabase, orderedBookIds);
+		return json({ books, bookIds: books.map((b) => b.id) });
+	} catch (booksError) {
 		console.error(booksError);
 		throw error(500, 'Failed to load bookmarked books');
 	}
-
-	const bookById = new Map(
-		(booksData ?? []).map((b) => {
-			const row = b as typeof b & BookGenreSlotRow & { type?: string | null };
-			const type = catalogTypeFromRow(row);
-			return [
-				b.book_id,
-				{
-					id: String(b.id),
-					book_id: b.book_id,
-					title: b.book_name ?? '',
-					author: b.author ?? '',
-					coverUrl: coverUrlForBookId(b.book_id),
-					summary: b.summary ?? undefined,
-					year: b.year != null ? String(b.year) : undefined,
-					genres: genresFromGenreColumns(row),
-					...(type ? { type } : {})
-				}
-			] as const;
-		})
-	);
-
-	const books = orderedBookIds
-		.map((bookId) => bookById.get(bookId))
-		.filter((b): b is NonNullable<typeof b> => b != null);
-
-	return json({ books, bookIds: books.map((b) => b.id) });
 };
 
-export const POST: RequestHandler = async ({ request }) => {
-	const accessToken = getAccessToken(request);
-	if (!accessToken) throw error(401, 'Missing Authorization');
-
-	const userId = await getUserIdFromToken(accessToken);
-	if (!userId) throw error(401, 'Invalid or expired token');
-
-	let body: { book_id?: string };
-	try {
-		body = await request.json();
-	} catch {
-		throw error(400, 'Invalid JSON body');
-	}
-	const bookId = body.book_id?.trim();
-	if (!bookId) {
-		throw error(400, 'Missing or invalid book_id');
-	}
-
-	const supabase = createSupabaseWithAuth(accessToken);
-	const { error: insertError } = await supabase
-		.from('user_bookmarks')
-		.upsert({ user_id: userId, book_id: bookId }, { onConflict: 'user_id,book_id' });
-
-	if (insertError) {
-		console.error(insertError);
-		throw error(500, 'Failed to add bookmark');
-	}
-
-	return json({ ok: true });
-};
-
-export const DELETE: RequestHandler = async ({ request, url }) => {
-	const accessToken = getAccessToken(request);
-	if (!accessToken) throw error(401, 'Missing Authorization');
-
-	const bookIdParam = url.searchParams.get('book_id');
-	const bookId = bookIdParam?.trim() ?? '';
-	if (!bookId) {
-		throw error(400, 'Missing or invalid book_id');
-	}
-
-	const supabase = createSupabaseWithAuth(accessToken);
-	// RLS restricts delete to own rows (user_id = auth.uid())
-	const { error: deleteError } = await supabase
-		.from('user_bookmarks')
-		.delete()
-		.eq('book_id', bookId);
-
-	if (deleteError) {
-		console.error(deleteError);
-		throw error(500, 'Failed to remove bookmark');
-	}
-
-	return json({ ok: true });
-};
+export const POST = createUserLibraryPostHandler('user_bookmarks', 'Failed to add bookmark');
+export const DELETE = createUserLibraryDeleteHandler('user_bookmarks', 'Failed to remove bookmark');

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/copy';
+	import { resolve } from '$app/paths';
 
 	interface Props {
 		onOpenBugReport: () => void;
@@ -12,7 +13,7 @@
 	<div class="app-footer__inner">
 		<ul class="app-footer__links">
 			<li>
-				<a href="/faq" class="app-footer__link">{t('shared.footer.faq')}</a>
+				<a href={resolve('/faq')} class="app-footer__link">{t('shared.footer.faq')}</a>
 			</li>
 			<li>
 				<button type="button" class="app-footer__link" onclick={onOpenBugReport}>
@@ -54,7 +55,9 @@
 		white-space: nowrap;
 		padding: var(--chrome-menu-padding-block) var(--chrome-menu-padding-inline);
 		border-radius: var(--radius-pill);
-		transition: color 0.15s ease, background 0.15s ease;
+		transition:
+			color 0.15s ease,
+			background 0.15s ease;
 	}
 	.app-footer__link:hover {
 		color: var(--color-text);

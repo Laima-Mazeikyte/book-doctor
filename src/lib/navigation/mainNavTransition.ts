@@ -16,7 +16,6 @@ export function shouldMainNavPageTransition(from: string, to: string): boolean {
 
 export function prefersReducedMotion(): boolean {
 	return (
-		typeof window !== 'undefined' &&
-		window.matchMedia('(prefers-reduced-motion: reduce)').matches
+		typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 	);
 }

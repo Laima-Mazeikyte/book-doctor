@@ -104,5 +104,4 @@
 		font-size: var(--primitive-type-size-16);
 		line-height: 150%;
 	}
-
 </style>

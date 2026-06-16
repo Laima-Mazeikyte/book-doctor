@@ -42,7 +42,10 @@ body {
 }
 
 /* Page h1 rhythm: extra space below title (landing uses flex gap; search dialog title is sr-only; bookshelf / recommendations / faq set their own gap). */
-main h1:not(.landing__title):not(.rate-search-overlay__sr-only):not(.bookshelf-page__title):not(.recommendations-page__title):not(.faq-page__title) {
+main
+	h1:not(.landing__title):not(.rate-search-overlay__sr-only):not(.bookshelf-page__title):not(
+		.recommendations-page__title
+	):not(.faq-page__title) {
 	margin-bottom: var(--space-6);
 }
 
@@ -164,7 +167,6 @@ main.main-book-grid-shell {
 	min-width: 0;
 	min-height: 0;
 }
-
 
 a {
 	color: var(--color-accent);

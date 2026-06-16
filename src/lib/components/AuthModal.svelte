@@ -191,7 +191,9 @@
 		if (!open || !panelEl) return;
 		function keepFocusInside(e: FocusEvent) {
 			if (panelEl && e.target instanceof Node && !panelEl.contains(e.target)) {
-				getFocusableElements(panelEl)[0]?.focus() ?? panelEl.focus();
+				const first = getFocusableElements(panelEl)[0];
+				if (first) first.focus();
+				else panelEl.focus();
 			}
 		}
 		document.addEventListener('focusin', keepFocusInside);
@@ -458,7 +460,9 @@
 				<p class="auth-modal__forgot-lead">{t('shared.authModal.resetPasswordLead')}</p>
 				<form class="auth-modal__form" onsubmit={handleForgotPassword}>
 					<div class="auth-modal__field">
-						<label class="auth-modal__label" for="auth-email-forgot">{t('shared.authModal.email')}</label>
+						<label class="auth-modal__label" for="auth-email-forgot"
+							>{t('shared.authModal.email')}</label
+						>
 						<input
 							id="auth-email-forgot"
 							type="email"
@@ -477,7 +481,9 @@
 			{:else if tab === 'signin'}
 				<form class="auth-modal__form" onsubmit={handleSignIn}>
 					<div class="auth-modal__field">
-						<label class="auth-modal__label" for="auth-email-signin">{t('shared.authModal.email')}</label>
+						<label class="auth-modal__label" for="auth-email-signin"
+							>{t('shared.authModal.email')}</label
+						>
 						<input
 							id="auth-email-signin"
 							type="email"
@@ -490,7 +496,9 @@
 						/>
 					</div>
 					<div class="auth-modal__field">
-						<label class="auth-modal__label" for="auth-password-signin">{t('shared.authModal.password')}</label>
+						<label class="auth-modal__label" for="auth-password-signin"
+							>{t('shared.authModal.password')}</label
+						>
 						<div class="auth-modal__password-wrap">
 							<input
 								id="auth-password-signin"
@@ -538,7 +546,9 @@
 			{:else}
 				<form class="auth-modal__form" onsubmit={handleSignUp}>
 					<div class="auth-modal__field">
-						<label class="auth-modal__label" for="auth-email-signup">{t('shared.authModal.email')}</label>
+						<label class="auth-modal__label" for="auth-email-signup"
+							>{t('shared.authModal.email')}</label
+						>
 						<input
 							id="auth-email-signup"
 							type="email"
@@ -551,7 +561,9 @@
 						/>
 					</div>
 					<div class="auth-modal__field">
-						<label class="auth-modal__label" for="auth-password-signup">{t('shared.authModal.password')}</label>
+						<label class="auth-modal__label" for="auth-password-signup"
+							>{t('shared.authModal.password')}</label
+						>
 						<p id="auth-password-signup-hint" class="auth-modal__hint">
 							{t('shared.authModal.passwordRulesSignUp')}
 						</p>
@@ -730,7 +742,9 @@
 		border: none;
 		border-radius: var(--radius-pill);
 		cursor: pointer;
-		transition: color 0.15s ease, background 0.15s ease;
+		transition:
+			color 0.15s ease,
+			background 0.15s ease;
 	}
 	.auth-modal__tab:hover {
 		color: var(--color-text);
@@ -876,7 +890,8 @@
 		border-radius: var(--radius-pill);
 		color: var(--color-text-muted);
 		cursor: pointer;
-		transition: color var(--duration-fast) var(--ease-default),
+		transition:
+			color var(--duration-fast) var(--ease-default),
 			background var(--duration-fast) var(--ease-default);
 	}
 	.auth-modal__password-toggle:hover:not(:disabled) {

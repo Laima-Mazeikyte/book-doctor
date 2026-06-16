@@ -6,7 +6,7 @@
 	interface Props {
 		value?: string;
 		placeholder?: string;
-		'aria-label'?: string;
+		ariaLabel?: string;
 		oninput?: (e: Event) => void;
 		/** Request focus when this instance mounts (e.g. rate search overlay field). */
 		autofocus?: boolean;
@@ -21,11 +21,11 @@
 	let {
 		value = $bindable(''),
 		placeholder = t('rate.search.placeholder'),
-		'aria-label': ariaLabel = t('rate.search.ariaLabel'),
+		ariaLabel = t('rate.search.ariaLabel'),
 		oninput,
 		autofocus = false,
 		asTrigger = false,
-		onActivate,
+		onActivate
 	}: Props = $props();
 
 	let inputRef: HTMLInputElement | undefined = $state();
@@ -81,7 +81,7 @@
 			{placeholder}
 			aria-label={ariaLabel}
 			bind:value
-			oninput={oninput}
+			{oninput}
 			class="search-bar__input"
 			class:search-bar__input--has-clear={value.length > 0}
 		/>
@@ -136,7 +136,8 @@
 		line-height: var(--typ-interactive-1-line-height);
 		letter-spacing: var(--typ-interactive-1-letter-spacing);
 		cursor: pointer;
-		transition: color var(--duration-fast) var(--ease-default),
+		transition:
+			color var(--duration-fast) var(--ease-default),
 			background var(--duration-fast) var(--ease-default);
 	}
 	.search-bar__clear-label {
@@ -164,7 +165,8 @@
 		background: var(--color-card-bg);
 		color: var(--color-text);
 		box-shadow: var(--shadow-input);
-		transition: border-color var(--duration-fast) var(--ease-default),
+		transition:
+			border-color var(--duration-fast) var(--ease-default),
 			box-shadow var(--duration-fast) var(--ease-default);
 	}
 	.search-bar__input--has-clear {
@@ -215,7 +217,8 @@
 		color: var(--color-text);
 		box-shadow: var(--shadow-input);
 		cursor: pointer;
-		transition: border-color var(--duration-fast) var(--ease-default),
+		transition:
+			border-color var(--duration-fast) var(--ease-default),
 			box-shadow var(--duration-fast) var(--ease-default);
 	}
 	.search-bar__trigger:hover {

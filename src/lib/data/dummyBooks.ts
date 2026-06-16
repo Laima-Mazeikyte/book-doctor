@@ -47,7 +47,7 @@ export const dummyBooks: Book[] = [
 	{
 		id: '6',
 		book_id: 'DUMMY-6',
-		title: 'Harry Potter and the Philosopher\'s Stone',
+		title: "Harry Potter and the Philosopher's Stone",
 		author: 'J.K. Rowling',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
 		summary: 'A young wizard discovers his destiny at Hogwarts.'
@@ -103,7 +103,7 @@ export const dummyBooks: Book[] = [
 	{
 		id: '13',
 		book_id: 'DUMMY-13',
-		title: 'The Handmaid\'s Tale',
+		title: "The Handmaid's Tale",
 		author: 'Margaret Atwood',
 		coverUrl: 'https://covers.openlibrary.org/b/id/240727-M.jpg',
 		summary: 'Offred navigates a theocratic regime in Gilead.'
@@ -246,30 +246,7 @@ export const dummyBooks: Book[] = [
 	}
 ];
 
-const STARTER_LIST_SIZE = 25;
-
-/** Returns a page of the full list with offset and limit (for popular list pagination). */
-export function getBooksPage(offset: number, limit: number): Book[] {
-	return dummyBooks.slice(offset, offset + limit);
-}
-
-/** Books shown as the initial "Popular books" list on the rate page. */
-export function getStarterBooks(): Book[] {
-	return dummyBooks.slice(0, STARTER_LIST_SIZE);
-}
-
-/** Filter books by title or author (case-insensitive). Used for search. */
-export function searchBooks(query: string): Book[] {
-	const q = query.trim().toLowerCase();
-	if (!q) return [];
-	return dummyBooks.filter(
-		(b) =>
-			b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q)
-	);
-}
-
-/** Get a book by id (for looking up rated books). */
+/** Fallback lookup when a rated book is not in the current browse/search lists. */
 export function getBookById(id: string): Book | undefined {
 	return dummyBooks.find((b) => b.id === id);
 }
-

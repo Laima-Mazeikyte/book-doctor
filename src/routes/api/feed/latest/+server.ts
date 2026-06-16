@@ -1,21 +1,18 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { loadLatestEligibleRateFeed } from '$lib/server/feedPayload';
+import { requireAccessToken } from '$lib/server/requestAuth';
 import { createSupabaseWithAuth } from '$lib/server/supabase';
-
 type LatestFeedMode = 'newer_completed' | 'cold_start' | 'exhausted';
 
 const DEFAULT_FEED_LIMIT = 20;
 
 export const GET: RequestHandler = async ({ request, url }) => {
-	const authHeader = request.headers.get('Authorization');
-	const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-	if (!accessToken) {
-		throw error(401, 'Unauthorized');
-	}
-
+	const accessToken = requireAccessToken(request);
 	const limitParam = url.searchParams.get('limit');
-	const limit = limitParam ? Math.max(1, Number.parseInt(limitParam, 10) || DEFAULT_FEED_LIMIT) : DEFAULT_FEED_LIMIT;
+	const limit = limitParam
+		? Math.max(1, Number.parseInt(limitParam, 10) || DEFAULT_FEED_LIMIT)
+		: DEFAULT_FEED_LIMIT;
 	const supabase = createSupabaseWithAuth(accessToken);
 
 	try {

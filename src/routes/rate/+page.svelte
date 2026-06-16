@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
+	import { SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
 	import { afterNavigate, beforeNavigate, goto, pushState, replaceState } from '$app/navigation';
@@ -9,10 +10,11 @@
 	import { ensureAnonymousSessionStarted } from '$lib/auth/anonymous-session';
 	import { getSupabase } from '$lib/supabase';
 	import { authStore, waitForAuthReady } from '$lib/stores/auth';
+	import { refreshRecommendationsCountFromApi } from '$lib/stores/recommendationsCount';
 	import {
-		refreshRecommendationsCountFromApi
-	} from '$lib/stores/recommendationsCount';
-	import { scheduleUserLibraryDetailsLoad, userLibraryHydrationStore } from '$lib/stores/userLibrary';
+		scheduleUserLibraryDetailsLoad,
+		userLibraryHydrationStore
+	} from '$lib/stores/userLibrary';
 	import BookCardGridSkeleton from '$lib/components/BookCardGridSkeleton.svelte';
 	import RatingsBar from '$lib/components/RatingsBar.svelte';
 	import SearchBar from '$lib/components/SearchBar.svelte';
@@ -141,9 +143,9 @@
 		savedScrollY = Math.max(savedScrollY, window.scrollY);
 	}
 
-	/** Align `$page.state` with the current URL without changing the path (shallow routing). */
 	function replaceShallowPageState(next: App.PageState) {
 		if (!browser) return;
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- preserve search in shallow routing
 		replaceState(`${resolve('/rate')}${get(page).url.search}`, next);
 	}
 
@@ -183,7 +185,8 @@
 		/** Only push when transitioning closed → open so we never `history.back()` from UI (fragile vs real stack). */
 		const shouldPush = opts?.pushHistory === true && browser && !wasOpen;
 		if (shouldPush) {
-			pushState('', { rateSearchLayer: true });
+			// eslint-disable-next-line svelte/no-navigation-without-resolve -- preserve search in shallow routing
+			pushState(`${resolve('/rate')}${get(page).url.search}`, { rateSearchLayer: true });
 		}
 		if (!wasOpen) {
 			resetSearchSessionFeedFlags();
@@ -361,10 +364,7 @@
 			if (authorAnchor && authorAnchor.toLowerCase() === q.toLowerCase()) {
 				searchMode = 'author';
 				authorSearchAnchor = authorAnchor;
-			} else if (
-				searchMode !== 'author' ||
-				authorSearchAnchor.toLowerCase() !== q.toLowerCase()
-			) {
+			} else if (searchMode !== 'author' || authorSearchAnchor.toLowerCase() !== q.toLowerCase()) {
 				searchMode = 'fulltext';
 				authorSearchAnchor = '';
 			}
@@ -380,14 +380,19 @@
 		if (!browser || !searchOverlayOpen) return;
 		void overlayDialogEl;
 		const q = normalizedDebouncedQuery;
-		const path = q.length > 0 ? resolve(`/rate?q=${encodeURIComponent(q)}`) : resolve('/rate');
 		const cur = $page.url;
 		const curQ = cur.searchParams.get('q')?.trim() ?? '';
 		if (cur.pathname === '/rate' && curQ === q) return;
 		const active = document.activeElement;
 		const keepFocus =
 			active instanceof Node && overlayDialogEl != null && overlayDialogEl.contains(active);
-		void goto(path, { replaceState: true, noScroll: true, keepFocus });
+		/* eslint-disable svelte/no-navigation-without-resolve -- sync overlay URL with search query */
+		void goto(q.length > 0 ? `${resolve('/rate')}?q=${encodeURIComponent(q)}` : resolve('/rate'), {
+			replaceState: true,
+			noScroll: true,
+			keepFocus
+		});
+		/* eslint-enable svelte/no-navigation-without-resolve */
 	});
 
 	$effect(() => {
@@ -519,14 +524,7 @@
 
 		const preloadObserver = new IntersectionObserver(
 			(entries) => {
-				if (
-					!entries[0].isIntersecting ||
-					loading ||
-					initial ||
-					overlayBlocksFeed ||
-					!more
-				)
-					return;
+				if (!entries[0].isIntersecting || loading || initial || overlayBlocksFeed || !more) return;
 				if (!feedOnly) {
 					void loadPopular(next, 0);
 					return;
@@ -539,14 +537,7 @@
 
 		const strictEndObserver = new IntersectionObserver(
 			(entries) => {
-				if (
-					!entries[0].isIntersecting ||
-					loading ||
-					initial ||
-					overlayBlocksFeed ||
-					!more
-				)
-					return;
+				if (!entries[0].isIntersecting || loading || initial || overlayBlocksFeed || !more) return;
 				if (Date.now() < suppressStrictFeedEndUntil) return;
 				if (feedOnly && lastFeed && !engaged) {
 					hasMore = false;
@@ -822,7 +813,7 @@
 		scheduleSearchSessionFeedRefresh();
 	}
 
-	function handleMainListAfterRate(_book: Book) {
+	function handleMainListAfterRate() {
 		everHadSessionSignal = true;
 		if (lastAppendWasFeed) engagedWithPendingBatch = true;
 		reviveMainListPaginationAfterEngagement();
@@ -1065,7 +1056,7 @@
 		popularError = null;
 
 		try {
-			const params = new URLSearchParams({ offset: String(offset) });
+			const params = new SvelteURLSearchParams({ offset: String(offset) });
 			if (popularSeed) params.set('seed', popularSeed);
 			if (offset >= 100 && popularBooks.length > 0) {
 				const exclude = popularBooks
@@ -1160,11 +1151,7 @@
 		}
 	}
 
-	async function doSearch(
-		query: string,
-		offset = 0,
-		mode: 'fulltext' | 'author' = searchMode
-	) {
+	async function doSearch(query: string, offset = 0, mode: 'fulltext' | 'author' = searchMode) {
 		const trimmedQuery = query.trim();
 		if (offset === 0) {
 			searchRequestGeneration += 1;
@@ -1186,7 +1173,7 @@
 			if (trimmedQuery !== normalizedDebouncedQuery) return;
 
 			if (offset === 0) {
-				const seen = new Set<string>();
+				const seen = new SvelteSet<string>();
 				searchResults = data.books.filter((b) => {
 					if (seen.has(b.id)) return false;
 					seen.add(b.id);
@@ -1225,7 +1212,7 @@
 		if (sync.queuedCount > 0 || sync.isFlushing) return;
 		const user = get(authStore).user;
 		if (!user?.id) {
-			goto('/rate/recommendations');
+			goto(resolve('/rate/recommendations'));
 			return;
 		}
 		const supabase = getSupabase();
@@ -1237,14 +1224,18 @@
 					.select('id')
 					.single();
 				if (!error && data?.id != null) {
-					goto(`/rate/recommendations?request_id=${encodeURIComponent(String(data.id))}`);
+					/* eslint-disable svelte/no-navigation-without-resolve -- pass recommendation request id in query */
+					goto(
+						`${resolve('/rate/recommendations')}?request_id=${encodeURIComponent(String(data.id))}`
+					);
+					/* eslint-enable svelte/no-navigation-without-resolve */
 					return;
 				}
 			} catch {
 				// fall through
 			}
 		}
-		goto('/rate/recommendations');
+		goto(resolve('/rate/recommendations'));
 	}
 
 	function handleToolbarSearchActivate() {
@@ -1365,7 +1356,7 @@
 						asTrigger={true}
 						bind:value={searchQuery}
 						placeholder={t('rate.search.placeholder')}
-						aria-label={t('rate.search.ariaLabel')}
+						ariaLabel={t('rate.search.ariaLabel')}
 						onActivate={handleToolbarSearchActivate}
 					/>
 				</div>
@@ -1396,7 +1387,7 @@
 									onBookmark={(id) => handleRateBookmark(book, id)}
 									notInterested={$notInterestedStore.has(book.book_id)}
 									onNotInterested={() => handleMainListNotInterested(book)}
-									onAfterRate={() => handleMainListAfterRate(book)}
+									onAfterRate={handleMainListAfterRate}
 								/>
 							</li>
 						{/each}
@@ -1443,8 +1434,8 @@
 							searchOverlayOpen
 								? handleSearchNotInterested(book)
 								: handleMainListNotInterested(book),
-						onAfterRate: (book) =>
-							searchOverlayOpen ? handleSearchAfterRate() : handleMainListAfterRate(book)
+						onAfterRate: () =>
+							searchOverlayOpen ? handleSearchAfterRate() : handleMainListAfterRate()
 					}}
 				/>
 				{#if canGetRecommendations}
@@ -1524,7 +1515,7 @@
 								bind:value={searchQuery}
 								autofocus={true}
 								placeholder={t('rate.search.placeholder')}
-								aria-label={t('rate.search.ariaLabel')}
+								ariaLabel={t('rate.search.ariaLabel')}
 							/>
 						</div>
 						<button

@@ -31,4 +31,3 @@ export function createSupabaseServiceRole(): SupabaseClient | null {
 	if (!supabaseUrl || !serviceRoleKey) return null;
 	return createClient(supabaseUrl, serviceRoleKey);
 }
-

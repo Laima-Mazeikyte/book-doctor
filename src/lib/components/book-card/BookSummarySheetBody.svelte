@@ -71,7 +71,9 @@
 	}: Props = $props();
 
 	const showSummaryRemoveSlot = $derived(canRemoveRatingInSheet || reserveSummaryRemoveLayoutSlot);
-	const summaryRemoveLayoutOnly = $derived(reserveSummaryRemoveLayoutSlot && !canRemoveRatingInSheet);
+	const summaryRemoveLayoutOnly = $derived(
+		reserveSummaryRemoveLayoutSlot && !canRemoveRatingInSheet
+	);
 </script>
 
 {#snippet summaryStarGlyph(filled: boolean)}
@@ -121,7 +123,9 @@
 								<button
 									type="button"
 									class="book-card__summary-author-pill"
-									aria-label={t('shared.bookCard.searchThisAuthorAriaLabel', { author: book.author })}
+									aria-label={t('shared.bookCard.searchThisAuthorAriaLabel', {
+										author: book.author
+									})}
 									onclick={onAuthorPillClick}
 								>
 									<Search size={14} aria-hidden="true" />
@@ -149,7 +153,7 @@
 			aria-label={ratingGroupAriaLabel}
 			onmouseleave={onRatingGroupMouseLeave}
 		>
-			{#each RATING_OPTIONS as value}
+			{#each RATING_OPTIONS as value (value)}
 				<button
 					type="button"
 					class="book-card__star"
@@ -191,7 +195,7 @@
 				class="book-card__genres book-card__genres--summary-sheet"
 				aria-label={t('shared.recommendationCard.genres')}
 			>
-				{#each book.genres as genre}
+				{#each book.genres as genre (genre)}
 					<li class="book-card__genre">{genre}</li>
 				{/each}
 			</ul>
@@ -218,7 +222,9 @@
 				>
 					<Bookmark size={14} aria-hidden="true" />
 					<span class="book-card__action-label">
-						{bookmarked ? t('shared.recommendationCard.saved') : t('shared.recommendationCard.bookmark')}
+						{bookmarked
+							? t('shared.recommendationCard.saved')
+							: t('shared.recommendationCard.bookmark')}
 					</span>
 				</button>
 			{/if}
@@ -234,7 +240,8 @@
 					onclick={onNotInterestedClick}
 				>
 					<Ban size={14} aria-hidden="true" />
-					<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span>
+					<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span
+					>
 				</button>
 			{/if}
 		</div>

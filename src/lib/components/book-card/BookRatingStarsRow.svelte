@@ -28,17 +28,9 @@
 	}: Props = $props();
 </script>
 
-<div
-	class="book-card__rating-wrap"
-	class:book-card__rating-wrap--auto={ratingWrapWidth === 'auto'}
->
-	<div
-		class="book-card__rating"
-		role="group"
-		aria-label={ariaGroupLabel}
-		onmouseleave={onmouseleave}
-	>
-		{#each RATING_OPTIONS as value}
+<div class="book-card__rating-wrap" class:book-card__rating-wrap--auto={ratingWrapWidth === 'auto'}>
+	<div class="book-card__rating" role="group" aria-label={ariaGroupLabel} {onmouseleave}>
+		{#each RATING_OPTIONS as value (value)}
 			<button
 				type="button"
 				class="book-card__star"

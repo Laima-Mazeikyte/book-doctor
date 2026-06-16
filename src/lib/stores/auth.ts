@@ -37,11 +37,15 @@ export const authStore = createAuthStore();
 /** Session restoration only — not anonymous sign-in. Settled by the root layout on mount. */
 export const authInitStore = writable<AuthInitState>({ status: 'idle' });
 
-export const authReady = derived(authInitStore, ($init) => $init.status === 'ready' || $init.status === 'error');
+export const authReady = derived(
+	authInitStore,
+	($init) => $init.status === 'ready' || $init.status === 'error'
+);
 
 /** True while layout is restoring an existing Supabase session (not lazy anonymous sign-in). */
-export const authRestorePending = derived(authInitStore, ($init) =>
-	$init.status === 'idle' || $init.status === 'checking'
+export const authRestorePending = derived(
+	authInitStore,
+	($init) => $init.status === 'idle' || $init.status === 'checking'
 );
 
 let authReadyWaiters: Array<() => void> = [];

@@ -10,7 +10,7 @@
 	let {
 		title = t('shared.recommendationsEmpty.title'),
 		message = t('shared.recommendationsEmpty.defaultMessage'),
-		ratedCount,
+		ratedCount
 	}: Props = $props();
 </script>
 
@@ -18,7 +18,9 @@
 	<h1 class="recommendations-empty__title typ-display2">{title}</h1>
 	<p class="recommendations-empty__message typ-body">{message}</p>
 	<p class="recommendations-empty__count typ-caption">
-		{t('shared.recommendationsEmpty.youRatedCount', { count: ratedCount })}{ratedCount === 1 ? '' : t('shared.recommendationsEmpty.youRatedCountPlural')}.
+		{t('shared.recommendationsEmpty.youRatedCount', { count: ratedCount })}{ratedCount === 1
+			? ''
+			: t('shared.recommendationsEmpty.youRatedCountPlural')}.
 	</p>
 </div>
 

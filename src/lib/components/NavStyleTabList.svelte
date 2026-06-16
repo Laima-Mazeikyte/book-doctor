@@ -159,7 +159,9 @@
 		border: none;
 		border-radius: var(--radius-pill);
 		cursor: pointer;
-		transition: color 0.15s ease, background 0.15s ease;
+		transition:
+			color 0.15s ease,
+			background 0.15s ease;
 	}
 	.nav-style-tabs__tab-label {
 		min-width: 0;

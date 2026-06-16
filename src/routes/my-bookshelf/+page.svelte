@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { page } from '$app/stores';
 	import { authStore } from '$lib/stores/auth';
 	import { ratingsStore } from '$lib/stores/ratings';
@@ -217,7 +219,8 @@
 		}
 		const current = untrack(() => activeFilter);
 		if (current !== next) activeFilter = next;
-		void goto(`/my-bookshelf?filter=${encodeURIComponent(next)}`, {
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- persist active filter in query
+		void goto(`${resolve('/my-bookshelf')}?filter=${encodeURIComponent(next)}`, {
 			replaceState: true,
 			keepFocus: true,
 			noScroll: true
@@ -231,7 +234,7 @@
 	);
 
 	const unionBooksById = $derived.by(() => {
-		const m = new Map<string, Book>();
+		const m = new SvelteMap<string, Book>();
 		for (const b of ratedBooksForPartition) m.set(b.id, b);
 		for (const b of bookmarkBooks) if (!m.has(b.id)) m.set(b.id, b);
 		for (const b of niBooks) {
@@ -240,7 +243,7 @@
 		return m;
 	});
 
-	const notInterestedIds = $derived.by(() => new Set([...$notInterestedStore]));
+	const notInterestedIds = $derived.by(() => new SvelteSet([...$notInterestedStore]));
 	const planIds = $derived($planToReadStore);
 
 	const countsReady = $derived(!$authStore.session?.access_token || !bmNiLoading);
@@ -291,7 +294,9 @@
 		}
 	});
 
-	const bookmarkTabBooks = $derived(bookmarkBooks.filter((b) => !isNotInterested(b, notInterestedIds)));
+	const bookmarkTabBooks = $derived(
+		bookmarkBooks.filter((b) => !isNotInterested(b, notInterestedIds))
+	);
 
 	const niTabBooks = $derived(niBooks.filter((b) => $notInterestedStore.has(b.book_id)));
 
@@ -335,7 +340,8 @@
 		} catch {
 			// ignore
 		}
-		void goto(`/my-bookshelf?filter=${encodeURIComponent(id)}`, {
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- persist active filter in query
+		void goto(`${resolve('/my-bookshelf')}?filter=${encodeURIComponent(id)}`, {
 			replaceState: true,
 			keepFocus: true,
 			noScroll: true
@@ -350,8 +356,7 @@
 			niBooks = niBooks.filter((b) => b.book_id !== book.book_id);
 			if (!bookmarkBooks.some((b) => b.id === book.id)) {
 				const rest = bookmarkBooks.filter((b) => b.id !== book.id);
-				bookmarkBooks =
-					sortOrder === 'oldest' ? [...rest, book] : [book, ...rest];
+				bookmarkBooks = sortOrder === 'oldest' ? [...rest, book] : [book, ...rest];
 				bookmarksPageStore.setBooks(bookmarkBooks);
 			}
 		}
@@ -405,7 +410,7 @@
 			idPrefix="bookshelf-tab"
 			items={tabItems}
 			selectedId={activeFilter}
-			countsReady={countsReady}
+			{countsReady}
 			getCount={(id) => countForTab(id as FilterId)}
 			onSelect={(id) => selectTab(id as FilterId)}
 		/>
@@ -441,10 +446,7 @@
 	>
 		{#if listLoading}
 			<p class="bookshelf-page__loading typ-body">{t('rated.loadingList')}</p>
-			<BookCardGridSkeleton
-				class="bookshelf-page__list"
-				ariaLabel={t('rated.title')}
-			/>
+			<BookCardGridSkeleton class="bookshelf-page__list" ariaLabel={t('rated.title')} />
 		{:else if activeFilter === 'rated' && ratedDisplayEntries.length === 0}
 			<p class="bookshelf-page__empty">{t('rated.empty')}</p>
 		{:else if activeFilter === 'bookmarked' && bookmarkTabBooks.length === 0}
@@ -452,7 +454,10 @@
 		{:else if activeFilter === 'not-interested' && niTabBooks.length === 0}
 			<p class="bookshelf-page__empty">{t('rated.emptyNotInterested')}</p>
 		{:else}
-			<ul class="bookshelf-page__list book-card-grid" aria-label={t('shared.ratingsBar.yourRatings')}>
+			<ul
+				class="bookshelf-page__list book-card-grid"
+				aria-label={t('shared.ratingsBar.yourRatings')}
+			>
 				{#if activeFilter === 'rated'}
 					{#each ratedDisplayEntries as { book } (book.id)}
 						<li>

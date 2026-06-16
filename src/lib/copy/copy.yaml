@@ -2,231 +2,231 @@
 # To add a locale later, add another top-level key (e.g. es:, fr:) with the same structure.
 en:
   home:
-    title: "Books worth reading"
-    lead: "A place for readers to discover books that match their unique taste."
-    metaDescription: "Discover books matched to your taste with Unread. Search titles, add ratings, and discover books that are worth reading."
-    startRating: "Start rating"
+    title: 'Books worth reading'
+    lead: 'A place for readers to discover books that match their unique taste.'
+    metaDescription: 'Discover books matched to your taste with Unread. Search titles, add ratings, and discover books that are worth reading.'
+    startRating: 'Start rating'
 
   rate:
-    pageTitle: "Browse & Rate"
-    metaDescription: "Browse books and rate titles on Unread. Your curated feed adjusts to your ratings with time."
-    skipToBottomBar: "Skip to ratings and recommendations"
+    pageTitle: 'Browse & Rate'
+    metaDescription: 'Browse books and rate titles on Unread. Your curated feed adjusts to your ratings with time.'
+    skipToBottomBar: 'Skip to ratings and recommendations'
     search:
-      placeholder: "Search books by title or author"
-      ariaLabel: "Search books by title or author"
-      clear: "Clear"
-      clearAriaLabel: "Clear search"
-      dialogTitle: "Search books"
-      closeAriaLabel: "Close search"
-      backAriaLabel: "Back"
-      minCharsHint: "Type at least 3 characters to search books."
-      statusSearching: "Searching…"
-      statusNoResults: "No results"
-      statusResults: "{{count}} results"
+      placeholder: 'Search books by title or author'
+      ariaLabel: 'Search books by title or author'
+      clear: 'Clear'
+      clearAriaLabel: 'Clear search'
+      dialogTitle: 'Search books'
+      closeAriaLabel: 'Close search'
+      backAriaLabel: 'Back'
+      minCharsHint: 'Type at least 3 characters to search books.'
+      statusSearching: 'Searching…'
+      statusNoResults: 'No results'
+      statusResults: '{{count}} results'
     errors:
-      loadBooks: "Could not load books right now. Try again later."
-      searchFailed: "Search failed. Please try again."
+      loadBooks: 'Could not load books right now. Try again later.'
+      searchFailed: 'Search failed. Please try again.'
     emptySearch: "No books found for '{{query}}'."
-    loadMoreBooks: "Load more books"
-    loadMoreBooksAriaLabel: "Load more books into the list"
+    loadMoreBooks: 'Load more books'
+    loadMoreBooksAriaLabel: 'Load more books into the list'
     aria:
-      searching: "Searching…"
-      loadingBooks: "Loading books…"
-    getRecommendations: "Get Book Recommendations"
-    remainingToRecommend_one: "Rate 1 more book"
-    remainingToRecommend_other: "Rate {{remaining}} more books"
+      searching: 'Searching…'
+      loadingBooks: 'Loading books…'
+    getRecommendations: 'Get Book Recommendations'
+    remainingToRecommend_one: 'Rate 1 more book'
+    remainingToRecommend_other: 'Rate {{remaining}} more books'
 
   notInterested:
-    title: "Not interested"
+    title: 'Not interested'
     metaDescription: "Review books you've selected as 'not interested'."
     intro: "Books you've marked as not interested. Click the button again to show them in recommendations."
-    empty: "No books marked as not interested yet."
+    empty: 'No books marked as not interested yet.'
   rated:
-    title: "Bookshelf"
-    metaDescription: "Your Unread bookshelf: rated titles, bookmarks, and books marked not interested. Easy to browse and manage."
-    empty: "No books rated yet. Rate at least 10 to get recommendations."
-    loadingList: "Loading your library…"
-    emptyBookmarked: "No bookmarked books yet. Titles you save stay here even if you also rate them."
-    emptyNotInterested: "No books marked as not interested yet."
+    title: 'Bookshelf'
+    metaDescription: 'Your Unread bookshelf: rated titles, bookmarks, and books marked not interested. Easy to browse and manage.'
+    empty: 'No books rated yet. Rate at least 10 to get recommendations.'
+    loadingList: 'Loading your library…'
+    emptyBookmarked: 'No bookmarked books yet. Titles you save stay here even if you also rate them.'
+    emptyNotInterested: 'No books marked as not interested yet.'
     tabs:
-      ariaLabel: "Filter your shelf"
-      rated: "Rated"
-      bookmarked: "Bookmarked"
-      notInterested: "Not interested"
+      ariaLabel: 'Filter your shelf'
+      rated: 'Rated'
+      bookmarked: 'Bookmarked'
+      notInterested: 'Not interested'
     sort:
-      label: "Sort"
-      ariaLabel: "Sort books on your shelf"
-      newest: "Newest"
-      oldest: "Oldest"
-      ratingHigh: "Highest rating"
-      ratingLow: "Lowest rating"
+      label: 'Sort'
+      ariaLabel: 'Sort books on your shelf'
+      newest: 'Newest'
+      oldest: 'Oldest'
+      ratingHigh: 'Highest rating'
+      ratingLow: 'Lowest rating'
 
   recommendations:
-    title: "Recommendations"
+    title: 'Recommendations'
     metaDescription: "What to read next? Your unique book recommendations on Unread, shaped by books you've rated so far."
-    myRecommendations: "What to read next?"
-    backToRating: "Back to rating"
-    backToList: "Back to list"
-    emptyRun: "No books in this recommendation run."
-    timeoutMessage: "Taking longer than expected. Please try again later."
-    noRecommendationsYet: "No recommendations yet. Rate more books and try again."
-    failedToLoad: "Failed to load recommendations"
-    failedToLoadHistory: "Failed to load recommendation history"
-    allUniqueTitles: "All recommended titles"
-    recommendationBatches: "Past recommendation runs"
+    myRecommendations: 'What to read next?'
+    backToRating: 'Back to rating'
+    backToList: 'Back to list'
+    emptyRun: 'No books in this recommendation run.'
+    timeoutMessage: 'Taking longer than expected. Please try again later.'
+    noRecommendationsYet: 'No recommendations yet. Rate more books and try again.'
+    failedToLoad: 'Failed to load recommendations'
+    failedToLoadHistory: 'Failed to load recommendation history'
+    allUniqueTitles: 'All recommended titles'
+    recommendationBatches: 'Past recommendation runs'
     aria:
-      pastRuns: "Past recommendation runs"
-      recommendedBooks: "Recommended books"
-    historyView: "View"
+      pastRuns: 'Past recommendation runs'
+      recommendedBooks: 'Recommended books'
+    historyView: 'View'
     tabs:
-      ariaLabel: "Filter recommendations"
-      recommended: "Recommended"
+      ariaLabel: 'Filter recommendations'
+      recommended: 'Recommended'
     sort:
-      ariaLabel: "Sort recommendations"
-      newest: "Newest"
-      oldest: "Oldest"
-      bestFit: "Best fit"
-    emptyRecommendedTab: "No recommendations in this list yet."
-    emptyBookmarkedTab: "No bookmarked recommendations yet."
-    emptyNotInterestedTab: "No recommended titles marked not interested yet."
-    loadingList: "Loading…"
+      ariaLabel: 'Sort recommendations'
+      newest: 'Newest'
+      oldest: 'Oldest'
+      bestFit: 'Best fit'
+    emptyRecommendedTab: 'No recommendations in this list yet.'
+    emptyBookmarkedTab: 'No bookmarked recommendations yet.'
+    emptyNotInterestedTab: 'No recommended titles marked not interested yet.'
+    loadingList: 'Loading…'
 
   faq:
-    title: "Frequently Asked Questions"
-    metaDescription: "Answers about Unread: how recommendations work and other common questions answered."
+    title: 'Frequently Asked Questions'
+    metaDescription: 'Answers about Unread: how recommendations work and other common questions answered.'
 
   shared:
-    skipToContent: "Skip to main content"
-    listBookCount: "{{count}} book"
-    listBookCountPlural: "s"
+    skipToContent: 'Skip to main content'
+    listBookCount: '{{count}} book'
+    listBookCountPlural: 's'
     header:
-      siteName: "Unread"
-      logoAlt: "Unread"
-      homeAriaLabel: "Unread, home"
-      mainNavigation: "Main"
-      mobileMenuLabel: "Menu"
-      browse: "Rate books"
-      myRecommendations: "Recommendations"
-      notInterested: "Not interested"
-      ratedBooks: "My Ratings"
-      myBookshelf: "Bookshelf"
-      account: "Account"
-      signOut: "Sign out"
-      menu: "Menu"
-      openMenu: "Open menu"
-      closeMenu: "Close menu"
+      siteName: 'Unread'
+      logoAlt: 'Unread'
+      homeAriaLabel: 'Unread, home'
+      mainNavigation: 'Main'
+      mobileMenuLabel: 'Menu'
+      browse: 'Rate books'
+      myRecommendations: 'Recommendations'
+      notInterested: 'Not interested'
+      ratedBooks: 'My Ratings'
+      myBookshelf: 'Bookshelf'
+      account: 'Account'
+      signOut: 'Sign out'
+      menu: 'Menu'
+      openMenu: 'Open menu'
+      closeMenu: 'Close menu'
     footer:
-      ariaLabel: "Site footer"
-      faq: "FAQ"
-      reportBug: "Give feedback"
+      ariaLabel: 'Site footer'
+      faq: 'FAQ'
+      reportBug: 'Give feedback'
     errorBanner:
-      dismiss: "Dismiss error"
+      dismiss: 'Dismiss error'
     ratingsBar:
-      yourRatings: "Bookshelf"
-      backToRatings: "Back to bookshelf"
-      close: "Close bookshelf"
-      empty: "No books rated yet. Rate at least 10 to get recommendations."
-      syncRatings: "Sync ratings"
-      syncing: "Ratings syncing"
-      retryNeeded: "Some ratings need syncing"
-      changeOrRemoveRating: "Change or remove rating"
-      removeRatingFor: "Remove rating for {{title}}"
-      remove: "Remove"
-      undo: "Undo"
-      undoRemoveRatingFor: "Keep rating for {{title}}"
-      removePendingHint: "Removal completes in a few seconds unless you undo."
-      removeProgressBarLabel: "Progress until this rating is removed. Undo to keep it."
-      rateOutOf5: "Rate {{value}} out of 5"
-      rateOutOf5Clear: "Rate {{value}} out of 5 (click again to clear)"
-      setRatingTo: "Set rating to {{value}} out of 5"
+      yourRatings: 'Bookshelf'
+      backToRatings: 'Back to bookshelf'
+      close: 'Close bookshelf'
+      empty: 'No books rated yet. Rate at least 10 to get recommendations.'
+      syncRatings: 'Sync ratings'
+      syncing: 'Ratings syncing'
+      retryNeeded: 'Some ratings need syncing'
+      changeOrRemoveRating: 'Change or remove rating'
+      removeRatingFor: 'Remove rating for {{title}}'
+      remove: 'Remove'
+      undo: 'Undo'
+      undoRemoveRatingFor: 'Keep rating for {{title}}'
+      removePendingHint: 'Removal completes in a few seconds unless you undo.'
+      removeProgressBarLabel: 'Progress until this rating is removed. Undo to keep it.'
+      rateOutOf5: 'Rate {{value}} out of 5'
+      rateOutOf5Clear: 'Rate {{value}} out of 5 (click again to clear)'
+      setRatingTo: 'Set rating to {{value}} out of 5'
     bookCard:
-      rateThisBook: "Rate this book 1 to 5 stars"
-      rateOutOf5: "Rate {{value}} out of 5"
-      rateOutOf5Clear: "Rate {{value}} out of 5 (click again to clear)"
-      searchThisAuthor: "Search author"
-      searchThisAuthorAriaLabel: "Search for books by {{author}}"
+      rateThisBook: 'Rate this book 1 to 5 stars'
+      rateOutOf5: 'Rate {{value}} out of 5'
+      rateOutOf5Clear: 'Rate {{value}} out of 5 (click again to clear)'
+      searchThisAuthor: 'Search author'
+      searchThisAuthorAriaLabel: 'Search for books by {{author}}'
     recommendationCard:
-      seeSummary: "See summary"
-      seeSummaryCoverAriaLabelWithAuthor: "{{title}} by {{author}}. See summary"
-      seeSummaryCoverAriaLabelTitleOnly: "{{title}}. See summary"
-      bookCardIdentityAriaLabelWithAuthor: "{{title}} by {{author}}"
-      bookCardIdentityAriaLabelTitleOnly: "{{title}}"
-      summary: "Summary"
-      addToReadingList: "Add to Bookmarks"
-      removeFromReadingList: "Remove from Bookmarks"
-      bookmark: "Bookmark"
-      saved: "Bookmarked"
-      bookmarked: "Bookmarked"
-      markAsRead: "Mark as read"
-      read: "Rate"
-      backToWantToRead: "Back to Bookmark and Rate buttons"
-      back: "Back"
-      bookSummary: "Book summary"
-      closeSummary: "Close summary"
-      genres: "Genres"
-      rateThisBook: "Rate this book 1 to 5 stars"
-      rateOutOf5: "Rate {{value}} out of 5"
-      rateOutOf5Clear: "Rate {{value}} out of 5 (click again to clear)"
-      notInterested: "Not interested"
-      notInterestedFeedback: "Not interested"
-      removeFromNotInterested: "Remove from not interested"
+      seeSummary: 'See summary'
+      seeSummaryCoverAriaLabelWithAuthor: '{{title}} by {{author}}. See summary'
+      seeSummaryCoverAriaLabelTitleOnly: '{{title}}. See summary'
+      bookCardIdentityAriaLabelWithAuthor: '{{title}} by {{author}}'
+      bookCardIdentityAriaLabelTitleOnly: '{{title}}'
+      summary: 'Summary'
+      addToReadingList: 'Add to Bookmarks'
+      removeFromReadingList: 'Remove from Bookmarks'
+      bookmark: 'Bookmark'
+      saved: 'Bookmarked'
+      bookmarked: 'Bookmarked'
+      markAsRead: 'Mark as read'
+      read: 'Rate'
+      backToWantToRead: 'Back to Bookmark and Rate buttons'
+      back: 'Back'
+      bookSummary: 'Book summary'
+      closeSummary: 'Close summary'
+      genres: 'Genres'
+      rateThisBook: 'Rate this book 1 to 5 stars'
+      rateOutOf5: 'Rate {{value}} out of 5'
+      rateOutOf5Clear: 'Rate {{value}} out of 5 (click again to clear)'
+      notInterested: 'Not interested'
+      notInterestedFeedback: 'Not interested'
+      removeFromNotInterested: 'Remove from not interested'
     recommendationsLoading:
-      message: "Getting your recommendations…"
+      message: 'Getting your recommendations…'
     recommendationsEmpty:
-      title: "Recommendations"
-      defaultMessage: "Recommendations will appear here once we connect the model."
-      backToRating: "Back to rating"
-      youRatedCount: "You rated {{count}} book"
-      youRatedCountPlural: "s"
+      title: 'Recommendations'
+      defaultMessage: 'Recommendations will appear here once we connect the model.'
+      backToRating: 'Back to rating'
+      youRatedCount: 'You rated {{count}} book'
+      youRatedCountPlural: 's'
     authModal:
-      dialogAccessibleName: "Log in or create account"
-      signIn: "Log in"
-      createAccount: "Join Unread"
-      forgotPassword: "Forgot password?"
-      resetPasswordTitle: "Reset password"
-      resetPasswordLead: "Enter your email and we’ll send a link to choose a new password."
-      sendResetLink: "Send reset link"
-      sendingResetLink: "Sending…"
-      backToSignIn: "Back to log in"
-      successResetEmailSent: "If an account exists for that email, you’ll get reset instructions shortly."
-      errorResetEmailFailed: "Could not send reset email. Please try again."
-      errorEmailRequired: "Please enter your email."
-      close: "Close"
-      email: "Email"
-      password: "Password"
-      passwordRulesSignUp: "At least 6 characters."
-      showPassword: "Show password"
-      hidePassword: "Hide password"
-      emailPlaceholder: "you@example.com"
-      signingIn: "Logging in…"
-      creatingAccount: "Creating account…"
-      errorUnableToConnect: "Unable to connect. Please try again."
-      errorInvalidCredentials: "Invalid login credentials"
-      errorSignUpFailed: "Sign up failed"
+      dialogAccessibleName: 'Log in or create account'
+      signIn: 'Log in'
+      createAccount: 'Join Unread'
+      forgotPassword: 'Forgot password?'
+      resetPasswordTitle: 'Reset password'
+      resetPasswordLead: 'Enter your email and we’ll send a link to choose a new password.'
+      sendResetLink: 'Send reset link'
+      sendingResetLink: 'Sending…'
+      backToSignIn: 'Back to log in'
+      successResetEmailSent: 'If an account exists for that email, you’ll get reset instructions shortly.'
+      errorResetEmailFailed: 'Could not send reset email. Please try again.'
+      errorEmailRequired: 'Please enter your email.'
+      close: 'Close'
+      email: 'Email'
+      password: 'Password'
+      passwordRulesSignUp: 'At least 6 characters.'
+      showPassword: 'Show password'
+      hidePassword: 'Hide password'
+      emailPlaceholder: 'you@example.com'
+      signingIn: 'Logging in…'
+      creatingAccount: 'Creating account…'
+      errorUnableToConnect: 'Unable to connect. Please try again.'
+      errorInvalidCredentials: 'Invalid login credentials'
+      errorSignUpFailed: 'Sign up failed'
     resetPasswordPage:
-      loading: "Loading…"
-      title: "Choose a new password"
-      metaDescription: "Choose a new password for your Unread account. Complete your reset securely using the recovery link from your email."
-      newPassword: "New password"
-      confirmPassword: "Confirm password"
-      passwordHint: "At least 6 characters."
-      submit: "Update password"
-      submitting: "Updating…"
-      invalidOrExpired: "This reset link is invalid or has expired. Request a new one from the log in screen."
-      useSignInInstead: "You’re already signed in. To change your password, sign out and use Forgot password from the log in screen."
-      errorMismatch: "Passwords don’t match."
-      errorWeak: "Password is too short."
-      errorUpdateFailed: "Could not update password. Try requesting a new link."
-      backHome: "Back to home"
+      loading: 'Loading…'
+      title: 'Choose a new password'
+      metaDescription: 'Choose a new password for your Unread account. Complete your reset securely using the recovery link from your email.'
+      newPassword: 'New password'
+      confirmPassword: 'Confirm password'
+      passwordHint: 'At least 6 characters.'
+      submit: 'Update password'
+      submitting: 'Updating…'
+      invalidOrExpired: 'This reset link is invalid or has expired. Request a new one from the log in screen.'
+      useSignInInstead: 'You’re already signed in. To change your password, sign out and use Forgot password from the log in screen.'
+      errorMismatch: 'Passwords don’t match.'
+      errorWeak: 'Password is too short.'
+      errorUpdateFailed: 'Could not update password. Try requesting a new link.'
+      backHome: 'Back to home'
     bugModal:
-      title: "Give feedback or report a bug"
-      description: "Message or question"
-      descriptionPlaceholder: "What went wrong or what would you like to tell us?"
-      name: "Email or name (optional)"
-      namePlaceholder: ""
-      submit: "Send feedback"
-      submitting: "Sending…"
-      close: "Close"
-      successMessage: "Thanks for your feedback!"
-      errorSubmit: "Could not send. Please try again."
-      reportBugAriaLabel: "Report a bug or send feedback"
+      title: 'Give feedback or report a bug'
+      description: 'Message or question'
+      descriptionPlaceholder: 'What went wrong or what would you like to tell us?'
+      name: 'Email or name (optional)'
+      namePlaceholder: ''
+      submit: 'Send feedback'
+      submitting: 'Sending…'
+      close: 'Close'
+      successMessage: 'Thanks for your feedback!'
+      errorSubmit: 'Could not send. Please try again.'
+      reportBugAriaLabel: 'Report a bug or send feedback'
