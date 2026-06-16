@@ -20,7 +20,6 @@
 	import SearchBar from '$lib/components/SearchBar.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import Spinner from '$lib/components/Spinner.svelte';
-	import RatingsSyncDot from '$lib/components/RatingsSyncDot.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import { X } from 'lucide-svelte';
 	import { getBookById } from '$lib/data/dummyBooks';
@@ -696,41 +695,76 @@
 
 	const ratingsSyncMeta = ratingsStore.syncMeta;
 	const ratedCount = $derived($ratingsStore.size);
-	const showBottomBar = $derived(ratedCount >= 1 || !libraryIdsReady);
 	const canGetRecommendations = $derived(ratedCount >= MIN_RATINGS_FOR_RECOMMENDATIONS);
 	/** No queued rating writes and not mid-flush — safe to start a recommendations run. */
 	const ratingsSyncedForRecommendations = $derived(
 		$ratingsSyncMeta.queuedCount === 0 && !$ratingsSyncMeta.isFlushing
 	);
-	/** Matches ratings drawer: pending vs failed copy for the bottom CTA. */
-	const recommendationsSubmitSyncFailed = $derived(
-		!ratingsSyncedForRecommendations &&
-			$ratingsSyncMeta.queuedCount > 0 &&
+	type BottomBarDisplayState = {
+		userId: string | null;
+		triggerCount: number;
+		canGetRecommendations: boolean;
+		recommendationsLabel: string;
+	};
+
+	let bottomBarDisplayState = $state<BottomBarDisplayState | null>(null);
+	let bottomBarConfirmedRatedCount = $state(0);
+	let bottomBarDisplayUserId = $state<string | null>(null);
+	const bottomBarUserId = $derived($authStore.user?.id ?? null);
+	const ratingsSyncFailedForRecommendations = $derived(
+		$ratingsSyncMeta.queuedCount > 0 &&
 			!$ratingsSyncMeta.isFlushing &&
 			$ratingsSyncMeta.failedCount > 0
 	);
-	/** Shown on the recommendations CTA and the sub-threshold hint while the queue is non-empty. */
-	const recommendationsOffQueueLabel = $derived(
-		$ratingsSyncMeta.isFlushing || $ratingsSyncMeta.failedCount === 0
-			? t('shared.ratingsBar.syncing')
-			: t('shared.ratingsBar.retryNeeded')
-	);
-	const recommendationsSubmitLabel = $derived(
-		ratingsSyncedForRecommendations ? t('rate.getRecommendations') : recommendationsOffQueueLabel
-	);
-	const ratingsRemainingForRecommendations = $derived(
-		Math.max(0, MIN_RATINGS_FOR_RECOMMENDATIONS - ratedCount)
-	);
-	const recommendationsCtaLabel = $derived(
-		ratingsRemainingForRecommendations === 0
-			? t('rate.getRecommendations')
-			: ratingsRemainingForRecommendations === 1
-				? t('rate.remainingToRecommend_one')
-				: t('rate.remainingToRecommend_other', { remaining: ratingsRemainingForRecommendations })
-	);
-	const recommendationsHintLabel = $derived(
-		ratingsSyncedForRecommendations ? recommendationsCtaLabel : recommendationsOffQueueLabel
-	);
+
+	function recommendationsLabelForCount(count: number): string {
+		const remaining = Math.max(0, MIN_RATINGS_FOR_RECOMMENDATIONS - count);
+		if (remaining === 0) return t('rate.getRecommendations');
+		if (remaining === 1) return t('rate.remainingToRecommend_one');
+		return t('rate.remainingToRecommend_other', { remaining });
+	}
+
+	function recommendationsDisplayCount(): number {
+		if (ratingsSyncedForRecommendations) return ratedCount;
+		if (ratingsSyncFailedForRecommendations) return bottomBarConfirmedRatedCount;
+		if (ratedCount >= MIN_RATINGS_FOR_RECOMMENDATIONS) {
+			return MIN_RATINGS_FOR_RECOMMENDATIONS - 1;
+		}
+		return ratedCount;
+	}
+
+	$effect(() => {
+		const userId = bottomBarUserId;
+		if (bottomBarDisplayUserId !== userId) {
+			bottomBarDisplayUserId = userId;
+			bottomBarDisplayState = null;
+			bottomBarConfirmedRatedCount = 0;
+		}
+		if (!libraryIdsReady) return;
+		if (ratingsSyncedForRecommendations && bottomBarConfirmedRatedCount !== ratedCount) {
+			bottomBarConfirmedRatedCount = ratedCount;
+		}
+		if (ratedCount < 1) {
+			bottomBarDisplayState = null;
+			return;
+		}
+		const recommendationCount = recommendationsDisplayCount();
+		const nextState = {
+			userId,
+			triggerCount: ratedCount,
+			canGetRecommendations:
+				ratingsSyncedForRecommendations && ratedCount >= MIN_RATINGS_FOR_RECOMMENDATIONS,
+			recommendationsLabel: recommendationsLabelForCount(recommendationCount)
+		};
+		if (
+			bottomBarDisplayState?.triggerCount === nextState.triggerCount &&
+			bottomBarDisplayState.canGetRecommendations === nextState.canGetRecommendations &&
+			bottomBarDisplayState.recommendationsLabel === nextState.recommendationsLabel
+		) {
+			return;
+		}
+		bottomBarDisplayState = nextState;
+	});
 
 	/** Resolve access token after layout session restore; optionally start lazy anonymous sign-in. */
 	async function resolveAccessToken(opts?: { lazyAnonymous?: boolean }): Promise<string | null> {
@@ -1420,11 +1454,12 @@
 			</div>
 		</div>
 
-		{#if showBottomBar}
+		{#if bottomBarDisplayState}
 			<div id="rate-bottom-bar" class="rate-page__bottom-bar" tabindex="-1">
 				<RatingsBar
 					bind:this={ratingsBar}
 					{ratedEntries}
+					triggerDisplayCount={bottomBarDisplayState.triggerCount}
 					resolveBook={findBookById}
 					resolveBookByBookId={findBookByBookId}
 					summaryHooks={{
@@ -1438,24 +1473,13 @@
 							searchOverlayOpen ? handleSearchAfterRate() : handleMainListAfterRate()
 					}}
 				/>
-				{#if canGetRecommendations}
+				{#if bottomBarDisplayState.canGetRecommendations}
 					<div class="rate-page__recommendations-cta">
-						{#snippet recommendationsCtaSyncIcon()}
-							<RatingsSyncDot variant={recommendationsSubmitSyncFailed ? 'failed' : 'pending'} />
-						{/snippet}
 						<Button
 							variant="primary"
 							pill
-							class="rate-page__recommendations-submit{!ratingsSyncedForRecommendations
-								? ' rate-page__recommendations-submit--syncing'
-								: ''}{recommendationsSubmitSyncFailed
-								? ' rate-page__recommendations-submit--sync-failed'
-								: ''}"
-							icon={!ratingsSyncedForRecommendations ? recommendationsCtaSyncIcon : undefined}
+							class="rate-page__recommendations-submit"
 							aria-disabled={!ratingsSyncedForRecommendations ? 'true' : undefined}
-							aria-busy={!ratingsSyncedForRecommendations && !recommendationsSubmitSyncFailed
-								? 'true'
-								: undefined}
 							onclick={(e) => {
 								if (!ratingsSyncedForRecommendations) {
 									e.preventDefault();
@@ -1464,27 +1488,17 @@
 								void handleSubmit();
 							}}
 						>
-							{recommendationsSubmitLabel}
+							{bottomBarDisplayState.recommendationsLabel}
 						</Button>
 					</div>
 				{:else}
 					<div class="rate-page__recommendations-hint-wrap">
 						<div
-							class="btn btn--primary btn--pill rate-page__recommendations-hint{!ratingsSyncedForRecommendations
-								? ' rate-page__recommendations-hint--syncing'
-								: ''}{recommendationsSubmitSyncFailed
-								? ' rate-page__recommendations-hint--sync-failed'
-								: ''}"
+							class="btn btn--primary btn--pill rate-page__recommendations-hint"
 							role="status"
 							aria-live="polite"
-							aria-busy={!ratingsSyncedForRecommendations && !recommendationsSubmitSyncFailed
-								? 'true'
-								: undefined}
 						>
-							{#if !ratingsSyncedForRecommendations}
-								<RatingsSyncDot variant={recommendationsSubmitSyncFailed ? 'failed' : 'pending'} />
-							{/if}
-							<span class="btn__label">{recommendationsHintLabel}</span>
+							<span class="btn__label">{bottomBarDisplayState.recommendationsLabel}</span>
 						</div>
 					</div>
 				{/if}
@@ -1912,31 +1926,5 @@
 		cursor: default;
 		margin: 0;
 		text-align: center;
-	}
-	:global(
-		.rate-page__recommendations-hint.btn--primary.rate-page__recommendations-hint--syncing:hover
-	) {
-		background: var(--color-button-primary-bg);
-	}
-	:global(
-		.rate-page__recommendations-hint.btn--primary.rate-page__recommendations-hint--sync-failed:hover
-	) {
-		background: var(--color-button-primary-bg);
-	}
-	/* Full-opacity primary while ratings flush; same dot treatment as ratings trigger. */
-	:global(
-		.rate-page__recommendations-submit.btn--primary.rate-page__recommendations-submit--syncing
-	) {
-		cursor: wait;
-	}
-	:global(
-		.rate-page__recommendations-submit.btn--primary.rate-page__recommendations-submit--sync-failed
-	) {
-		cursor: not-allowed;
-	}
-	:global(
-		.rate-page__recommendations-submit.btn--primary.rate-page__recommendations-submit--syncing:hover
-	) {
-		background: var(--color-button-primary-bg);
 	}
 </style>

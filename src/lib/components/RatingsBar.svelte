@@ -36,12 +36,15 @@
 	interface Props {
 		ratedEntries: RatedEntry[];
 		summaryHooks?: RatingsBarSummaryHooks;
+		/** Optional committed count for the bottom trigger badge; drawer contents still use live data. */
+		triggerDisplayCount?: number;
 		/** When both resolvers are set, the drawer shows Rated / Bookmarked / Not interested tabs (browse page). */
 		resolveBook?: (bookId: string) => Book | undefined;
 		resolveBookByBookId?: (bookId: string) => Book | undefined;
 	}
 
-	let { ratedEntries, summaryHooks, resolveBook, resolveBookByBookId }: Props = $props();
+	let { ratedEntries, summaryHooks, triggerDisplayCount, resolveBook, resolveBookByBookId }: Props =
+		$props();
 
 	type ShelfFilterId = 'rated' | 'bookmarked' | 'not-interested';
 
@@ -294,7 +297,7 @@
 	});
 
 	const triggerBadgeCount = $derived(
-		shelfTabsEnabled ? partitionCounts.rated : ratedEntries.length
+		triggerDisplayCount ?? (shelfTabsEnabled ? partitionCounts.rated : ratedEntries.length)
 	);
 
 	const triggerAriaLabel = $derived(
