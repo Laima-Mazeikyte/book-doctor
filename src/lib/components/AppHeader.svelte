@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { get } from 'svelte/store';
 	import { getSupabase } from '$lib/supabase';
-	import { authStore, isAnonymousOrSignedOut, signedInEmail } from '$lib/stores/auth';
+	import { authRestorePending, authReady, isAnonymousOrSignedOut, signedInEmail } from '$lib/stores/auth';
 	import { mobileMenuOpen } from '$lib/stores/mobileMenu';
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
 	import AuthModal from '$lib/components/AuthModal.svelte';
@@ -30,15 +30,23 @@
 	let accountDropdownOpen = $state(false);
 	let accountTriggerEl = $state<HTMLButtonElement | null>(null);
 	let accountPanelEl = $state<HTMLDivElement | null>(null);
-	let mobileMenuEl = $state<HTMLDivElement | null>(null);
+	let mobileMenuToggleEl = $state<HTMLButtonElement | null>(null);
+	let authModalRestoreFocusTarget = $state<HTMLElement | null>(null);
 
-	let showAuthActions = $derived($isAnonymousOrSignedOut);
+	let showAuthActions = $derived($authReady && $isAnonymousOrSignedOut);
 	let email = $derived($signedInEmail);
 	let pathname = $derived($page.url.pathname);
 	/** Signed-in (non-anonymous) users always see primary nav; anonymous users only when they already have recommendations. */
-	let showMainNav = $derived(!$isAnonymousOrSignedOut || $recommendationsCountStore > 0);
-	function openAuthModal(tab: 'signin' | 'signup' = 'signin') {
+	let showMainNav = $derived(
+		$authReady && (!$isAnonymousOrSignedOut || $recommendationsCountStore > 0)
+	);
+	function openAuthModal(tab: 'signin' | 'signup' = 'signin', opener?: HTMLElement | null) {
 		authModalInitialTab = tab;
+		const fromMobileMenu = get(mobileMenuOpen);
+		authModalRestoreFocusTarget = fromMobileMenu
+			? mobileMenuToggleEl
+			: (opener ??
+				(document.activeElement instanceof HTMLElement ? document.activeElement : null));
 		authModalOpen = true;
 		closeAccountDropdown();
 		closeMobileMenu();
@@ -160,20 +168,22 @@
 		{/if}
 
 		<div class="app-header__right">
-			<div class="app-header__account" data-state={accountDropdownOpen ? 'open' : 'closed'}>
-				{#if showAuthActions}
+			<div class="app-header__account">
+				{#if $authRestorePending}
+					<!-- Session restore in progress — avoid signed-out flash -->
+				{:else if showAuthActions}
 					<div class="app-header__auth-actions">
 						<button
 							type="button"
 							class="btn btn--tertiary btn--compact"
-							onclick={() => openAuthModal('signin')}
+							onclick={(e) => openAuthModal('signin', e.currentTarget as HTMLElement)}
 						>
 							{t('shared.authModal.signIn')}
 						</button>
 						<button
 							type="button"
 							class="btn btn--tertiary btn--compact"
-							onclick={() => openAuthModal('signup')}
+							onclick={(e) => openAuthModal('signup', e.currentTarget as HTMLElement)}
 						>
 							{t('shared.authModal.createAccount')}
 						</button>
@@ -213,6 +223,7 @@
 				class="app-header__menu-toggle"
 				aria-expanded={$mobileMenuOpen}
 				aria-controls="app-header-mobile-menu"
+				bind:this={mobileMenuToggleEl}
 				onclick={toggleMobileMenu}
 			>
 				{t('shared.header.menu')}
@@ -227,7 +238,6 @@
 			role="dialog"
 			aria-modal="true"
 			aria-label={t('shared.header.mobileMenuLabel')}
-			bind:this={mobileMenuEl}
 		>
 			<div class="app-header__mobile-menu-inner">
 				<a
@@ -275,7 +285,9 @@
 					</nav>
 				{/if}
 				<div class="app-header__mobile-account">
-					{#if showAuthActions}
+					{#if $authRestorePending}
+						<!-- Session restore in progress -->
+					{:else if showAuthActions}
 						<button type="button" class="app-header__account-item" onclick={() => openAuthModal('signin')}>
 							{t('shared.authModal.signIn')}
 						</button>
@@ -316,7 +328,13 @@
 	{/if}
 </header>
 
-<AuthModal open={authModalOpen} onClose={closeAuthModal} initialTab={authModalInitialTab} />
+<AuthModal
+	open={authModalOpen}
+	onClose={closeAuthModal}
+	initialTab={authModalInitialTab}
+	draftResetKey={pathname}
+	restoreFocusTarget={authModalRestoreFocusTarget}
+/>
 
 <style>
 	.app-header {

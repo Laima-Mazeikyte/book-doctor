@@ -1,8 +1,7 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { BOOK_GENRE_TYPE_SELECT, type BookGenreSlotRow } from '$lib/book-catalog-fields';
+import { type BookGenreSlotRow } from '$lib/book-catalog-fields';
 import { mapBookRowToBook } from '$lib/search/mapBookRowToBook';
-import { excludeRateFeedBookIds, getRateFeedExcludedBookIds } from '$lib/server/rateFeedExclusions';
 import { supabase, createSupabaseWithAuth } from '$lib/server/supabase';
 
 const PAGE_SIZE = 20;
@@ -34,24 +33,92 @@ function shuffleWithSeed<T>(arr: T[], seedStr: string): T[] {
 	return out;
 }
 
-function mapRowToBook(
-	b: {
-		id: string;
-		book_id: string;
-		book_name: string | null;
-		author: string;
-		summary: string | null;
-		year: number | null;
-	} & BookGenreSlotRow & { type?: string | null }
-) {
+type BookRow = {
+	id: string;
+	book_id: string;
+	book_name: string | null;
+	author: string;
+	summary: string | null;
+	year: number | null;
+} & BookGenreSlotRow & { type?: string | null };
+
+type Top100CatalogRow = BookRow & {
+	genre: string;
+	display_order: number;
+};
+
+function mapRowToBook(b: BookRow) {
 	return mapBookRowToBook(b);
+}
+
+async function loadTop100Catalog(accessToken: string | null): Promise<Top100CatalogRow[]> {
+	if (accessToken) {
+		const supabaseAuth = createSupabaseWithAuth(accessToken);
+		const { data, error: rpcError } = await supabaseAuth.rpc('get_eligible_top_100_books');
+		if (rpcError) {
+			console.error('[popular] get_eligible_top_100_books failed:', rpcError);
+			throw new Error('Failed to load books');
+		}
+		return (data ?? []) as Top100CatalogRow[];
+	}
+
+	const { data: rows, error: dbError } = await supabase
+		.from('top_100_books')
+		.select(
+			'book_id, genre, display_order, books(id, book_id, book_name, author, summary, year, genre1, genre2, genre3, genre4, genre5, genre6, genre7, type)'
+		)
+		.order('display_order', { ascending: true });
+
+	if (dbError) {
+		console.error(dbError);
+		throw error(500, 'Failed to load books');
+	}
+
+	type Row = { genre: string; display_order: number; books: BookRow | null };
+	return (rows ?? [])
+		.map((row) => row as unknown as Row)
+		.filter((r) => r.books != null)
+		.map((r) => ({
+			...r.books!,
+			genre: r.genre,
+			display_order: r.display_order
+		}));
+}
+
+function buildTop100Page(catalog: Top100CatalogRow[], offset: number, seedParam: string | null) {
+	const genreOrder = [...new Set(catalog.map((r) => r.genre))].sort();
+	const byGenre: BookRow[][] = genreOrder.map(() => []);
+	for (const row of catalog) {
+		const i = genreOrder.indexOf(row.genre);
+		if (i >= 0) byGenre[i].push(row);
+	}
+
+	const seed = seedParam && seedParam.length > 0 ? seedParam : crypto.randomUUID();
+	const shuffledByGenre = byGenre.map((arr, i) => shuffleWithSeed(arr, `${seed}:${genreOrder[i]}`));
+
+	const ordered: BookRow[] = [];
+	for (let round = 0; round < 5; round++) {
+		for (let g = 0; g < genreOrder.length; g++) {
+			for (const idx of [round * 2, round * 2 + 1]) {
+				const row = shuffledByGenre[g][idx];
+				if (row) ordered.push(row);
+			}
+		}
+	}
+
+	const page = ordered.slice(offset, offset + PAGE_SIZE);
+	const books = page.map((b) => mapRowToBook(b));
+	const nextOffset = offset + page.length;
+	const hasMore = nextOffset < ordered.length;
+
+	return { books, nextOffset, hasMore, seed: !seedParam || seedParam.length === 0 ? seed : undefined };
 }
 
 export const GET: RequestHandler = async ({ url, request }) => {
 	const offsetParam = url.searchParams.get('offset');
 	const offset = offsetParam ? parseInt(offsetParam, 10) : 0;
-	const seedParam = url.searchParams.get('seed'); // session seed so order is stable for this visit but different each time
-	const excludeParam = url.searchParams.get('exclude'); // comma-separated book_ids (for batch 6+)
+	const seedParam = url.searchParams.get('seed');
+	const excludeParam = url.searchParams.get('exclude');
 	const excludeIds = excludeParam
 		? excludeParam
 				.split(',')
@@ -61,96 +128,26 @@ export const GET: RequestHandler = async ({ url, request }) => {
 
 	const authHeader = request.headers.get('Authorization');
 	const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-	let excludedBookIds = new Set<string>();
-	if (accessToken) {
-		const supabaseAuth = createSupabaseWithAuth(accessToken);
-		excludedBookIds = await getRateFeedExcludedBookIds(supabaseAuth);
-	}
 
-	// Batches 1–5 (offset 0–80): 2 per genre per batch; which 2 from each genre is randomised per session
 	if (offset < TOP_100_SIZE) {
-		const { data: rows, error: dbError } = await supabase
-			.from('top_100_books')
-			.select(
-				'book_id, genre, display_order, books(id, book_id, book_name, author, summary, year, genre1, genre2, genre3, genre4, genre5, genre6, genre7, type)'
-			)
-			.order('display_order', { ascending: true });
-
-		if (dbError) {
-			console.error(dbError);
-			throw error(500, 'Failed to load books');
-		}
-
-		type BookRow = {
-			id: string;
-			book_id: string;
-			book_name: string | null;
-			author: string;
-			summary: string | null;
-			year: number | null;
-		} & BookGenreSlotRow & { type?: string | null };
-		type Row = { genre: string; books: BookRow | null };
-		const withGenre = (rows ?? [])
-			.map((row) => row as unknown as Row)
-			.filter((r) => r.books != null) as { genre: string; books: BookRow }[];
-
-		// Group by genre (stable order)
-		const genreOrder = [...new Set(withGenre.map((r) => r.genre))].sort();
-		const byGenre: BookRow[][] = genreOrder.map(() => []);
-		for (const r of withGenre) {
-			const i = genreOrder.indexOf(r.genre);
-			if (i >= 0) byGenre[i].push(r.books);
-		}
-
-		const seed = seedParam && seedParam.length > 0 ? seedParam : crypto.randomUUID();
-		// Shuffle within each genre so which 2 books go to batch 1, 2, … is random per session
-		const shuffledByGenre = byGenre.map((arr, i) =>
-			shuffleWithSeed(arr, `${seed}:${genreOrder[i]}`)
-		);
-
-		// Build list: 2 per genre per batch → positions 0–19 = round 0, 20–39 = round 1, …
-		const ordered: BookRow[] = [];
-		for (let round = 0; round < 5; round++) {
-			for (let g = 0; g < genreOrder.length; g++) {
-				ordered.push(shuffledByGenre[g][round * 2], shuffledByGenre[g][round * 2 + 1]);
-			}
-		}
-
-		const page = ordered.slice(offset, offset + PAGE_SIZE);
-		const books = excludeRateFeedBookIds(
-			page.map((b) => mapRowToBook(b)),
-			excludedBookIds
-		);
-
-		const nextOffset = offset + page.length;
-		const hasMore = nextOffset <= TOP_100_SIZE;
-
-		const payload: {
-			books: ReturnType<typeof mapRowToBook>[];
-			nextOffset: number;
-			hasMore: boolean;
-			seed?: string;
-		} = {
-			books,
-			nextOffset,
-			hasMore
-		};
-		if (!seedParam || seedParam.length === 0) payload.seed = seed;
+		const catalog = await loadTop100Catalog(accessToken);
+		const payload = buildTop100Page(catalog, offset, seedParam);
 		return json(payload);
 	}
 
-	// Batch 6+: from books, exclude top 100 + exclude param, prefer higher popularity
-	// Use RPC to avoid PostgREST URL length limit when excluding 100+ IDs
 	const { data: top100Rows } = await supabase.from('top_100_books').select('book_id');
-	const top100Ids = (top100Rows ?? []).map((r) => r.book_id);
-	const excludeSet = new Set([...top100Ids, ...excludeIds, ...excludedBookIds]);
-	const excludeArr = Array.from(excludeSet);
+	const top100Ids = (top100Rows ?? []).map((r) => String(r.book_id));
+	const excludeArr = [...new Set([...top100Ids, ...excludeIds])];
 
 	const candidateLimit = Math.max(PAGE_SIZE * 3, 60);
-	const { data: candidates, error: restError } = await supabase.rpc('get_books_excluding_ids', {
-		p_exclude_ids: excludeArr.length > 0 ? excludeArr : null,
-		p_limit_count: candidateLimit
-	});
+	const supabaseClient = accessToken ? createSupabaseWithAuth(accessToken) : supabase;
+	const { data: candidates, error: restError } = await supabaseClient.rpc(
+		'get_eligible_books_excluding_ids',
+		{
+			p_exclude_ids: excludeArr.length > 0 ? excludeArr : null,
+			p_limit_count: candidateLimit
+		}
+	);
 
 	if (restError) {
 		console.error(restError);
@@ -162,11 +159,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		const bp = typeof b.popularity === 'number' ? b.popularity : 0;
 		return bp - ap;
 	});
-	const books = excludeRateFeedBookIds(
-		list.slice(0, PAGE_SIZE).map((b) => mapRowToBook(b)),
-		excludedBookIds
-	);
-
+	const books = list.slice(0, PAGE_SIZE).map((b) => mapRowToBook(b as BookRow));
 	const hasMore = books.length === PAGE_SIZE;
 	const nextOffset = offset + books.length;
 

@@ -8,15 +8,21 @@ import { writable } from 'svelte/store';
  */
 export const recommendationsCountStore = writable<number>(0);
 
-export async function refreshRecommendationsCountFromApi(accessToken: string | null): Promise<void> {
-	if (!accessToken) return;
+export async function refreshRecommendationsCountFromApi(accessToken: string | null): Promise<boolean> {
+	if (!accessToken) return false;
 	try {
 		const res = await fetch('/api/recommendations/count', {
 			headers: { Authorization: `Bearer ${accessToken}` }
 		});
-		const data = res.ok ? await res.json() : { count: 0 };
+		if (!res.ok) {
+			recommendationsCountStore.set(0);
+			return false;
+		}
+		const data = await res.json();
 		recommendationsCountStore.set(data.count ?? 0);
+		return true;
 	} catch {
 		recommendationsCountStore.set(0);
+		return false;
 	}
 }

@@ -30,12 +30,16 @@ function createNotInterestedStore() {
 	}
 
 	function flushPendingOps() {
-		if (!persistence || pendingOps.size === 0) return;
-		for (const [bookId, action] of pendingOps) {
-			if (action === 'add') void Promise.resolve(persistence.add(bookId));
-			else void Promise.resolve(persistence.remove(bookId));
-		}
+		if (!persistence || pendingOps.size === 0) return Promise.resolve();
+		const ops = [...pendingOps.entries()];
 		pendingOps.clear();
+		return Promise.all(
+			ops.map(([bookId, action]) =>
+				action === 'add'
+					? Promise.resolve(persistence!.add(bookId))
+					: Promise.resolve(persistence!.remove(bookId))
+			)
+		).then(() => undefined);
 	}
 
 	return {
@@ -50,7 +54,7 @@ function createNotInterestedStore() {
 		},
 		setPersistence(p: NotInterestedPersistence | null) {
 			persistence = p;
-			if (persistence) flushPendingOps();
+			if (persistence) void flushPendingOps();
 		},
 		/** Hydrate from server (GET /api/not-interested) or after merge. */
 		hydrate(bookIds: string[]) {
@@ -141,6 +145,9 @@ function createNotInterestedStore() {
 		reset() {
 			set(new Set());
 			pendingOps.clear();
+		},
+		async flushPending() {
+			await flushPendingOps();
 		}
 	};
 }

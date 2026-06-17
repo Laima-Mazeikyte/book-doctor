@@ -7,60 +7,18 @@ export const GET: RequestHandler = async ({ request }) => {
 	const accessToken = authHeader?.startsWith('Bearer ')
 		? authHeader.slice(7)
 		: null;
+	if (!accessToken) {
+		throw error(401, 'Missing Authorization');
+	}
+
 	const supabase = createSupabaseWithAuth(accessToken);
 
-	const { data: logs, error: logError } = await supabase
-		.from('recommendation_log')
-		.select('request_id')
-		.order('created_at', { ascending: false });
+	const { data, error: countError } = await supabase.rpc('get_recommendations_unread_count');
 
-	if (logError) {
-		console.error(logError);
-		throw error(500, 'Failed to load recommendation runs');
+	if (countError) {
+		console.error('[api/recommendations/count]', countError);
+		throw error(500, 'Failed to load recommendation count');
 	}
 
-	const requestIds = (logs ?? []).map((r) => r.request_id).filter(Boolean);
-	if (requestIds.length === 0) {
-		return json({ count: 0 });
-	}
-
-	const { data: items, error: itemsError } = await supabase
-		.from('recommendation_items')
-		.select('book_id')
-		.in('request_id', requestIds);
-
-	if (itemsError) {
-		console.error(itemsError);
-		throw error(500, 'Failed to load recommendation items');
-	}
-
-	let uniqueBookIds = new Set(
-		(items ?? [])
-			.map((i) => String(i.book_id ?? '').trim())
-			.filter(Boolean)
-	);
-
-	// Exclude not-interested when authenticated
-	if (accessToken) {
-		const { data: notInterestedRows } = await supabase
-			.from('user_not_interested')
-			.select('book_id');
-		const notInterestedSet = new Set(
-			(notInterestedRows ?? []).map((r) => r.book_id).filter((id): id is string => typeof id === 'string')
-		);
-		uniqueBookIds = new Set([...uniqueBookIds].filter((id) => !notInterestedSet.has(id)));
-	}
-
-	// Exclude rated books when authenticated
-	if (accessToken && uniqueBookIds.size > 0) {
-		const { data: ratedRows } = await supabase
-			.from('user_ratings')
-			.select('book_id');
-		const ratedSet = new Set(
-			(ratedRows ?? []).map((r) => r.book_id).filter((id): id is string => typeof id === 'string')
-		);
-		uniqueBookIds = new Set([...uniqueBookIds].filter((id) => !ratedSet.has(id)));
-	}
-
-	return json({ count: uniqueBookIds.size });
+	return json({ count: data ?? 0 });
 };

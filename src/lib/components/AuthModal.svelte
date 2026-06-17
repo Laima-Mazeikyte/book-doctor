@@ -11,23 +11,131 @@
 		onClose: () => void;
 		/** Initial tab when opening: 'signin' | 'signup' */
 		initialTab?: 'signin' | 'signup';
+		/** Clears in-memory draft when the route changes (typically pathname). */
+		draftResetKey?: string;
+		/** Element to restore focus to when the modal closes (e.g. header auth opener). */
+		restoreFocusTarget?: HTMLElement | null;
 	}
 
-	let { open, onClose, initialTab = 'signin' }: Props = $props();
+	let {
+		open,
+		onClose,
+		initialTab = 'signin',
+		draftResetKey = '',
+		restoreFocusTarget = null
+	}: Props = $props();
 
 	let tab = $state<'signin' | 'signup' | 'forgot'>('signin');
 	let email = $state('');
-	let password = $state('');
+	let signInPassword = $state('');
+	let signUpPassword = $state('');
 	let revealSignInPassword = $state(false);
 	let revealSignUpPassword = $state(false);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
 	let successMessage = $state<string | null>(null);
-	let closeButtonEl = $state<HTMLButtonElement | null>(null);
-	let firstInputEl = $state<HTMLInputElement | null>(null);
+	let panelEl = $state<HTMLDivElement | null>(null);
+	let lastDraftResetKey: string | null = null;
+	let authRequestId = 0;
+	let previouslyFocusedEl: HTMLElement | null = null;
 
 	const panelId = 'auth-modal-panel';
 	const titleId = 'auth-modal-title';
+
+	function isFocusableVisible(el: HTMLElement): boolean {
+		if (el.hasAttribute('disabled')) return false;
+		if (el.getAttribute('aria-hidden') === 'true') return false;
+		if (el.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
+		const style = window.getComputedStyle(el);
+		if (style.display === 'none' || style.visibility === 'hidden') return false;
+		const rects = el.getClientRects();
+		return rects.length > 0 || el === document.activeElement;
+	}
+
+	function getFocusableElements(container: HTMLElement): HTMLElement[] {
+		return Array.from(
+			container.querySelectorAll<HTMLElement>(
+				'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+			)
+		).filter(isFocusableVisible);
+	}
+
+	function beginAuthRequest() {
+		loading = true;
+		return ++authRequestId;
+	}
+
+	function isCurrentAuthRequest(id: number) {
+		return id === authRequestId;
+	}
+
+	function finishAuthRequest(id: number) {
+		if (isCurrentAuthRequest(id)) loading = false;
+	}
+
+	function restorePreviousFocus() {
+		queueMicrotask(() => {
+			if (previouslyFocusedEl?.isConnected) {
+				previouslyFocusedEl.focus({ preventScroll: true });
+			}
+			previouslyFocusedEl = null;
+		});
+	}
+
+	function clearDraft() {
+		email = '';
+		signInPassword = '';
+		signUpPassword = '';
+	}
+
+	function clearTransientState() {
+		error = null;
+		successMessage = null;
+		revealSignInPassword = false;
+		revealSignUpPassword = false;
+	}
+
+	function closeAfterAuthSuccess() {
+		clearDraft();
+		clearTransientState();
+		onClose();
+		restorePreviousFocus();
+	}
+
+	/** Dismiss modal but keep in-memory draft for reopen on the same route. */
+	function closeModal() {
+		if (loading) return;
+		clearTransientState();
+		onClose();
+		restorePreviousFocus();
+	}
+
+	function handleModalKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			closeModal();
+			return;
+		}
+		if (e.key !== 'Tab' || !panelEl) return;
+		const focusable = getFocusableElements(panelEl);
+		if (focusable.length === 0) {
+			e.preventDefault();
+			panelEl.focus();
+			return;
+		}
+		const first = focusable[0];
+		const last = focusable[focusable.length - 1];
+		const active = document.activeElement;
+		if (e.shiftKey) {
+			if (active === first || !panelEl.contains(active)) {
+				e.preventDefault();
+				last.focus();
+			}
+		} else if (active === last || !panelEl.contains(active)) {
+			e.preventDefault();
+			first.focus();
+		}
+	}
 
 	function portal(node: HTMLElement, target: HTMLElement = document.body) {
 		target.appendChild(node);
@@ -39,38 +147,55 @@
 	}
 
 	function handleOverlayClick(e: MouseEvent) {
-		if (e.target === e.currentTarget) onClose();
+		if (loading) return;
+		if (e.target === e.currentTarget) closeModal();
 	}
 
-	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') onClose();
-	}
+	$effect(() => {
+		const key = draftResetKey;
+		if (lastDraftResetKey === null) {
+			lastDraftResetKey = key;
+			return;
+		}
+		if (key !== lastDraftResetKey) {
+			lastDraftResetKey = key;
+			clearDraft();
+			clearTransientState();
+		}
+	});
 
 	$effect(() => {
 		if (open) {
 			tab = initialTab;
-			email = '';
-			password = '';
-			revealSignInPassword = false;
-			revealSignUpPassword = false;
-			error = null;
-			successMessage = null;
+			clearTransientState();
+			previouslyFocusedEl =
+				restoreFocusTarget ??
+				(document.activeElement instanceof HTMLElement ? document.activeElement : null);
 		}
 	});
 
-	function handleOverlayKeydown(e: KeyboardEvent) {
-		if (e.key === 'Enter' || e.key === ' ') {
-			e.preventDefault();
-			onClose();
-		}
-	}
+	$effect(() => {
+		const activeTab = tab;
+		if (!open || !panelEl) return;
+		tick().then(() => {
+			if (!open || !panelEl || tab !== activeTab) return;
+			const target =
+				panelEl.querySelector<HTMLInputElement>('input[type="email"]') ??
+				getFocusableElements(panelEl)[0] ??
+				panelEl;
+			target.focus({ preventScroll: true });
+		});
+	});
 
 	$effect(() => {
-		if (!open) return;
-		tick().then(() => {
-			closeButtonEl?.focus();
-			firstInputEl?.focus();
-		});
+		if (!open || !panelEl) return;
+		function keepFocusInside(e: FocusEvent) {
+			if (panelEl && e.target instanceof Node && !panelEl.contains(e.target)) {
+				getFocusableElements(panelEl)[0]?.focus() ?? panelEl.focus();
+			}
+		}
+		document.addEventListener('focusin', keepFocusInside);
+		return () => document.removeEventListener('focusin', keepFocusInside);
 	});
 
 	$effect(() => {
@@ -85,6 +210,7 @@
 
 	async function handleForgotPassword(e: SubmitEvent) {
 		e.preventDefault();
+		if (loading) return;
 		error = null;
 		successMessage = null;
 		const supabase = getSupabase();
@@ -98,20 +224,25 @@
 			return;
 		}
 
-		loading = true;
-		const origin = typeof window !== 'undefined' ? window.location.origin : '';
-		const resetOptions = { redirectTo: `${origin}/auth/reset-password` };
-		const { error: err } = await supabase.auth.resetPasswordForEmail(trimmed, resetOptions);
-		loading = false;
-		if (err) {
-			error = err.message ?? t('shared.authModal.errorResetEmailFailed');
-			return;
+		const requestId = beginAuthRequest();
+		try {
+			const origin = typeof window !== 'undefined' ? window.location.origin : '';
+			const resetOptions = { redirectTo: `${origin}/auth/reset-password` };
+			const { error: err } = await supabase.auth.resetPasswordForEmail(trimmed, resetOptions);
+			if (!isCurrentAuthRequest(requestId)) return;
+			if (err) {
+				error = err.message ?? t('shared.authModal.errorResetEmailFailed');
+				return;
+			}
+			successMessage = t('shared.authModal.successResetEmailSent');
+		} finally {
+			finishAuthRequest(requestId);
 		}
-		successMessage = t('shared.authModal.successResetEmailSent');
 	}
 
 	async function handleSignIn(e: SubmitEvent) {
 		e.preventDefault();
+		if (loading) return;
 		error = null;
 		successMessage = null;
 		const supabase = getSupabase();
@@ -120,21 +251,26 @@
 			return;
 		}
 
-		loading = true;
-		const { error: err } = await supabase.auth.signInWithPassword({
-			email,
-			password
-		});
-		loading = false;
-		if (err) {
-			error = err.message ?? t('shared.authModal.errorInvalidCredentials');
-			return;
+		const requestId = beginAuthRequest();
+		try {
+			const { error: err } = await supabase.auth.signInWithPassword({
+				email,
+				password: signInPassword
+			});
+			if (!isCurrentAuthRequest(requestId)) return;
+			if (err) {
+				error = err.message ?? t('shared.authModal.errorInvalidCredentials');
+				return;
+			}
+			closeAfterAuthSuccess();
+		} finally {
+			finishAuthRequest(requestId);
 		}
-		onClose();
 	}
 
 	async function handleSignUp(e: SubmitEvent) {
 		e.preventDefault();
+		if (loading) return;
 		error = null;
 		successMessage = null;
 		const supabase = getSupabase();
@@ -143,76 +279,78 @@
 			return;
 		}
 
-		loading = true;
+		const requestId = beginAuthRequest();
+		try {
+			const {
+				data: { session: currentSession }
+			} = await supabase.auth.getSession();
+			if (!isCurrentAuthRequest(requestId)) return;
+			const isAnonymous = currentSession?.user?.is_anonymous === true;
+			const anonymousUserId = currentSession?.user?.id ?? null;
 
-		const {
-			data: { session: currentSession }
-		} = await supabase.auth.getSession();
-		const isAnonymous = currentSession?.user?.is_anonymous === true;
-		const anonymousUserId = currentSession?.user?.id ?? null;
-
-		if (isAnonymous && anonymousUserId) {
-			// Prefer converting anonymous user (same ID → data stays). Requires manual linking in Supabase.
-			const { error: updateErr } = await supabase.auth.updateUser({
-				email,
-				password
-			});
-			if (!updateErr) {
-				loading = false;
-				onClose();
-				return;
-			}
-			// updateUser failed (e.g. manual linking disabled or email already exists): create new account and migrate data
-			const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
-				email,
-				password
-			});
-			loading = false;
-			if (signUpErr) {
-				error = signUpErr.message ?? t('shared.authModal.errorSignUpFailed');
-				return;
-			}
-			// New user created with session: migrate anonymous data to this account
-			const accessToken = signUpData?.session?.access_token;
-			if (accessToken) {
-				try {
-					const base = typeof window !== 'undefined' ? window.location.origin : '';
-					const res = await fetch(`${base}/api/migrate-anonymous-data`, {
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json',
-							Authorization: `Bearer ${accessToken}`
-						},
-						body: JSON.stringify({ anonymousUserId })
-					});
-					if (res.ok) {
-						window.dispatchEvent(new CustomEvent('auth:ratings-migrated'));
-					} else {
-						console.warn('[auth] Migrate anonymous data failed:', res.status, await res.text());
-					}
-				} catch (e) {
-					console.warn('[auth] Migrate anonymous data request failed', e);
+			if (isAnonymous && anonymousUserId) {
+				const { error: updateErr } = await supabase.auth.updateUser({
+					email,
+					password: signUpPassword
+				});
+				if (!isCurrentAuthRequest(requestId)) return;
+				if (!updateErr) {
+					closeAfterAuthSuccess();
+					return;
 				}
-			}
-			onClose();
-			return;
-		}
 
-		// No anonymous session: create account normally
-		const { data, error: err } = await supabase.auth.signUp({
-			email,
-			password
-		});
-		loading = false;
-		if (err) {
-			error = err.message ?? t('shared.authModal.errorSignUpFailed');
-			return;
+				const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+					email,
+					password: signUpPassword
+				});
+				if (!isCurrentAuthRequest(requestId)) return;
+				if (signUpErr) {
+					error = signUpErr.message ?? t('shared.authModal.errorSignUpFailed');
+					return;
+				}
+
+				const accessToken = signUpData?.session?.access_token;
+				if (accessToken) {
+					try {
+						const base = typeof window !== 'undefined' ? window.location.origin : '';
+						const res = await fetch(`${base}/api/migrate-anonymous-data`, {
+							method: 'POST',
+							headers: {
+								'Content-Type': 'application/json',
+								Authorization: `Bearer ${accessToken}`
+							},
+							body: JSON.stringify({ anonymousUserId })
+						});
+						if (!isCurrentAuthRequest(requestId)) return;
+						if (res.ok) {
+							window.dispatchEvent(new CustomEvent('auth:ratings-migrated'));
+						} else {
+							console.warn('[auth] Migrate anonymous data failed:', res.status, await res.text());
+						}
+					} catch (migrateErr) {
+						console.warn('[auth] Migrate anonymous data request failed', migrateErr);
+					}
+				}
+				if (!isCurrentAuthRequest(requestId)) return;
+				closeAfterAuthSuccess();
+				return;
+			}
+
+			const { error: err } = await supabase.auth.signUp({
+				email,
+				password: signUpPassword
+			});
+			if (!isCurrentAuthRequest(requestId)) return;
+			if (err) {
+				error = err.message ?? t('shared.authModal.errorSignUpFailed');
+				return;
+			}
+			closeAfterAuthSuccess();
+		} finally {
+			finishAuthRequest(requestId);
 		}
-		onClose();
 	}
 </script>
-
-<svelte:window onkeydown={handleKeydown} />
 
 {#if open}
 	<div
@@ -224,14 +362,15 @@
 		aria-labelledby={titleId}
 		tabindex="-1"
 		onclick={handleOverlayClick}
-		onkeydown={handleOverlayKeydown}
+		onkeydown={handleModalKeydown}
 		transition:fade={{ duration: 150 }}
 	>
 		<div
+			bind:this={panelEl}
 			class="auth-modal-panel"
 			role="presentation"
+			tabindex="-1"
 			onclick={(e) => e.stopPropagation()}
-			onkeydown={(e) => e.stopPropagation()}
 		>
 			<h2 id={titleId} class="auth-modal__sr-only">{t('shared.authModal.dialogAccessibleName')}</h2>
 
@@ -287,8 +426,8 @@
 					pill
 					type="button"
 					aria-label={t('shared.authModal.close')}
-					ref={(el) => (closeButtonEl = el as HTMLButtonElement)}
-					onclick={onClose}
+					disabled={loading}
+					onclick={closeModal}
 				>
 					{#snippet icon()}
 						<svg
@@ -321,7 +460,6 @@
 					<div class="auth-modal__field">
 						<label class="auth-modal__label" for="auth-email-forgot">{t('shared.authModal.email')}</label>
 						<input
-							bind:this={firstInputEl}
 							id="auth-email-forgot"
 							type="email"
 							class="auth-modal__input"
@@ -341,7 +479,6 @@
 					<div class="auth-modal__field">
 						<label class="auth-modal__label" for="auth-email-signin">{t('shared.authModal.email')}</label>
 						<input
-							bind:this={firstInputEl}
 							id="auth-email-signin"
 							type="email"
 							class="auth-modal__input"
@@ -359,7 +496,7 @@
 								id="auth-password-signin"
 								type={revealSignInPassword ? 'text' : 'password'}
 								class="auth-modal__input auth-modal__input--with-toggle"
-								bind:value={password}
+								bind:value={signInPassword}
 								required
 								autocomplete="current-password"
 								disabled={loading}
@@ -403,7 +540,6 @@
 					<div class="auth-modal__field">
 						<label class="auth-modal__label" for="auth-email-signup">{t('shared.authModal.email')}</label>
 						<input
-							bind:this={firstInputEl}
 							id="auth-email-signup"
 							type="email"
 							class="auth-modal__input"
@@ -424,7 +560,7 @@
 								id="auth-password-signup"
 								type={revealSignUpPassword ? 'text' : 'password'}
 								class="auth-modal__input auth-modal__input--with-toggle"
-								bind:value={password}
+								bind:value={signUpPassword}
 								required
 								minlength="6"
 								autocomplete="new-password"
