@@ -49,8 +49,7 @@
 }
 .book-card__summary-cover-wrap {
 	flex-shrink: 0;
-	width: 9rem;
-	aspect-ratio: 2 / 3;
+	width: 12rem;
 	border-radius: var(--radius-sm);
 	overflow: hidden;
 	background: var(--color-card-placeholder-bg);
@@ -58,12 +57,11 @@
 .book-card__summary-cover {
 	display: block;
 	width: 100%;
-	height: 100%;
-	object-fit: cover;
-	object-position: center center;
+	height: auto;
 	border-radius: var(--radius-sm);
 }
 .book-card__summary-cover--placeholder {
+	aspect-ratio: 2 / 3;
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
