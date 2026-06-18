@@ -319,7 +319,7 @@
 		.shortlist-detail__sheet :global(.book-card__summary-content) {
 			overflow-y: auto;
 			-webkit-overflow-scrolling: touch;
-			padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+			padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
 		}
 
 		.shortlist-detail__sheet :global(.book-card__summary-shortlist-main) {
@@ -327,35 +327,9 @@
 		}
 
 		.shortlist-detail__sheet :global(.book-card__summary-shortlist-footer) {
-			position: fixed;
-			left: 0;
-			right: 0;
-			bottom: 0;
-			z-index: 20;
-			padding-top: var(--space-3);
-			padding-inline: var(--space-4);
-			padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
-			background: transparent;
-			box-shadow: none;
-			border: none;
-			pointer-events: none;
-		}
-
-		:global(.shortlist-slide--mobile-deck) .shortlist-detail__sheet :global(.book-card__summary-shortlist-footer) {
-			z-index: 25;
-		}
-
-		.shortlist-detail__sheet :global(.book-card__summary-shortlist-footer .book-card__summary-actions),
-		.shortlist-detail__sheet
-			:global(.book-card__summary-shortlist-footer .book-card__rating-wrap--below-actions) {
+			position: static;
+			padding: 0;
 			pointer-events: auto;
-		}
-
-		:global(.shortlist-slide--mobile-deck) .shortlist-detail__sheet
-			:global(.book-card__summary-shortlist-footer .book-card__summary-actions),
-		:global(.shortlist-slide--mobile-deck) .shortlist-detail__sheet
-			:global(.book-card__summary-shortlist-footer .book-card__rating-wrap--below-actions) {
-			pointer-events: inherit;
 		}
 	}
 

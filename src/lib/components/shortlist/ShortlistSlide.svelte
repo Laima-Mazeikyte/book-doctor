@@ -101,6 +101,9 @@
 	const deckZIndex = $derived(Math.round(deckBlend * 100));
 	const deckInteractive = $derived(deckBlend > 0.55);
 	const deckFooterInteractive = $derived(deckFooterOpacity > 0.5);
+	const deckSummaryVisualOpacity = $derived(deckInteractive ? 1 : deckSummaryOpacity);
+	const deckSlideOpacity = $derived(deckFooterInteractive ? 1 : deckOpacity);
+	const deckFooterVisualOpacity = $derived(deckFooterInteractive ? 1 : deckFooterOpacity);
 </script>
 
 <div
@@ -116,9 +119,9 @@
 	aria-hidden={isMobileDeck ? deckBlend < 0.45 : !isActive ? true : undefined}
 	style:--shortlist-slide-offset={offset}
 	style:--deck-cover-scale={isMobileDeck ? deckCoverScale : undefined}
-	style:--deck-summary-opacity={isMobileDeck ? deckSummaryOpacity : undefined}
-	style:--deck-footer-opacity={isMobileDeck ? deckFooterOpacity : undefined}
-	style:opacity={isMobileDeck ? deckOpacity : undefined}
+	style:--deck-summary-opacity={isMobileDeck ? deckSummaryVisualOpacity : undefined}
+	style:--deck-footer-opacity={isMobileDeck ? deckFooterVisualOpacity : undefined}
+	style:opacity={isMobileDeck ? deckSlideOpacity : undefined}
 	style:z-index={isMobileDeck ? deckZIndex : undefined}
 	style:pointer-events={isMobileDeck ? (deckInteractive ? 'auto' : 'none') : undefined}
 	style:--deck-footer-events={isMobileDeck ? (deckFooterInteractive ? 'auto' : 'none') : undefined}
@@ -202,30 +205,26 @@
 		.shortlist-slide--mobile-deck :global(.shortlist-detail) {
 			overflow: visible;
 		}
-		.shortlist-slide--mobile-deck :global(.book-card__summary-cover-column) {
+		.shortlist-slide--mobile-deck :global(.book-card__summary-cover-wrap) {
 			transform: scale(var(--deck-cover-scale, 1));
 			transform-origin: center top;
 			transition: none;
 			will-change: transform;
 		}
 		.shortlist-slide--mobile-deck :global(.book-card__summary-details-column),
-		.shortlist-slide--mobile-deck :global(.book-card__summary-not-interested-overlay),
 		.shortlist-slide--mobile-deck :global(.shortlist-detail__extensions),
 		.shortlist-slide--mobile-deck :global(.shortlist-detail__slot) {
 			opacity: var(--deck-summary-opacity, 0);
 			pointer-events: none;
 			transition: none;
 		}
-		.shortlist-slide--mobile-deck :global(.book-card__summary-shortlist-footer) {
-			opacity: var(--deck-footer-opacity, 0);
-			pointer-events: var(--deck-footer-events, none);
+		.shortlist-slide--mobile-deck :global(.book-card__summary-not-interested-overlay) {
+			opacity: 1;
+			pointer-events: none;
 			transition: none;
 		}
-		.shortlist-slide--mobile-deck
-			:global(.book-card__summary-shortlist-footer .book-card__summary-actions),
-		.shortlist-slide--mobile-deck
-			:global(.book-card__summary-shortlist-footer .book-card__rating-wrap--below-actions) {
-			pointer-events: inherit;
+		.shortlist-slide--mobile-deck :global(.book-card__summary-shortlist-footer) {
+			display: none;
 		}
 	}
 	@media (min-width: 768px) {

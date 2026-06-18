@@ -333,7 +333,7 @@
 	.shortlist-page__header {
 		position: relative;
 		flex-shrink: 0;
-		padding: calc(var(--space-4) + env(safe-area-inset-top, 0px)) var(--space-4) var(--space-3);
+		padding: calc(var(--space-4) + env(safe-area-inset-top, 0px)) var(--space-6) var(--space-3);
 	}
 	.shortlist-page__close {
 		position: absolute;
@@ -368,7 +368,7 @@
 		flex-direction: column;
 		gap: var(--space-2);
 		width: 100%;
-		padding-top: calc(var(--min-tap) - var(--space-4));
+		padding-top: 0;
 	}
 	.shortlist-page__title {
 		display: flex;
@@ -383,6 +383,7 @@
 		flex-direction: column;
 		margin: 0;
 		width: 100%;
+		padding-inline: var(--space-6);
 		text-align: center;
 		color: var(--color-text-muted);
 		font-family: var(--typ-caption-font-family);
@@ -404,9 +405,6 @@
 	@media (max-width: 767px) {
 		.shortlist-page__header {
 			padding-bottom: var(--space-2);
-		}
-		.shortlist-page__heading {
-			padding-top: calc(var(--min-tap) - var(--space-6));
 		}
 		.shortlist-page__title {
 			font-size: 1.5rem;

@@ -251,17 +251,18 @@
 	</div>
 {/snippet}
 
-{#snippet actionsBlock()}
+{#snippet actionsBlock(iconOnly = false)}
 	{#if showBookmarkAction || showNotInterestedAction || showReadItAction}
 		<div
 			class="book-card__summary-actions"
 			class:book-card__summary-actions--single={labeledActionCount === 1}
-			class:book-card__summary-actions--icon-only={isShortlistSideBySide}
+			class:book-card__summary-actions--icon-only={iconOnly}
 		>
 			{#if showBookmarkAction}
 				<button
 					type="button"
-					class="book-card__action book-card__action--labeled"
+					class="book-card__action"
+					class:book-card__action--labeled={!iconOnly || bookmarked}
 					class:book-card__action--saved={bookmarked}
 					aria-pressed={bookmarked}
 					aria-label={bookmarked
@@ -270,15 +271,20 @@
 					onclick={onBookmarkClick}
 				>
 					<Bookmark size={14} aria-hidden="true" />
-					<span class="book-card__action-label">
-						{bookmarked ? t('shared.recommendationCard.saved') : t('shared.recommendationCard.bookmark')}
-					</span>
+					{#if !iconOnly || bookmarked}
+						<span class="book-card__action-label">
+							{bookmarked
+								? t('shared.recommendationCard.saved')
+								: t('shared.recommendationCard.bookmark')}
+						</span>
+					{/if}
 				</button>
 			{/if}
 			{#if showReadItAction}
 				<button
 					type="button"
-					class="book-card__action book-card__action--labeled"
+					class="book-card__action"
+					class:book-card__action--labeled={!iconOnly || readItActive}
 					class:book-card__action--read-it-active={readItActive}
 					aria-pressed={readItActive}
 					aria-label={readItActive
@@ -286,14 +292,17 @@
 						: t('recommendations.shortlist.iveReadIt')}
 					onclick={(e) => onReadItClick?.(e)}
 				>
-					<Star size={14} aria-hidden="true" fill={readItActive ? 'currentColor' : 'none'} />
-					<span class="book-card__action-label">{t('recommendations.shortlist.iveReadIt')}</span>
+					<Star size={14} aria-hidden="true" fill="none" />
+					{#if !iconOnly || readItActive}
+						<span class="book-card__action-label">{t('recommendations.shortlist.iveReadIt')}</span>
+					{/if}
 				</button>
 			{/if}
 			{#if showNotInterestedAction}
 				<button
 					type="button"
-					class="book-card__action book-card__action--labeled"
+					class="book-card__action"
+					class:book-card__action--labeled={!iconOnly || notInterested}
 					class:book-card__action--not-interested-active={notInterested}
 					aria-pressed={notInterested}
 					aria-label={notInterested
@@ -302,7 +311,9 @@
 					onclick={onNotInterestedClick}
 				>
 					<ThumbsDown size={14} aria-hidden="true" />
-					<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span>
+					{#if !iconOnly || notInterested}
+						<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span>
+					{/if}
 				</button>
 			{/if}
 		</div>
@@ -320,26 +331,33 @@
 	{#if isShortlistSideBySide}
 		<div class="book-card__summary-shortlist-main">
 			<div class="book-card__summary-side-layout">
-				{#if showNotInterestedOverlay}
-					<div class="book-card__summary-not-interested-overlay" aria-live="polite">
-						<Button
-							variant="primary"
-							pill
-							disabled={notInterestedOverlayBusy}
-							aria-busy={notInterestedOverlayBusy ? 'true' : undefined}
-							onclick={() => onNotInterestedOverlayClick?.()}
-						>
-							{notInterestedOverlay === 'replace'
-								? t('recommendations.shortlist.offerAnotherBook')
-								: t('recommendations.shortlist.getNewRecommendations')}
-						</Button>
+				<div class="book-card__summary-cover-column">
+					<div class="book-card__summary-cover-muted">
+						{#if showNotInterestedOverlay}
+							<div class="book-card__summary-not-interested-overlay" aria-live="polite">
+								<Button
+									variant="primary"
+									pill
+									disabled={notInterestedOverlayBusy}
+									aria-busy={notInterestedOverlayBusy ? 'true' : undefined}
+									onclick={() => onNotInterestedOverlayClick?.()}
+								>
+									{notInterestedOverlay === 'replace'
+										? t('recommendations.shortlist.offerAnotherBook')
+										: t('recommendations.shortlist.getNewRecommendations')}
+								</Button>
+							</div>
+						{/if}
+						<div class:book-card__summary-muted--not-interested={notInterested}>
+							{@render coverBlock()}
+						</div>
 					</div>
-				{/if}
-				<div
-					class="book-card__summary-cover-column"
-					class:book-card__summary-muted--not-interested={notInterested}
-				>
-					{@render coverBlock()}
+					<div class="book-card__summary-cover-actions">
+						{@render actionsBlock(true)}
+						<div class="book-card__summary-cover-rating">
+							{@render ratingBlock(true)}
+						</div>
+					</div>
 				</div>
 				<div class="book-card__summary-details-column">
 					<div class:book-card__summary-muted--not-interested={notInterested}>
@@ -350,8 +368,12 @@
 				</div>
 			</div>
 			<div class="book-card__summary-shortlist-footer">
-				{@render actionsBlock()}
-				{@render ratingBlock(true)}
+				<div class="book-card__summary-footer-actions">
+					{@render actionsBlock(false)}
+				</div>
+				<div class="book-card__summary-footer-rating">
+					{@render ratingBlock(true)}
+				</div>
 			</div>
 		</div>
 	{:else}
