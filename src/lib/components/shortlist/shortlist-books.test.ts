@@ -60,19 +60,25 @@ describe('shortlist-books', () => {
 		it('returns replace while under insertion limit with reserve', () => {
 			expect(overlayForDismissedBook(1, 3, 0, 1)).toBe('replace');
 			expect(overlayForDismissedBook(2, 1, 1, 2)).toBe('replace');
+			expect(overlayForDismissedBook(3, 1, 2, 3)).toBe('replace');
 		});
 
-		it('returns new-rec after two insertions', () => {
-			expect(overlayForDismissedBook(1, 3, 2, 1)).toBe('new-rec');
+		it('returns new-rec after three insertions', () => {
+			expect(overlayForDismissedBook(1, 3, 3, 1)).toBe('new-rec');
 		});
 
-		it('returns new-rec on third not-interested', () => {
-			expect(overlayForDismissedBook(3, 3, 0, 3)).toBe('new-rec');
-			expect(overlayForDismissedBook(1, 3, 0, 3)).toBe('new-rec');
+		it('returns new-rec on fourth not-interested', () => {
+			expect(overlayForDismissedBook(4, 3, 0, 4)).toBe('new-rec');
+			expect(overlayForDismissedBook(1, 3, 0, 4)).toBe('new-rec');
 		});
 
 		it('falls back to new-rec when reserve is empty and insertions exhausted', () => {
-			expect(overlayForDismissedBook(1, 0, 2, 1)).toBe('new-rec');
+			expect(overlayForDismissedBook(1, 0, 3, 1)).toBe('new-rec');
+		});
+
+		it('returns null when replace was already used on this book', () => {
+			expect(overlayForDismissedBook(1, 3, 0, 1, true)).toBeNull();
+			expect(overlayForDismissedBook(1, 3, 0, 4, true)).toBeNull();
 		});
 	});
 });

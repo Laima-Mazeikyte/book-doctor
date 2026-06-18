@@ -12,6 +12,7 @@
 	} from '$lib/components/shortlist/shortlist-books';
 	import ShortlistError from '$lib/components/shortlist/ShortlistError.svelte';
 	import ShortlistLoading from '$lib/components/shortlist/ShortlistLoading.svelte';
+	import ShortlistPositionIndicator from '$lib/components/shortlist/ShortlistPositionIndicator.svelte';
 	import ShortlistTimedOut from '$lib/components/shortlist/ShortlistTimedOut.svelte';
 	import {
 		fetchRecommendations,
@@ -43,6 +44,7 @@
 	let insertionsUsed = $state(0);
 	let insertedBookIds = $state<Set<string>>(new Set());
 	let dismissalOrdinals = $state<Map<string, number>>(new Map());
+	let replaceUsedBookIds = $state<Set<string>>(new Set());
 	let scrollToBookIndex: ((index: number) => void) | undefined;
 
 	function resetShortlistSession() {
@@ -50,6 +52,7 @@
 		insertionsUsed = 0;
 		insertedBookIds = new Set();
 		dismissalOrdinals = new Map();
+		replaceUsedBookIds = new Set();
 	}
 
 	function applyBooksFromRun(all: Book[]) {
@@ -86,6 +89,9 @@
 			const next = new Map(dismissalOrdinals);
 			next.delete(bid);
 			dismissalOrdinals = next;
+			const nextReplaceUsed = new Set(replaceUsedBookIds);
+			nextReplaceUsed.delete(bid);
+			replaceUsedBookIds = nextReplaceUsed;
 		}
 	}
 
@@ -102,6 +108,9 @@
 				const next = new Map(dismissalOrdinals);
 				next.delete(bid);
 				dismissalOrdinals = next;
+				const nextReplaceUsed = new Set(replaceUsedBookIds);
+				nextReplaceUsed.delete(bid);
+				replaceUsedBookIds = nextReplaceUsed;
 			}
 		}
 	}
@@ -131,17 +140,19 @@
 			dismissalOrdinals.get(bookId),
 			reserveBooks.length,
 			insertionsUsed,
-			sessionNiCount
+			sessionNiCount,
+			replaceUsedBookIds.has(bookId)
 		);
 	}
 
-	function handleOfferAnotherBook(_book: Book, index: number) {
+	function handleOfferAnotherBook(book: Book, index: number) {
 		const result = insertBookAfterIndex(visibleBooks, index, reserveBooks);
 		if (!result.incoming) return;
 		visibleBooks = result.visible;
 		reserveBooks = result.reserve;
 		insertionsUsed += 1;
 		insertedBookIds = new Set(insertedBookIds).add(result.incoming.book_id);
+		replaceUsedBookIds = new Set(replaceUsedBookIds).add(book.book_id);
 		const nextIndex = index + 1;
 		activeIndex = nextIndex;
 		queueMicrotask(() => scrollToBookIndex?.(nextIndex));
@@ -248,8 +259,9 @@
 			return;
 		}
 
+		const userId = $authStore.user?.id ?? null;
 		const loadId = ++activeLoadId;
-		const accessToken = $authStore.session?.access_token ?? null;
+		const accessToken = get(authStore).session?.access_token ?? null;
 		startPoll(accessToken, requestId, loadId);
 
 		return () => {
@@ -287,6 +299,14 @@
 				{t('recommendations.shortlist.title')}
 			</h1>
 			<p class="shortlist-page__description">{t('recommendations.shortlist.description')}</p>
+			{#if viewState === 'ready' && visibleBooks.length > 1}
+				<div class="shortlist-page__position">
+					<ShortlistPositionIndicator
+						position={activeIndex + 1}
+						total={visibleBooks.length}
+					/>
+				</div>
+			{/if}
 		</div>
 	</header>
 
@@ -392,6 +412,12 @@
 		line-height: var(--typ-caption-line-height);
 		letter-spacing: var(--typ-caption-letter-spacing);
 	}
+	.shortlist-page__position {
+		display: none;
+		justify-content: center;
+		width: 100%;
+		padding-top: var(--space-1);
+	}
 	.shortlist-page__empty {
 		flex: 1;
 		display: flex;
@@ -409,6 +435,9 @@
 		.shortlist-page__title {
 			font-size: 1.5rem;
 			line-height: var(--primitive-line-height-display);
+		}
+		.shortlist-page__position {
+			display: flex;
 		}
 	}
 </style>

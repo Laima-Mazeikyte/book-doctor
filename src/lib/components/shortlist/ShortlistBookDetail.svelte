@@ -68,7 +68,6 @@
 	const showCoverImage = $derived(Boolean(book.coverUrl) && !coverImageFailed);
 	const showAuthorInSheetMeta = $derived(Boolean(book.author?.trim()));
 	const displayRating = $derived(hoverRating > 0 ? hoverRating : (currentRating ?? 0));
-	const canRemoveRating = $derived(currentRating != null);
 
 	function starAriaLabel(value: RatingValue): string {
 		return currentRating === value
@@ -97,11 +96,6 @@
 	function handleNotInterestedClick(e: MouseEvent) {
 		e.stopPropagation();
 		onNotInterested();
-	}
-
-	function handleRemoveRatingClick(e: MouseEvent) {
-		e.stopPropagation();
-		onRemoveRating();
 	}
 
 	function handleReadItClick(e: MouseEvent) {
@@ -191,8 +185,8 @@
 				onStarMouseEnter={(value) => (hoverRating = value)}
 				onStarClick={handleStarClick}
 				onRatingGroupMouseLeave={() => (hoverRating = 0)}
-				canRemoveRatingInSheet={canRemoveRating}
-				onRemoveRatingClick={handleRemoveRatingClick}
+				canRemoveRatingInSheet={false}
+				onRemoveRatingClick={() => {}}
 				showBookmarkAction={true}
 				showNotInterestedAction={true}
 				showReadItAction={true}

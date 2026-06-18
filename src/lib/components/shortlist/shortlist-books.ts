@@ -1,8 +1,8 @@
 import type { Book } from '$lib/types/book';
 
 export const SHORTLIST_VISIBLE_COUNT = 7;
-export const SHORTLIST_MAX_INSERTIONS = 2;
-export const SHORTLIST_NEW_REC_NI_THRESHOLD = 3;
+export const SHORTLIST_MAX_INSERTIONS = 3;
+export const SHORTLIST_NEW_REC_NI_THRESHOLD = 4;
 
 export type NotInterestedOverlay = 'replace' | 'new-rec' | null;
 
@@ -42,9 +42,11 @@ export function overlayForDismissedBook(
 	dismissalOrdinal: number | undefined,
 	reserveCount: number,
 	insertionsUsed: number,
-	sessionNiCount: number
+	sessionNiCount: number,
+	replaceAlreadyUsed = false
 ): NotInterestedOverlay {
 	if (dismissalOrdinal == null || dismissalOrdinal < 1) return null;
+	if (replaceAlreadyUsed) return null;
 	if (sessionNiCount >= SHORTLIST_NEW_REC_NI_THRESHOLD) return 'new-rec';
 	if (insertionsUsed < SHORTLIST_MAX_INSERTIONS && reserveCount > 0) return 'replace';
 	return 'new-rec';

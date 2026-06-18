@@ -106,6 +106,7 @@ en:
       prevBook: "Previous book"
       nextBook: "Next book"
       slideAriaLabel: "{{title}}, book {{position}} of {{total}}"
+      positionAriaLabel: "Book {{position}} of {{total}}"
       coverNavAriaLabel: "Browse shortlist books"
       iveReadIt: "I've read it"
       removeIveReadIt: "Remove I've read it"
