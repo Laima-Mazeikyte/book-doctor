@@ -14,21 +14,28 @@
 	import ShortlistCoverStrip from './ShortlistCoverStrip.svelte';
 	import ShortlistSlide from './ShortlistSlide.svelte';
 	import type { ShortlistMetaSection } from './shortlist-meta';
+	import type { NotInterestedOverlay } from './shortlist-books';
 
 	interface Props {
 		books: Book[];
 		activeIndex?: number;
 		getBookmarked: (bookId: string) => boolean;
 		getNotInterested: (bookId: string) => boolean;
+		getNotInterestedOverlay: (bookId: string) => NotInterestedOverlay;
 		getRating: (bookId: string) => RatingValue | null;
 		onBookmark: (book: Book) => void;
 		onNotInterested: (book: Book) => void;
+		onOfferAnotherBook: (book: Book, index: number) => void;
+		onRequestNewRecommendations: () => void | Promise<void>;
+		requestingRecommendations?: boolean;
 		onRate: (book: Book, value: RatingValue) => void;
 		onRemoveRating: (book: Book) => void;
 		metaSections?: ShortlistMetaSection[];
 		beforeMeta?: Snippet<[{ book: Book; index: number; setSize: number }]>;
 		afterMeta?: Snippet<[{ book: Book; index: number; setSize: number }]>;
 		footer?: Snippet<[{ book: Book; index: number; setSize: number }]>;
+		/** Called once so parents can imperatively scroll after inserting a slide. */
+		registerScrollController?: (controller: { scrollToIndex: (index: number) => void }) => void;
 	}
 
 	let {
@@ -36,15 +43,20 @@
 		activeIndex = $bindable(0),
 		getBookmarked,
 		getNotInterested,
+		getNotInterestedOverlay,
 		getRating,
 		onBookmark,
 		onNotInterested,
+		onOfferAnotherBook,
+		onRequestNewRecommendations,
+		requestingRecommendations = false,
 		onRate,
 		onRemoveRating,
 		metaSections,
 		beforeMeta,
 		afterMeta,
-		footer
+		footer,
+		registerScrollController
 	}: Props = $props();
 
 	let trackEl = $state<HTMLElement | null>(null);
@@ -153,9 +165,26 @@
 		}
 	}
 
+	function overlayForBook(book: Book): NotInterestedOverlay {
+		if (!getNotInterested(book.book_id)) return null;
+		return getNotInterestedOverlay(book.book_id);
+	}
+
 	function slideId(index: number): string {
 		return `shortlist-slide-${index}`;
 	}
+
+	function handleOverlayClick(book: Book, index: number, overlay: NotInterestedOverlay) {
+		if (overlay === 'replace') {
+			onOfferAnotherBook(book, index);
+		} else if (overlay === 'new-rec') {
+			void onRequestNewRecommendations();
+		}
+	}
+
+	$effect(() => {
+		registerScrollController?.({ scrollToIndex });
+	});
 
 	$effect(() => {
 		const el = trackEl;
@@ -167,8 +196,11 @@
 
 		if (initializedForSize === count) return;
 
-		const startSlot = count > 1 ? 1 : 0;
-		teleportToSlot(startSlot);
+		if (initializedForSize === 0) {
+			const startSlot = count > 1 ? 1 : 0;
+			teleportToSlot(startSlot);
+		}
+
 		initializedForSize = count;
 	});
 </script>
@@ -189,6 +221,7 @@
 	>
 		{#if loopEnabled}
 			{@const cloneStartBook = books[setSize - 1]}
+			{@const cloneStartOverlay = overlayForBook(cloneStartBook)}
 			<ShortlistSlide
 				slideId="shortlist-slide-clone-start"
 				book={cloneStartBook}
@@ -202,6 +235,10 @@
 				onNext={goNext}
 				bookmarked={getBookmarked(cloneStartBook.id)}
 				notInterested={getNotInterested(cloneStartBook.book_id)}
+				notInterestedOverlay={cloneStartOverlay}
+				onNotInterestedOverlayClick={() =>
+					handleOverlayClick(cloneStartBook, setSize - 1, cloneStartOverlay)}
+				{requestingRecommendations}
 				currentRating={getRating(cloneStartBook.id)}
 				onBookmark={() => onBookmark(cloneStartBook)}
 				onNotInterested={() => onNotInterested(cloneStartBook)}
@@ -215,6 +252,7 @@
 		{/if}
 
 		{#each books as book, index (book.id)}
+			{@const bookOverlay = overlayForBook(book)}
 			<ShortlistSlide
 				slideId={slideId(index)}
 				{book}
@@ -227,6 +265,9 @@
 				onNext={goNext}
 				bookmarked={getBookmarked(book.id)}
 				notInterested={getNotInterested(book.book_id)}
+				notInterestedOverlay={bookOverlay}
+				onNotInterestedOverlayClick={() => handleOverlayClick(book, index, bookOverlay)}
+				{requestingRecommendations}
 				currentRating={getRating(book.id)}
 				onBookmark={() => onBookmark(book)}
 				onNotInterested={() => onNotInterested(book)}
@@ -241,6 +282,7 @@
 
 		{#if loopEnabled}
 			{@const cloneEndBook = books[0]}
+			{@const cloneEndOverlay = overlayForBook(cloneEndBook)}
 			<ShortlistSlide
 				slideId="shortlist-slide-clone-end"
 				book={cloneEndBook}
@@ -254,6 +296,9 @@
 				onNext={goNext}
 				bookmarked={getBookmarked(cloneEndBook.id)}
 				notInterested={getNotInterested(cloneEndBook.book_id)}
+				notInterestedOverlay={cloneEndOverlay}
+				onNotInterestedOverlayClick={() => handleOverlayClick(cloneEndBook, 0, cloneEndOverlay)}
+				{requestingRecommendations}
 				currentRating={getRating(cloneEndBook.id)}
 				onBookmark={() => onBookmark(cloneEndBook)}
 				onNotInterested={() => onNotInterested(cloneEndBook)}

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Bookmark, ThumbsDown, Search, Star } from 'lucide-svelte';
+	import Button from '$lib/components/Button.svelte';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
 
@@ -49,6 +50,10 @@
 		layout?: 'default' | 'shortlist-side-by-side';
 		/** Shortlist detail: stars sit under the action row instead of in the details column. */
 		ratingPlacement?: 'default' | 'below-actions';
+		/** Shortlist: centered CTA when the book is marked not interested. */
+		notInterestedOverlay?: 'replace' | 'new-rec' | null;
+		onNotInterestedOverlayClick?: () => void;
+		notInterestedOverlayBusy?: boolean;
 	}
 
 	let {
@@ -84,7 +89,10 @@
 		onSummaryPointerDown,
 		summaryContentEl = $bindable(undefined),
 		layout = 'default',
-		ratingPlacement = 'default'
+		ratingPlacement = 'default',
+		notInterestedOverlay = null,
+		onNotInterestedOverlayClick,
+		notInterestedOverlayBusy = false
 	}: Props = $props();
 
 	const showSummaryRemoveSlot = $derived(canRemoveRatingInSheet || reserveSummaryRemoveLayoutSlot);
@@ -97,6 +105,9 @@
 		showRatingStars && isShortlistSideBySide && ratingPlacement === 'below-actions'
 	);
 	const showRatingInDetails = $derived(showRatingStars && !showRatingBelowActions);
+	const showNotInterestedOverlay = $derived(
+		notInterested && notInterestedOverlay != null && onNotInterestedOverlayClick != null
+	);
 </script>
 
 {#snippet summaryStarGlyph(filled: boolean)}
@@ -308,6 +319,21 @@
 	{#if isShortlistSideBySide}
 		<div class="book-card__summary-shortlist-main">
 			<div class="book-card__summary-side-layout">
+				{#if showNotInterestedOverlay}
+					<div class="book-card__summary-not-interested-overlay" aria-live="polite">
+						<Button
+							variant="primary"
+							pill
+							disabled={notInterestedOverlayBusy}
+							aria-busy={notInterestedOverlayBusy ? 'true' : undefined}
+							onclick={() => onNotInterestedOverlayClick?.()}
+						>
+							{notInterestedOverlay === 'replace'
+								? t('recommendations.shortlist.offerAnotherBook')
+								: t('recommendations.shortlist.getNewRecommendations')}
+						</Button>
+					</div>
+				{/if}
 				<div
 					class="book-card__summary-cover-column"
 					class:book-card__summary-muted--not-interested={notInterested}

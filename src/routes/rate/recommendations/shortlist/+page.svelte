@@ -3,8 +3,13 @@
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import Button from '$lib/components/Button.svelte';
 	import ShortlistCarousel from '$lib/components/shortlist/ShortlistCarousel.svelte';
+	import {
+		overlayForDismissedBook,
+		insertBookAfterIndex,
+		splitShortlistBooks,
+		type NotInterestedOverlay
+	} from '$lib/components/shortlist/shortlist-books';
 	import ShortlistError from '$lib/components/shortlist/ShortlistError.svelte';
 	import ShortlistLoading from '$lib/components/shortlist/ShortlistLoading.svelte';
 	import ShortlistTimedOut from '$lib/components/shortlist/ShortlistTimedOut.svelte';
@@ -26,13 +31,33 @@
 
 	type ViewState = 'loading' | 'ready' | 'timedOut' | 'error' | 'empty';
 
-	let books = $state<Book[]>([]);
+	let visibleBooks = $state<Book[]>([]);
+	let reserveBooks = $state<Book[]>([]);
 	let viewState = $state<ViewState>('loading');
 	let error = $state<string | null>(null);
 	let pollTimer: ReturnType<typeof setTimeout> | null = null;
 	let activeLoadId = 0;
 	let activeIndex = $state(0);
 	let requestingRecommendations = $state(false);
+	let sessionNiCount = $state(0);
+	let insertionsUsed = $state(0);
+	let insertedBookIds = $state<Set<string>>(new Set());
+	let dismissalOrdinals = $state<Map<string, number>>(new Map());
+	let scrollToBookIndex: ((index: number) => void) | undefined;
+
+	function resetShortlistSession() {
+		sessionNiCount = 0;
+		insertionsUsed = 0;
+		insertedBookIds = new Set();
+		dismissalOrdinals = new Map();
+	}
+
+	function applyBooksFromRun(all: Book[]) {
+		const { visible, reserve } = splitShortlistBooks(all);
+		visibleBooks = visible;
+		reserveBooks = reserve;
+		resetShortlistSession();
+	}
 
 	function isActiveLoad(loadId: number, requestId: string | null): boolean {
 		return (
@@ -46,12 +71,21 @@
 		const wasNotInterested = notInterestedStore.has(bid);
 		const nowNotInterested = notInterestedStore.toggle(bid);
 		if (nowNotInterested && !wasNotInterested) {
+			sessionNiCount += 1;
+			dismissalOrdinals = new Map(dismissalOrdinals).set(bid, sessionNiCount);
 			if (planToReadStore.has(book.id)) {
 				planToReadStore.toggle(book.id, book.book_id);
 			}
 			if (get(ratingsStore).has(book.id)) {
 				ratingsStore.removeRating(book.id, book.book_id);
 			}
+		} else if (wasNotInterested && !nowNotInterested) {
+			if (!insertedBookIds.has(bid)) {
+				sessionNiCount = Math.max(0, sessionNiCount - 1);
+			}
+			const next = new Map(dismissalOrdinals);
+			next.delete(bid);
+			dismissalOrdinals = next;
 		}
 	}
 
@@ -59,7 +93,16 @@
 		const wasBookmarked = planToReadStore.has(book.id);
 		planToReadStore.toggle(book.id, book.book_id);
 		if (!wasBookmarked) {
-			notInterestedStore.remove(book.book_id);
+			const bid = book.book_id;
+			if (notInterestedStore.has(bid)) {
+				notInterestedStore.remove(bid);
+				if (!insertedBookIds.has(bid)) {
+					sessionNiCount = Math.max(0, sessionNiCount - 1);
+				}
+				const next = new Map(dismissalOrdinals);
+				next.delete(bid);
+				dismissalOrdinals = next;
+			}
 		}
 	}
 
@@ -82,24 +125,40 @@
 		}
 	}
 
-	const showNewRecommendationsCta = $derived.by(() => {
-		if (viewState !== 'ready' || books.length === 0) return false;
-		const book = books[activeIndex];
-		return book != null && $notInterestedStore.has(book.book_id);
-	});
+	function getNotInterestedOverlay(bookId: string): NotInterestedOverlay {
+		if (!$notInterestedStore.has(bookId)) return null;
+		return overlayForDismissedBook(
+			dismissalOrdinals.get(bookId),
+			reserveBooks.length,
+			insertionsUsed,
+			sessionNiCount
+		);
+	}
+
+	function handleOfferAnotherBook(_book: Book, index: number) {
+		const result = insertBookAfterIndex(visibleBooks, index, reserveBooks);
+		if (!result.incoming) return;
+		visibleBooks = result.visible;
+		reserveBooks = result.reserve;
+		insertionsUsed += 1;
+		insertedBookIds = new Set(insertedBookIds).add(result.incoming.book_id);
+		const nextIndex = index + 1;
+		activeIndex = nextIndex;
+		queueMicrotask(() => scrollToBookIndex?.(nextIndex));
+	}
 
 	function startPoll(accessToken: string | null, requestId: string, loadId: number) {
 		const fromHistory = page.url.searchParams.get('from') === 'history';
 		const cached = recommendationsPageStore.getRunBooks(requestId);
 
 		if (fromHistory && cached && cached.length > 0) {
-			books = [...cached];
+			applyBooksFromRun(cached);
 			viewState = 'ready';
 			void refreshRecommendationsCountFromApi(accessToken);
 			void fetchRecommendations(accessToken, requestId)
 				.then(({ books: next }) => {
 					if (!isActiveLoad(loadId, requestId)) return;
-					books = next;
+					applyBooksFromRun(next);
 					recommendationsPageStore.setRunBooks(requestId, next);
 					viewState = next.length > 0 ? 'ready' : 'empty';
 				})
@@ -110,10 +169,12 @@
 		}
 
 		if (fromHistory && cached) {
-			books = [];
+			visibleBooks = [];
+			reserveBooks = [];
 			viewState = 'loading';
 		} else if (!fromHistory) {
-			books = [];
+			visibleBooks = [];
+			reserveBooks = [];
 			viewState = 'loading';
 		}
 
@@ -126,7 +187,7 @@
 				const { books: nextBooks } = await fetchRecommendations(accessToken, requestId);
 				if (!isActiveLoad(loadId, requestId)) return;
 				if (nextBooks.length > 0) {
-					books = nextBooks;
+					applyBooksFromRun(nextBooks);
 					recommendationsPageStore.setRunBooks(requestId, nextBooks);
 					viewState = 'ready';
 					void refreshRecommendationsCountFromApi(accessToken);
@@ -162,7 +223,8 @@
 		const loadId = ++activeLoadId;
 		error = null;
 		viewState = 'loading';
-		books = [];
+		visibleBooks = [];
+		reserveBooks = [];
 		startPoll($authStore.session?.access_token ?? null, requestId, loadId);
 	}
 
@@ -238,30 +300,23 @@
 		<div class="shortlist-page__empty typ-body">{t('recommendations.emptyRun')}</div>
 	{:else}
 		<ShortlistCarousel
-			{books}
+			books={visibleBooks}
 			bind:activeIndex
+			registerScrollController={(controller) => {
+				scrollToBookIndex = controller.scrollToIndex;
+			}}
 			getBookmarked={(id) => $planToReadStore.has(id)}
 			getNotInterested={(bookId) => $notInterestedStore.has(bookId)}
+			getNotInterestedOverlay={getNotInterestedOverlay}
 			getRating={(id) => $ratingsStore.get(id) ?? null}
 			onBookmark={handleBookmark}
 			onNotInterested={handleNotInterested}
+			onOfferAnotherBook={handleOfferAnotherBook}
+			onRequestNewRecommendations={handleRequestNewRecommendations}
+			{requestingRecommendations}
 			onRate={handleRate}
 			onRemoveRating={handleRemoveRating}
 		/>
-	{/if}
-
-	{#if showNewRecommendationsCta}
-		<div class="shortlist-page__new-rec-cta">
-			<Button
-				variant="primary"
-				pill
-				disabled={requestingRecommendations}
-				aria-busy={requestingRecommendations ? 'true' : undefined}
-				onclick={() => void handleRequestNewRecommendations()}
-			>
-				{t('rate.getRecommendations')}
-			</Button>
-		</div>
 	{/if}
 </div>
 
@@ -344,25 +399,5 @@
 		padding: var(--space-8) var(--space-4);
 		color: var(--color-text-muted);
 		text-align: center;
-	}
-	.shortlist-page__new-rec-cta {
-		position: fixed;
-		right: var(--space-4);
-		bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
-		z-index: 110;
-		display: flex;
-		justify-content: flex-end;
-		pointer-events: none;
-	}
-	.shortlist-page__new-rec-cta :global(.btn) {
-		pointer-events: auto;
-	}
-	@media (min-width: 768px) {
-		.shortlist-page__new-rec-cta {
-			bottom: calc(
-				var(--space-3) + var(--space-4) + var(--space-4) + 4.5rem * 1.28 + var(--space-3) +
-					env(safe-area-inset-bottom, 0px)
-			);
-		}
 	}
 </style>

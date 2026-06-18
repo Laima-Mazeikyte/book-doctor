@@ -3,6 +3,7 @@
 	import type { Book, RatingValue } from '$lib/types/book';
 	import ShortlistBookDetail from './ShortlistBookDetail.svelte';
 	import type { ShortlistMetaSection } from './shortlist-meta';
+	import type { NotInterestedOverlay } from './shortlist-books';
 
 	interface Props {
 		book: Book;
@@ -15,6 +16,9 @@
 		isClone?: boolean;
 		bookmarked: boolean;
 		notInterested: boolean;
+		notInterestedOverlay?: NotInterestedOverlay;
+		onNotInterestedOverlayClick?: () => void;
+		requestingRecommendations?: boolean;
 		currentRating: RatingValue | null;
 		onBookmark: () => void;
 		onNotInterested: () => void;
@@ -41,6 +45,9 @@
 		onNext,
 		bookmarked,
 		notInterested,
+		notInterestedOverlay = null,
+		onNotInterestedOverlayClick,
+		requestingRecommendations = false,
 		currentRating,
 		onBookmark,
 		onNotInterested,
@@ -79,6 +86,9 @@
 		{onNext}
 		{bookmarked}
 		{notInterested}
+		{notInterestedOverlay}
+		{onNotInterestedOverlayClick}
+		{requestingRecommendations}
 		{currentRating}
 		{onBookmark}
 		{onNotInterested}

@@ -7,6 +7,7 @@
 	import type { Book, RatingValue } from '$lib/types/book';
 	import ShortlistBookMeta from './ShortlistBookMeta.svelte';
 	import type { ShortlistMetaSection } from './shortlist-meta';
+	import type { NotInterestedOverlay } from './shortlist-books';
 
 	interface Props {
 		book: Book;
@@ -14,6 +15,9 @@
 		setSize: number;
 		bookmarked: boolean;
 		notInterested: boolean;
+		notInterestedOverlay?: NotInterestedOverlay;
+		onNotInterestedOverlayClick?: () => void;
+		requestingRecommendations?: boolean;
 		currentRating: RatingValue | null;
 		onBookmark: () => void;
 		onNotInterested: () => void;
@@ -37,6 +41,9 @@
 		onNext,
 		bookmarked,
 		notInterested,
+		notInterestedOverlay = null,
+		onNotInterestedOverlayClick,
+		requestingRecommendations = false,
 		currentRating,
 		onBookmark,
 		onNotInterested,
@@ -172,6 +179,9 @@
 				ratingPlacement="below-actions"
 				layout="shortlist-side-by-side"
 				{notInterested}
+				{notInterestedOverlay}
+				{onNotInterestedOverlayClick}
+				notInterestedOverlayBusy={requestingRecommendations && notInterestedOverlay === 'new-rec'}
 				ratingGroupAriaLabel={t('shared.recommendationCard.rateThisBook')}
 				{displayRating}
 				{starAriaLabel}

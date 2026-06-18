@@ -420,6 +420,18 @@ button.book-card__summary-remove-rating.book-card__summary-remove-rating--layout
 	min-height: 0;
 	width: 100%;
 	max-height: 100%;
+	position: relative;
+}
+.book-card__summary-not-interested-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 4;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.book-card__summary-not-interested-overlay .btn {
+	pointer-events: auto;
 }
 .book-card__summary-content--shortlist-side-by-side {
 	--shortlist-cover-max-width: 12rem;
