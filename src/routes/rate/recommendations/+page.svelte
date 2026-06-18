@@ -285,7 +285,9 @@
 		if (url.pathname !== '/rate/recommendations') return;
 		if (url.searchParams.get('request_id')?.trim()) return;
 
-		const accessToken = $authStore.session?.access_token ?? null;
+		// Re-fetch when the signed-in user changes, not when the access token refreshes alone
+		// (e.g. anonymous → permanent on the same user id should keep the current list).
+		const userId = $authStore.user?.id ?? null;
 		const loadId = ++activeRouteLoadId;
 
 		const cachedHistory = recommendationsPageStore.getHistorySnapshot();
@@ -297,6 +299,7 @@
 				}
 
 				try {
+					const accessToken = get(authStore).session?.access_token ?? null;
 					const payload = await fetchUniqueBooks(accessToken);
 					if (!isActiveRouteLoad(loadId, null)) return;
 					uniqueBooks = payload.books;
@@ -328,7 +331,7 @@
 				}
 			};
 
-			fetchHistory(accessToken)
+			fetchHistory(get(authStore).session?.access_token ?? null)
 				.then((historyRuns) => {
 					if (!isActiveRouteLoad(loadId, null)) return;
 					recommendationsPageStore.setRuns(historyRuns);

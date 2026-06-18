@@ -2,6 +2,11 @@
 	import { tick } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import Button from '$lib/components/Button.svelte';
+	import {
+		beginAuthTransition,
+		clearAuthTransition,
+		completeAuthSuccess
+	} from '$lib/auth/completeAuthSuccess';
 	import { getSupabase } from '$lib/supabase';
 	import { t } from '$lib/copy';
 	import { Eye, EyeOff } from 'lucide-svelte';
@@ -95,7 +100,8 @@
 		revealSignUpPassword = false;
 	}
 
-	function closeAfterAuthSuccess() {
+	async function closeAfterAuthSuccess(detail: { previousAnonymousUserId?: string | null } = {}) {
+		await completeAuthSuccess(detail);
 		clearDraft();
 		clearTransientState();
 		onClose();
@@ -262,7 +268,7 @@
 				error = err.message ?? t('shared.authModal.errorInvalidCredentials');
 				return;
 			}
-			closeAfterAuthSuccess();
+			await closeAfterAuthSuccess();
 		} finally {
 			finishAuthRequest(requestId);
 		}
@@ -295,10 +301,11 @@
 				});
 				if (!isCurrentAuthRequest(requestId)) return;
 				if (!updateErr) {
-					closeAfterAuthSuccess();
+					await closeAfterAuthSuccess({ previousAnonymousUserId: anonymousUserId });
 					return;
 				}
 
+				beginAuthTransition();
 				const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
 					email,
 					password: signUpPassword
@@ -306,6 +313,7 @@
 				if (!isCurrentAuthRequest(requestId)) return;
 				if (signUpErr) {
 					error = signUpErr.message ?? t('shared.authModal.errorSignUpFailed');
+					clearAuthTransition();
 					return;
 				}
 
@@ -332,7 +340,7 @@
 					}
 				}
 				if (!isCurrentAuthRequest(requestId)) return;
-				closeAfterAuthSuccess();
+				await closeAfterAuthSuccess({ previousAnonymousUserId: anonymousUserId });
 				return;
 			}
 
@@ -345,7 +353,7 @@
 				error = err.message ?? t('shared.authModal.errorSignUpFailed');
 				return;
 			}
-			closeAfterAuthSuccess();
+			await closeAfterAuthSuccess();
 		} finally {
 			finishAuthRequest(requestId);
 		}

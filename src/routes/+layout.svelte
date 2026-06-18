@@ -19,6 +19,7 @@
 	import BugReportModal from '$lib/components/BugReportModal.svelte';
 	import SaveAccountPrompt from '$lib/components/SaveAccountPrompt.svelte';
 	import { registerAnonymousSessionStarter } from '$lib/auth/anonymous-session';
+	import { AUTH_SIGNED_IN_EVENT, isAuthTransitionActive } from '$lib/auth/completeAuthSuccess';
 	import { notifyLibraryPersistedMutationForBrowseFeedWarm, onAfterNavigateForBrowseFeedWarm } from '$lib/feed/browseFeedWarm';
 	import { isRateShellPath } from '$lib/navigation/rateShell';
 	import { getSupabase } from '$lib/supabase';
@@ -636,8 +637,10 @@
 			planToReadStore.setPersistence(null);
 			notInterestedStore.setPersistence(null);
 			bookmarksPageStore.reset();
-			recommendationsPageStore.reset();
-			recommendationsCountStore.set(0);
+			if (hadUserBefore && !isAuthTransitionActive()) {
+				recommendationsPageStore.reset();
+				recommendationsCountStore.set(0);
+			}
 			clearUserLibraryHydration();
 			if (hadUserBefore) {
 				ratingsStore.reset();
@@ -712,6 +715,23 @@
 		};
 		window.addEventListener('auth:ratings-migrated', handler);
 		return () => window.removeEventListener('auth:ratings-migrated', handler);
+	});
+
+	// After sign-in or account creation, refresh header recommendations count.
+	onMount(() => {
+		const handler = () => {
+			const user = get(authStore).user;
+			const token = get(authStore).session?.access_token ?? null;
+			if (!user?.id || !token) return;
+			recommendationsCountLoadedForUserId = null;
+			void refreshRecommendationsCountFromApi(token).then((ok) => {
+				if (ok && get(authStore).user?.id === user.id) {
+					recommendationsCountLoadedForUserId = user.id;
+				}
+			});
+		};
+		window.addEventListener(AUTH_SIGNED_IN_EVENT, handler);
+		return () => window.removeEventListener(AUTH_SIGNED_IN_EVENT, handler);
 	});
 
 	onMount(() => {
