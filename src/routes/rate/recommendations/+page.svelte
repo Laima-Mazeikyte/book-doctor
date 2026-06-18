@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
 	import { browser } from '$app/environment';
 	import { page } from '$app/state';
 	import { get } from 'svelte/store';
@@ -7,7 +6,6 @@
 	import BookCard from '$lib/components/BookCard.svelte';
 	import BookCardGridSkeleton from '$lib/components/BookCardGridSkeleton.svelte';
 	import RecommendationsEmpty from '$lib/components/RecommendationsEmpty.svelte';
-	import NavStyleTabList from '$lib/components/NavStyleTabList.svelte';
 	import { ChevronDown } from 'lucide-svelte';
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
@@ -23,10 +21,6 @@
 	import { t } from '$lib/copy';
 	import type { Book } from '$lib/types/book';
 
-	const FILTER_IDS = ['recommended', 'bookmarked', 'not-interested'] as const;
-	type RecFilterId = (typeof FILTER_IDS)[number];
-
-	const LS_FILTER_KEY = 'book-doctor:recommendations-filter';
 	const LS_SORT_KEY = 'book-doctor:recommendations-sort';
 
 	const REC_SORT_IDS = ['newest', 'oldest', 'best-fit'] as const;
@@ -34,10 +28,6 @@
 
 	function isValidRecSortId(s: string | null | undefined): s is RecSortId {
 		return s != null && (REC_SORT_IDS as readonly string[]).includes(s);
-	}
-
-	function isValidRecFilter(s: string | null | undefined): s is RecFilterId {
-		return s != null && (FILTER_IDS as readonly string[]).includes(s);
 	}
 
 	function readRecSortFromLs(): RecSortId {
@@ -126,44 +116,12 @@
 	let bestRecommendationRank = $state<Record<string, number>>(
 		initialHistorySnapshot.bestRecommendationRank ?? {}
 	);
-	let bookmarkBooks = $state<Book[]>([]);
-	let niBooks = $state<Book[]>([]);
-	let bmNiLoading = $state(false);
-	/** First bm/ni fetch for this user may block the bookmark & NI tabs; later session refreshes refetch in the background. */
-	let bmNiBlockingCompletedUserId = $state<string | null>(null);
-	let bmNiLoadRequestId = 0;
-
-	let activeFilter = $state<RecFilterId>('recommended');
-	let prevRecFilterForSummaryKeepAlive = $state<RecFilterId | undefined>(undefined);
 	let sortOrder = $state<RecSortId>(readRecSortFromLs());
-
-	$effect(() => {
-		const f = activeFilter;
-		if (prevRecFilterForSummaryKeepAlive !== undefined && prevRecFilterForSummaryKeepAlive !== f) {
-			ratedSummarySheetKeepAlive.set(null);
-		}
-		prevRecFilterForSummaryKeepAlive = f;
-	});
 
 	const notInterestedIds = $derived.by(() => new Set([...$notInterestedStore]));
 
-	const allRecIdSet = $derived(new Set(allRecommendedBookIds));
-
-	const countsReady = $derived(!$authStore.session?.access_token || !bmNiLoading);
-
 	const recommendedRawList = $derived.by(() =>
 		uniqueBooks.filter((b) => !isNotInterested(b, notInterestedIds))
-	);
-
-	const bookmarkTabBooksRaw = $derived.by(() =>
-		bookmarkBooks.filter(
-			(b) =>
-				allRecIdSet.has(b.book_id) && !isNotInterested(b, notInterestedIds)
-		)
-	);
-
-	const niTabBooksRaw = $derived.by(() =>
-		niBooks.filter((b) => allRecIdSet.has(b.book_id) && $notInterestedStore.has(b.book_id))
 	);
 
 	const recommendedTabBooks = $derived.by(() =>
@@ -175,32 +133,6 @@
 			bestRecommendationRank
 		)
 	);
-
-	const bookmarkTabBooks = $derived.by(() =>
-		sortRecHistoryBooks(
-			bookmarkTabBooksRaw,
-			sortOrder,
-			lastRecommendedAt,
-			recommendationAppearanceCount,
-			bestRecommendationRank
-		)
-	);
-
-	const niTabBooks = $derived.by(() =>
-		sortRecHistoryBooks(
-			niTabBooksRaw,
-			sortOrder,
-			lastRecommendedAt,
-			recommendationAppearanceCount,
-			bestRecommendationRank
-		)
-	);
-
-	const tabItems = $derived([
-		{ id: 'recommended' as RecFilterId, label: t('recommendations.tabs.recommended') },
-		{ id: 'bookmarked' as RecFilterId, label: t('rated.tabs.bookmarked') },
-		{ id: 'not-interested' as RecFilterId, label: t('rated.tabs.notInterested') }
-	]);
 
 	const sortOptionLabel = $derived.by((): string => {
 		switch (sortOrder) {
@@ -226,46 +158,14 @@
 		}
 	}
 
-	function countForTab(id: RecFilterId): number {
-		if (id === 'recommended') return recommendedTabBooks.length;
-		if (id === 'bookmarked') return bookmarkTabBooks.length;
-		return niTabBooks.length;
-	}
-
-	const listNeedsBmNi = $derived(activeFilter === 'bookmarked' || activeFilter === 'not-interested');
-
-	const listLoading = $derived(
-		$authStore.session?.access_token && viewMode === 'history' && listNeedsBmNi && bmNiLoading
-	);
-
 	const currentHistoryBooks = $derived.by((): Book[] => {
-		const list: Book[] =
-			activeFilter === 'recommended'
-				? recommendedTabBooks
-				: activeFilter === 'bookmarked'
-					? bookmarkTabBooks
-					: niTabBooks;
-
+		const list = recommendedTabBooks;
 		const keep = $ratedSummarySheetKeepAlive;
 		if (keep && !list.some((b) => b.id === keep.bookId)) {
 			return [...list, keep.book];
 		}
 		return list;
 	});
-
-	function selectRecTab(id: RecFilterId) {
-		activeFilter = id;
-		try {
-			localStorage.setItem(LS_FILTER_KEY, id);
-		} catch {
-			// ignore
-		}
-		void goto(`/rate/recommendations?filter=${encodeURIComponent(id)}`, {
-			replaceState: true,
-			keepFocus: true,
-			noScroll: true
-		});
-	}
 
 	async function fetchHistory(accessToken: string | null): Promise<RecommendationRun[]> {
 		const headers: Record<string, string> = {};
@@ -322,17 +222,10 @@
 		if (nowNotInterested && !wasNotInterested) {
 			if (planToReadStore.has(book.id)) {
 				planToReadStore.toggle(book.id, book.book_id);
-				bookmarkBooks = bookmarkBooks.filter((b) => b.id !== book.id);
 			}
 			if (get(ratingsStore).has(book.id)) {
 				ratingsStore.removeRating(book.id, book.book_id);
 			}
-			if (!niBooks.some((b) => b.id === book.id)) {
-				const rest = niBooks.filter((b) => b.id !== book.id);
-				niBooks = [book, ...rest];
-			}
-		} else if (wasNotInterested && !nowNotInterested) {
-			niBooks = niBooks.filter((b) => b.book_id !== book.book_id);
 		}
 		if (nowNotInterested) {
 			recommendationsCountStore.update((n) => Math.max(0, n - 1));
@@ -346,14 +239,6 @@
 		planToReadStore.toggle(id, book.book_id);
 		if (!wasBookmarked) {
 			notInterestedStore.remove(book.book_id);
-			niBooks = niBooks.filter((b) => b.book_id !== book.book_id);
-			if (!bookmarkBooks.some((b) => b.id === book.id)) {
-				const rest = bookmarkBooks.filter((b) => b.id !== book.id);
-				bookmarkBooks = [book, ...rest];
-			}
-		}
-		if (wasBookmarked) {
-			bookmarkBooks = bookmarkBooks.filter((b) => b.id !== book.id);
 		}
 	}
 
@@ -382,92 +267,6 @@
 			recommendationsCountStore.set(snapshot.uniqueBooks.length);
 		}
 	}
-
-	/** Sync filter from URL when on the history list (no `request_id`). */
-	$effect(() => {
-		if (!browser) return;
-		const url = page.url;
-		if (url.searchParams.get('request_id')?.trim()) return;
-		if (url.pathname !== '/rate/recommendations') return;
-
-		const param = url.searchParams.get('filter');
-		if (isValidRecFilter(param)) {
-			const current = untrack(() => activeFilter);
-			if (current !== param) activeFilter = param;
-			try {
-				localStorage.setItem(LS_FILTER_KEY, param);
-			} catch {
-				// ignore
-			}
-			return;
-		}
-		let next: RecFilterId = 'recommended';
-		try {
-			const stored = localStorage.getItem(LS_FILTER_KEY);
-			if (isValidRecFilter(stored)) next = stored;
-		} catch {
-			// ignore
-		}
-		const current = untrack(() => activeFilter);
-		if (current !== next) activeFilter = next;
-		void goto(`/rate/recommendations?filter=${encodeURIComponent(next)}`, {
-			replaceState: true,
-			keepFocus: true,
-			noScroll: true
-		});
-	});
-
-	/** Bookmarks + not-interested lists for recommendation tabs (history view). */
-	$effect(() => {
-		const session = $authStore.session;
-		const token = session?.access_token ?? null;
-		const userId = session?.user?.id ?? null;
-		// Tracked: token + `viewMode` only — not `?filter=`. Reading `page.url` here re-ran this
-		// effect on every client-side tab click (see `selectRecTab`), so `bmNiLoading` flashed
-		// true and showed skeletons on every switch. That matched bookshelf only if the URL
-		// never changed. Single-run / full-page views read `request_id` via `untrack`.
-		if (!token || viewMode !== 'history') {
-			bmNiLoading = false;
-			if (!token) bmNiBlockingCompletedUserId = null;
-			return;
-		}
-		if (untrack(() => page.url.searchParams.get('request_id')?.trim())) {
-			bmNiLoading = false;
-			return;
-		}
-
-		const requestId = ++bmNiLoadRequestId;
-		const needsBlockingBmNi = !userId || bmNiBlockingCompletedUserId !== userId;
-		bmNiLoading = needsBlockingBmNi;
-
-		const bmPromise = fetch('/api/bookmarks', {
-			headers: { Authorization: `Bearer ${token}` }
-		})
-			.then((res) => {
-				if (!res.ok) throw new Error('bm');
-				return res.json() as Promise<{ books: Book[] }>;
-			})
-			.then((d) => d.books ?? [])
-			.catch(() => [] as Book[]);
-
-		const niPromise = fetch('/api/not-interested/books', {
-			headers: { Authorization: `Bearer ${token}` }
-		})
-			.then((res) => {
-				if (!res.ok) throw new Error('ni');
-				return res.json() as Promise<{ books: Book[] }>;
-			})
-			.then((d) => d.books ?? [])
-			.catch(() => [] as Book[]);
-
-		void Promise.all([bmPromise, niPromise]).then(([bm, ni]) => {
-			if (requestId !== bmNiLoadRequestId) return;
-			bookmarkBooks = bm;
-			niBooks = ni;
-			bmNiLoading = false;
-			if (userId) bmNiBlockingCompletedUserId = userId;
-		});
-	});
 
 	/** Legacy and external links: ?request_id= opens the shortlist route. */
 	$effect(() => {
@@ -588,18 +387,7 @@
 			class="recommendations-page__title recommendations-page__title--spaced typ-display2 typ-display2--content"
 		>{t('recommendations.myRecommendations')}</h1>
 
-		<div class="recommendations-page__tabs-wrap">
-			<NavStyleTabList
-				ariaLabel={t('recommendations.tabs.ariaLabel')}
-				panelId="recommendations-panel"
-				idPrefix="recommendations-tab"
-				items={tabItems}
-				selectedId={activeFilter}
-				countsReady={countsReady}
-				getCount={(id) => countForTab(id as RecFilterId)}
-				onSelect={(id) => selectRecTab(id as RecFilterId)}
-			/>
-			<div class="recommendations-page__tabs-sort-divider" aria-hidden="true"></div>
+		<div class="recommendations-page__toolbar">
 			<div class="recommendations-page__sort">
 				<span class="recommendations-page__sort-sizer" aria-hidden="true">{sortOptionLabel}</span>
 				<select
@@ -622,33 +410,14 @@
 			</div>
 		</div>
 
-		<div
-			id="recommendations-panel"
-			class="recommendations-page__unique"
-			role="tabpanel"
-			aria-labelledby="recommendations-tab-{activeFilter}"
-		>
+		<div class="recommendations-page__unique">
 			{#if uniqueBooksLoading}
 				<BookCardGridSkeleton
 					class="recommendations-page__unique-grid"
 					ariaLabel={t('recommendations.allUniqueTitles')}
 				/>
-			{:else if listLoading}
-				<p class="recommendations-page__loading typ-body">{t('recommendations.loadingList')}</p>
-				<BookCardGridSkeleton
-					class="recommendations-page__unique-grid"
-					ariaLabel={t('recommendations.allUniqueTitles')}
-				/>
 			{:else if currentHistoryBooks.length === 0}
-				<p class="recommendations-page__empty">
-					{#if activeFilter === 'recommended'}
-						{t('recommendations.emptyRecommendedTab')}
-					{:else if activeFilter === 'bookmarked'}
-						{t('recommendations.emptyBookmarkedTab')}
-					{:else}
-						{t('recommendations.emptyNotInterestedTab')}
-					{/if}
-				</p>
+				<p class="recommendations-page__empty">{t('recommendations.emptyRecommendedTab')}</p>
 			{:else}
 				<ul class="recommendations-page__unique-grid book-card-grid" aria-label={t('recommendations.allUniqueTitles')}>
 					{#each currentHistoryBooks as book (book.id)}
@@ -690,42 +459,11 @@
 	.recommendations-page__title--spaced {
 		margin-bottom: var(--space-8);
 	}
-	.recommendations-page__tabs-wrap {
+	.recommendations-page__toolbar {
 		display: flex;
-		flex-wrap: nowrap;
-		align-items: flex-end;
-		justify-content: flex-start;
-		width: fit-content;
-		gap: var(--space-3);
+		justify-content: flex-end;
+		align-self: stretch;
 		margin: 0 0 var(--space-5) 0;
-	}
-	.recommendations-page__tabs-wrap :global(.nav-style-tabs__wrap) {
-		width: auto;
-		flex: 1 1 auto;
-		min-width: 0;
-	}
-	.recommendations-page__tabs-wrap :global(.nav-style-tabs__list) {
-		width: auto;
-	}
-	.recommendations-page__tabs-sort-divider {
-		flex: 0 0 auto;
-		width: 1px;
-		height: 1.125rem;
-		align-self: center;
-		background: color-mix(in srgb, var(--color-border) 55%, transparent);
-	}
-	@media (max-width: 767px) {
-		.recommendations-page__tabs-wrap {
-			align-self: stretch;
-			width: 100%;
-			max-width: 100%;
-			min-width: 0;
-		}
-		.recommendations-page__tabs-wrap :global(.nav-style-tabs__wrap) {
-			flex: 1 1 auto;
-			min-width: 0;
-			max-width: 100%;
-		}
 	}
 	.recommendations-page__sort {
 		position: relative;
@@ -799,11 +537,6 @@
 	}
 	.recommendations-page__sort:hover .recommendations-page__sort-chevron {
 		color: var(--color-text);
-	}
-	.recommendations-page__loading {
-		margin: 0 0 var(--space-3) 0;
-		text-align: start;
-		color: var(--color-text-muted);
 	}
 	.recommendations-page__empty {
 		color: var(--color-text-muted);

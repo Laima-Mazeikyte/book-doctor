@@ -111,6 +111,10 @@ en:
       removeIveReadIt: "Remove I've read it"
       offerAnotherBook: "Get another book"
       getNewRecommendations: "Get new recommendations"
+    saveAccountPrompt:
+      title: "Save your progress"
+      message: "Create an account to keep your ratings and recommendations."
+      dismiss: "Dismiss save prompt"
 
   faq:
     title: "Frequently Asked Questions"

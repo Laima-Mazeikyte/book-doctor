@@ -2,6 +2,7 @@
 	import { get } from 'svelte/store';
 	import { getSupabase } from '$lib/supabase';
 	import { authRestorePending, authReady, isAnonymousOrSignedOut, signedInEmail } from '$lib/stores/auth';
+	import { authModalRequestStore } from '$lib/stores/authModalRequest';
 	import { mobileMenuOpen } from '$lib/stores/mobileMenu';
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
 	import AuthModal from '$lib/components/AuthModal.svelte';
@@ -105,6 +106,12 @@
 	}
 
 	onMount(() => {
+		const unsubAuthModalRequest = authModalRequestStore.subscribe((req) => {
+			if (!req) return;
+			openAuthModal(req.tab);
+			authModalRequestStore.clear();
+		});
+
 		const mq = window.matchMedia('(min-width: 768px)');
 		const closeMenuIfDesktop = () => {
 			if (mq.matches) mobileMenuOpen.set(false);
@@ -114,6 +121,7 @@
 		document.addEventListener('click', handleClickOutsideAccount);
 		document.addEventListener('keydown', handleKeydown);
 		return () => {
+			unsubAuthModalRequest();
 			mq.removeEventListener('change', closeMenuIfDesktop);
 			document.removeEventListener('click', handleClickOutsideAccount);
 			document.removeEventListener('keydown', handleKeydown);

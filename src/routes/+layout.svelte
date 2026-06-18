@@ -17,11 +17,13 @@
 	import AppHeader from '$lib/components/AppHeader.svelte';
 	import AppFooter from '$lib/components/AppFooter.svelte';
 	import BugReportModal from '$lib/components/BugReportModal.svelte';
+	import SaveAccountPrompt from '$lib/components/SaveAccountPrompt.svelte';
 	import { registerAnonymousSessionStarter } from '$lib/auth/anonymous-session';
 	import { notifyLibraryPersistedMutationForBrowseFeedWarm, onAfterNavigateForBrowseFeedWarm } from '$lib/feed/browseFeedWarm';
 	import { isRateShellPath } from '$lib/navigation/rateShell';
 	import { getSupabase } from '$lib/supabase';
-	import { authStore, clearPasswordRecoveryFlag, passwordRecoveryActive, markAuthInitChecking, markAuthInitError, markAuthInitReady, waitForAuthReady } from '$lib/stores/auth';
+	import { authStore, authReady, clearPasswordRecoveryFlag, isAnonymousOrSignedOut, passwordRecoveryActive, markAuthInitChecking, markAuthInitError, markAuthInitReady, waitForAuthReady } from '$lib/stores/auth';
+	import { shortlistSavePromptStore } from '$lib/stores/shortlistSavePrompt';
 	import {
 		clearUserLibraryHydration,
 		markUserLibraryDetailsReady,
@@ -77,6 +79,12 @@
 	}
 
 	const isShortlistShell = $derived(page.url.pathname === '/rate/recommendations/shortlist');
+
+	const showSaveAccountPrompt = $derived.by(() => {
+		if (!$shortlistSavePromptStore || !$authReady || !$isAnonymousOrSignedOut) return false;
+		if (page.url.pathname !== '/rate/recommendations') return false;
+		return !page.url.searchParams.get('request_id')?.trim();
+	});
 
 	/** Routes with `.book-card-grid` — drop main max-width so more columns fit on large screens */
 	const isBookGridShell = $derived.by(() => {
@@ -593,7 +601,21 @@
 		) {
 			clearPasswordRecoveryFlag();
 		}
+		if (
+			from?.url.pathname === '/rate/recommendations/shortlist' &&
+			to?.url.pathname === '/rate/recommendations' &&
+			!to.url.searchParams.get('request_id')?.trim() &&
+			get(isAnonymousOrSignedOut)
+		) {
+			shortlistSavePromptStore.show();
+		}
 		onAfterNavigateForBrowseFeedWarm(from?.url, to?.url);
+	});
+
+	$effect(() => {
+		if (!$isAnonymousOrSignedOut) {
+			shortlistSavePromptStore.dismiss();
+		}
 	});
 
 	$effect(() => {
@@ -764,6 +786,7 @@
 	{/if}
 </div>
 <BugReportModal open={bugModalOpen} onClose={closeBugModal} />
+<SaveAccountPrompt open={showSaveAccountPrompt} />
 
 <style>
 	.app-chrome {
