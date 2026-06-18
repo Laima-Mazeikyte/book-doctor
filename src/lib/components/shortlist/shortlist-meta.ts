@@ -8,7 +8,7 @@ export type ShortlistMetaSection =
 	| { kind: 'custom'; id: string };
 
 /** Extra metadata rendered around the sheet body; extend when adding new tags/UI. */
-export const DEFAULT_SHORTLIST_META_SECTIONS: ShortlistMetaSection[] = [{ kind: 'type' }];
+export const DEFAULT_SHORTLIST_META_SECTIONS: ShortlistMetaSection[] = [];
 
 export function sectionVisible(section: ShortlistMetaSection, book: Book): boolean {
 	switch (section.kind) {

@@ -92,6 +92,8 @@ en:
     loadingList: "Loading…"
     shortlist:
       title: "Your shortlist"
+      description: "Seven books for you based on what you've rated."
+      close: "Close"
       metaDescription: "Swipe through your latest book recommendations on Unread."
       loading: "Finding books for you…"
       timeoutTitle: "Still working on it"
@@ -104,6 +106,9 @@ en:
       prevBook: "Previous book"
       nextBook: "Next book"
       slideAriaLabel: "{{title}}, book {{position}} of {{total}}"
+      coverNavAriaLabel: "Browse shortlist books"
+      iveReadIt: "I've read it"
+      removeIveReadIt: "Remove I've read it"
 
   faq:
     title: "Frequently Asked Questions"

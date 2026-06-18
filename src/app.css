@@ -41,8 +41,8 @@ body {
 	margin: 0;
 }
 
-/* Page h1 rhythm: extra space below title (landing uses flex gap; search dialog title is sr-only; bookshelf / recommendations / faq set their own gap). */
-main h1:not(.landing__title):not(.rate-search-overlay__sr-only):not(.bookshelf-page__title):not(.recommendations-page__title):not(.faq-page__title) {
+/* Page h1 rhythm: extra space below title (landing uses flex gap; search dialog title is sr-only; bookshelf / recommendations / faq / shortlist set their own gap). */
+main h1:not(.landing__title):not(.rate-search-overlay__sr-only):not(.bookshelf-page__title):not(.recommendations-page__title):not(.faq-page__title):not(.shortlist-page__title) {
 	margin-bottom: var(--space-6);
 }
 

@@ -7,10 +7,12 @@
 	interface Props {
 		book: Book;
 		index: number;
+		scrollSlot: number;
 		setSize: number;
-		activeIndex: number;
+		activeScrollSlot: number;
 		reducedMotion: boolean;
 		slideId: string;
+		isClone?: boolean;
 		bookmarked: boolean;
 		notInterested: boolean;
 		currentRating: RatingValue | null;
@@ -22,15 +24,21 @@
 		beforeMeta?: Snippet<[{ book: Book; index: number; setSize: number }]>;
 		afterMeta?: Snippet<[{ book: Book; index: number; setSize: number }]>;
 		footer?: Snippet<[{ book: Book; index: number; setSize: number }]>;
+		onPrev?: () => void;
+		onNext?: () => void;
 	}
 
 	let {
 		book,
 		index,
+		scrollSlot,
 		setSize,
-		activeIndex,
+		activeScrollSlot,
 		reducedMotion,
 		slideId,
+		isClone = false,
+		onPrev,
+		onNext,
 		bookmarked,
 		notInterested,
 		currentRating,
@@ -44,16 +52,18 @@
 		footer
 	}: Props = $props();
 
-	const offset = $derived(index - activeIndex);
+	const offset = $derived(scrollSlot - activeScrollSlot);
 	const isActive = $derived(offset === 0);
-	const isPeek = $derived(offset === 1);
+	const isPeek = $derived(offset === 1 || offset === -1);
+	const showNav = $derived(isActive && setSize > 1 && !isClone);
 </script>
 
 <div
 	id={slideId}
 	class="shortlist-slide"
 	class:shortlist-slide--active={isActive}
-	class:shortlist-slide--peek={isPeek}
+	class:shortlist-slide--peek={isPeek && offset === 1}
+	class:shortlist-slide--peek-prev={isPeek && offset === -1}
 	class:shortlist-slide--reduced-motion={reducedMotion}
 	role="group"
 	aria-roledescription="slide"
@@ -64,6 +74,9 @@
 		{book}
 		{index}
 		{setSize}
+		{showNav}
+		{onPrev}
+		{onNext}
 		{bookmarked}
 		{notInterested}
 		{currentRating}
@@ -105,6 +118,11 @@
 		opacity: 0.65;
 		z-index: 1;
 	}
+	.shortlist-slide--peek-prev {
+		transform: scale(0.94) translateX(-6%);
+		opacity: 0.65;
+		z-index: 1;
+	}
 	.shortlist-slide--reduced-motion {
 		transition: none;
 		transform: none;
@@ -115,5 +133,20 @@
 	}
 	.shortlist-slide--reduced-motion:not(.shortlist-slide--active) {
 		opacity: 0.4;
+	}
+	@media (min-width: 768px) {
+		.shortlist-slide {
+			transform: none;
+			transition: opacity 0.2s ease;
+		}
+		.shortlist-slide--active,
+		.shortlist-slide--peek,
+		.shortlist-slide--peek-prev {
+			transform: none;
+		}
+		.shortlist-slide--peek,
+		.shortlist-slide--peek-prev {
+			opacity: 0.35;
+		}
 	}
 </style>

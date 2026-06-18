@@ -1,17 +1,23 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { browser } from '$app/environment';
-	import { ChevronLeft, ChevronRight } from 'lucide-svelte';
-	import Button from '$lib/components/Button.svelte';
 	import { prefersReducedMotion } from '$lib/navigation/mainNavTransition';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
-	import { activeIndexFromScroll, scrollLeftForIndex } from './carouselIndex';
+	import {
+		logicalIndexFromScrollSlot,
+		scrollLeftForSlot,
+		scrollSlotForLogicalIndex,
+		scrollSlotFromScrollLeft,
+		teleportTargetSlot
+	} from './carouselIndex';
+	import ShortlistCoverStrip from './ShortlistCoverStrip.svelte';
 	import ShortlistSlide from './ShortlistSlide.svelte';
 	import type { ShortlistMetaSection } from './shortlist-meta';
 
 	interface Props {
 		books: Book[];
+		activeIndex?: number;
 		getBookmarked: (bookId: string) => boolean;
 		getNotInterested: (bookId: string) => boolean;
 		getRating: (bookId: string) => RatingValue | null;
@@ -27,6 +33,7 @@
 
 	let {
 		books,
+		activeIndex = $bindable(0),
 		getBookmarked,
 		getNotInterested,
 		getRating,
@@ -41,44 +48,100 @@
 	}: Props = $props();
 
 	let trackEl = $state<HTMLElement | null>(null);
-	let activeIndex = $state(0);
-	let reducedMotion = $state(false);
+	let activeScrollSlot = $state(1);
+	let initializedForSize = $state(0);
 
 	const setSize = $derived(books.length);
-	const canGoPrev = $derived(activeIndex > 0);
-	const canGoNext = $derived(activeIndex < setSize - 1);
 	const carouselId = 'shortlist-carousel-track';
+	const reducedMotion = $derived(browser && prefersReducedMotion());
+	const loopEnabled = $derived(setSize > 1);
 
-	$effect(() => {
-		if (!browser) return;
-		reducedMotion = prefersReducedMotion();
-	});
-
-	function syncActiveIndex() {
+	function syncFromScroll() {
 		const el = trackEl;
 		if (!el || setSize === 0) return;
-		activeIndex = activeIndexFromScroll(el.scrollLeft, el.clientWidth, setSize);
+		const slot = scrollSlotFromScrollLeft(el.scrollLeft, el.clientWidth, setSize);
+		activeScrollSlot = slot;
+		activeIndex = logicalIndexFromScrollSlot(slot, setSize);
+	}
+
+	function teleportToSlot(slot: number) {
+		const el = trackEl;
+		if (!el) return;
+		el.style.scrollSnapType = 'none';
+		el.scrollLeft = scrollLeftForSlot(slot, el.clientWidth);
+		activeScrollSlot = slot;
+		activeIndex = logicalIndexFromScrollSlot(slot, setSize);
+		requestAnimationFrame(() => {
+			if (trackEl) trackEl.style.scrollSnapType = '';
+		});
+	}
+
+	function handleScrollEnd() {
+		const el = trackEl;
+		if (!el || !loopEnabled) return;
+		const slot = scrollSlotFromScrollLeft(el.scrollLeft, el.clientWidth, setSize);
+		const target = teleportTargetSlot(slot, setSize);
+		if (target != null) {
+			teleportToSlot(target);
+		} else {
+			syncFromScroll();
+		}
+	}
+
+	function scrollToSlot(slot: number, behavior: ScrollBehavior = 'smooth') {
+		const el = trackEl;
+		if (!el || setSize === 0) return;
+		el.scrollTo({ left: scrollLeftForSlot(slot, el.clientWidth), behavior });
+		if (behavior === 'auto') {
+			activeScrollSlot = slot;
+			activeIndex = logicalIndexFromScrollSlot(slot, setSize);
+		}
 	}
 
 	function scrollToIndex(index: number, behavior: ScrollBehavior = 'smooth') {
-		const el = trackEl;
-		if (!el) return;
-		const next = Math.max(0, Math.min(setSize - 1, index));
-		el.scrollTo({ left: scrollLeftForIndex(next, el.clientWidth), behavior });
-		activeIndex = next;
+		if (setSize === 0) return;
+		const slot = scrollSlotForLogicalIndex(index, setSize);
+		scrollToSlot(slot, behavior);
 	}
 
 	function goPrev() {
-		if (!canGoPrev) return;
-		scrollToIndex(activeIndex - 1);
+		if (setSize <= 1) return;
+		if (reducedMotion) {
+			const next = (activeIndex - 1 + setSize) % setSize;
+			scrollToIndex(next, 'auto');
+			return;
+		}
+		scrollToSlot(activeScrollSlot - 1);
 	}
 
 	function goNext() {
-		if (!canGoNext) return;
-		scrollToIndex(activeIndex + 1);
+		if (setSize <= 1) return;
+		if (reducedMotion) {
+			const next = (activeIndex + 1) % setSize;
+			scrollToIndex(next, 'auto');
+			return;
+		}
+		scrollToSlot(activeScrollSlot + 1);
 	}
 
 	function handleTrackKeydown(e: KeyboardEvent) {
+		const target = e.target;
+		if (
+			target instanceof HTMLElement &&
+			target.closest('input, textarea, select, [contenteditable="true"]')
+		) {
+			return;
+		}
+
+		const page = trackEl?.closest('.shortlist-page');
+		const active = document.activeElement;
+		if (
+			!page ||
+			(active instanceof HTMLElement && active !== document.body && !page.contains(active))
+		) {
+			return;
+		}
+
 		if (e.key === 'ArrowLeft' || e.key === 'Home') {
 			e.preventDefault();
 			if (e.key === 'Home') scrollToIndex(0);
@@ -93,36 +156,26 @@
 	function slideId(index: number): string {
 		return `shortlist-slide-${index}`;
 	}
+
+	$effect(() => {
+		const el = trackEl;
+		const count = setSize;
+		if (!el || count === 0) {
+			initializedForSize = 0;
+			return;
+		}
+
+		if (initializedForSize === count) return;
+
+		const startSlot = count > 1 ? 1 : 0;
+		teleportToSlot(startSlot);
+		initializedForSize = count;
+	});
 </script>
 
-<div class="shortlist-carousel">
-	{#if setSize > 1}
-		<div class="shortlist-carousel__nav shortlist-carousel__nav--prev">
-			<Button
-				variant="secondary"
-				compact
-				disabled={!canGoPrev}
-				aria-label={t('recommendations.shortlist.prevBook')}
-				aria-controls={carouselId}
-				onclick={goPrev}
-			>
-				<ChevronLeft size={20} aria-hidden="true" />
-			</Button>
-		</div>
-		<div class="shortlist-carousel__nav shortlist-carousel__nav--next">
-			<Button
-				variant="secondary"
-				compact
-				disabled={!canGoNext}
-				aria-label={t('recommendations.shortlist.nextBook')}
-				aria-controls={carouselId}
-				onclick={goNext}
-			>
-				<ChevronRight size={20} aria-hidden="true" />
-			</Button>
-		</div>
-	{/if}
+<svelte:window onkeydown={handleTrackKeydown} />
 
+<div class="shortlist-carousel">
 	<section
 		id={carouselId}
 		class="shortlist-carousel__track"
@@ -131,17 +184,47 @@
 		aria-roledescription="carousel"
 		aria-label={t('recommendations.shortlist.carouselAriaLabel')}
 		tabindex="0"
-		onscroll={syncActiveIndex}
-		onkeydown={handleTrackKeydown}
+		onscroll={syncFromScroll}
+		onscrollend={handleScrollEnd}
 	>
+		{#if loopEnabled}
+			{@const cloneStartBook = books[setSize - 1]}
+			<ShortlistSlide
+				slideId="shortlist-slide-clone-start"
+				book={cloneStartBook}
+				index={setSize - 1}
+				scrollSlot={0}
+				{setSize}
+				{activeScrollSlot}
+				{reducedMotion}
+				isClone={true}
+				onPrev={goPrev}
+				onNext={goNext}
+				bookmarked={getBookmarked(cloneStartBook.id)}
+				notInterested={getNotInterested(cloneStartBook.book_id)}
+				currentRating={getRating(cloneStartBook.id)}
+				onBookmark={() => onBookmark(cloneStartBook)}
+				onNotInterested={() => onNotInterested(cloneStartBook)}
+				onRate={(value) => onRate(cloneStartBook, value)}
+				onRemoveRating={() => onRemoveRating(cloneStartBook)}
+				{metaSections}
+				{beforeMeta}
+				{afterMeta}
+				{footer}
+			/>
+		{/if}
+
 		{#each books as book, index (book.id)}
 			<ShortlistSlide
 				slideId={slideId(index)}
 				{book}
 				{index}
+				scrollSlot={loopEnabled ? index + 1 : 0}
 				{setSize}
-				{activeIndex}
+				{activeScrollSlot}
 				{reducedMotion}
+				onPrev={goPrev}
+				onNext={goNext}
 				bookmarked={getBookmarked(book.id)}
 				notInterested={getNotInterested(book.book_id)}
 				currentRating={getRating(book.id)}
@@ -155,7 +238,45 @@
 				{footer}
 			/>
 		{/each}
+
+		{#if loopEnabled}
+			{@const cloneEndBook = books[0]}
+			<ShortlistSlide
+				slideId="shortlist-slide-clone-end"
+				book={cloneEndBook}
+				index={0}
+				scrollSlot={setSize + 1}
+				{setSize}
+				{activeScrollSlot}
+				{reducedMotion}
+				isClone={true}
+				onPrev={goPrev}
+				onNext={goNext}
+				bookmarked={getBookmarked(cloneEndBook.id)}
+				notInterested={getNotInterested(cloneEndBook.book_id)}
+				currentRating={getRating(cloneEndBook.id)}
+				onBookmark={() => onBookmark(cloneEndBook)}
+				onNotInterested={() => onNotInterested(cloneEndBook)}
+				onRate={(value) => onRate(cloneEndBook, value)}
+				onRemoveRating={() => onRemoveRating(cloneEndBook)}
+				{metaSections}
+				{beforeMeta}
+				{afterMeta}
+				{footer}
+			/>
+		{/if}
 	</section>
+
+	{#if setSize > 1}
+		<div class="shortlist-carousel__covers">
+			<ShortlistCoverStrip
+				{books}
+				{activeIndex}
+				{getNotInterested}
+				onSelect={(index) => scrollToIndex(index)}
+			/>
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -169,6 +290,8 @@
 	}
 	.shortlist-carousel__track {
 		display: flex;
+		align-items: center;
+		justify-content: flex-start;
 		flex: 1;
 		min-height: 0;
 		width: 100%;
@@ -181,26 +304,13 @@
 	.shortlist-carousel__track::-webkit-scrollbar {
 		display: none;
 	}
-	.shortlist-carousel__nav {
-		position: absolute;
-		top: 50%;
-		transform: translateY(-50%);
-		z-index: 5;
+	.shortlist-carousel__covers {
 		display: none;
-		pointer-events: none;
-	}
-	.shortlist-carousel__nav :global(.btn) {
-		pointer-events: auto;
-		box-shadow: var(--shadow-sm, 0 1px 3px color-mix(in srgb, var(--color-text) 12%, transparent));
-	}
-	.shortlist-carousel__nav--prev {
-		left: var(--space-3);
-	}
-	.shortlist-carousel__nav--next {
-		right: var(--space-3);
+		flex-shrink: 0;
+		overflow: visible;
 	}
 	@media (min-width: 768px) {
-		.shortlist-carousel__nav {
+		.shortlist-carousel__covers {
 			display: block;
 		}
 	}
