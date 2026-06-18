@@ -1,16 +1,54 @@
+export const MOBILE_DECK_SLIDE_WIDTH_RATIO = 0.85;
+export const MOBILE_DECK_PEEK_SCALE = 0.78;
+
+export type CarouselLayout = 'full' | 'deck';
+
+export function slideStride(viewportWidth: number, layout: CarouselLayout = 'full'): number {
+	if (layout === 'deck') return viewportWidth * MOBILE_DECK_SLIDE_WIDTH_RATIO;
+	return viewportWidth;
+}
+
+/** Continuous scroll position in slide units (fractional during swipe). */
+export function scrollRatioFromScrollLeft(
+	scrollLeft: number,
+	viewportWidth: number,
+	layout: CarouselLayout = 'full'
+): number {
+	if (viewportWidth <= 0) return 0;
+	if (layout === 'deck') {
+		const stride = slideStride(viewportWidth, layout);
+		return scrollLeft / stride;
+	}
+	return scrollLeft / viewportWidth;
+}
+
 /** Index of the slide closest to the horizontal scroll center. */
 export function activeIndexFromScroll(
 	scrollLeft: number,
 	viewportWidth: number,
-	slideCount: number
+	slideCount: number,
+	layout: CarouselLayout = 'full'
 ): number {
 	if (slideCount <= 0 || viewportWidth <= 0) return 0;
+	if (layout === 'deck') {
+		const ratio = scrollRatioFromScrollLeft(scrollLeft, viewportWidth, layout);
+		const raw = Math.round(ratio);
+		return Math.max(0, Math.min(slideCount - 1, raw));
+	}
 	const center = scrollLeft + viewportWidth / 2;
 	const raw = Math.round(center / viewportWidth - 0.5);
 	return Math.max(0, Math.min(slideCount - 1, raw));
 }
 
-export function scrollLeftForIndex(index: number, viewportWidth: number): number {
+export function scrollLeftForIndex(
+	index: number,
+	viewportWidth: number,
+	layout: CarouselLayout = 'full'
+): number {
+	if (layout === 'deck') {
+		const stride = slideStride(viewportWidth, layout);
+		return Math.max(0, index) * stride;
+	}
 	return Math.max(0, index) * viewportWidth;
 }
 
@@ -30,9 +68,10 @@ export function scrollSlotForLogicalIndex(logicalIndex: number, setSize: number)
 export function scrollSlotFromScrollLeft(
 	scrollLeft: number,
 	viewportWidth: number,
-	setSize: number
+	setSize: number,
+	layout: CarouselLayout = 'full'
 ): number {
-	return activeIndexFromScroll(scrollLeft, viewportWidth, loopSlideCount(setSize));
+	return activeIndexFromScroll(scrollLeft, viewportWidth, loopSlideCount(setSize), layout);
 }
 
 /** Logical book index for a scroll slot (ignoring clone positions). */
@@ -52,6 +91,10 @@ export function teleportTargetSlot(slot: number, setSize: number): number | null
 	return null;
 }
 
-export function scrollLeftForSlot(slot: number, viewportWidth: number): number {
-	return scrollLeftForIndex(slot, viewportWidth);
+export function scrollLeftForSlot(
+	slot: number,
+	viewportWidth: number,
+	layout: CarouselLayout = 'full'
+): number {
+	return scrollLeftForIndex(slot, viewportWidth, layout);
 }

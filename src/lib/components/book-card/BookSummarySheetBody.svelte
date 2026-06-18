@@ -256,6 +256,7 @@
 		<div
 			class="book-card__summary-actions"
 			class:book-card__summary-actions--single={labeledActionCount === 1}
+			class:book-card__summary-actions--icon-only={isShortlistSideBySide}
 		>
 			{#if showBookmarkAction}
 				<button
@@ -348,8 +349,10 @@
 					{@render summaryBodyBlock()}
 				</div>
 			</div>
-			{@render actionsBlock()}
-			{@render ratingBlock(true)}
+			<div class="book-card__summary-shortlist-footer">
+				{@render actionsBlock()}
+				{@render ratingBlock(true)}
+			</div>
 		</div>
 	{:else}
 		<div

@@ -59,7 +59,9 @@
 	let hoverRating = $state(0);
 	let readItByBookId = $state<Record<string, boolean>>({});
 
-	const readItActive = $derived(currentRating != null || (readItByBookId[book.id] ?? false));
+	const readItActive = $derived(
+		!notInterested && (currentRating != null || (readItByBookId[book.id] ?? false))
+	);
 
 	const summaryTitleId = $derived(`shortlist-book-title-${book.id}`);
 	const displaySummary = $derived(getBookDisplaySummary(book));
@@ -297,6 +299,64 @@
 	}
 	.shortlist-detail__slot--footer {
 		padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+	}
+
+	@media (max-width: 767px) {
+		.shortlist-detail__inner {
+			width: 85vw;
+			max-width: 85vw;
+			margin-inline: auto;
+		}
+
+		.shortlist-detail__sheet {
+			overflow: visible;
+		}
+
+		.shortlist-detail__nav {
+			display: none;
+		}
+
+		.shortlist-detail__sheet :global(.book-card__summary-content) {
+			overflow-y: auto;
+			-webkit-overflow-scrolling: touch;
+			padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+		}
+
+		.shortlist-detail__sheet :global(.book-card__summary-shortlist-main) {
+			justify-content: flex-start;
+		}
+
+		.shortlist-detail__sheet :global(.book-card__summary-shortlist-footer) {
+			position: fixed;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			z-index: 20;
+			padding-top: var(--space-3);
+			padding-inline: var(--space-4);
+			padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+			background: transparent;
+			box-shadow: none;
+			border: none;
+			pointer-events: none;
+		}
+
+		:global(.shortlist-slide--mobile-deck) .shortlist-detail__sheet :global(.book-card__summary-shortlist-footer) {
+			z-index: 25;
+		}
+
+		.shortlist-detail__sheet :global(.book-card__summary-shortlist-footer .book-card__summary-actions),
+		.shortlist-detail__sheet
+			:global(.book-card__summary-shortlist-footer .book-card__rating-wrap--below-actions) {
+			pointer-events: auto;
+		}
+
+		:global(.shortlist-slide--mobile-deck) .shortlist-detail__sheet
+			:global(.book-card__summary-shortlist-footer .book-card__summary-actions),
+		:global(.shortlist-slide--mobile-deck) .shortlist-detail__sheet
+			:global(.book-card__summary-shortlist-footer .book-card__rating-wrap--below-actions) {
+			pointer-events: inherit;
+		}
 	}
 
 	@media (min-width: 768px) {

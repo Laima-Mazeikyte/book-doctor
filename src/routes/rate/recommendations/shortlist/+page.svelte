@@ -400,4 +400,17 @@
 		color: var(--color-text-muted);
 		text-align: center;
 	}
+
+	@media (max-width: 767px) {
+		.shortlist-page__header {
+			padding-bottom: var(--space-2);
+		}
+		.shortlist-page__heading {
+			padding-top: calc(var(--min-tap) - var(--space-6));
+		}
+		.shortlist-page__title {
+			font-size: 1.5rem;
+			line-height: var(--primitive-line-height-display);
+		}
+	}
 </style>

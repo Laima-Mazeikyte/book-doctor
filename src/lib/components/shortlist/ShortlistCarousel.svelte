@@ -7,9 +7,11 @@
 	import {
 		logicalIndexFromScrollSlot,
 		scrollLeftForSlot,
+		scrollRatioFromScrollLeft,
 		scrollSlotForLogicalIndex,
 		scrollSlotFromScrollLeft,
-		teleportTargetSlot
+		teleportTargetSlot,
+		type CarouselLayout
 	} from './carouselIndex';
 	import ShortlistCoverStrip from './ShortlistCoverStrip.svelte';
 	import ShortlistSlide from './ShortlistSlide.svelte';
@@ -61,52 +63,74 @@
 
 	let trackEl = $state<HTMLElement | null>(null);
 	let activeScrollSlot = $state(1);
+	let scrollRatio = $state(0);
 	let initializedForSize = $state(0);
+	let mobileViewport = $state(false);
+	let scrollSyncRaf: number | null = null;
 
 	const setSize = $derived(books.length);
 	const carouselId = 'shortlist-carousel-track';
 	const reducedMotion = $derived(browser && prefersReducedMotion());
 	const loopEnabled = $derived(setSize > 1);
+	const deckLayout = $derived(mobileViewport && loopEnabled);
 
-	function syncFromScroll() {
+	function carouselLayout(): CarouselLayout {
+		return deckLayout ? 'deck' : 'full';
+	}
+
+	function applyScrollState() {
 		const el = trackEl;
 		if (!el || setSize === 0) return;
-		const slot = scrollSlotFromScrollLeft(el.scrollLeft, el.clientWidth, setSize);
+		const layout = carouselLayout();
+		scrollRatio = scrollRatioFromScrollLeft(el.scrollLeft, el.clientWidth, layout);
+		const slot = scrollSlotFromScrollLeft(el.scrollLeft, el.clientWidth, setSize, layout);
 		activeScrollSlot = slot;
 		activeIndex = logicalIndexFromScrollSlot(slot, setSize);
+	}
+
+	function syncFromScroll() {
+		if (scrollSyncRaf != null) return;
+		scrollSyncRaf = requestAnimationFrame(() => {
+			scrollSyncRaf = null;
+			applyScrollState();
+		});
 	}
 
 	function teleportToSlot(slot: number) {
 		const el = trackEl;
 		if (!el) return;
+		const layout = carouselLayout();
 		el.style.scrollSnapType = 'none';
-		el.scrollLeft = scrollLeftForSlot(slot, el.clientWidth);
-		activeScrollSlot = slot;
-		activeIndex = logicalIndexFromScrollSlot(slot, setSize);
+		el.scrollLeft = scrollLeftForSlot(slot, el.clientWidth, layout);
+		applyScrollState();
 		requestAnimationFrame(() => {
 			if (trackEl) trackEl.style.scrollSnapType = '';
 		});
 	}
 
 	function handleScrollEnd() {
+		if (scrollSyncRaf != null) {
+			cancelAnimationFrame(scrollSyncRaf);
+			scrollSyncRaf = null;
+		}
+		applyScrollState();
 		const el = trackEl;
 		if (!el || !loopEnabled) return;
-		const slot = scrollSlotFromScrollLeft(el.scrollLeft, el.clientWidth, setSize);
+		const layout = carouselLayout();
+		const slot = scrollSlotFromScrollLeft(el.scrollLeft, el.clientWidth, setSize, layout);
 		const target = teleportTargetSlot(slot, setSize);
 		if (target != null) {
 			teleportToSlot(target);
-		} else {
-			syncFromScroll();
 		}
 	}
 
 	function scrollToSlot(slot: number, behavior: ScrollBehavior = 'smooth') {
 		const el = trackEl;
 		if (!el || setSize === 0) return;
-		el.scrollTo({ left: scrollLeftForSlot(slot, el.clientWidth), behavior });
+		const layout = carouselLayout();
+		el.scrollTo({ left: scrollLeftForSlot(slot, el.clientWidth, layout), behavior });
 		if (behavior === 'auto') {
-			activeScrollSlot = slot;
-			activeIndex = logicalIndexFromScrollSlot(slot, setSize);
+			applyScrollState();
 		}
 	}
 
@@ -187,6 +211,17 @@
 	});
 
 	$effect(() => {
+		if (!browser) return;
+		const mq = window.matchMedia('(max-width: 767px)');
+		const update = () => {
+			mobileViewport = mq.matches;
+		};
+		update();
+		mq.addEventListener('change', update);
+		return () => mq.removeEventListener('change', update);
+	});
+
+	$effect(() => {
 		const el = trackEl;
 		const count = setSize;
 		if (!el || count === 0) {
@@ -211,6 +246,7 @@
 	<section
 		id={carouselId}
 		class="shortlist-carousel__track"
+		class:shortlist-carousel__track--deck={deckLayout}
 		class:shortlist-carousel__track--reduced-motion={reducedMotion}
 		bind:this={trackEl}
 		aria-roledescription="carousel"
@@ -229,6 +265,8 @@
 				scrollSlot={0}
 				{setSize}
 				{activeScrollSlot}
+				{scrollRatio}
+				{deckLayout}
 				{reducedMotion}
 				isClone={true}
 				onPrev={goPrev}
@@ -260,6 +298,8 @@
 				scrollSlot={loopEnabled ? index + 1 : 0}
 				{setSize}
 				{activeScrollSlot}
+				{scrollRatio}
+				{deckLayout}
 				{reducedMotion}
 				onPrev={goPrev}
 				onNext={goNext}
@@ -290,6 +330,8 @@
 				scrollSlot={setSize + 1}
 				{setSize}
 				{activeScrollSlot}
+				{scrollRatio}
+				{deckLayout}
 				{reducedMotion}
 				isClone={true}
 				onPrev={goPrev}
@@ -335,7 +377,7 @@
 	}
 	.shortlist-carousel__track {
 		display: flex;
-		align-items: center;
+		align-items: flex-start;
 		justify-content: flex-start;
 		flex: 1;
 		min-height: 0;
@@ -354,7 +396,18 @@
 		flex-shrink: 0;
 		overflow: visible;
 	}
+	@media (max-width: 767px) {
+		.shortlist-carousel__track {
+			overflow-y: visible;
+		}
+		.shortlist-carousel__track--deck {
+			scroll-padding-inline: 7.5vw;
+		}
+	}
 	@media (min-width: 768px) {
+		.shortlist-carousel__track {
+			align-items: center;
+		}
 		.shortlist-carousel__covers {
 			display: block;
 		}

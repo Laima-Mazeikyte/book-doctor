@@ -1,9 +1,16 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { MOBILE_DECK_PEEK_SCALE } from './carouselIndex';
 	import type { Book, RatingValue } from '$lib/types/book';
 	import ShortlistBookDetail from './ShortlistBookDetail.svelte';
 	import type { ShortlistMetaSection } from './shortlist-meta';
 	import type { NotInterestedOverlay } from './shortlist-books';
+
+	const DECK_PEEK_SCALE = MOBILE_DECK_PEEK_SCALE;
+	const DECK_PEEK_OPACITY = 0.62;
+	const DECK_ACTIVE_OPACITY = 1;
+	const DECK_SUMMARY_FADE_START = 0.32;
+	const DECK_FOOTER_FADE_START = 0.68;
 
 	interface Props {
 		book: Book;
@@ -11,6 +18,8 @@
 		scrollSlot: number;
 		setSize: number;
 		activeScrollSlot: number;
+		scrollRatio?: number;
+		deckLayout?: boolean;
 		reducedMotion: boolean;
 		slideId: string;
 		isClone?: boolean;
@@ -38,6 +47,8 @@
 		scrollSlot,
 		setSize,
 		activeScrollSlot,
+		scrollRatio = 0,
+		deckLayout = false,
 		reducedMotion,
 		slideId,
 		isClone = false,
@@ -59,10 +70,37 @@
 		footer
 	}: Props = $props();
 
+	const isMobileDeck = $derived(deckLayout && setSize > 1);
+
 	const offset = $derived(scrollSlot - activeScrollSlot);
-	const isActive = $derived(offset === 0);
-	const isPeek = $derived(offset === 1 || offset === -1);
+	const deckDelta = $derived(scrollRatio - scrollSlot);
+	const deckAbsDelta = $derived(Math.abs(deckDelta));
+	const deckBlend = $derived(Math.max(0, 1 - deckAbsDelta));
+	const deckNear = $derived(deckAbsDelta <= 1.02);
+
+	const isActive = $derived(isMobileDeck ? deckBlend > 0.55 : offset === 0);
+	const isPeek = $derived(!isMobileDeck && (offset === 1 || offset === -1));
 	const showNav = $derived(isActive && setSize > 1 && !isClone);
+
+	const deckCoverScale = $derived(
+		reducedMotion
+			? deckBlend >= 0.5
+				? 1
+				: DECK_PEEK_SCALE
+			: DECK_PEEK_SCALE + (1 - DECK_PEEK_SCALE) * deckBlend
+	);
+	const deckOpacity = $derived(
+		!deckNear ? 0 : DECK_PEEK_OPACITY + (DECK_ACTIVE_OPACITY - DECK_PEEK_OPACITY) * deckBlend
+	);
+	const deckSummaryOpacity = $derived(
+		Math.min(1, Math.max(0, (deckBlend - DECK_SUMMARY_FADE_START) / (1 - DECK_SUMMARY_FADE_START)))
+	);
+	const deckFooterOpacity = $derived(
+		Math.min(1, Math.max(0, (deckBlend - DECK_FOOTER_FADE_START) / (1 - DECK_FOOTER_FADE_START)))
+	);
+	const deckZIndex = $derived(Math.round(deckBlend * 100));
+	const deckInteractive = $derived(deckBlend > 0.55);
+	const deckFooterInteractive = $derived(deckFooterOpacity > 0.5);
 </script>
 
 <div
@@ -71,11 +109,19 @@
 	class:shortlist-slide--active={isActive}
 	class:shortlist-slide--peek={isPeek && offset === 1}
 	class:shortlist-slide--peek-prev={isPeek && offset === -1}
+	class:shortlist-slide--mobile-deck={isMobileDeck}
 	class:shortlist-slide--reduced-motion={reducedMotion}
 	role="group"
 	aria-roledescription="slide"
-	aria-hidden={!isActive ? true : undefined}
+	aria-hidden={isMobileDeck ? deckBlend < 0.45 : !isActive ? true : undefined}
 	style:--shortlist-slide-offset={offset}
+	style:--deck-cover-scale={isMobileDeck ? deckCoverScale : undefined}
+	style:--deck-summary-opacity={isMobileDeck ? deckSummaryOpacity : undefined}
+	style:--deck-footer-opacity={isMobileDeck ? deckFooterOpacity : undefined}
+	style:opacity={isMobileDeck ? deckOpacity : undefined}
+	style:z-index={isMobileDeck ? deckZIndex : undefined}
+	style:pointer-events={isMobileDeck ? (deckInteractive ? 'auto' : 'none') : undefined}
+	style:--deck-footer-events={isMobileDeck ? (deckFooterInteractive ? 'auto' : 'none') : undefined}
 >
 	<ShortlistBookDetail
 		{book}
@@ -143,6 +189,44 @@
 	}
 	.shortlist-slide--reduced-motion:not(.shortlist-slide--active) {
 		opacity: 0.4;
+	}
+	@media (max-width: 767px) {
+		.shortlist-slide--mobile-deck {
+			flex: 0 0 85vw;
+			width: 85vw;
+			overflow: visible;
+			transform: none;
+			transition: none;
+			scroll-snap-stop: normal;
+		}
+		.shortlist-slide--mobile-deck :global(.shortlist-detail) {
+			overflow: visible;
+		}
+		.shortlist-slide--mobile-deck :global(.book-card__summary-cover-column) {
+			transform: scale(var(--deck-cover-scale, 1));
+			transform-origin: center top;
+			transition: none;
+			will-change: transform;
+		}
+		.shortlist-slide--mobile-deck :global(.book-card__summary-details-column),
+		.shortlist-slide--mobile-deck :global(.book-card__summary-not-interested-overlay),
+		.shortlist-slide--mobile-deck :global(.shortlist-detail__extensions),
+		.shortlist-slide--mobile-deck :global(.shortlist-detail__slot) {
+			opacity: var(--deck-summary-opacity, 0);
+			pointer-events: none;
+			transition: none;
+		}
+		.shortlist-slide--mobile-deck :global(.book-card__summary-shortlist-footer) {
+			opacity: var(--deck-footer-opacity, 0);
+			pointer-events: var(--deck-footer-events, none);
+			transition: none;
+		}
+		.shortlist-slide--mobile-deck
+			:global(.book-card__summary-shortlist-footer .book-card__summary-actions),
+		.shortlist-slide--mobile-deck
+			:global(.book-card__summary-shortlist-footer .book-card__rating-wrap--below-actions) {
+			pointer-events: inherit;
+		}
 	}
 	@media (min-width: 768px) {
 		.shortlist-slide {

@@ -3,8 +3,10 @@ import {
 	activeIndexFromScroll,
 	logicalIndexFromScrollSlot,
 	loopSlideCount,
+	MOBILE_DECK_SLIDE_WIDTH_RATIO,
 	scrollLeftForIndex,
 	scrollLeftForSlot,
+	scrollRatioFromScrollLeft,
 	scrollSlotForLogicalIndex,
 	scrollSlotFromScrollLeft,
 	teleportTargetSlot
@@ -27,6 +29,23 @@ describe('carouselIndex', () => {
 
 	it('scrollLeftForIndex maps index to pixel offset', () => {
 		expect(scrollLeftForIndex(2, viewport)).toBe(800);
+	});
+
+	describe('deck layout', () => {
+		const stride = viewport * MOBILE_DECK_SLIDE_WIDTH_RATIO;
+
+		it('centers the first slide at scrollLeft 0', () => {
+			expect(scrollLeftForSlot(0, viewport, 'deck')).toBe(0);
+		});
+
+		it('maps scroll ratio to fractional positions during swipe', () => {
+			expect(scrollRatioFromScrollLeft(0, viewport, 'deck')).toBeCloseTo(0);
+			expect(scrollRatioFromScrollLeft(stride, viewport, 'deck')).toBeCloseTo(1);
+		});
+
+		it('derives active slot from deck scroll position', () => {
+			expect(scrollSlotFromScrollLeft(stride, viewport, 5, 'deck')).toBe(1);
+		});
 	});
 
 	describe('loop carousel', () => {
