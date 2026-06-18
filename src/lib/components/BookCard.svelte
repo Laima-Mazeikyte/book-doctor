@@ -10,7 +10,7 @@
 		markRateSearchOpenedFromOtherRoute
 	} from '$lib/rateSearchExternalNav';
 	import { fly } from 'svelte/transition';
-	import { BookOpenText, X, Bookmark, Star, Ban } from 'lucide-svelte';
+	import { BookOpenText, X, Bookmark, Star, ThumbsDown } from 'lucide-svelte';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { rateBookSummaryHistory } from '$lib/stores/rateBookSummaryHistory';
 	import { ratedSummarySheetKeepAlive } from '$lib/stores/ratedSummarySheetKeepAlive';
@@ -524,7 +524,7 @@
 							: t('shared.recommendationCard.notInterested')}
 						onclick={handleNotInterestedClick}
 					>
-						<Ban size={14} aria-hidden="true" />
+						<ThumbsDown size={14} aria-hidden="true" />
 						{#if notInterested}
 							<span class="book-card__action-label"
 								>{t('shared.recommendationCard.notInterested')}</span

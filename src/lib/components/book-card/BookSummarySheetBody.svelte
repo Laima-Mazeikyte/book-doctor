@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Bookmark, Ban, Search, Star } from 'lucide-svelte';
+	import { Bookmark, ThumbsDown, Search, Star } from 'lucide-svelte';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
 
@@ -233,7 +233,7 @@
 						: t('shared.recommendationCard.notInterested')}
 					onclick={onNotInterestedClick}
 				>
-					<Ban size={14} aria-hidden="true" />
+					<ThumbsDown size={14} aria-hidden="true" />
 					<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span>
 				</button>
 			{/if}
