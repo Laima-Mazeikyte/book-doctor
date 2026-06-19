@@ -9,10 +9,11 @@
 	import { ensureAnonymousSessionStarted } from '$lib/auth/anonymous-session';
 	import { getSupabase } from '$lib/supabase';
 	import { authStore, waitForAuthReady } from '$lib/stores/auth';
+	import { refreshRecommendationsCountFromApi } from '$lib/stores/recommendationsCount';
 	import {
-		refreshRecommendationsCountFromApi
-	} from '$lib/stores/recommendationsCount';
-	import { scheduleUserLibraryDetailsLoad, userLibraryHydrationStore } from '$lib/stores/userLibrary';
+		scheduleUserLibraryDetailsLoad,
+		userLibraryHydrationStore
+	} from '$lib/stores/userLibrary';
 	import BookCardGridSkeleton from '$lib/components/BookCardGridSkeleton.svelte';
 	import RatingsBar from '$lib/components/RatingsBar.svelte';
 	import SearchBar from '$lib/components/SearchBar.svelte';
@@ -42,19 +43,31 @@
 	const SCROLL_THRESHOLD = 60;
 	const FEED_PAGE_SIZE = 20;
 	const EMPTY_PAGE_CHAIN_MAX = 25;
+	const FEED_REQUEST_CREATE_COOLDOWN_MS = 7000;
 	/** After a new feed batch mounts, ignore strict “end of list” briefly so a sentinel already at the viewport bottom does not clear `hasMore` before the user can interact. */
 	const STRICT_FEED_END_GRACE_MS = 750;
 
-	type LatestFeedMode = 'newer_completed' | 'cold_start' | 'exhausted';
+	type LatestFeedMode =
+		| 'has_eligible_feed'
+		| 'feed_exhausted'
+		| 'feed_generation_pending'
+		| 'no_feed_yet'
+		| 'feed_error';
 	type LatestFeedStateResponse = {
 		mode: LatestFeedMode;
 		books: Book[];
 		request_id: string | null;
 		latest_request_id: string | null;
 		latest_request_status: string | null;
+		latest_request_error_message: string | null;
+		ratings_count: number;
 		status: string;
 		error_message: string | null;
 	};
+	type FeedRequestInsertResult =
+		| { kind: 'created'; requestId: string }
+		| { kind: 'cooldown' }
+		| { kind: 'failed' };
 
 	// ── Search ─────────────────────────────────────────────────────────────────
 	let searchQuery = $state('');
@@ -361,10 +374,7 @@
 			if (authorAnchor && authorAnchor.toLowerCase() === q.toLowerCase()) {
 				searchMode = 'author';
 				authorSearchAnchor = authorAnchor;
-			} else if (
-				searchMode !== 'author' ||
-				authorSearchAnchor.toLowerCase() !== q.toLowerCase()
-			) {
+			} else if (searchMode !== 'author' || authorSearchAnchor.toLowerCase() !== q.toLowerCase()) {
 				searchMode = 'fulltext';
 				authorSearchAnchor = '';
 			}
@@ -436,6 +446,8 @@
 	let mainListFellBackDueToMissingAuthToken = $state(false);
 	let initialListDecisionSettled = $state(false);
 	let initialMainListLoadInFlight: Promise<void> | null = null;
+	let feedBatchRequestInFlight = false;
+	let lastFeedRequestCreatedAt = 0;
 
 	let mainListPrefetchPx = $state(600);
 
@@ -519,14 +531,7 @@
 
 		const preloadObserver = new IntersectionObserver(
 			(entries) => {
-				if (
-					!entries[0].isIntersecting ||
-					loading ||
-					initial ||
-					overlayBlocksFeed ||
-					!more
-				)
-					return;
+				if (!entries[0].isIntersecting || loading || initial || overlayBlocksFeed || !more) return;
 				if (!feedOnly) {
 					void loadPopular(next, 0);
 					return;
@@ -539,14 +544,7 @@
 
 		const strictEndObserver = new IntersectionObserver(
 			(entries) => {
-				if (
-					!entries[0].isIntersecting ||
-					loading ||
-					initial ||
-					overlayBlocksFeed ||
-					!more
-				)
-					return;
+				if (!entries[0].isIntersecting || loading || initial || overlayBlocksFeed || !more) return;
 				if (Date.now() < suppressStrictFeedEndUntil) return;
 				if (feedOnly && lastFeed && !engaged) {
 					hasMore = false;
@@ -795,6 +793,20 @@
 		armFeedBatchStrictGrace();
 	}
 
+	async function insertFeedRequestRowWithCooldown(
+		supabase: ReturnType<typeof getSupabase>,
+		userId: string
+	): Promise<FeedRequestInsertResult> {
+		if (!supabase) return { kind: 'failed' };
+		const now = Date.now();
+		if (now - lastFeedRequestCreatedAt < FEED_REQUEST_CREATE_COOLDOWN_MS) {
+			return { kind: 'cooldown' };
+		}
+		lastFeedRequestCreatedAt = now;
+		const requestId = await insertFeedRequestRow(supabase, userId);
+		return requestId == null ? { kind: 'failed' } : { kind: 'created', requestId };
+	}
+
 	function commitInitialCuratedChoice(books: Book[]) {
 		initialListDecisionSettled = true;
 		mainListFellBackDueToMissingAuthToken = false;
@@ -805,10 +817,17 @@
 		hasMore = true;
 	}
 
-	async function commitInitialTop100Choice(skipInitialLoading: boolean) {
+	async function commitInitialTop100Choice(
+		skipInitialLoading: boolean,
+		opts?: { preservePersonalizedFeedMode?: boolean }
+	) {
 		initialListDecisionSettled = true;
 		startedFromLatestFeed = false;
 		await loadPopular(0, 0, { skipInitialLoading });
+		if (opts?.preservePersonalizedFeedMode === true) {
+			startedFromLatestFeed = true;
+			everHadSessionSignal = true;
+		}
 	}
 
 	async function ensureAnonymousSessionIfNeeded(): Promise<void> {
@@ -927,12 +946,12 @@
 			if (!supabase || !user?.id) return;
 
 			if (sid !== searchFeedSessionId) return;
-			const requestId = await insertFeedRequestRow(supabase, user.id);
+			const insertResult = await insertFeedRequestRowWithCooldown(supabase, user.id);
 			if (sid !== searchFeedSessionId) return;
 
-			if (requestId == null) return;
+			if (insertResult.kind !== 'created') return;
 
-			await pollCuratedFeedRequest(requestId, token);
+			await pollCuratedFeedRequest(insertResult.requestId, token);
 			if (sid !== searchFeedSessionId) return;
 		} catch (e) {
 			console.error('[rate] refreshMainFeedAfterSearchSession', e);
@@ -957,6 +976,12 @@
 		return latestId;
 	}
 
+	function shouldRequestInitialPersonalizedFeed(feedState: LatestFeedStateResponse): boolean {
+		if (feedState.mode === 'has_eligible_feed') return false;
+		if (feedState.mode === 'no_feed_yet') return feedState.ratings_count > 0;
+		return true;
+	}
+
 	async function commitInitialExhaustedFeedChoice(
 		skipInitialLoading: boolean,
 		feedState: LatestFeedStateResponse
@@ -968,7 +993,9 @@
 
 		const requestId =
 			resolveExhaustedFeedRefreshRequestId(feedState) ??
-			(await insertFeedRequestRow(supabase, user.id));
+			(await insertFeedRequestRowWithCooldown(supabase, user.id).then((result) =>
+				result.kind === 'created' ? result.requestId : null
+			));
 		if (requestId == null) return false;
 
 		const outcome = await pollCuratedFeedRequest(requestId, token);
@@ -998,18 +1025,21 @@
 			mainListFellBackDueToMissingAuthToken = false;
 			const data = await fetchLatestFeedState(token);
 
-			if (data.mode === 'newer_completed' && data.books.length > 0) {
+			if (data.mode === 'has_eligible_feed' && data.books.length > 0) {
 				commitInitialCuratedChoice(data.books);
 				scheduleLibraryHydrationAfterFirstList();
 				return;
 			}
 
-			if (data.mode === 'exhausted') {
+			if (shouldRequestInitialPersonalizedFeed(data)) {
 				const refreshed = await commitInitialExhaustedFeedChoice(skip, data);
 				if (refreshed) {
 					scheduleLibraryHydrationAfterFirstList();
 					return;
 				}
+				await commitInitialTop100Choice(skip, { preservePersonalizedFeedMode: true });
+				scheduleLibraryHydrationAfterFirstList();
+				return;
 			}
 
 			await commitInitialTop100Choice(skip);
@@ -1113,26 +1143,39 @@
 	}
 
 	async function loadCuratedFeedBatch() {
-		if (loadingMore || loadingInitial) return;
-		loadingMore = true;
+		if (feedBatchRequestInFlight || loadingMore || loadingInitial) return;
+		feedBatchRequestInFlight = true;
 		popularError = null;
 		try {
 			const supabase = getSupabase();
-			const token = get(authStore).session?.access_token ?? null;
+			const token = await resolveAccessToken({ lazyAnonymous: !startedFromLatestFeed });
 			const user = get(authStore).user;
 			if (!supabase || !token || !user?.id) {
-				loadingMore = false;
-				await loadPopular(popularContinuationOffset, 0);
+				popularError = t('rate.errors.loadBooks');
+				hasMore = false;
 				return;
 			}
 
-			const requestId = await insertFeedRequestRow(supabase, user.id);
+			let requestId: string | null = null;
+			try {
+				const feedState = await fetchLatestFeedState(token);
+				requestId = resolveExhaustedFeedRefreshRequestId(feedState);
+			} catch (e) {
+				console.error('[rate] loadCuratedFeedBatch latest state:', e);
+			}
 
 			if (requestId == null) {
-				loadingMore = false;
-				await loadPopular(popularContinuationOffset, 0);
-				return;
+				const insertResult = await insertFeedRequestRowWithCooldown(supabase, user.id);
+				if (insertResult.kind === 'cooldown') return;
+				if (insertResult.kind === 'failed') {
+					popularError = t('rate.errors.loadBooks');
+					hasMore = false;
+					return;
+				}
+				requestId = insertResult.requestId;
 			}
+
+			loadingMore = true;
 
 			const outcome = await pollCuratedFeedRequest(requestId, token);
 
@@ -1148,23 +1191,19 @@
 				return;
 			}
 
-			loadingMore = false;
-			await loadPopular(popularContinuationOffset, 0);
+			popularError = t('rate.errors.loadBooks');
+			hasMore = false;
 		} catch (e) {
 			console.error('[rate] loadCuratedFeedBatch:', e);
 			popularError = t('rate.errors.loadBooks');
-			loadingMore = false;
-			await loadPopular(popularContinuationOffset, 0);
+			hasMore = false;
 		} finally {
 			loadingMore = false;
+			feedBatchRequestInFlight = false;
 		}
 	}
 
-	async function doSearch(
-		query: string,
-		offset = 0,
-		mode: 'fulltext' | 'author' = searchMode
-	) {
+	async function doSearch(query: string, offset = 0, mode: 'fulltext' | 'author' = searchMode) {
 		const trimmedQuery = query.trim();
 		if (offset === 0) {
 			searchRequestGeneration += 1;
@@ -1237,9 +1276,7 @@
 					.select('id')
 					.single();
 				if (!error && data?.id != null) {
-					goto(
-						`/rate/recommendations/shortlist?request_id=${encodeURIComponent(String(data.id))}`
-					);
+					goto(`/rate/recommendations/shortlist?request_id=${encodeURIComponent(String(data.id))}`);
 					return;
 				}
 			} catch {
