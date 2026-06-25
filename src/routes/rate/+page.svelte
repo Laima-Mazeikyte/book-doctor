@@ -160,6 +160,13 @@
 		replaceState(`${resolve('/rate')}${get(page).url.search}`, next);
 	}
 
+	function stampRateSearchLayer() {
+		if (!browser) return;
+		const st = get(page).state as App.PageState;
+		if (st.rateSearchLayer === true) return;
+		replaceShallowPageState({ ...st, rateSearchLayer: true });
+	}
+
 	/** Compare location to resolved /rate (includes `base`). */
 	function locationIsRatePage(): boolean {
 		try {
@@ -202,6 +209,9 @@
 			resetSearchSessionFeedFlags();
 		}
 		searchOverlayOpen = true;
+		if (!shouldPush) {
+			stampRateSearchLayer();
+		}
 		await queueFocusOverlaySearch();
 	}
 
@@ -295,6 +305,12 @@
 		}
 
 		if (searchOverlayOpen && st.rateSearchLayer !== true) {
+			const urlQ = get(page).url.searchParams.get('q')?.trim() ?? '';
+			const activeQ = urlQ || searchQuery.trim();
+			if (activeQ) {
+				stampRateSearchLayer();
+				return;
+			}
 			closeSearchOverlay({ fromPopstate: true });
 			return;
 		}
@@ -367,6 +383,7 @@
 		if (q) {
 			const wasOpen = searchOverlayOpen;
 			searchOverlayOpen = true;
+			stampRateSearchLayer();
 			if (!wasOpen) {
 				resetSearchSessionFeedFlags();
 			}
@@ -1306,6 +1323,8 @@
 
 	function handleSearchOverlayKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
+			const st = get(page).state as App.PageState;
+			if (st.rateRatingsDrawerDetail || st.rateRatingsDrawer) return;
 			e.preventDefault();
 			closeSearchOverlay();
 			return;
@@ -1385,6 +1404,75 @@
 	<title>{t('rate.pageTitle')} — {t('shared.header.siteName')}</title>
 	<meta name="description" content={t('rate.metaDescription')} />
 </svelte:head>
+
+{#snippet rateBottomBar()}
+	<div id="rate-bottom-bar" class="rate-page__bottom-bar" tabindex="-1">
+		<RatingsBar
+			bind:this={ratingsBar}
+			{ratedEntries}
+			resolveBook={findBookById}
+			resolveBookByBookId={findBookByBookId}
+			summaryHooks={{
+				onSearchAuthor: handleSearchAuthor,
+				onBookmark: (book) => handleRateBookmark(book, book.id),
+				onNotInterested: (book) =>
+					searchOverlayOpen ? handleSearchNotInterested(book) : handleMainListNotInterested(book),
+				onAfterRate: (book) =>
+					searchOverlayOpen ? handleSearchAfterRate() : handleMainListAfterRate(book)
+			}}
+		/>
+		{#if canGetRecommendations}
+			<div class="rate-page__recommendations-cta">
+				{#snippet recommendationsCtaSyncIcon()}
+					<RatingsSyncDot variant={recommendationsSubmitSyncFailed ? 'failed' : 'pending'} />
+				{/snippet}
+				<Button
+					variant="primary"
+					pill
+					class="rate-page__recommendations-submit{!ratingsSyncedForRecommendations
+						? ' rate-page__recommendations-submit--syncing'
+						: ''}{recommendationsSubmitSyncFailed
+						? ' rate-page__recommendations-submit--sync-failed'
+						: ''}"
+					icon={!ratingsSyncedForRecommendations ? recommendationsCtaSyncIcon : undefined}
+					aria-disabled={!ratingsSyncedForRecommendations ? 'true' : undefined}
+					aria-busy={!ratingsSyncedForRecommendations && !recommendationsSubmitSyncFailed
+						? 'true'
+						: undefined}
+					onclick={(e) => {
+						if (!ratingsSyncedForRecommendations) {
+							e.preventDefault();
+							return;
+						}
+						void handleSubmit();
+					}}
+				>
+					{recommendationsSubmitLabel}
+				</Button>
+			</div>
+		{:else}
+			<div class="rate-page__recommendations-hint-wrap">
+				<div
+					class="btn btn--primary btn--pill rate-page__recommendations-hint{!ratingsSyncedForRecommendations
+						? ' rate-page__recommendations-hint--syncing'
+						: ''}{recommendationsSubmitSyncFailed
+						? ' rate-page__recommendations-hint--sync-failed'
+						: ''}"
+					role="status"
+					aria-live="polite"
+					aria-busy={!ratingsSyncedForRecommendations && !recommendationsSubmitSyncFailed
+						? 'true'
+						: undefined}
+				>
+					{#if !ratingsSyncedForRecommendations}
+						<RatingsSyncDot variant={recommendationsSubmitSyncFailed ? 'failed' : 'pending'} />
+					{/if}
+					<span class="btn__label">{recommendationsHintLabel}</span>
+				</div>
+			</div>
+		{/if}
+	</div>
+{/snippet}
 
 <div class="rate-page" class:rate-page--mobile-menu-open={$mobileMenuOpen}>
 	<div
@@ -1467,77 +1555,6 @@
 				{/if}
 			</div>
 		</div>
-
-		{#if showBottomBar}
-			<div id="rate-bottom-bar" class="rate-page__bottom-bar" tabindex="-1">
-				<RatingsBar
-					bind:this={ratingsBar}
-					{ratedEntries}
-					resolveBook={findBookById}
-					resolveBookByBookId={findBookByBookId}
-					summaryHooks={{
-						onSearchAuthor: handleSearchAuthor,
-						onBookmark: (book) => handleRateBookmark(book, book.id),
-						onNotInterested: (book) =>
-							searchOverlayOpen
-								? handleSearchNotInterested(book)
-								: handleMainListNotInterested(book),
-						onAfterRate: (book) =>
-							searchOverlayOpen ? handleSearchAfterRate() : handleMainListAfterRate(book)
-					}}
-				/>
-				{#if canGetRecommendations}
-					<div class="rate-page__recommendations-cta">
-						{#snippet recommendationsCtaSyncIcon()}
-							<RatingsSyncDot variant={recommendationsSubmitSyncFailed ? 'failed' : 'pending'} />
-						{/snippet}
-						<Button
-							variant="primary"
-							pill
-							class="rate-page__recommendations-submit{!ratingsSyncedForRecommendations
-								? ' rate-page__recommendations-submit--syncing'
-								: ''}{recommendationsSubmitSyncFailed
-								? ' rate-page__recommendations-submit--sync-failed'
-								: ''}"
-							icon={!ratingsSyncedForRecommendations ? recommendationsCtaSyncIcon : undefined}
-							aria-disabled={!ratingsSyncedForRecommendations ? 'true' : undefined}
-							aria-busy={!ratingsSyncedForRecommendations && !recommendationsSubmitSyncFailed
-								? 'true'
-								: undefined}
-							onclick={(e) => {
-								if (!ratingsSyncedForRecommendations) {
-									e.preventDefault();
-									return;
-								}
-								void handleSubmit();
-							}}
-						>
-							{recommendationsSubmitLabel}
-						</Button>
-					</div>
-				{:else}
-					<div class="rate-page__recommendations-hint-wrap">
-						<div
-							class="btn btn--primary btn--pill rate-page__recommendations-hint{!ratingsSyncedForRecommendations
-								? ' rate-page__recommendations-hint--syncing'
-								: ''}{recommendationsSubmitSyncFailed
-								? ' rate-page__recommendations-hint--sync-failed'
-								: ''}"
-							role="status"
-							aria-live="polite"
-							aria-busy={!ratingsSyncedForRecommendations && !recommendationsSubmitSyncFailed
-								? 'true'
-								: undefined}
-						>
-							{#if !ratingsSyncedForRecommendations}
-								<RatingsSyncDot variant={recommendationsSubmitSyncFailed ? 'failed' : 'pending'} />
-							{/if}
-							<span class="btn__label">{recommendationsHintLabel}</span>
-						</div>
-					</div>
-				{/if}
-			</div>
-		{/if}
 	</div>
 
 	{#if searchOverlayOpen}
@@ -1633,7 +1650,14 @@
 					{/if}
 				</div>
 			</div>
+			{#if showBottomBar}
+				{@render rateBottomBar()}
+			{/if}
 		</div>
+	{/if}
+
+	{#if !searchOverlayOpen && showBottomBar}
+		{@render rateBottomBar()}
 	{/if}
 </div>
 
@@ -1775,7 +1799,6 @@
 		flex-direction: column;
 		min-height: 0;
 		flex: 1;
-		max-height: 100%;
 		background: var(--color-card-bg);
 	}
 	.rate-search-overlay__header {
@@ -1860,7 +1883,6 @@
 		/* html/body use `touch-action: none` while search is open; allow vertical pan inside the list. */
 		touch-action: pan-y;
 		padding: var(--space-4);
-		padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
 	}
 	.rate-search-overlay__helper {
 		margin: var(--space-4) 0;

@@ -491,8 +491,7 @@
 	}
 
 	/**
-	 * User dismissed the drawer (X, overlay, Escape): strip shallow state and sync history depth.
-	 * UI closes immediately; optional `history.go` collapses only our `pushState` entries (not `history.back()`).
+	 * User dismissed the drawer (X, overlay, Escape): close UI, then pop one shallow entry per layer (symmetric with pushState on open).
 	 */
 	function closeDrawerFromUser() {
 		const st = shallowPageState();
@@ -502,12 +501,8 @@
 			closeDrawerSync();
 			return;
 		}
-		const next = { ...st };
-		delete next.rateRatingsDrawerDetail;
-		delete next.rateRatingsDrawer;
 		closeDrawerSync();
 		if (!browser) return;
-		replaceState(currentRatePageUrl(), next);
 		const pops = hadDetail ? 2 : 1;
 		queueMicrotask(() => {
 			history.go(-pops);
@@ -550,9 +545,8 @@
 		const hadDetailLayer = st.rateRatingsDrawerDetail === true;
 		closeDetailSync();
 		if (!browser || !hadDetailLayer) return;
-		replaceState(currentRatePageUrl(), clearDrawerDetailState(st));
 		queueMicrotask(() => {
-			history.go(-1);
+			history.back();
 		});
 	}
 
