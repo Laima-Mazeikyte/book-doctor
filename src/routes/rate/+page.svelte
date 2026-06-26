@@ -703,7 +703,6 @@
 
 	const ratingsSyncMeta = ratingsStore.syncMeta;
 	const ratedCount = $derived($ratingsStore.size);
-	const showBottomBar = $derived(ratedCount >= 1 || !libraryIdsReady);
 	const canGetRecommendations = $derived(ratedCount >= MIN_RATINGS_FOR_RECOMMENDATIONS);
 	/** No queued rating writes and not mid-flush — safe to start a recommendations run. */
 	const ratingsSyncedForRecommendations = $derived(
@@ -1468,76 +1467,72 @@
 			</div>
 		</div>
 
-		{#if showBottomBar}
-			<div id="rate-bottom-bar" class="rate-page__bottom-bar" tabindex="-1">
-				<RatingsBar
-					bind:this={ratingsBar}
-					{ratedEntries}
-					resolveBook={findBookById}
-					resolveBookByBookId={findBookByBookId}
-					summaryHooks={{
-						onSearchAuthor: handleSearchAuthor,
-						onBookmark: (book) => handleRateBookmark(book, book.id),
-						onNotInterested: (book) =>
-							searchOverlayOpen
-								? handleSearchNotInterested(book)
-								: handleMainListNotInterested(book),
-						onAfterRate: (book) =>
-							searchOverlayOpen ? handleSearchAfterRate() : handleMainListAfterRate(book)
-					}}
-				/>
-				{#if canGetRecommendations}
-					<div class="rate-page__recommendations-cta">
-						{#snippet recommendationsCtaSyncIcon()}
+		<div id="rate-bottom-bar" class="rate-page__bottom-bar" tabindex="-1">
+			<RatingsBar
+				bind:this={ratingsBar}
+				{ratedEntries}
+				resolveBook={findBookById}
+				resolveBookByBookId={findBookByBookId}
+				summaryHooks={{
+					onSearchAuthor: handleSearchAuthor,
+					onBookmark: (book) => handleRateBookmark(book, book.id),
+					onNotInterested: (book) =>
+						searchOverlayOpen ? handleSearchNotInterested(book) : handleMainListNotInterested(book),
+					onAfterRate: (book) =>
+						searchOverlayOpen ? handleSearchAfterRate() : handleMainListAfterRate(book)
+				}}
+			/>
+			{#if canGetRecommendations}
+				<div class="rate-page__recommendations-cta">
+					{#snippet recommendationsCtaSyncIcon()}
+						<RatingsSyncDot variant={recommendationsSubmitSyncFailed ? 'failed' : 'pending'} />
+					{/snippet}
+					<Button
+						variant="primary"
+						pill
+						class="rate-page__recommendations-submit{!ratingsSyncedForRecommendations
+							? ' rate-page__recommendations-submit--syncing'
+							: ''}{recommendationsSubmitSyncFailed
+							? ' rate-page__recommendations-submit--sync-failed'
+							: ''}"
+						icon={!ratingsSyncedForRecommendations ? recommendationsCtaSyncIcon : undefined}
+						aria-disabled={!ratingsSyncedForRecommendations ? 'true' : undefined}
+						aria-busy={!ratingsSyncedForRecommendations && !recommendationsSubmitSyncFailed
+							? 'true'
+							: undefined}
+						onclick={(e) => {
+							if (!ratingsSyncedForRecommendations) {
+								e.preventDefault();
+								return;
+							}
+							void handleSubmit();
+						}}
+					>
+						{recommendationsSubmitLabel}
+					</Button>
+				</div>
+			{:else}
+				<div class="rate-page__recommendations-hint-wrap">
+					<div
+						class="btn btn--primary btn--pill rate-page__recommendations-hint{!ratingsSyncedForRecommendations
+							? ' rate-page__recommendations-hint--syncing'
+							: ''}{recommendationsSubmitSyncFailed
+							? ' rate-page__recommendations-hint--sync-failed'
+							: ''}"
+						role="status"
+						aria-live="polite"
+						aria-busy={!ratingsSyncedForRecommendations && !recommendationsSubmitSyncFailed
+							? 'true'
+							: undefined}
+					>
+						{#if !ratingsSyncedForRecommendations}
 							<RatingsSyncDot variant={recommendationsSubmitSyncFailed ? 'failed' : 'pending'} />
-						{/snippet}
-						<Button
-							variant="primary"
-							pill
-							class="rate-page__recommendations-submit{!ratingsSyncedForRecommendations
-								? ' rate-page__recommendations-submit--syncing'
-								: ''}{recommendationsSubmitSyncFailed
-								? ' rate-page__recommendations-submit--sync-failed'
-								: ''}"
-							icon={!ratingsSyncedForRecommendations ? recommendationsCtaSyncIcon : undefined}
-							aria-disabled={!ratingsSyncedForRecommendations ? 'true' : undefined}
-							aria-busy={!ratingsSyncedForRecommendations && !recommendationsSubmitSyncFailed
-								? 'true'
-								: undefined}
-							onclick={(e) => {
-								if (!ratingsSyncedForRecommendations) {
-									e.preventDefault();
-									return;
-								}
-								void handleSubmit();
-							}}
-						>
-							{recommendationsSubmitLabel}
-						</Button>
+						{/if}
+						<span class="btn__label">{recommendationsHintLabel}</span>
 					</div>
-				{:else}
-					<div class="rate-page__recommendations-hint-wrap">
-						<div
-							class="btn btn--primary btn--pill rate-page__recommendations-hint{!ratingsSyncedForRecommendations
-								? ' rate-page__recommendations-hint--syncing'
-								: ''}{recommendationsSubmitSyncFailed
-								? ' rate-page__recommendations-hint--sync-failed'
-								: ''}"
-							role="status"
-							aria-live="polite"
-							aria-busy={!ratingsSyncedForRecommendations && !recommendationsSubmitSyncFailed
-								? 'true'
-								: undefined}
-						>
-							{#if !ratingsSyncedForRecommendations}
-								<RatingsSyncDot variant={recommendationsSubmitSyncFailed ? 'failed' : 'pending'} />
-							{/if}
-							<span class="btn__label">{recommendationsHintLabel}</span>
-						</div>
-					</div>
-				{/if}
-			</div>
-		{/if}
+				</div>
+			{/if}
+		</div>
 	</div>
 
 	{#if searchOverlayOpen}
