@@ -62,6 +62,30 @@ describe('invokeBookSearch', () => {
 		});
 	});
 
+	it('forwards author-only body for exact author search', async () => {
+		const invoke = vi.fn().mockResolvedValue({
+			data: {
+				hits: [{ book_id: '01KR2ADTNG29NSQV23VAGV8FXB' }],
+				estimatedTotalHits: 12
+			},
+			error: null
+		});
+		const supabase = { functions: { invoke } } as unknown as SupabaseClient;
+
+		const r = await invokeBookSearch(supabase, {
+			author: 'Ursula K. Le Guin',
+			limit: 50,
+			offset: 0
+		});
+
+		expect(r.bookIds).toEqual(['01KR2ADTNG29NSQV23VAGV8FXB']);
+		expect(invoke).toHaveBeenCalledWith(BOOK_SEARCH_FUNCTION, {
+			body: { author: 'Ursula K. Le Guin', limit: 50, offset: 0 }
+		});
+		const body = invoke.mock.calls[0]?.[1]?.body as Record<string, unknown>;
+		expect(body).not.toHaveProperty('q');
+	});
+
 	it('unwraps nested result.hits', async () => {
 		const invoke = vi.fn().mockResolvedValue({
 			data: {

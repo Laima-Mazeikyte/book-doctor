@@ -8,6 +8,8 @@ export {
 	orderedUniqueBookIds,
 	type BookSearchEdgeResult,
 	type BookSearchInvokeBody,
+	type BookSearchInvokeBodyByAuthor,
+	type BookSearchInvokeBodyByQuery,
 	type MeilisearchHit
 } from './bookSearchEdge';
 export { resolveBooksByIdsInOrder } from './resolveBooksFromSupabase';

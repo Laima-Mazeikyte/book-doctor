@@ -3,12 +3,21 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 /** Name of the Supabase Edge Function (Meilisearch proxy). */
 export const BOOK_SEARCH_FUNCTION = 'book-search';
 
-export type BookSearchInvokeBody = {
-	/** Meilisearch-style search string */
+/** Fuzzy typed search over title/author (Meilisearch `q`). */
+export type BookSearchInvokeBodyByQuery = {
 	q: string;
 	limit: number;
 	offset: number;
 };
+
+/** Exact author filter when the user clicks an author pill (`author` wins over `q`). */
+export type BookSearchInvokeBodyByAuthor = {
+	author: string;
+	limit: number;
+	offset: number;
+};
+
+export type BookSearchInvokeBody = BookSearchInvokeBodyByQuery | BookSearchInvokeBodyByAuthor;
 
 export type MeilisearchHit = Record<string, unknown>;
 
@@ -66,7 +75,8 @@ export type BookSearchEdgeResult = {
 
 /**
  * Calls the Edge function and returns ordered `book_id` values from `hits`.
- * Body uses Meilisearch-style `q`, `limit`, and `offset`.
+ * Body is either `{ q, limit, offset }` (typed search) or `{ author, limit, offset }`
+ * (author pill). Do not send both `q` and `author`.
  */
 export async function invokeBookSearch(
 	supabase: SupabaseClient,

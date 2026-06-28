@@ -3,7 +3,7 @@
  * should return them there (`history.back()`), not leave them on the rate browse feed.
  */
 const EXTERNAL_KEY = 'book-doctor-rate-search-external';
-/** Author pill from outside /rate: rate page should use exact DB author search, not Meilisearch. */
+/** Author pill from outside /rate: rate page should use exact Meilisearch author search, not fuzzy `q`. */
 const AUTHOR_KEY = 'book-doctor-rate-author-search';
 
 export function markRateSearchOpenedFromOtherRoute(): void {
@@ -37,7 +37,7 @@ export function clearRateAuthorSearch(): void {
 }
 
 /**
- * Returns the author anchor once if set (and clears it). Caller should enable author DB search
+ * Returns the author anchor once if set (and clears it). Caller should enable author search
  * when the returned value matches the `q` param (case-insensitive).
  */
 export function consumeRateAuthorSearch(): string | null {

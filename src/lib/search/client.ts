@@ -4,7 +4,12 @@ import { getSupabase } from '$lib/supabase';
 
 import { invokeBookSearch } from './bookSearchEdge';
 import { resolveBooksByIdsInOrder } from './resolveBooksFromSupabase';
-import { SEARCH_MAX_LIMIT, type SearchResultPage } from './types';
+import {
+	emptyResultPage,
+	SEARCH_MAX_LIMIT,
+	SEARCH_UNAVAILABLE_MESSAGE,
+	type SearchResultPage
+} from './types';
 
 /**
  * Whether another Meilisearch page may exist. `estimatedTotalHits` is sometimes
@@ -24,11 +29,46 @@ export function computeSearchHasMore(
 	);
 }
 
-function emptyResultPage(): SearchResultPage {
+/** Search selector: either a fuzzy `q` query or an exact `author` filter. */
+type SearchSelector = { q: string } | { author: string };
+
+/**
+ * Shared pipeline for both search modes: Edge Function `book-search`
+ * (Meilisearch proxy) then Postgres-backed resolution to `Book` rows. Callers
+ * are responsible for the `browser`/trim/empty-query guards before calling.
+ */
+export async function executeSearch(
+	selector: SearchSelector,
+	offset: number,
+	limit: number
+): Promise<SearchResultPage> {
+	const supabase = getSupabase();
+	if (!supabase) {
+		throw new Error(SEARCH_UNAVAILABLE_MESSAGE);
+	}
+
+	const cappedLimit = Math.min(Math.max(1, limit), SEARCH_MAX_LIMIT);
+
+	const { bookIds, estimatedTotalHits, scannedHitCount } = await invokeBookSearch(supabase, {
+		...selector,
+		limit: cappedLimit,
+		offset
+	});
+
+	const books = await resolveBooksByIdsInOrder(supabase, bookIds);
+	// Advance Meilisearch `offset` by raw hit count so it stays aligned with ranking (dedupe is display-only).
+	const nextOffset = offset + scannedHitCount;
+	const hasMore = computeSearchHasMore(
+		scannedHitCount,
+		cappedLimit,
+		nextOffset,
+		estimatedTotalHits
+	);
+
 	return {
-		books: [],
-		nextOffset: 0,
-		hasMore: false,
+		books,
+		nextOffset,
+		hasMore,
 		source: 'edge',
 		loadedFields: []
 	};
@@ -53,36 +93,5 @@ export async function searchBooks(
 		return emptyResultPage();
 	}
 
-	const supabase = getSupabase();
-	if (!supabase) {
-		throw new Error(
-			'Search is unavailable. Check that PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_ANON_KEY are set.'
-		);
-	}
-
-	const cappedLimit = Math.min(Math.max(1, limit), SEARCH_MAX_LIMIT);
-
-	const { bookIds, estimatedTotalHits, scannedHitCount } = await invokeBookSearch(supabase, {
-		q: trimmed,
-		limit: cappedLimit,
-		offset
-	});
-
-	const books = await resolveBooksByIdsInOrder(supabase, bookIds);
-	// Advance Meilisearch `offset` by raw hit count so it stays aligned with ranking (dedupe is display-only).
-	const nextOffset = offset + scannedHitCount;
-	const hasMore = computeSearchHasMore(
-		scannedHitCount,
-		cappedLimit,
-		nextOffset,
-		estimatedTotalHits
-	);
-
-	return {
-		books,
-		nextOffset,
-		hasMore,
-		source: 'edge',
-		loadedFields: []
-	};
+	return executeSearch({ q: trimmed }, offset, limit);
 }

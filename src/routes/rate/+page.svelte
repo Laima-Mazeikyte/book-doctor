@@ -38,6 +38,7 @@
 		markRateAuthorSearch
 	} from '$lib/rateSearchExternalNav';
 	import { searchBooks, searchBooksByAuthor, SEARCH_MIN_QUERY_LENGTH } from '$lib/search';
+	import { nextRateSearchModeAfterQueryChange } from '$lib/search/rateSearchAuthorMode';
 	import { insertFeedRequestRow, pollCuratedFeedRequest } from '$lib/feed/warmCuratedFeed';
 	import {
 		MIN_INTERACTIONS_FOR_RATE_FEED,
@@ -80,7 +81,7 @@
 	let searchQuery = $state('');
 	let debouncedQuery = $state('');
 	const normalizedDebouncedQuery = $derived(debouncedQuery.trim());
-	/** Author pill uses exact DB match; typed search uses Meilisearch. */
+	/** Author pill uses exact Meilisearch author filter; typed search uses fuzzy `q`. */
 	let searchMode = $state<'fulltext' | 'author'>('fulltext');
 	/** Author name from the last pill click; edits to the query reset to fulltext. */
 	let authorSearchAnchor = $state('');
@@ -112,9 +113,7 @@
 
 	$effect(() => {
 		const q = searchQuery.trim();
-		if (searchMode === 'author' && q.toLowerCase() !== authorSearchAnchor.toLowerCase()) {
-			searchMode = 'fulltext';
-		}
+		searchMode = nextRateSearchModeAfterQueryChange(searchMode, authorSearchAnchor, q);
 	});
 
 	$effect(() => {
