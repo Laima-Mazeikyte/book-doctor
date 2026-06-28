@@ -15,9 +15,13 @@ export interface DeviceInfo {
 	max_touch_points?: number;
 }
 
-export function getDeviceInfo(): { viewport_width: number; viewport_height: number; device_info: DeviceInfo } {
-	const viewport_width = typeof window !== 'undefined' ? window.innerWidth ?? 0 : 0;
-	const viewport_height = typeof window !== 'undefined' ? window.innerHeight ?? 0 : 0;
+export function getDeviceInfo(): {
+	viewport_width: number;
+	viewport_height: number;
+	device_info: DeviceInfo;
+} {
+	const viewport_width = typeof window !== 'undefined' ? (window.innerWidth ?? 0) : 0;
+	const viewport_height = typeof window !== 'undefined' ? (window.innerHeight ?? 0) : 0;
 
 	const device_info: DeviceInfo = {};
 

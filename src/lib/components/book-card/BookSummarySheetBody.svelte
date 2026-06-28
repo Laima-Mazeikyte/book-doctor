@@ -241,7 +241,7 @@
 				class="book-card__genres book-card__genres--summary-sheet"
 				aria-label={t('shared.recommendationCard.genres')}
 			>
-				{#each book.genres as genre}
+				{#each book.genres as genre (genre)}
 					<li class="book-card__genre">{genre}</li>
 				{/each}
 			</ul>
@@ -338,9 +338,15 @@
 								<Button
 									variant="primary"
 									pill
-									disabled={notInterestedOverlayBusy}
+									aria-disabled={notInterestedOverlayBusy ? 'true' : undefined}
 									aria-busy={notInterestedOverlayBusy ? 'true' : undefined}
-									onclick={() => onNotInterestedOverlayClick?.()}
+									onclick={(e) => {
+										if (notInterestedOverlayBusy) {
+											e.preventDefault();
+											return;
+										}
+										onNotInterestedOverlayClick?.();
+									}}
 								>
 									{notInterestedOverlay === 'replace'
 										? t('recommendations.shortlist.offerAnotherBook')

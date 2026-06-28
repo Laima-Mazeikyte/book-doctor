@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { resolve } from '$app/paths';
 
 	interface Props {
 		children: Snippet;
@@ -12,10 +13,13 @@
 </script>
 
 {#if href}
-	<a class="app-header__mobile-menu-action" {href} {onclick}>{@render children()}</a>
+	<a class="app-header__mobile-menu-action" href={resolve(href as '/')} {onclick}
+		>{@render children()}</a
+	>
 {:else}
 	<button type="button" class="app-header__mobile-menu-action" {onclick} aria-label={ariaLabel}
-		>{@render children()}</button>
+		>{@render children()}</button
+	>
 {/if}
 
 <style>
@@ -32,7 +36,9 @@
 		white-space: nowrap;
 		padding: var(--chrome-menu-padding-block) var(--chrome-menu-padding-inline);
 		border-radius: var(--radius-pill);
-		transition: color 0.15s ease, background 0.15s ease;
+		transition:
+			color 0.15s ease,
+			background 0.15s ease;
 	}
 	.app-header__mobile-menu-action:hover {
 		color: var(--color-text);

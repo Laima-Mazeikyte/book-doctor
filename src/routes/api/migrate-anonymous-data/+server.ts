@@ -1,10 +1,10 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getUserIdFromToken } from '$lib/server/auth';
+import { requireAccessToken } from '$lib/server/requestAuth';
 import { createSupabaseServiceRole } from '$lib/server/supabase';
 
-const UUID_REGEX =
-	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
  * Migrates data from an anonymous user to the currently authenticated user.
@@ -12,11 +12,7 @@ const UUID_REGEX =
  * Requires Bearer token of the *new* user (so they must sign up first, then call this).
  */
 export const POST: RequestHandler = async ({ request }) => {
-	const authHeader = request.headers.get('Authorization');
-	const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-	if (!accessToken) {
-		throw error(401, 'Missing Authorization');
-	}
+	const accessToken = requireAccessToken(request);
 
 	let body: { anonymousUserId?: string };
 	try {

@@ -15,7 +15,7 @@
 	import { rateBookSummaryHistory } from '$lib/stores/rateBookSummaryHistory';
 	import { ratedSummarySheetKeepAlive } from '$lib/stores/ratedSummarySheetKeepAlive';
 	import { t } from '$lib/copy';
-	import type { Book, RatingValue } from '$lib/types/book';
+	import type { RatingValue } from '$lib/types/book';
 	import type { BookCardListProps } from './book-card/types';
 	import BookRatingStarsRow from './book-card/BookRatingStarsRow.svelte';
 	import BookSummarySheetBody from './book-card/BookSummarySheetBody.svelte';
@@ -297,9 +297,14 @@
 			if (st.rateBookSummaryLayer === true) {
 				baseState = { ...st };
 				delete baseState.rateBookSummaryLayer;
-				replaceState(ratePageShallowUrl(), baseState);
+				// eslint-disable-next-line svelte/no-navigation-without-resolve -- preserve search in shallow routing
+				replaceState(`${resolve('/rate')}${get(page).url.search}`, baseState);
 			}
-			pushState('', { ...baseState, rateBookSummaryLayer: true });
+			// eslint-disable-next-line svelte/no-navigation-without-resolve -- preserve search in shallow routing
+			pushState(`${resolve('/rate')}${get(page).url.search}`, {
+				...baseState,
+				rateBookSummaryLayer: true
+			});
 			rateBookSummaryHistory.set({
 				bookId: book.id,
 				applyClose: () => {
@@ -315,10 +320,6 @@
 		closeBtnRef?.focus({ preventScroll: true });
 	}
 
-	function ratePageShallowUrl(): string {
-		return `${resolve('/rate')}${get(page).url.search}`;
-	}
-
 	async function handleCloseSummary(opts?: { skipFlyOut?: boolean; fromHistoryApply?: boolean }) {
 		if (
 			!opts?.fromHistoryApply &&
@@ -328,7 +329,8 @@
 		) {
 			const next = { ...(get(page).state as App.PageState) };
 			delete next.rateBookSummaryLayer;
-			replaceState(ratePageShallowUrl(), next);
+			// eslint-disable-next-line svelte/no-navigation-without-resolve -- preserve search in shallow routing
+			replaceState(`${resolve('/rate')}${get(page).url.search}`, next);
 		}
 		if (isRateContext) {
 			const h = get(rateBookSummaryHistory);

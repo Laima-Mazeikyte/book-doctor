@@ -25,9 +25,13 @@ const GENRE_SLOT_KEYS: (keyof BookGenreSlotRow)[] = [
 /** Non-empty genre labels in slot order (genre1 … genre7) for chips / lists. */
 export function genresFromGenreColumns(row: BookGenreSlotRow): string[] | undefined {
 	const out: string[] = [];
+	const seen = new Set<string>();
 	for (const k of GENRE_SLOT_KEYS) {
 		const v = row[k]?.trim();
-		if (v) out.push(v);
+		if (v && !seen.has(v)) {
+			seen.add(v);
+			out.push(v);
+		}
 	}
 	return out.length ? out : undefined;
 }

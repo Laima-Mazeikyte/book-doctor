@@ -5,9 +5,7 @@ const defaultStarter: AnonymousSessionStarter = async () => false;
 let starter: AnonymousSessionStarter = defaultStarter;
 let inFlight: Promise<boolean> | null = null;
 
-export function registerAnonymousSessionStarter(
-	nextStarter: AnonymousSessionStarter | null
-): void {
+export function registerAnonymousSessionStarter(nextStarter: AnonymousSessionStarter | null): void {
 	starter = nextStarter ?? defaultStarter;
 }
 

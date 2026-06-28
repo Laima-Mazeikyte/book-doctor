@@ -8,7 +8,9 @@ import { writable } from 'svelte/store';
  */
 export const recommendationsCountStore = writable<number>(0);
 
-export async function refreshRecommendationsCountFromApi(accessToken: string | null): Promise<boolean> {
+export async function refreshRecommendationsCountFromApi(
+	accessToken: string | null
+): Promise<boolean> {
 	if (!accessToken) return false;
 	try {
 		const res = await fetch('/api/recommendations/count', {

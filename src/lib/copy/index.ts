@@ -28,10 +28,7 @@ function interpolate(str: string, params?: Record<string, string | number>): str
 /**
  * Look up copy by dot path (e.g. 'home.title') and optionally interpolate {{key}} with params.
  */
-export function t(
-	path: string,
-	params?: Record<string, string | number>
-): string {
+export function t(path: string, params?: Record<string, string | number>): string {
 	const localeCopy = copyByLocale[defaultLocale] as CopyTree | undefined;
 	if (!localeCopy) return path;
 	const raw = getByPath(localeCopy, path);

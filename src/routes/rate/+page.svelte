@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
+	import { SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
 	import { afterNavigate, beforeNavigate, goto, pushState, replaceState } from '$app/navigation';
@@ -8,18 +9,19 @@
 	import BookCard from '$lib/components/BookCard.svelte';
 	import { ensureAnonymousSessionStarted } from '$lib/auth/anonymous-session';
 	import { getSupabase } from '$lib/supabase';
-	import { authStore, waitForAuthReady } from '$lib/stores/auth';
+	import { authRestorePending, authStore, waitForAuthReady } from '$lib/stores/auth';
 	import { refreshRecommendationsCountFromApi } from '$lib/stores/recommendationsCount';
 	import {
+		isUserLibraryIdsReady,
 		scheduleUserLibraryDetailsLoad,
 		userLibraryHydrationStore
 	} from '$lib/stores/userLibrary';
 	import BookCardGridSkeleton from '$lib/components/BookCardGridSkeleton.svelte';
 	import RatingsBar from '$lib/components/RatingsBar.svelte';
+	import RatingsSyncDot from '$lib/components/RatingsSyncDot.svelte';
 	import SearchBar from '$lib/components/SearchBar.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import Spinner from '$lib/components/Spinner.svelte';
-	import RatingsSyncDot from '$lib/components/RatingsSyncDot.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import { X } from 'lucide-svelte';
 	import { getBookById } from '$lib/data/dummyBooks';
@@ -37,6 +39,14 @@
 	} from '$lib/rateSearchExternalNav';
 	import { searchBooks, searchBooksByAuthor, SEARCH_MIN_QUERY_LENGTH } from '$lib/search';
 	import { insertFeedRequestRow, pollCuratedFeedRequest } from '$lib/feed/warmCuratedFeed';
+	import {
+		MIN_INTERACTIONS_FOR_RATE_FEED,
+		feedStateMeetsInteractionThreshold,
+		meetsRateFeedInteractionThreshold,
+		shouldRequestInitialPersonalizedFeed,
+		shouldShowLatestRateFeed,
+		type LatestRateFeedMode
+	} from '$lib/rate/feedEligibility';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
 
@@ -47,12 +57,7 @@
 	/** After a new feed batch mounts, ignore strict “end of list” briefly so a sentinel already at the viewport bottom does not clear `hasMore` before the user can interact. */
 	const STRICT_FEED_END_GRACE_MS = 750;
 
-	type LatestFeedMode =
-		| 'has_eligible_feed'
-		| 'feed_exhausted'
-		| 'feed_generation_pending'
-		| 'no_feed_yet'
-		| 'feed_error';
+	type LatestFeedMode = LatestRateFeedMode;
 	type LatestFeedStateResponse = {
 		mode: LatestFeedMode;
 		books: Book[];
@@ -61,6 +66,8 @@
 		latest_request_status: string | null;
 		latest_request_error_message: string | null;
 		ratings_count: number;
+		interaction_count?: number;
+		eligible_for_feed?: boolean;
 		status: string;
 		error_message: string | null;
 	};
@@ -154,9 +161,9 @@
 		savedScrollY = Math.max(savedScrollY, window.scrollY);
 	}
 
-	/** Align `$page.state` with the current URL without changing the path (shallow routing). */
 	function replaceShallowPageState(next: App.PageState) {
 		if (!browser) return;
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- preserve search in shallow routing
 		replaceState(`${resolve('/rate')}${get(page).url.search}`, next);
 	}
 
@@ -196,7 +203,8 @@
 		/** Only push when transitioning closed → open so we never `history.back()` from UI (fragile vs real stack). */
 		const shouldPush = opts?.pushHistory === true && browser && !wasOpen;
 		if (shouldPush) {
-			pushState('', { rateSearchLayer: true });
+			// eslint-disable-next-line svelte/no-navigation-without-resolve -- preserve search in shallow routing
+			pushState(`${resolve('/rate')}${get(page).url.search}`, { rateSearchLayer: true });
 		}
 		if (!wasOpen) {
 			resetSearchSessionFeedFlags();
@@ -248,8 +256,10 @@
 			if (opts?.fromPopstate) {
 				void goto(resolve('/rate'), { replaceState: true, noScroll: true, keepFocus: false });
 				restoreFeedScrollAfterOverlayClose();
+				flushPendingMainListTop100Reset();
 				return;
 			}
+			flushPendingMainListTop100Reset();
 			history.back();
 			return;
 		}
@@ -260,6 +270,7 @@
 		 */
 		void goto(resolve('/rate'), { replaceState: true, noScroll: true, keepFocus: false });
 		restoreFeedScrollAfterOverlayClose();
+		flushPendingMainListTop100Reset();
 	}
 
 	/**
@@ -390,14 +401,19 @@
 		if (!browser || !searchOverlayOpen) return;
 		void overlayDialogEl;
 		const q = normalizedDebouncedQuery;
-		const path = q.length > 0 ? resolve(`/rate?q=${encodeURIComponent(q)}`) : resolve('/rate');
 		const cur = $page.url;
 		const curQ = cur.searchParams.get('q')?.trim() ?? '';
 		if (cur.pathname === '/rate' && curQ === q) return;
 		const active = document.activeElement;
 		const keepFocus =
 			active instanceof Node && overlayDialogEl != null && overlayDialogEl.contains(active);
-		void goto(path, { replaceState: true, noScroll: true, keepFocus });
+		/* eslint-disable svelte/no-navigation-without-resolve -- sync overlay URL with search query */
+		void goto(q.length > 0 ? `${resolve('/rate')}?q=${encodeURIComponent(q)}` : resolve('/rate'), {
+			replaceState: true,
+			noScroll: true,
+			keepFocus
+		});
+		/* eslint-enable svelte/no-navigation-without-resolve */
 	});
 
 	$effect(() => {
@@ -438,7 +454,6 @@
 	let popularError = $state<string | null>(null);
 
 	let startedFromLatestFeed = $state(false);
-	let everHadSessionSignal = $state(false);
 	let lastAppendWasFeed = $state(false);
 	let engagedWithPendingBatch = $state(false);
 	let suppressStrictFeedEndUntil = $state(0);
@@ -448,10 +463,29 @@
 	let initialMainListLoadInFlight: Promise<void> | null = null;
 	let feedBatchRequestInFlight = false;
 	let lastFeedRequestCreatedAt = 0;
+	/** Deferred Top 100 reload while the search overlay is open. */
+	let pendingMainListTop100Reset = $state(false);
 
 	let mainListPrefetchPx = $state(600);
 
-	const paginationFeedOnly = $derived(startedFromLatestFeed || everHadSessionSignal);
+	const feedInteractionCount = $derived(
+		$ratingsStore.size + $planToReadStore.size + $notInterestedStore.size
+	);
+	const canRequestPersonalizedFeed = $derived(
+		feedInteractionCount >= MIN_INTERACTIONS_FOR_RATE_FEED
+	);
+
+	function meetsFeedInteractionThreshold(): boolean {
+		return meetsRateFeedInteractionThreshold(getFeedInteractionCount());
+	}
+
+	function getFeedInteractionCount(): number {
+		return (
+			get(ratingsStore).size + get(planToReadStore).size + get(notInterestedStore).size
+		);
+	}
+
+	const paginationFeedOnly = $derived(startedFromLatestFeed && canRequestPersonalizedFeed);
 
 	const showMainListLoadMoreTile = $derived.by(() => {
 		if (popularBooks.length === 0 || loadingInitial) return false;
@@ -464,37 +498,42 @@
 
 	/**
 	 * After “end of list” (`hasMore` false) — Top 100, latest curated hydrate, or strict feed end —
-	 * re-open the sentinel when the user engages so `loadCuratedFeedBatch` can run (popular path
-	 * switches to feed once `everHadSessionSignal` is set).
+	 * re-open the sentinel when the user has enough interactions so `loadCuratedFeedBatch` can run.
 	 */
 	function reviveMainListPaginationAfterEngagement() {
 		if (hasMore) return;
-		if (!(startedFromLatestFeed || everHadSessionSignal)) return;
+		if (!(startedFromLatestFeed && canRequestPersonalizedFeed)) return;
 		hasMore = true;
 		armFeedBatchStrictGrace();
+	}
+
+	function onLibraryMutationForFeed() {
+		if (!meetsFeedInteractionThreshold()) {
+			if (startedFromLatestFeed || lastAppendWasFeed) {
+				void resetMainListToTop100();
+			}
+			return;
+		}
+		if (lastAppendWasFeed) engagedWithPendingBatch = true;
+		reviveMainListPaginationAfterEngagement();
 	}
 
 	/** Explicit “load more” — same loaders as infinite scroll; does not change rating / not-interested revival rules. */
 	function handleManualLoadMoreBooks() {
 		if (loadingMore || loadingInitial) return;
+		if (!lastAppendWasFeed) {
+			void loadPopular(nextOffset, 0);
+			return;
+		}
 		if (paginationFeedOnly) {
-			if (lastAppendWasFeed) engagedWithPendingBatch = true;
+			if (!meetsFeedInteractionThreshold()) return;
+			engagedWithPendingBatch = true;
 			armFeedBatchStrictGrace();
 			void loadCuratedFeedBatch();
 			return;
 		}
 		void loadPopular(nextOffset, 0);
 	}
-
-	/** Search unlocks feed pagination and revives a ended main list (Top 100, curated, or strict end). */
-	$effect(() => {
-		const q = searchQuery.trim();
-		const searching = isSearching;
-		if (q.length === 0 && !searching) return;
-		everHadSessionSignal = true;
-		if (lastAppendWasFeed) engagedWithPendingBatch = true;
-		reviveMainListPaginationAfterEngagement();
-	});
 
 	let searchResults = $state<Book[]>([]);
 	let searchNextOffset = $state(0);
@@ -528,15 +567,21 @@
 		const feedOnly = paginationFeedOnly;
 		const lastFeed = lastAppendWasFeed;
 		const engaged = engagedWithPendingBatch;
+		const feedEligible = canRequestPersonalizedFeed;
 
 		const preloadObserver = new IntersectionObserver(
 			(entries) => {
 				if (!entries[0].isIntersecting || loading || initial || overlayBlocksFeed || !more) return;
+				if (!lastFeed) {
+					void loadPopular(next, 0);
+					return;
+				}
 				if (!feedOnly) {
 					void loadPopular(next, 0);
 					return;
 				}
-				if (lastFeed && !engaged) return;
+				if (!engaged) return;
+				if (!feedEligible) return;
 				void loadCuratedFeedBatch();
 			},
 			{ rootMargin: `0px 0px ${prefetch}px 0px` }
@@ -682,24 +727,29 @@
 		return searchResults.find((b) => b.book_id === bookUlid);
 	}
 
-	const ratedEntries = $derived(
-		Array.from($ratingsStore.entries())
+	const ratedBooksDetailsStore = ratingsStore.ratedBooksDetails;
+
+	const ratedEntries = $derived.by(() => {
+		// Rebuild when rated-book rows load (ids hydrate before details).
+		void $ratedBooksDetailsStore;
+		return Array.from($ratingsStore.entries())
 			.map(([bookId, rating]) => {
 				const book = findBookById(bookId);
 				return book ? { book, rating } : null;
 			})
-			.filter((e): e is { book: Book; rating: RatingValue } => e !== null)
-	);
+			.filter((e): e is { book: Book; rating: RatingValue } => e !== null);
+	});
 
 	const MIN_RATINGS_FOR_RECOMMENDATIONS = 10;
 
-	const libraryIdsReady = $derived.by(() => {
-		const user = $authStore.user;
-		const hydration = $userLibraryHydrationStore;
-		if (!user?.id) return true;
-		if (hydration.userId !== user.id) return false;
-		return hydration.idsReady;
-	});
+	const libraryIdsReady = $derived.by(() =>
+		isUserLibraryIdsReady($authStore.user?.id ?? null, $userLibraryHydrationStore)
+	);
+
+	/** Auth restore or library id hydration — counts/labels are unknown; show loaders only. */
+	const sessionBootstrapPending = $derived(
+		$authRestorePending || ($authStore.user?.id != null && !libraryIdsReady)
+	);
 
 	const ratingsSyncMeta = ratingsStore.syncMeta;
 	const ratedCount = $derived($ratingsStore.size);
@@ -724,19 +774,71 @@
 	const recommendationsSubmitLabel = $derived(
 		ratingsSyncedForRecommendations ? t('rate.getRecommendations') : recommendationsOffQueueLabel
 	);
-	const ratingsRemainingForRecommendations = $derived(
-		Math.max(0, MIN_RATINGS_FOR_RECOMMENDATIONS - ratedCount)
+	type BottomBarDisplayState = {
+		userId: string | null;
+		triggerCount: number;
+		canGetRecommendations: boolean;
+		recommendationsLabel: string;
+	};
+
+	let bottomBarDisplayState = $state<BottomBarDisplayState>({
+		userId: null,
+		triggerCount: 0,
+		canGetRecommendations: false,
+		recommendationsLabel: ''
+	});
+	let bottomBarConfirmedRatedCount = $state(0);
+	let bottomBarDisplayUserId = $state<string | null>(null);
+	const bottomBarUserId = $derived($authStore.user?.id ?? null);
+	const ratingsSyncFailedForRecommendations = $derived(
+		$ratingsSyncMeta.queuedCount > 0 &&
+			!$ratingsSyncMeta.isFlushing &&
+			$ratingsSyncMeta.failedCount > 0
 	);
-	const recommendationsCtaLabel = $derived(
-		ratingsRemainingForRecommendations === 0
-			? t('rate.getRecommendations')
-			: ratingsRemainingForRecommendations === 1
-				? t('rate.remainingToRecommend_one')
-				: t('rate.remainingToRecommend_other', { remaining: ratingsRemainingForRecommendations })
-	);
-	const recommendationsHintLabel = $derived(
-		ratingsSyncedForRecommendations ? recommendationsCtaLabel : recommendationsOffQueueLabel
-	);
+
+	function recommendationsLabelForCount(count: number): string {
+		const remaining = Math.max(0, MIN_RATINGS_FOR_RECOMMENDATIONS - count);
+		if (remaining === 0) return t('rate.getRecommendations');
+		if (remaining === 1) return t('rate.remainingToRecommend_one');
+		return t('rate.remainingToRecommend_other', { remaining });
+	}
+
+	function recommendationsDisplayCount(): number {
+		if (ratingsSyncedForRecommendations) return ratedCount;
+		if (ratingsSyncFailedForRecommendations) return bottomBarConfirmedRatedCount;
+		if (ratedCount >= MIN_RATINGS_FOR_RECOMMENDATIONS) {
+			return MIN_RATINGS_FOR_RECOMMENDATIONS - 1;
+		}
+		return ratedCount;
+	}
+
+	$effect(() => {
+		const userId = bottomBarUserId;
+		if (bottomBarDisplayUserId !== userId) {
+			bottomBarDisplayUserId = userId;
+			bottomBarConfirmedRatedCount = 0;
+		}
+		if (sessionBootstrapPending) return;
+		if (ratingsSyncedForRecommendations && bottomBarConfirmedRatedCount !== ratedCount) {
+			bottomBarConfirmedRatedCount = ratedCount;
+		}
+		const recommendationCount = recommendationsDisplayCount();
+		const nextState = {
+			userId,
+			triggerCount: ratedCount,
+			canGetRecommendations:
+				ratingsSyncedForRecommendations && ratedCount >= MIN_RATINGS_FOR_RECOMMENDATIONS,
+			recommendationsLabel: recommendationsLabelForCount(recommendationCount)
+		};
+		if (
+			bottomBarDisplayState.triggerCount === nextState.triggerCount &&
+			bottomBarDisplayState.canGetRecommendations === nextState.canGetRecommendations &&
+			bottomBarDisplayState.recommendationsLabel === nextState.recommendationsLabel
+		) {
+			return;
+		}
+		bottomBarDisplayState = nextState;
+	});
 
 	/** Resolve access token after layout session restore; optionally start lazy anonymous sign-in. */
 	async function resolveAccessToken(opts?: { lazyAnonymous?: boolean }): Promise<string | null> {
@@ -816,6 +918,36 @@
 		hasMore = true;
 	}
 
+	function clearFeedPaginationMode() {
+		startedFromLatestFeed = false;
+		lastAppendWasFeed = false;
+		engagedWithPendingBatch = false;
+		popularError = null;
+	}
+
+	function flushPendingMainListTop100Reset() {
+		if (!pendingMainListTop100Reset || searchOverlayOpen || loadingInitial) return;
+		pendingMainListTop100Reset = false;
+		void loadPopular(0, 0, { skipInitialLoading: true });
+	}
+
+	async function resetMainListToTop100(opts?: { skipInitialLoading?: boolean }) {
+		clearFeedPaginationMode();
+		popularSeed = null;
+		nextOffset = 0;
+		popularContinuationOffset = 0;
+		hasMore = true;
+
+		if (searchOverlayOpen) {
+			pendingMainListTop100Reset = true;
+			return;
+		}
+		if (loadingInitial) return;
+
+		pendingMainListTop100Reset = false;
+		await loadPopular(0, 0, { skipInitialLoading: opts?.skipInitialLoading ?? true });
+	}
+
 	async function commitInitialTop100Choice(
 		skipInitialLoading: boolean,
 		opts?: { preservePersonalizedFeedMode?: boolean }
@@ -823,9 +955,8 @@
 		initialListDecisionSettled = true;
 		startedFromLatestFeed = false;
 		await loadPopular(0, 0, { skipInitialLoading });
-		if (opts?.preservePersonalizedFeedMode === true) {
+		if (opts?.preservePersonalizedFeedMode === true && meetsFeedInteractionThreshold()) {
 			startedFromLatestFeed = true;
-			everHadSessionSignal = true;
 		}
 	}
 
@@ -837,13 +968,12 @@
 
 	async function runSearchSessionFeedRefreshAfterLibraryMutation() {
 		await ensureAnonymousSessionIfNeeded();
+		if (!meetsFeedInteractionThreshold()) return;
 		scheduleSearchSessionFeedRefresh();
 	}
 
-	function handleMainListAfterRate(_book: Book) {
-		everHadSessionSignal = true;
-		if (lastAppendWasFeed) engagedWithPendingBatch = true;
-		reviveMainListPaginationAfterEngagement();
+	function handleMainListAfterRate() {
+		onLibraryMutationForFeed();
 		void ensureAnonymousSessionIfNeeded();
 	}
 
@@ -856,6 +986,7 @@
 		if (searchOverlayOpen) {
 			void runSearchSessionFeedRefreshAfterLibraryMutation();
 		} else {
+			onLibraryMutationForFeed();
 			void ensureAnonymousSessionIfNeeded();
 		}
 	}
@@ -870,10 +1001,8 @@
 			if (get(ratingsStore).has(book.id)) {
 				ratingsStore.removeRating(book.id, book.book_id);
 			}
-			everHadSessionSignal = true;
-			if (lastAppendWasFeed) engagedWithPendingBatch = true;
-			reviveMainListPaginationAfterEngagement();
 		}
+		onLibraryMutationForFeed();
 		void ensureAnonymousSessionIfNeeded();
 		if (searchOverlayOpen) {
 			void runSearchSessionFeedRefreshAfterLibraryMutation();
@@ -881,9 +1010,7 @@
 	}
 
 	function handleSearchAfterRate() {
-		everHadSessionSignal = true;
-		if (lastAppendWasFeed) engagedWithPendingBatch = true;
-		reviveMainListPaginationAfterEngagement();
+		onLibraryMutationForFeed();
 		void runSearchSessionFeedRefreshAfterLibraryMutation();
 	}
 
@@ -897,15 +1024,14 @@
 			if (get(ratingsStore).has(book.id)) {
 				ratingsStore.removeRating(book.id, book.book_id);
 			}
-			everHadSessionSignal = true;
-			if (lastAppendWasFeed) engagedWithPendingBatch = true;
-			reviveMainListPaginationAfterEngagement();
 		}
+		onLibraryMutationForFeed();
 		void runSearchSessionFeedRefreshAfterLibraryMutation();
 	}
 
 	function scheduleSearchSessionFeedRefresh() {
 		if (!searchOverlayOpen) return;
+		if (!meetsFeedInteractionThreshold()) return;
 		if (searchSessionFeedRefreshIssued) return;
 		searchSessionFeedRefreshIssued = true;
 		beginSearchSessionFeedRefresh();
@@ -945,6 +1071,7 @@
 			if (!supabase || !user?.id) return;
 
 			if (sid !== searchFeedSessionId) return;
+			if (!meetsFeedInteractionThreshold()) return;
 			const insertResult = await insertFeedRequestRowWithCooldown(supabase, user.id);
 			if (sid !== searchFeedSessionId) return;
 
@@ -975,16 +1102,11 @@
 		return latestId;
 	}
 
-	function shouldRequestInitialPersonalizedFeed(feedState: LatestFeedStateResponse): boolean {
-		if (feedState.mode === 'has_eligible_feed') return false;
-		if (feedState.mode === 'no_feed_yet') return feedState.ratings_count > 0;
-		return true;
-	}
-
 	async function commitInitialExhaustedFeedChoice(
 		skipInitialLoading: boolean,
 		feedState: LatestFeedStateResponse
 	): Promise<boolean> {
+		if (!shouldRequestInitialPersonalizedFeed(feedState)) return false;
 		const token = get(authStore).session?.access_token ?? null;
 		const supabase = getSupabase();
 		const user = get(authStore).user;
@@ -1024,7 +1146,13 @@
 			mainListFellBackDueToMissingAuthToken = false;
 			const data = await fetchLatestFeedState(token);
 
-			if (data.mode === 'has_eligible_feed' && data.books.length > 0) {
+			if (!feedStateMeetsInteractionThreshold(data)) {
+				await commitInitialTop100Choice(skip);
+				scheduleLibraryHydrationAfterFirstList();
+				return;
+			}
+
+			if (shouldShowLatestRateFeed(data)) {
 				commitInitialCuratedChoice(data.books);
 				scheduleLibraryHydrationAfterFirstList();
 				return;
@@ -1094,7 +1222,7 @@
 		popularError = null;
 
 		try {
-			const params = new URLSearchParams({ offset: String(offset) });
+			const params = new SvelteURLSearchParams({ offset: String(offset) });
 			if (popularSeed) params.set('seed', popularSeed);
 			if (offset >= 100 && popularBooks.length > 0) {
 				const exclude = popularBooks
@@ -1143,6 +1271,10 @@
 
 	async function loadCuratedFeedBatch() {
 		if (feedBatchRequestInFlight || loadingMore || loadingInitial) return;
+		if (!meetsFeedInteractionThreshold()) {
+			await resetMainListToTop100();
+			return;
+		}
 		feedBatchRequestInFlight = true;
 		popularError = null;
 		try {
@@ -1158,6 +1290,10 @@
 			let requestId: string | null = null;
 			try {
 				const feedState = await fetchLatestFeedState(token);
+				if (!feedStateMeetsInteractionThreshold(feedState)) {
+					await resetMainListToTop100();
+					return;
+				}
 				requestId = resolveExhaustedFeedRefreshRequestId(feedState);
 			} catch (e) {
 				console.error('[rate] loadCuratedFeedBatch latest state:', e);
@@ -1178,6 +1314,11 @@
 
 			const outcome = await pollCuratedFeedRequest(requestId, token);
 
+			if (!meetsFeedInteractionThreshold()) {
+				await resetMainListToTop100();
+				return;
+			}
+
 			if (outcome.kind === 'completed') {
 				const books = setMainListBooks(outcome.books, 'append');
 				if (books.length === 0) {
@@ -1194,6 +1335,10 @@
 			hasMore = false;
 		} catch (e) {
 			console.error('[rate] loadCuratedFeedBatch:', e);
+			if (!meetsFeedInteractionThreshold()) {
+				await resetMainListToTop100();
+				return;
+			}
 			popularError = t('rate.errors.loadBooks');
 			hasMore = false;
 		} finally {
@@ -1224,7 +1369,7 @@
 			if (trimmedQuery !== normalizedDebouncedQuery) return;
 
 			if (offset === 0) {
-				const seen = new Set<string>();
+				const seen = new SvelteSet<string>();
 				searchResults = data.books.filter((b) => {
 					if (seen.has(b.id)) return false;
 					seen.add(b.id);
@@ -1263,7 +1408,7 @@
 		if (sync.queuedCount > 0 || sync.isFlushing) return;
 		const user = get(authStore).user;
 		if (!user?.id) {
-			goto('/rate/recommendations');
+			goto(resolve('/rate/recommendations'));
 			return;
 		}
 		const supabase = getSupabase();
@@ -1282,7 +1427,7 @@
 				// fall through
 			}
 		}
-		goto('/rate/recommendations');
+		goto(resolve('/rate/recommendations'));
 	}
 
 	function handleToolbarSearchActivate() {
@@ -1403,7 +1548,7 @@
 						asTrigger={true}
 						bind:value={searchQuery}
 						placeholder={t('rate.search.placeholder')}
-						aria-label={t('rate.search.ariaLabel')}
+						ariaLabel={t('rate.search.ariaLabel')}
 						onActivate={handleToolbarSearchActivate}
 					/>
 				</div>
@@ -1434,7 +1579,7 @@
 									onBookmark={(id) => handleRateBookmark(book, id)}
 									notInterested={$notInterestedStore.has(book.book_id)}
 									onNotInterested={() => handleMainListNotInterested(book)}
-									onAfterRate={() => handleMainListAfterRate(book)}
+									onAfterRate={handleMainListAfterRate}
 								/>
 							</li>
 						{/each}
@@ -1471,6 +1616,8 @@
 			<RatingsBar
 				bind:this={ratingsBar}
 				{ratedEntries}
+				countsPending={sessionBootstrapPending}
+				triggerDisplayCount={bottomBarDisplayState.triggerCount}
 				resolveBook={findBookById}
 				resolveBookByBookId={findBookByBookId}
 				summaryHooks={{
@@ -1478,11 +1625,23 @@
 					onBookmark: (book) => handleRateBookmark(book, book.id),
 					onNotInterested: (book) =>
 						searchOverlayOpen ? handleSearchNotInterested(book) : handleMainListNotInterested(book),
-					onAfterRate: (book) =>
-						searchOverlayOpen ? handleSearchAfterRate() : handleMainListAfterRate(book)
+					onAfterRate: () =>
+						searchOverlayOpen ? handleSearchAfterRate() : handleMainListAfterRate()
 				}}
 			/>
-			{#if canGetRecommendations}
+			{#if sessionBootstrapPending}
+				<div class="rate-page__recommendations-hint-wrap">
+					<div
+						class="btn btn--primary btn--pill rate-page__recommendations-hint rate-page__recommendations-hint--syncing"
+						role="status"
+						aria-live="polite"
+						aria-busy="true"
+					>
+						<RatingsSyncDot variant="pending" />
+						<span class="btn__label">{t('shared.ratingsBar.syncing')}</span>
+					</div>
+				</div>
+			{:else if bottomBarDisplayState.canGetRecommendations}
 				<div class="rate-page__recommendations-cta">
 					{#snippet recommendationsCtaSyncIcon()}
 						<RatingsSyncDot variant={recommendationsSubmitSyncFailed ? 'failed' : 'pending'} />
@@ -1528,7 +1687,11 @@
 						{#if !ratingsSyncedForRecommendations}
 							<RatingsSyncDot variant={recommendationsSubmitSyncFailed ? 'failed' : 'pending'} />
 						{/if}
-						<span class="btn__label">{recommendationsHintLabel}</span>
+						<span class="btn__label">
+							{ratingsSyncedForRecommendations
+								? bottomBarDisplayState.recommendationsLabel
+								: recommendationsOffQueueLabel}
+						</span>
 					</div>
 				</div>
 			{/if}
@@ -1558,7 +1721,7 @@
 								bind:value={searchQuery}
 								autofocus={true}
 								placeholder={t('rate.search.placeholder')}
-								aria-label={t('rate.search.ariaLabel')}
+								ariaLabel={t('rate.search.ariaLabel')}
 							/>
 						</div>
 						<button
@@ -1949,37 +2112,15 @@
 		gap: var(--space-1);
 		max-width: min(20rem, 100%);
 	}
+	.rate-page__recommendations-hint-wrap {
+		width: fit-content;
+		pointer-events: none;
+	}
 	:global(.rate-page__recommendations-hint.btn) {
 		pointer-events: none;
 		user-select: none;
 		cursor: default;
 		margin: 0;
 		text-align: center;
-	}
-	:global(
-		.rate-page__recommendations-hint.btn--primary.rate-page__recommendations-hint--syncing:hover
-	) {
-		background: var(--color-button-primary-bg);
-	}
-	:global(
-		.rate-page__recommendations-hint.btn--primary.rate-page__recommendations-hint--sync-failed:hover
-	) {
-		background: var(--color-button-primary-bg);
-	}
-	/* Full-opacity primary while ratings flush; same dot treatment as ratings trigger. */
-	:global(
-		.rate-page__recommendations-submit.btn--primary.rate-page__recommendations-submit--syncing
-	) {
-		cursor: wait;
-	}
-	:global(
-		.rate-page__recommendations-submit.btn--primary.rate-page__recommendations-submit--sync-failed
-	) {
-		cursor: not-allowed;
-	}
-	:global(
-		.rate-page__recommendations-submit.btn--primary.rate-page__recommendations-submit--syncing:hover
-	) {
-		background: var(--color-button-primary-bg);
 	}
 </style>

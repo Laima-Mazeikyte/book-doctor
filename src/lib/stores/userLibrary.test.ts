@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	clearUserLibraryHydration,
+	isUserLibraryIdsReady,
 	markUserLibraryDetailsReady,
 	markUserLibraryIdsReady,
 	markUserLibraryIdsStarted,
@@ -47,5 +48,21 @@ describe('user library hydration', () => {
 			idsReady: true,
 			detailsReady: true
 		});
+	});
+
+	it('isUserLibraryIdsReady is false until ids hydrate for the active user', () => {
+		const hydration = get(userLibraryHydrationStore);
+		expect(isUserLibraryIdsReady('user-1', hydration)).toBe(false);
+
+		markUserLibraryIdsStarted('user-1');
+		expect(isUserLibraryIdsReady('user-1', get(userLibraryHydrationStore))).toBe(false);
+
+		markUserLibraryIdsReady('user-1');
+		expect(isUserLibraryIdsReady('user-1', get(userLibraryHydrationStore))).toBe(true);
+	});
+
+	it('isUserLibraryIdsReady is true with no signed-in user', () => {
+		clearUserLibraryHydration();
+		expect(isUserLibraryIdsReady(null, get(userLibraryHydrationStore))).toBe(true);
 	});
 });

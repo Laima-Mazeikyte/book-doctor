@@ -53,11 +53,7 @@ function errorMessageFromUnknown(error: unknown): string {
 	}
 }
 
-async function withTimeout<T>(
-	promise: Promise<T>,
-	timeoutMs: number,
-	label: string
-): Promise<T> {
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
 	let timeoutId: ReturnType<typeof globalThis.setTimeout> | undefined;
 	try {
 		return await Promise.race([
@@ -303,13 +299,14 @@ function createRatingsStore() {
 				}
 			}
 		} finally {
-			if (activeFlushGeneration !== currentFlushGeneration) return;
-			isFlushing = false;
-			flushStartedAt = 0;
-			rebuildSyncStates();
-			if (needsAnotherFlush) {
-				needsAnotherFlush = false;
-				void flushPending();
+			if (activeFlushGeneration === currentFlushGeneration) {
+				isFlushing = false;
+				flushStartedAt = 0;
+				rebuildSyncStates();
+				if (needsAnotherFlush) {
+					needsAnotherFlush = false;
+					void flushPending();
+				}
 			}
 		}
 	}

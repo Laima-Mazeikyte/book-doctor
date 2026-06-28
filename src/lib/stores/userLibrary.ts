@@ -27,6 +27,7 @@ export function markUserLibraryIdsReady(userId: string): void {
 			? { ...state, idsReady: true }
 			: { userId, idsReady: true, detailsReady: false }
 	);
+	scheduleUserLibraryDetailsLoad(userId);
 }
 
 /** Layout: rated-book details hydration finished for this user. */
@@ -41,6 +42,16 @@ export function markUserLibraryDetailsReady(userId: string): void {
 /** Layout: no signed-in user — nothing to hydrate. */
 export function clearUserLibraryHydration(): void {
 	userLibraryHydrationStore.set({ userId: null, idsReady: true, detailsReady: true });
+}
+
+/** True when rating/bookmark/not-interested ids are hydrated for the active user. */
+export function isUserLibraryIdsReady(
+	userId: string | null | undefined,
+	hydration: UserLibraryHydrationState
+): boolean {
+	if (!userId) return true;
+	if (hydration.userId !== userId) return false;
+	return hydration.idsReady;
 }
 
 /** Layout registers the deferred library id loader. */

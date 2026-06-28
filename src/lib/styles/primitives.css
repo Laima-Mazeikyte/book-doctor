@@ -7,25 +7,25 @@
 	/** On-accent only (e.g. primary button text). Do not use for surfaces. */
 	--primitive-white: #ffffff;
 	/** Elevated surfaces (cards, header, inputs). */
-	--primitive-surface: #121C1C;
+	--primitive-surface: #121c1c;
 	/** Toggle/switch thumb; must contrast with track in both modes. */
 	--primitive-toggle-thumb: #e5e5e5;
-    --primitive-gray-50: #0E1616;
-    --primitive-gray-100: #121C1C;
-    --primitive-gray-200: #1E2A2A;
-    --primitive-gray-300: #2B3B3B;
-    --primitive-gray-400: #455454;
-    --primitive-gray-500: #798686;
-    --primitive-gray-900: #E5E6E6;
+	--primitive-gray-50: #0e1616;
+	--primitive-gray-100: #121c1c;
+	--primitive-gray-200: #1e2a2a;
+	--primitive-gray-300: #2b3b3b;
+	--primitive-gray-400: #455454;
+	--primitive-gray-500: #798686;
+	--primitive-gray-900: #e5e6e6;
 	/** Brand CTA fill (pair with `--primitive-white` on-button). */
 	--primitive-accent-brand: #c0e3e3;
 	/** Solid accent for links, focus, chrome. */
 	--primitive-accent-solid: #e5e5e5;
 	/** Text on solid accent surfaces. */
-	--primitive-on-accent-solid: #0E1616;
+	--primitive-on-accent-solid: #0e1616;
 	/** Muted accent fills, success chrome, focus halo (warm neutral). */
-	--primitive-accent-muted: #1E2A2A;
-	--primitive-sand: #2B3B3B;
+	--primitive-accent-muted: #1e2a2a;
+	--primitive-sand: #2b3b3b;
 	/** Cool muted surface (e.g. book card genre pills, light). */
 	--primitive-pale-aqua: #d3e0e0;
 	/** Deep cool fill (e.g. book card genre pills, dark). */
@@ -80,10 +80,12 @@
 	--primitive-font-family-content: 'BespokeSerif-Variable', Georgia, 'Times New Roman', serif;
 	/** Static cuts for predictable rendering (summary sheet / typ scale). Pair with nominal font-weight. */
 	--primitive-font-family-content-light: 'BespokeSerif-Light', Georgia, 'Times New Roman', serif;
-	--primitive-font-family-content-regular: 'BespokeSerif-Regular', Georgia, 'Times New Roman', serif;
+	--primitive-font-family-content-regular:
+		'BespokeSerif-Regular', Georgia, 'Times New Roman', serif;
 	--primitive-font-family-content-bold: 'BespokeSerif-Bold', Georgia, 'Times New Roman', serif;
 	--primitive-font-family-display: 'Beth Ellen', cursive;
-	--primitive-font-family-interactive: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+	--primitive-font-family-interactive:
+		'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 
 	/** Canonical type sizes (16px root → rem). Design spec px: 72, 48, 40, 36, 32, 20, 16, 14 */
 	--primitive-type-size-72: 3.5rem;

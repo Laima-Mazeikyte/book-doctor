@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import Button from '$lib/components/Button.svelte';
 	import { t } from '$lib/copy';
 	import { getSupabase } from '$lib/supabase';
@@ -29,13 +30,9 @@
 
 	let isFullAccount = $derived(!!session && !!user && user.is_anonymous !== true);
 
-	let showForm = $derived(
-		settled && isFullAccount && (recoveryActive || recoveryFromHash)
-	);
+	let showForm = $derived(settled && isFullAccount && (recoveryActive || recoveryFromHash));
 
-	let showWrongContext = $derived(
-		settled && isFullAccount && !recoveryActive && !recoveryFromHash
-	);
+	let showWrongContext = $derived(settled && isFullAccount && !recoveryActive && !recoveryFromHash);
 
 	let showInvalid = $derived(settled && !showForm && !showWrongContext);
 
@@ -63,7 +60,7 @@
 			return;
 		}
 		clearPasswordRecoveryFlag();
-		await goto('/rate');
+		await goto(resolve('/rate'));
 	}
 </script>
 
@@ -137,7 +134,9 @@
 					</div>
 				</div>
 				<Button type="submit" variant="primary" pill disabled={loading}>
-					{loading ? t('shared.resetPasswordPage.submitting') : t('shared.resetPasswordPage.submit')}
+					{loading
+						? t('shared.resetPasswordPage.submitting')
+						: t('shared.resetPasswordPage.submit')}
 				</Button>
 			</form>
 		{:else if showWrongContext}
@@ -147,7 +146,9 @@
 			<p class="reset-password__message">{t('shared.resetPasswordPage.invalidOrExpired')}</p>
 			<Button variant="secondary" pill href="/">{t('shared.resetPasswordPage.backHome')}</Button>
 		{:else}
-			<p class="reset-password__message" aria-live="polite">{t('shared.resetPasswordPage.loading')}</p>
+			<p class="reset-password__message" aria-live="polite">
+				{t('shared.resetPasswordPage.loading')}
+			</p>
 		{/if}
 	</div>
 </div>

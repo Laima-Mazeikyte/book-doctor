@@ -1,17 +1,13 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { loadLatestEligibleRateFeed } from '$lib/server/feedPayload';
+import { requireAccessToken } from '$lib/server/requestAuth';
 import { createSupabaseWithAuth } from '$lib/server/supabase';
 
 const DEFAULT_FEED_LIMIT = 20;
 
 export const GET: RequestHandler = async ({ request, url }) => {
-	const authHeader = request.headers.get('Authorization');
-	const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-	if (!accessToken) {
-		throw error(401, 'Unauthorized');
-	}
-
+	const accessToken = requireAccessToken(request);
 	const limitParam = url.searchParams.get('limit');
 	const limit = limitParam
 		? Math.max(1, Number.parseInt(limitParam, 10) || DEFAULT_FEED_LIMIT)
@@ -30,7 +26,9 @@ export const GET: RequestHandler = async ({ request, url }) => {
 			latest_request_id: payload.latest_request_id,
 			latest_request_status: payload.latest_request_status,
 			latest_request_error_message: payload.latest_request_error_message,
-			ratings_count: payload.ratings_count
+			ratings_count: payload.ratings_count,
+			interaction_count: payload.interaction_count,
+			eligible_for_feed: payload.eligible_for_feed
 		});
 	} catch (e) {
 		console.error(e);

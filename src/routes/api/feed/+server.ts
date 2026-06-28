@@ -1,6 +1,7 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { buildFeedPayloadForRequest } from '$lib/server/feedPayload';
+import { requireAccessToken } from '$lib/server/requestAuth';
 import { createSupabaseWithAuth } from '$lib/server/supabase';
 
 export const GET: RequestHandler = async ({ url, request }) => {
@@ -9,12 +10,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		throw error(400, 'request_id is required');
 	}
 
-	const authHeader = request.headers.get('Authorization');
-	const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-	if (!accessToken) {
-		throw error(401, 'Unauthorized');
-	}
-
+	const accessToken = requireAccessToken(request);
 	const supabase = createSupabaseWithAuth(accessToken);
 
 	try {

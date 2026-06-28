@@ -1,7 +1,4 @@
-import {
-	BOOK_GENRE_TYPE_SELECT,
-	type BookGenreSlotRow
-} from '$lib/book-catalog-fields';
+import { BOOK_GENRE_TYPE_SELECT, type BookGenreSlotRow } from '$lib/book-catalog-fields';
 import type { Book } from '$lib/types/book';
 import type { SupabaseClient } from '@supabase/supabase-js';
 

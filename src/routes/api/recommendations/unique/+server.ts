@@ -1,14 +1,18 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { BOOK_GENRE_TYPE_SELECT, catalogTypeFromRow, genresFromGenreColumns, type BookGenreSlotRow } from '$lib/book-catalog-fields';
-import { coverUrlForBookId } from '$lib/book-cover';
+import { fetchBooksByUlids } from '$lib/server/catalogBooks';
+import {
+	compareBooksByLastRecommended,
+	filterBookIdsExcludingUserLists,
+	lastRecommendedAtRecord,
+	parseRecommendationRank,
+	parseRecommendationTimestamp
+} from '$lib/server/recommendationFilters';
+import { requireAccessToken } from '$lib/server/requestAuth';
 import { createSupabaseWithAuth } from '$lib/server/supabase';
 
 export const GET: RequestHandler = async ({ request }) => {
-	const authHeader = request.headers.get('Authorization');
-	const accessToken = authHeader?.startsWith('Bearer ')
-		? authHeader.slice(7)
-		: null;
+	const accessToken = requireAccessToken(request);
 	const supabase = createSupabaseWithAuth(accessToken);
 
 	// Get user's recommendation runs (newest first) for per-book recency ordering
@@ -56,14 +60,10 @@ export const GET: RequestHandler = async ({ request }) => {
 		itemsByRequestId.set(row.request_id, list);
 
 		appearanceCountByBook.set(bid, (appearanceCountByBook.get(bid) ?? 0) + 1);
-		const rankRaw = row.rank;
-		const r =
-			typeof rankRaw === 'number'
-				? rankRaw
-				: parseInt(String(rankRaw ?? ''), 10);
-		if (!Number.isNaN(r) && r > 0) {
+		const rank = parseRecommendationRank(row.rank);
+		if (rank != null) {
 			const prev = bestRankByBook.get(bid);
-			if (prev == null || r < prev) bestRankByBook.set(bid, r);
+			if (prev == null || rank < prev) bestRankByBook.set(bid, rank);
 		}
 	}
 
@@ -76,8 +76,8 @@ export const GET: RequestHandler = async ({ request }) => {
 		const rid = log.request_id;
 		if (!rid) continue;
 		const runBookIds = itemsByRequestId.get(rid) ?? [];
-		const tsRaw = log.created_at ? new Date(log.created_at).getTime() : 0;
-		const ts = Number.isFinite(tsRaw) ? tsRaw : 0;
+		const ts = parseRecommendationTimestamp(log.created_at);
+		if (ts == null) continue;
 		for (const bid of runBookIds) {
 			if (!lastRecommendedMs.has(bid)) {
 				lastRecommendedMs.set(bid, ts);
@@ -85,27 +85,10 @@ export const GET: RequestHandler = async ({ request }) => {
 		}
 	}
 
-	// Exclude not-interested when authenticated
-	if (accessToken && uniqueBookIds.length > 0) {
-		const { data: notInterestedRows } = await supabase
-			.from('user_not_interested')
-			.select('book_id');
-		const notInterestedSet = new Set(
-			(notInterestedRows ?? []).map((r) => r.book_id).filter((id): id is string => typeof id === 'string')
-		);
-		uniqueBookIds = uniqueBookIds.filter((id) => !notInterestedSet.has(id));
-	}
-
-	// Exclude rated books when authenticated
-	if (accessToken && uniqueBookIds.length > 0) {
-		const { data: ratedRows } = await supabase
-			.from('user_ratings')
-			.select('book_id');
-		const ratedSet = new Set(
-			(ratedRows ?? []).map((r) => r.book_id).filter((id): id is string => typeof id === 'string')
-		);
-		uniqueBookIds = uniqueBookIds.filter((id) => !ratedSet.has(id));
-	}
+	uniqueBookIds = await filterBookIdsExcludingUserLists(supabase, uniqueBookIds, {
+		excludeNotInterested: true,
+		excludeRated: true
+	});
 
 	const recommendationAppearanceCount: Record<string, number> = {};
 	for (const [bid, n] of appearanceCountByBook) {
@@ -117,63 +100,30 @@ export const GET: RequestHandler = async ({ request }) => {
 	}
 
 	if (uniqueBookIds.length === 0) {
-		const lastRecommendedAt: Record<string, number> = {};
-		for (const [bid, ms] of lastRecommendedMs) {
-			lastRecommendedAt[String(bid)] = ms;
-		}
 		return json({
 			books: [],
 			allRecommendedBookIds,
-			lastRecommendedAt,
+			lastRecommendedAt: lastRecommendedAtRecord(lastRecommendedMs),
 			recommendationAppearanceCount,
 			bestRecommendationRank
 		});
 	}
 
-	const { data: booksData, error: booksError } = await supabase
-		.from('books')
-		.select(`id, book_id, book_name, author, summary, year, ${BOOK_GENRE_TYPE_SELECT}`)
-		.in('book_id', uniqueBookIds);
+	try {
+		const books = await fetchBooksByUlids(supabase, uniqueBookIds);
 
-	if (booksError) {
+		// Newest recommendation batch first; stable tie-break by title
+		books.sort((a, b) => compareBooksByLastRecommended(a, b, lastRecommendedMs));
+
+		return json({
+			books,
+			allRecommendedBookIds,
+			lastRecommendedAt: lastRecommendedAtRecord(lastRecommendedMs),
+			recommendationAppearanceCount,
+			bestRecommendationRank
+		});
+	} catch (booksError) {
 		console.error(booksError);
 		throw error(500, 'Failed to load books');
 	}
-
-	const books = (booksData ?? []).map((b) => {
-		const row = b as typeof b & BookGenreSlotRow & { type?: string | null };
-		const type = catalogTypeFromRow(row);
-		return {
-			id: String(b.id),
-			book_id: b.book_id,
-			title: b.book_name,
-			author: b.author,
-			coverUrl: coverUrlForBookId(b.book_id),
-			summary: b.summary ?? undefined,
-			year: b.year != null ? String(b.year) : undefined,
-			genres: genresFromGenreColumns(row),
-			...(type ? { type } : {})
-		};
-	});
-
-	// Newest recommendation batch first; stable tie-break by title
-	books.sort((a, b) => {
-		const ta = lastRecommendedMs.get(a.book_id) ?? 0;
-		const tb = lastRecommendedMs.get(b.book_id) ?? 0;
-		if (tb !== ta) return tb - ta;
-		return (a.title ?? '').localeCompare(b.title ?? '');
-	});
-
-	const lastRecommendedAt: Record<string, number> = {};
-	for (const [bid, ms] of lastRecommendedMs) {
-		lastRecommendedAt[String(bid)] = ms;
-	}
-
-	return json({
-		books,
-		allRecommendedBookIds,
-		lastRecommendedAt,
-		recommendationAppearanceCount,
-		bestRecommendationRank
-	});
 };

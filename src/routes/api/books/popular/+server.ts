@@ -111,7 +111,12 @@ function buildTop100Page(catalog: Top100CatalogRow[], offset: number, seedParam:
 	const nextOffset = offset + page.length;
 	const hasMore = nextOffset < ordered.length;
 
-	return { books, nextOffset, hasMore, seed: !seedParam || seedParam.length === 0 ? seed : undefined };
+	return {
+		books,
+		nextOffset,
+		hasMore,
+		seed: !seedParam || seedParam.length === 0 ? seed : undefined
+	};
 }
 
 export const GET: RequestHandler = async ({ url, request }) => {

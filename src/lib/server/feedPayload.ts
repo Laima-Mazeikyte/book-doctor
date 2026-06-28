@@ -1,4 +1,9 @@
 import { type BookGenreSlotRow } from '$lib/book-catalog-fields';
+import {
+	feedInteractionCountFromParts,
+	meetsRateFeedInteractionThreshold,
+	type LatestRateFeedMode
+} from '$lib/rate/feedEligibility';
 import { mapBookRowToBook } from '$lib/search/mapBookRowToBook';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -21,12 +26,7 @@ export type FeedJsonResponse = {
 	error_message: string | null;
 };
 
-export type LatestEligibleRateFeedMode =
-	| 'has_eligible_feed'
-	| 'feed_exhausted'
-	| 'feed_generation_pending'
-	| 'no_feed_yet'
-	| 'feed_error';
+export type LatestEligibleRateFeedMode = LatestRateFeedMode;
 
 export type LatestEligibleRateFeedPayload = FeedJsonResponse & {
 	mode: LatestEligibleRateFeedMode;
@@ -34,6 +34,8 @@ export type LatestEligibleRateFeedPayload = FeedJsonResponse & {
 	latest_request_status: string | null;
 	latest_request_error_message: string | null;
 	ratings_count: number;
+	interaction_count: number;
+	eligible_for_feed: boolean;
 };
 
 type EligibleFeedBookRow = {
@@ -80,24 +82,30 @@ export async function loadLatestEligibleRateFeed(
 	supabase: SupabaseClient,
 	limit = 20
 ): Promise<LatestEligibleRateFeedPayload> {
-	const [latestAnyResult, latestCompletedResult, ratingsCountResult, latestStateResult] =
-		await Promise.all([
-			supabase
-				.from('feed_requests')
-				.select('id, status, error_message')
-				.order('created_at', { ascending: false, nullsFirst: false })
-				.limit(1)
-				.maybeSingle(),
-			supabase
-				.from('feed_requests')
-				.select('id, status, error_message')
-				.eq('status', 'completed')
-				.order('created_at', { ascending: false, nullsFirst: false })
-				.limit(1)
-				.maybeSingle(),
-			supabase.from('user_ratings').select('book_id', { count: 'exact', head: true }),
-			supabase.rpc('get_latest_rate_feed_state', { p_limit: limit })
-		]);
+	const [
+		latestAnyResult,
+		latestCompletedResult,
+		ratingsCountResult,
+		bookmarksCountResult,
+		notInterestedCountResult
+	] = await Promise.all([
+		supabase
+			.from('feed_requests')
+			.select('id, status, error_message')
+			.order('created_at', { ascending: false, nullsFirst: false })
+			.limit(1)
+			.maybeSingle(),
+		supabase
+			.from('feed_requests')
+			.select('id, status, error_message')
+			.eq('status', 'completed')
+			.order('created_at', { ascending: false, nullsFirst: false })
+			.limit(1)
+			.maybeSingle(),
+		supabase.from('user_ratings').select('book_id', { count: 'exact', head: true }),
+		supabase.from('user_bookmarks').select('book_id', { count: 'exact', head: true }),
+		supabase.from('user_not_interested').select('book_id', { count: 'exact', head: true })
+	]);
 
 	if (latestAnyResult.error) {
 		console.error('[feed] latest feed request lookup failed:', latestAnyResult.error);
@@ -117,9 +125,14 @@ export async function loadLatestEligibleRateFeed(
 		throw new Error('Failed to load ratings count');
 	}
 
-	if (latestStateResult.error) {
-		console.error('[feed] get_latest_rate_feed_state failed:', latestStateResult.error);
-		throw new Error('Failed to load latest eligible feed');
+	if (bookmarksCountResult.error) {
+		console.error('[feed] user_bookmarks count failed:', bookmarksCountResult.error);
+		throw new Error('Failed to load bookmarks count');
+	}
+
+	if (notInterestedCountResult.error) {
+		console.error('[feed] user_not_interested count failed:', notInterestedCountResult.error);
+		throw new Error('Failed to load not-interested count');
 	}
 
 	const latestAny = latestAnyResult.data as FeedRequestPointer | null;
@@ -127,15 +140,44 @@ export async function loadLatestEligibleRateFeed(
 	const latestRequestId = stringOrNull(latestAny?.id);
 	const latestRequestStatus = normalizeFeedStatus(latestAny?.status);
 	const latestRequestErrorMessage = latestAny?.error_message?.trim() || null;
-	const latestCompletedRequestId = stringOrNull(latestCompleted?.id);
+	const ratingsCount = ratingsCountResult.count ?? 0;
+	const interactionCount = feedInteractionCountFromParts({
+		ratings: ratingsCount,
+		bookmarks: bookmarksCountResult.count ?? 0,
+		notInterested: notInterestedCountResult.count ?? 0
+	});
+	const eligibleForFeed = meetsRateFeedInteractionThreshold(interactionCount);
 
+	if (!eligibleForFeed) {
+		return {
+			mode: 'below_threshold',
+			status: 'none',
+			books: [],
+			request_id: '',
+			latest_request_id: latestRequestId,
+			latest_request_status: latestRequestStatus,
+			latest_request_error_message: latestRequestErrorMessage,
+			ratings_count: ratingsCount,
+			interaction_count: interactionCount,
+			eligible_for_feed: false,
+			error_message: null
+		};
+	}
+
+	const latestStateResult = await supabase.rpc('get_latest_rate_feed_state', { p_limit: limit });
+
+	if (latestStateResult.error) {
+		console.error('[feed] get_latest_rate_feed_state failed:', latestStateResult.error);
+		throw new Error('Failed to load latest eligible feed');
+	}
+
+	const latestCompletedRequestId = stringOrNull(latestCompleted?.id);
 	const rows = (latestStateResult.data ?? []) as LatestRateFeedStateRow[];
 	const head = rows[0];
 	const requestId =
 		stringOrNull(head?.latest_completed_request_id) ?? latestCompletedRequestId ?? '';
 	const bookRows = rows.filter((row) => row.id != null);
 	const books = mapEligibleFeedRows(bookRows);
-	const ratingsCount = ratingsCountResult.count ?? 0;
 
 	let mode: LatestEligibleRateFeedMode;
 	if (books.length > 0) {
@@ -159,6 +201,8 @@ export async function loadLatestEligibleRateFeed(
 		latest_request_status: normalizeFeedStatus(head?.latest_request_status) ?? latestRequestStatus,
 		latest_request_error_message: latestRequestErrorMessage,
 		ratings_count: ratingsCount,
+		interaction_count: interactionCount,
+		eligible_for_feed: true,
 		error_message: null
 	};
 }

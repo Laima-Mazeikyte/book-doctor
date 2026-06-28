@@ -9,11 +9,10 @@ export type FaqSegment =
 			href: string;
 			external: boolean;
 			internalAction?: 'bugReport';
-		};
+	  };
 
 /** [label](https://...), [label](mailto:...), or [label](app:feedback) to open the bug/feedback dialog. */
-const LINK_PREFIX_RE =
-	/^\[([^\]]*)\]\(((?:https?:\/\/|mailto:)[^)\s]+|app:feedback)\)/;
+const LINK_PREFIX_RE = /^\[([^\]]*)\]\(((?:https?:\/\/|mailto:)[^)\s]+|app:feedback)\)/;
 
 export function faqAnswerParagraphs(answer: string): string[] {
 	return answer
@@ -31,9 +30,7 @@ const BLOCKQUOTE_LINE_RE = /^\s*>\s?/;
  * `blockquote` and the body with `> ` stripped from each line. Otherwise the paragraph
  * is unchanged and kind is `p`.
  */
-export function faqParagraphBlock(
-	paragraph: string
-): { kind: 'p' | 'blockquote'; text: string } {
+export function faqParagraphBlock(paragraph: string): { kind: 'p' | 'blockquote'; text: string } {
 	const lines = paragraph.split('\n');
 	const firstNonEmpty = lines.find((l) => l.trim() !== '');
 	if (!firstNonEmpty || !BLOCKQUOTE_LINE_RE.test(firstNonEmpty)) {

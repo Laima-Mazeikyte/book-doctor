@@ -12,11 +12,7 @@
 	<h1 id="faq-page-heading" class="faq-page__title typ-display2 typ-display2--content">
 		{t('faq.title')}
 	</h1>
-	<div
-		class="faq-page__content"
-		role="region"
-		aria-labelledby="faq-page-heading"
-	>
+	<div class="faq-page__content" role="region" aria-labelledby="faq-page-heading">
 		<Accordion />
 	</div>
 </div>

@@ -86,10 +86,7 @@
 	<h1 class="not-interested-page__title typ-display2">{t('notInterested.title')}</h1>
 	<p class="not-interested-page__intro">{t('notInterested.intro')}</p>
 	{#if loading}
-		<BookCardGridSkeleton
-			class="not-interested-page__list"
-			ariaLabel={t('notInterested.title')}
-		/>
+		<BookCardGridSkeleton class="not-interested-page__list" ariaLabel={t('notInterested.title')} />
 	{:else if error}
 		<p class="not-interested-page__error" role="alert">{error}</p>
 	{:else if books.length === 0}

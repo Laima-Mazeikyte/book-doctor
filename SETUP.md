@@ -4,11 +4,11 @@ This guide describes how to run **book-doctor** on your machine. The app is a [S
 
 ## Prerequisites
 
-| Requirement | Notes |
-|-------------|--------|
+| Requirement | Notes                                                                                                                                            |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Node.js** | Use a current LTS release (for example **22.x**). The project does not pin `engines` in `package.json`; if install or build fails, upgrade Node. |
-| **pnpm** | **9.15.9** is declared in `package.json`. Enable via Corepack (recommended): `corepack enable` then `corepack prepare pnpm@9.15.9 --activate`. |
-| **Git** | To clone the repository. |
+| **pnpm**    | **9.15.9** is declared in `package.json`. Enable via Corepack (recommended): `corepack enable` then `corepack prepare pnpm@9.15.9 --activate`.   |
+| **Git**     | To clone the repository.                                                                                                                         |
 
 ## 1. Clone and install
 
@@ -28,16 +28,16 @@ cp .env.example .env
 
 Fill in values as needed. The table below matches `.env.example`.
 
-| Variable | Required for basic app | Purpose |
-|----------|-------------------------|--------|
-| `VITE_SUPABASE_URL` | **Yes** | Supabase project URL. Server code loads this at startup; if missing, the app throws when server modules load. |
-| `VITE_SUPABASE_ANON_KEY` | **Yes** | Supabase anon (public) key. Same note as above. |
-| `PUBLIC_SUPABASE_URL` | **Yes** (browser client) | Same URL as above, for the browser Supabase client (`$env/static/public`). |
-| `PUBLIC_SUPABASE_ANON_KEY` | **Yes** (browser client) | Same anon key as above. |
-| `SUPABASE_SERVICE_ROLE_KEY` | No | Service role key for server features that bypass RLS (for example webhook / recommendation flows). |
-| `SUPABASE_WEBHOOK_SECRET` | No | Optional shared secret for validating webhook requests. |
-| `BOOKDOC_RECOMMEND_URL` | No | Optional external recommendation API. |
-| `PUBLIC_BUNNY_COVERS_BASE` | No | Base URL for book cover images (Bunny.net pull zone). If unset, covers are omitted. |
+| Variable                    | Required for basic app   | Purpose                                                                                                       |
+| --------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `VITE_SUPABASE_URL`         | **Yes**                  | Supabase project URL. Server code loads this at startup; if missing, the app throws when server modules load. |
+| `VITE_SUPABASE_ANON_KEY`    | **Yes**                  | Supabase anon (public) key. Same note as above.                                                               |
+| `PUBLIC_SUPABASE_URL`       | **Yes** (browser client) | Same URL as above, for the browser Supabase client (`$env/static/public`).                                    |
+| `PUBLIC_SUPABASE_ANON_KEY`  | **Yes** (browser client) | Same anon key as above.                                                                                       |
+| `SUPABASE_SERVICE_ROLE_KEY` | No                       | Service role key for server features that bypass RLS (for example webhook / recommendation flows).            |
+| `SUPABASE_WEBHOOK_SECRET`   | No                       | Optional shared secret for validating webhook requests.                                                       |
+| `BOOKDOC_RECOMMEND_URL`     | No                       | Optional external recommendation API.                                                                         |
+| `PUBLIC_BUNNY_COVERS_BASE`  | No                       | Base URL for book cover images (Bunny.net pull zone). If unset, covers are omitted.                           |
 
 **Practical tip:** For local development, set **`VITE_*` and `PUBLIC_*` pairs to the same URL and the same anon key** so both server and browser stay in sync.
 
@@ -83,13 +83,13 @@ The dev server is configured to listen on all interfaces and allows the hostname
 
 ## 5. Quality checks and tests
 
-| Command | What it does |
-|---------|----------------|
-| `pnpm run check` | Type-check with `svelte-check`. |
-| `pnpm run lint` | Prettier check + ESLint. |
-| `pnpm run format` | Write Prettier formatting. |
-| `pnpm run test:unit` | Unit / component tests (Vitest). |
-| `pnpm run test:e2e` | End-to-end tests (Playwright); runs `build` + `preview` on port **4173** per `playwright.config.ts`. |
+| Command              | What it does                                                                                         |
+| -------------------- | ---------------------------------------------------------------------------------------------------- |
+| `pnpm run check`     | Type-check with `svelte-check`.                                                                      |
+| `pnpm run lint`      | Prettier check + ESLint.                                                                             |
+| `pnpm run format`    | Write Prettier formatting.                                                                           |
+| `pnpm run test:unit` | Unit / component tests (Vitest).                                                                     |
+| `pnpm run test:e2e`  | End-to-end tests (Playwright); runs `build` + `preview` on port **4173** per `playwright.config.ts`. |
 
 Before first e2e run, install browser binaries:
 
