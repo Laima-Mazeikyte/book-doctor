@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
@@ -143,6 +143,10 @@
 	let overlaySearchBar = $state<{ focusInput: () => void } | undefined>(undefined);
 
 	let savedScrollY = $state(0);
+
+	/** Aborts any in-flight curated-feed polling when the page is torn down (e.g. navigation). */
+	const feedPollAbort = new AbortController();
+	onDestroy(() => feedPollAbort.abort());
 
 	/** Bumped when a new search overlay session starts; stale feed refreshes ignore flag writes. */
 	let searchFeedSessionId = $state(0);
@@ -513,6 +517,18 @@
 			}
 			return;
 		}
+		if (!startedFromLatestFeed) {
+			// First time crossing the interaction threshold this session: enter personalized-feed
+			// mode now but leave the current Top 100 in place. The first curated batch is fetched
+			// lazily on the next load-more / scroll-to-bottom, so the user's scroll position is kept.
+			if (searchOverlayOpen) return; // the search overlay runs its own feed-refresh path
+			startedFromLatestFeed = true;
+			if (!hasMore) {
+				hasMore = true;
+				armFeedBatchStrictGrace();
+			}
+			return;
+		}
 		if (lastAppendWasFeed) engagedWithPendingBatch = true;
 		reviveMainListPaginationAfterEngagement();
 	}
@@ -521,6 +537,11 @@
 	function handleManualLoadMoreBooks() {
 		if (loadingMore || loadingInitial) return;
 		if (!lastAppendWasFeed) {
+			// Promoted into feed mode but still showing Top 100: load the first curated batch here.
+			if (paginationFeedOnly) {
+				void loadCuratedFeedBatch();
+				return;
+			}
 			void loadPopular(nextOffset, 0);
 			return;
 		}
@@ -572,7 +593,13 @@
 			(entries) => {
 				if (!entries[0].isIntersecting || loading || initial || overlayBlocksFeed || !more) return;
 				if (!lastFeed) {
-					void loadPopular(next, 0);
+					// In personalized-feed mode but no curated batch appended yet (just promoted, or an
+					// exhausted-feed fallback): fetch the first curated batch instead of more Top 100.
+					if (feedOnly) {
+						void loadCuratedFeedBatch();
+					} else {
+						void loadPopular(next, 0);
+					}
 					return;
 				}
 				if (!feedOnly) {
@@ -1076,7 +1103,7 @@
 
 			if (insertResult.kind !== 'created') return;
 
-			await pollCuratedFeedRequest(insertResult.requestId, token);
+			await pollCuratedFeedRequest(insertResult.requestId, token, feedPollAbort.signal);
 			if (sid !== searchFeedSessionId) return;
 		} catch (e) {
 			console.error('[rate] refreshMainFeedAfterSearchSession', e);
@@ -1118,7 +1145,7 @@
 			));
 		if (requestId == null) return false;
 
-		const outcome = await pollCuratedFeedRequest(requestId, token);
+		const outcome = await pollCuratedFeedRequest(requestId, token, feedPollAbort.signal);
 		if (outcome.kind === 'completed' && outcome.books.length > 0) {
 			commitInitialCuratedChoice(outcome.books);
 			return true;
@@ -1277,6 +1304,16 @@
 		feedBatchRequestInFlight = true;
 		popularError = null;
 		try {
+			if (!lastAppendWasFeed) {
+				// First curated batch this session (promotion or exhausted-feed fallback): make sure the
+				// ratings that unlocked the feed are persisted — and a session exists — before the
+				// backend generates it, otherwise it sees a below-threshold user and skips.
+				await ensureAnonymousSessionIfNeeded();
+				await ratingsStore.flushPending();
+				await planToReadStore.flushPending();
+				await notInterestedStore.flushPending();
+			}
+
 			const supabase = getSupabase();
 			const token = await resolveAccessToken({ lazyAnonymous: !startedFromLatestFeed });
 			const user = get(authStore).user;
@@ -1311,7 +1348,8 @@
 
 			loadingMore = true;
 
-			const outcome = await pollCuratedFeedRequest(requestId, token);
+			const outcome = await pollCuratedFeedRequest(requestId, token, feedPollAbort.signal);
+			if (outcome.kind === 'aborted') return;
 
 			if (!meetsFeedInteractionThreshold()) {
 				await resetMainListToTop100();
