@@ -16,15 +16,17 @@ export async function refreshRecommendationsCountFromApi(
 		const res = await fetch('/api/recommendations/count', {
 			headers: { Authorization: `Bearer ${accessToken}` }
 		});
+		// On a transient failure leave the last-known count intact rather than zeroing it:
+		// `0` is also the legitimate "no recommendations" value, and clobbering a good count
+		// hides the primary nav for anonymous users (see AppHeader `showMainNav`). Sign-out
+		// resets the count authoritatively elsewhere; callers retry on the returned `false`.
 		if (!res.ok) {
-			recommendationsCountStore.set(0);
 			return false;
 		}
 		const data = await res.json();
 		recommendationsCountStore.set(data.count ?? 0);
 		return true;
 	} catch {
-		recommendationsCountStore.set(0);
 		return false;
 	}
 }

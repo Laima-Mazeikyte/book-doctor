@@ -33,3 +33,4 @@ test-results
 .make-it-accessible-skill/
 .example data
 .docs
+.autofixer-payload.json
