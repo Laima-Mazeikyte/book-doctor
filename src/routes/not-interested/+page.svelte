@@ -7,12 +7,18 @@
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
 	import BookCard from '$lib/components/BookCard.svelte';
 	import BookCardGridSkeleton from '$lib/components/BookCardGridSkeleton.svelte';
+	import {
+		coverPriorityFor,
+		estimateGridColumns,
+		trackGridColumns
+	} from '$lib/components/book-card/coverPriority';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
 
 	let books = $state<Book[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
+	let gridColumns = $state(estimateGridColumns());
 
 	// Refetch when visiting this page or when auth changes
 	$effect(() => {
@@ -92,12 +98,17 @@
 	{:else if books.length === 0}
 		<p class="not-interested-page__empty">{t('notInterested.empty')}</p>
 	{:else}
-		<ul class="not-interested-page__list book-card-grid" aria-label={t('notInterested.title')}>
-			{#each books as book (book.id)}
+		<ul
+			class="not-interested-page__list book-card-grid"
+			aria-label={t('notInterested.title')}
+			use:trackGridColumns={(c) => (gridColumns = c)}
+		>
+			{#each books as book, i (book.id)}
 				<li>
 					<BookCard
 						context="not-interested"
 						{book}
+						coverPriority={coverPriorityFor(i, gridColumns)}
 						bookmarked={$planToReadStore.has(book.id)}
 						onBookmark={(id) => handleBookmark(book, id)}
 						currentRating={$ratingsStore.get(book.id) ?? null}

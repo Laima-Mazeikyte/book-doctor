@@ -32,7 +32,8 @@
 		onRemoveRating,
 		notInterested = false,
 		onNotInterested,
-		onAfterRate
+		onAfterRate,
+		coverPriority = 'eager'
 	}: BookCardListProps = $props();
 
 	const isRateContext = $derived(context === 'rate');
@@ -462,6 +463,9 @@
 						src={book.coverUrl}
 						alt=""
 						class="book-card__cover"
+						loading={coverPriority === 'lazy' ? 'lazy' : 'eager'}
+						fetchpriority={coverPriority === 'high' ? 'high' : 'auto'}
+						decoding="async"
 						onerror={() => (coverImageFailed = true)}
 					/>
 				</button>

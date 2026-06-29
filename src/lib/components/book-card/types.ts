@@ -1,4 +1,5 @@
 import type { Book, RatingValue } from '$lib/types/book';
+import type { CoverPriority } from './coverPriority';
 
 /**
  * Route/screen key for unified BookCard. Drives which chrome and rating wiring apply.
@@ -30,4 +31,6 @@ export type BookCardListProps = {
 	onNotInterested?: (bookId: string) => void;
 	/** Rate context: called after star rating is set or cleared (for parent scroll/feed logic). */
 	onAfterRate?: (book: Book) => void;
+	/** Cover-image loading tier from grid position (eager/high/lazy). Defaults to `eager`. */
+	coverPriority?: CoverPriority;
 };

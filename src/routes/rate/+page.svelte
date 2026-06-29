@@ -7,6 +7,11 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/stores';
 	import BookCard from '$lib/components/BookCard.svelte';
+	import {
+		coverPriorityFor,
+		estimateGridColumns,
+		trackGridColumns
+	} from '$lib/components/book-card/coverPriority';
 	import { ensureAnonymousSessionStarted } from '$lib/auth/anonymous-session';
 	import { getSupabase } from '$lib/supabase';
 	import { authRestorePending, authStore, waitForAuthReady } from '$lib/stores/auth';
@@ -470,6 +475,10 @@
 	let pendingMainListTop100Reset = $state(false);
 
 	let mainListPrefetchPx = $state(600);
+
+	/** Rendered column counts for the feed and search grids — drive cover eager/lazy priority. */
+	let feedGridColumns = $state(estimateGridColumns());
+	let searchGridColumns = $state(estimateGridColumns());
 
 	const feedInteractionCount = $derived(
 		$ratingsStore.size + $planToReadStore.size + $notInterestedStore.size
@@ -1605,12 +1614,16 @@
 						ariaLive="polite"
 					/>
 				{:else}
-					<ul class="rate-page__list book-card-grid">
-						{#each popularBooks as book (mainListKey(book))}
+					<ul
+						class="rate-page__list book-card-grid"
+						use:trackGridColumns={(c) => (feedGridColumns = c)}
+					>
+						{#each popularBooks as book, i (mainListKey(book))}
 							<li>
 								<BookCard
 									context="rate"
 									{book}
+									coverPriority={coverPriorityFor(i, feedGridColumns)}
 									onSearchAuthor={handleSearchAuthor}
 									bookmarked={$planToReadStore.has(book.id)}
 									onBookmark={(id) => handleRateBookmark(book, id)}
@@ -1799,12 +1812,14 @@
 							<ul
 								class="rate-page__list book-card-grid"
 								aria-labelledby="rate-search-results-summary"
+								use:trackGridColumns={(c) => (searchGridColumns = c)}
 							>
-								{#each searchResults as book (book.id)}
+								{#each searchResults as book, i (book.id)}
 									<li>
 										<BookCard
 											context="rate"
 											{book}
+											coverPriority={coverPriorityFor(i, searchGridColumns)}
 											onSearchAuthor={handleSearchAuthor}
 											bookmarked={$planToReadStore.has(book.id)}
 											onBookmark={(id) => handleRateBookmark(book, id)}

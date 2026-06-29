@@ -15,10 +15,18 @@
 	import { ratedSummarySheetKeepAlive } from '$lib/stores/ratedSummarySheetKeepAlive';
 	import BookCard from '$lib/components/BookCard.svelte';
 	import BookCardGridSkeleton from '$lib/components/BookCardGridSkeleton.svelte';
+	import {
+		coverPriorityFor,
+		estimateGridColumns,
+		trackGridColumns
+	} from '$lib/components/book-card/coverPriority';
 	import NavStyleTabList from '$lib/components/NavStyleTabList.svelte';
 	import { ChevronDown } from 'lucide-svelte';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
+
+	/** Rendered column count for the bookshelf grid — drives cover eager/lazy priority. */
+	let gridColumns = $state(estimateGridColumns());
 
 	const FILTER_IDS = ['rated', 'bookmarked', 'not-interested'] as const;
 	type FilterId = (typeof FILTER_IDS)[number];
@@ -457,13 +465,15 @@
 			<ul
 				class="bookshelf-page__list book-card-grid"
 				aria-label={t('shared.ratingsBar.yourRatings')}
+				use:trackGridColumns={(c) => (gridColumns = c)}
 			>
 				{#if activeFilter === 'rated'}
-					{#each ratedDisplayEntries as { book } (book.id)}
+					{#each ratedDisplayEntries as { book }, i (book.id)}
 						<li>
 							<BookCard
 								context="rated"
 								{book}
+								coverPriority={coverPriorityFor(i, gridColumns)}
 								bookmarked={$planToReadStore.has(book.id)}
 								onBookmark={(id) => handleBookmark(book, id)}
 								currentRating={$ratingsStore.get(book.id) ?? null}
@@ -475,12 +485,13 @@
 						</li>
 					{/each}
 				{:else}
-					{#each currentListBooks as book (book.id)}
+					{#each currentListBooks as book, i (book.id)}
 						{@const ctx = cardContextFor()}
 						<li>
 							<BookCard
 								context={ctx}
 								{book}
+								coverPriority={coverPriorityFor(i, gridColumns)}
 								bookmarked={$planToReadStore.has(book.id)}
 								onBookmark={(id) => handleBookmark(book, id)}
 								currentRating={$ratingsStore.get(book.id) ?? null}
