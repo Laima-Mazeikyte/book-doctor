@@ -45,9 +45,18 @@
 	import { searchBooks, searchBooksByAuthor, SEARCH_MIN_QUERY_LENGTH } from '$lib/search';
 	import { nextRateSearchModeAfterQueryChange } from '$lib/search/rateSearchAuthorMode';
 	import {
+		FEED_NEAR_BOTTOM_PX,
 		FEED_REQUEST_BATCH_SIZE,
 		FEED_REQUEST_CREATE_COOLDOWN_MS
 	} from '$lib/feed/constants';
+	import {
+		feedRequestCooldownRemaining,
+		initialFeedPaginationState,
+		transitionFeedPagination,
+		type FeedPaginationCommand,
+		type FeedPaginationEvent,
+		type FeedPaginationPhase
+	} from '$lib/feed/feedPaginationController';
 	import { insertFeedRequestRow, pollCuratedFeedRequest } from '$lib/feed/warmCuratedFeed';
 	import {
 		MIN_INTERACTIONS_FOR_RATE_FEED,
@@ -62,7 +71,6 @@
 
 	const SCROLL_THRESHOLD = 60;
 	const EMPTY_PAGE_CHAIN_MAX = 25;
-	const FEED_BATCH_BROWSE_DWELL_MS = 2000;
 
 	type LatestFeedMode = LatestRateFeedMode;
 	type LatestFeedStateResponse = {
@@ -80,7 +88,7 @@
 	};
 	type FeedRequestInsertResult =
 		| { kind: 'created'; requestId: string }
-		| { kind: 'cooldown' }
+		| { kind: 'cooldown'; remainingMs: number }
 		| { kind: 'failed' };
 
 	// ── Search ─────────────────────────────────────────────────────────────────
@@ -154,7 +162,8 @@
 	const feedPollAbort = new AbortController();
 	onDestroy(() => {
 		feedPollAbort.abort();
-		clearFeedBatchBrowseDwellTimer();
+		clearFeedPaginationCooldownRetry();
+		clearFeedScrollProgressRaf();
 	});
 
 	/** Bumped when a new search overlay session starts; stale feed refreshes ignore flag writes. */
@@ -467,18 +476,14 @@
 
 	let startedFromLatestFeed = $state(false);
 	let lastAppendWasFeed = $state(false);
-	let feedBatchBrowseReady = $state(false);
-	let lastFeedBatchStartIndex = $state(0);
-	let lastFeedBatchAppendedCount = $state(0);
-	let feedBatchBrowseEligibleAt = $state(0);
-	let feedBatchBrowseGeneration = $state(0);
-	let feedBatchBrowseDwellTimer: ReturnType<typeof setTimeout> | null = null;
+	let feedPagination = $state(initialFeedPaginationState());
+	let feedPaginationCooldownRetryTimer: ReturnType<typeof setTimeout> | null = null;
+	let feedScrollProgressRaf = 0;
 	/** Cold `loadInitialMainList` used Top 100 because no access token was ready in time; retry feed once auth exists. */
 	let mainListFellBackDueToMissingAuthToken = $state(false);
 	let initialListDecisionSettled = $state(false);
 	let initialMainListLoadInFlight: Promise<void> | null = null;
 	let feedBatchRequestInFlight = false;
-	let lastFeedRequestCreatedAt = 0;
 	/** Deferred Top 100 reload while the search overlay is open. */
 	let pendingMainListTop100Reset = $state(false);
 
@@ -507,58 +512,51 @@
 
 	const showMainListLoadMoreTile = $derived.by(() => {
 		if (popularBooks.length === 0 || loadingInitial) return false;
-		return !hasMore || (paginationFeedOnly && lastAppendWasFeed && !feedBatchBrowseReady);
+		return (
+			!hasMore ||
+			(paginationFeedOnly && lastAppendWasFeed && feedPagination.phase === 'creditPending')
+		);
 	});
 
-	const feedBatchBrowseAnchorIndex = $derived.by(() => {
-		if (!lastAppendWasFeed || lastFeedBatchAppendedCount <= 0) return -1;
-		const target = lastFeedBatchStartIndex + Math.floor(lastFeedBatchAppendedCount * 0.5);
-		return Math.min(target, popularBooks.length - 1);
-	});
-
-	function clearFeedBatchBrowseDwellTimer() {
-		if (feedBatchBrowseDwellTimer) {
-			clearTimeout(feedBatchBrowseDwellTimer);
-			feedBatchBrowseDwellTimer = null;
+	function clearFeedPaginationCooldownRetry() {
+		if (feedPaginationCooldownRetryTimer) {
+			clearTimeout(feedPaginationCooldownRetryTimer);
+			feedPaginationCooldownRetryTimer = null;
 		}
 	}
 
-	function openFeedBatchBrowseGate(generation: number) {
-		if (generation !== feedBatchBrowseGeneration || feedBatchBrowseReady) return;
-		const remaining = feedBatchBrowseEligibleAt - Date.now();
-		if (remaining > 0) {
-			clearFeedBatchBrowseDwellTimer();
-			feedBatchBrowseDwellTimer = setTimeout(() => {
-				feedBatchBrowseDwellTimer = null;
-				openFeedBatchBrowseGate(generation);
-			}, remaining);
-			return;
+	function clearFeedScrollProgressRaf() {
+		if (feedScrollProgressRaf) {
+			cancelAnimationFrame(feedScrollProgressRaf);
+			feedScrollProgressRaf = 0;
 		}
-		clearFeedBatchBrowseDwellTimer();
-		feedBatchBrowseReady = true;
 	}
 
-	function forceFeedBatchBrowseReady() {
-		clearFeedBatchBrowseDwellTimer();
-		feedBatchBrowseReady = true;
+	function runFeedPaginationCommands(commands: FeedPaginationCommand[]) {
+		for (const command of commands) {
+			if (command.type === 'REQUEST_LOAD') {
+				void loadCuratedFeedBatch();
+			} else if (command.type === 'SCHEDULE_COOLDOWN_RETRY') {
+				clearFeedPaginationCooldownRetry();
+				feedPaginationCooldownRetryTimer = setTimeout(() => {
+					feedPaginationCooldownRetryTimer = null;
+					dispatchFeedPagination({ type: 'COOLDOWN_ELAPSED', now: Date.now() });
+				}, command.delayMs);
+			} else {
+				clearFeedPaginationCooldownRetry();
+			}
+		}
 	}
 
-	function armPendingFeedBatchBrowse(startIndex: number, appendedCount: number) {
-		clearFeedBatchBrowseDwellTimer();
-		feedBatchBrowseGeneration += 1;
-		feedBatchBrowseReady = false;
-		lastFeedBatchStartIndex = Math.max(0, startIndex);
-		lastFeedBatchAppendedCount = Math.max(0, appendedCount);
-		feedBatchBrowseEligibleAt = Date.now() + FEED_BATCH_BROWSE_DWELL_MS;
-	}
-
-	function resetFeedBatchBrowseGate() {
-		clearFeedBatchBrowseDwellTimer();
-		feedBatchBrowseGeneration += 1;
-		feedBatchBrowseReady = false;
-		lastFeedBatchStartIndex = 0;
-		lastFeedBatchAppendedCount = 0;
-		feedBatchBrowseEligibleAt = 0;
+	function dispatchFeedPagination(event: FeedPaginationEvent): {
+		previousPhase: FeedPaginationPhase;
+		phase: FeedPaginationPhase;
+	} {
+		const previousPhase = feedPagination.phase;
+		const transition = transitionFeedPagination(feedPagination, event);
+		feedPagination = transition.state;
+		runFeedPaginationCommands(transition.commands);
+		return { previousPhase, phase: feedPagination.phase };
 	}
 
 	function onLibraryMutationForFeed() {
@@ -595,8 +593,7 @@
 		}
 		if (paginationFeedOnly) {
 			if (!meetsFeedInteractionThreshold()) return;
-			forceFeedBatchBrowseReady();
-			void loadCuratedFeedBatch();
+			dispatchFeedPagination({ type: 'MANUAL_LOAD', now: Date.now() });
 			return;
 		}
 		void loadPopular(nextOffset, 0);
@@ -616,14 +613,79 @@
 
 	const SEARCH_SCROLL_LOAD_THRESHOLD_PX = 360;
 
+	function sentinelIsWithinPrefetchMargin(): boolean {
+		if (!browser || !sentinelEl) return false;
+		const rect = sentinelEl.getBoundingClientRect();
+		return rect.top <= window.innerHeight + mainListPrefetchPx;
+	}
+
+	function dispatchFeedPrefetchIfSentinelVisible() {
+		if (loadingMore || loadingInitial || searchOverlayOpen) return;
+		if (!paginationFeedOnly || !lastAppendWasFeed || !canRequestPersonalizedFeed) return;
+		if (feedPagination.phase !== 'readyToPrefetch') return;
+		if (sentinelIsWithinPrefetchMargin()) {
+			dispatchFeedPagination({ type: 'SENTINEL_PREFETCH', now: Date.now() });
+		}
+	}
+
+	function measureFeedScrollProgress() {
+		if (!browser || !mainListEl) return;
+		if (
+			!paginationFeedOnly ||
+			!lastAppendWasFeed ||
+			feedPagination.phase !== 'creditPending' ||
+			searchOverlayOpen
+		) {
+			return;
+		}
+
+		const batchStartIndex = Math.max(0, feedPagination.batchStartIndex);
+		const batchEndIndex = Math.min(
+			batchStartIndex + Math.max(0, feedPagination.batchSize),
+			popularBooks.length
+		);
+		if (batchEndIndex <= batchStartIndex) return;
+
+		let maxSeenIndex = feedPagination.maxSeenIndex;
+		for (let i = batchStartIndex; i < batchEndIndex; i += 1) {
+			const child = mainListEl.children.item(i);
+			if (!(child instanceof HTMLElement)) continue;
+			const rect = child.getBoundingClientRect();
+			if (rect.bottom > 0 && rect.top < window.innerHeight) {
+				maxSeenIndex = i;
+			}
+		}
+
+		const nearBottom =
+			window.scrollY + window.innerHeight >=
+			document.documentElement.scrollHeight - FEED_NEAR_BOTTOM_PX;
+		const transition = dispatchFeedPagination({
+			type: 'BROWSE_PROGRESS',
+			maxSeenIndex,
+			nearBottom,
+			columns: feedGridColumns,
+			now: Date.now()
+		});
+		if (transition.previousPhase !== 'readyToPrefetch' && transition.phase === 'readyToPrefetch') {
+			dispatchFeedPrefetchIfSentinelVisible();
+		}
+	}
+
+	function scheduleFeedScrollProgressMeasurement() {
+		if (!browser || feedScrollProgressRaf) return;
+		feedScrollProgressRaf = requestAnimationFrame(() => {
+			feedScrollProgressRaf = 0;
+			measureFeedScrollProgress();
+		});
+	}
+
 	/**
 	 * Preload observer (~3 viewports) starts the next page early; strict bottom observer (0px)
-	 * covers the case where the browse gate opens after the sentinel was already in the prefetch zone.
-	 * Feed mode still requires the browse gate (except the first curated batch).
+	 * covers the case where feed credit opens after the sentinel was already in the prefetch zone.
+	 * Feed mode still requires controller credit (except the first curated batch).
 	 */
 	$effect(() => {
 		if (!sentinelEl) return;
-		void feedBatchBrowseReady;
 		const prefetch = mainListPrefetchPx;
 		const next = nextOffset;
 		const more = hasMore;
@@ -632,12 +694,13 @@
 		const overlayBlocksFeed = searchOverlayOpen;
 		const feedOnly = paginationFeedOnly;
 		const lastFeed = lastAppendWasFeed;
-		const browseReady = feedBatchBrowseReady;
 		const feedEligible = canRequestPersonalizedFeed;
+		const feedPhase = feedPagination.phase;
 
-		const tryLoadFromSentinel = () => {
-			if (loading || initial || overlayBlocksFeed || !more) return;
+		const tryLoadFromSentinel = (type: 'SENTINEL_PREFETCH' | 'SENTINEL_BOTTOM') => {
+			if (loading || initial || overlayBlocksFeed) return;
 			if (!lastFeed) {
+				if (!more) return;
 				// In personalized-feed mode but no curated batch appended yet (just promoted, or an
 				// exhausted-feed fallback): fetch the first curated batch instead of more Top 100.
 				if (feedOnly) {
@@ -648,18 +711,19 @@
 				return;
 			}
 			if (!feedOnly) {
+				if (!more) return;
 				void loadPopular(next, 0);
 				return;
 			}
-			if (!browseReady) return;
 			if (!feedEligible) return;
-			void loadCuratedFeedBatch();
+			if (feedPhase === 'exhausted') return;
+			dispatchFeedPagination({ type, now: Date.now() });
 		};
 
 		const preloadObserver = new IntersectionObserver(
 			(entries) => {
 				if (!entries[0].isIntersecting) return;
-				tryLoadFromSentinel();
+				tryLoadFromSentinel('SENTINEL_PREFETCH');
 			},
 			{ rootMargin: `0px 0px ${prefetch}px 0px` }
 		);
@@ -667,7 +731,7 @@
 		const strictBottomObserver = new IntersectionObserver(
 			(entries) => {
 				if (!entries[0].isIntersecting) return;
-				tryLoadFromSentinel();
+				tryLoadFromSentinel('SENTINEL_BOTTOM');
 			},
 			{ rootMargin: '0px' }
 		);
@@ -681,28 +745,35 @@
 	});
 
 	$effect(() => {
-		if (!browser || feedBatchBrowseReady) return;
+		if (!browser) return;
 		const list = mainListEl;
-		const anchorIndex = feedBatchBrowseAnchorIndex;
-		const generation = feedBatchBrowseGeneration;
+		const active =
+			paginationFeedOnly &&
+			lastAppendWasFeed &&
+			feedPagination.phase === 'creditPending' &&
+			!searchOverlayOpen;
+		const batchStartIndex = feedPagination.batchStartIndex;
+		const batchSize = feedPagination.batchSize;
+		const columns = feedGridColumns;
 		void popularBooks.length;
-		if (!list || anchorIndex < 0) return;
+		void batchStartIndex;
+		void batchSize;
+		void columns;
+		if (!active || !list) {
+			clearFeedScrollProgressRaf();
+			return;
+		}
 
-		const anchor = list.querySelector<HTMLElement>('[data-feed-browse-anchor="true"]');
-		if (!anchor) return;
-
-		const browseObserver = new IntersectionObserver(
-			(entries) => {
-				if (entries[0]?.isIntersecting) {
-					openFeedBatchBrowseGate(generation);
-				}
-			},
-			{ rootMargin: '0px' }
-		);
-
-		browseObserver.observe(anchor);
+		const onScrollOrResize = () => scheduleFeedScrollProgressMeasurement();
+		window.addEventListener('scroll', onScrollOrResize, { passive: true });
+		window.addEventListener('resize', onScrollOrResize);
+		window.visualViewport?.addEventListener('resize', onScrollOrResize);
+		queueMicrotask(onScrollOrResize);
 		return () => {
-			browseObserver.disconnect();
+			window.removeEventListener('scroll', onScrollOrResize);
+			window.removeEventListener('resize', onScrollOrResize);
+			window.visualViewport?.removeEventListener('resize', onScrollOrResize);
+			clearFeedScrollProgressRaf();
 		};
 	});
 
@@ -996,12 +1067,18 @@
 	): Promise<FeedRequestInsertResult> {
 		if (!supabase) return { kind: 'failed' };
 		const now = Date.now();
-		if (now - lastFeedRequestCreatedAt < FEED_REQUEST_CREATE_COOLDOWN_MS) {
-			return { kind: 'cooldown' };
+		const remainingMs = feedRequestCooldownRemaining(
+			feedPagination,
+			now,
+			FEED_REQUEST_CREATE_COOLDOWN_MS
+		);
+		if (remainingMs > 0) {
+			return { kind: 'cooldown', remainingMs };
 		}
-		lastFeedRequestCreatedAt = now;
 		const requestId = await insertFeedRequestRow(supabase, userId);
-		return requestId == null ? { kind: 'failed' } : { kind: 'created', requestId };
+		if (requestId == null) return { kind: 'failed' };
+		dispatchFeedPagination({ type: 'REQUEST_CREATED', now: Date.now() });
+		return { kind: 'created', requestId };
 	}
 
 	function commitInitialCuratedChoice(books: Book[]) {
@@ -1010,14 +1087,19 @@
 		startedFromLatestFeed = true;
 		const committedBooks = setMainListBooks(books, 'replace');
 		lastAppendWasFeed = true;
-		armPendingFeedBatchBrowse(0, committedBooks.length);
+		dispatchFeedPagination({
+			type: 'ENTER_FEED',
+			batchStartIndex: 0,
+			batchSize: committedBooks.length,
+			now: Date.now()
+		});
 		hasMore = true;
 	}
 
 	function clearFeedPaginationMode() {
 		startedFromLatestFeed = false;
 		lastAppendWasFeed = false;
-		resetFeedBatchBrowseGate();
+		dispatchFeedPagination({ type: 'RESET' });
 		popularError = null;
 	}
 
@@ -1345,7 +1427,7 @@
 			nextOffset = data.nextOffset;
 			popularContinuationOffset = data.nextOffset;
 			lastAppendWasFeed = false;
-			resetFeedBatchBrowseGate();
+			dispatchFeedPagination({ type: 'RESET' });
 
 			hasMore = data.hasMore ?? data.books.length > 0;
 
@@ -1371,6 +1453,7 @@
 			await resetMainListToTop100();
 			return;
 		}
+		dispatchFeedPagination({ type: 'LOAD_STARTED', now: Date.now() });
 		feedBatchRequestInFlight = true;
 		popularError = null;
 		try {
@@ -1388,6 +1471,7 @@
 			const token = await resolveAccessToken({ lazyAnonymous: !startedFromLatestFeed });
 			const user = get(authStore).user;
 			if (!supabase || !token || !user?.id) {
+				dispatchFeedPagination({ type: 'LOAD_FAILED', now: Date.now() });
 				popularError = t('rate.errors.loadBooks');
 				hasMore = false;
 				return;
@@ -1407,8 +1491,16 @@
 
 			if (requestId == null) {
 				const insertResult = await insertFeedRequestRowWithCooldown(supabase, user.id);
-				if (insertResult.kind === 'cooldown') return;
+				if (insertResult.kind === 'cooldown') {
+					dispatchFeedPagination({
+						type: 'COOLDOWN_BLOCKED',
+						remainingMs: insertResult.remainingMs,
+						now: Date.now()
+					});
+					return;
+				}
 				if (insertResult.kind === 'failed') {
+					dispatchFeedPagination({ type: 'LOAD_FAILED', now: Date.now() });
 					popularError = t('rate.errors.loadBooks');
 					hasMore = false;
 					return;
@@ -1429,16 +1521,22 @@
 			if (outcome.kind === 'completed') {
 				const batchStartIndex = popularBooks.length;
 				const books = setMainListBooks(outcome.books, 'append');
+				const transition = dispatchFeedPagination({
+					type: 'LOAD_COMPLETED',
+					appendedCount: books.length,
+					batchStartIndex,
+					now: Date.now()
+				});
 				if (books.length === 0) {
-					hasMore = false;
+					hasMore = transition.phase !== 'exhausted';
 				} else {
-					hasMore = books.length >= FEED_REQUEST_BATCH_SIZE;
+					hasMore = true;
 					lastAppendWasFeed = true;
-					armPendingFeedBatchBrowse(batchStartIndex, books.length);
 				}
 				return;
 			}
 
+			dispatchFeedPagination({ type: 'LOAD_FAILED', now: Date.now() });
 			popularError = t('rate.errors.loadBooks');
 			hasMore = false;
 		} catch (e) {
@@ -1447,6 +1545,7 @@
 				await resetMainListToTop100();
 				return;
 			}
+			dispatchFeedPagination({ type: 'LOAD_FAILED', now: Date.now() });
 			popularError = t('rate.errors.loadBooks');
 			hasMore = false;
 		} finally {
@@ -1528,7 +1627,11 @@
 					.select('id')
 					.single();
 				if (!error && data?.id != null) {
-					goto(`/rate/recommendations/shortlist?request_id=${encodeURIComponent(String(data.id))}`);
+					goto(
+						resolve(
+							`/rate/recommendations/shortlist?request_id=${encodeURIComponent(String(data.id))}`
+						)
+					);
 					return;
 				}
 			} catch {
@@ -1682,7 +1785,7 @@
 						use:trackGridColumns={(c) => (feedGridColumns = c)}
 					>
 						{#each popularBooks as book, i (mainListKey(book))}
-							<li data-feed-browse-anchor={i === feedBatchBrowseAnchorIndex ? 'true' : undefined}>
+							<li>
 								<BookCard
 									context="rate"
 									{book}
@@ -1718,7 +1821,7 @@
 						</div>
 					{/if}
 
-					{#if hasMore}
+					{#if hasMore || (paginationFeedOnly && lastAppendWasFeed && feedPagination.phase !== 'exhausted')}
 						<div bind:this={sentinelEl} class="rate-page__sentinel" aria-hidden="true"></div>
 					{/if}
 				{/if}
