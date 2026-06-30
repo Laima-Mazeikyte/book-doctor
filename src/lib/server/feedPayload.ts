@@ -1,3 +1,4 @@
+import { FEED_REQUEST_BATCH_SIZE } from '$lib/feed/constants';
 import { type BookGenreSlotRow } from '$lib/book-catalog-fields';
 import {
 	feedInteractionCountFromParts,
@@ -80,7 +81,7 @@ function normalizeFeedStatus(status: string | null | undefined): string | null {
 
 export async function loadLatestEligibleRateFeed(
 	supabase: SupabaseClient,
-	limit = 20
+	limit = FEED_REQUEST_BATCH_SIZE
 ): Promise<LatestEligibleRateFeedPayload> {
 	const [
 		latestAnyResult,

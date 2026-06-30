@@ -44,6 +44,10 @@
 	} from '$lib/rateSearchExternalNav';
 	import { searchBooks, searchBooksByAuthor, SEARCH_MIN_QUERY_LENGTH } from '$lib/search';
 	import { nextRateSearchModeAfterQueryChange } from '$lib/search/rateSearchAuthorMode';
+	import {
+		FEED_REQUEST_BATCH_SIZE,
+		FEED_REQUEST_CREATE_COOLDOWN_MS
+	} from '$lib/feed/constants';
 	import { insertFeedRequestRow, pollCuratedFeedRequest } from '$lib/feed/warmCuratedFeed';
 	import {
 		MIN_INTERACTIONS_FOR_RATE_FEED,
@@ -57,11 +61,8 @@
 	import type { Book, RatingValue } from '$lib/types/book';
 
 	const SCROLL_THRESHOLD = 60;
-	const FEED_PAGE_SIZE = 20;
 	const EMPTY_PAGE_CHAIN_MAX = 25;
-	const FEED_REQUEST_CREATE_COOLDOWN_MS = 7000;
-	/** After a new feed batch mounts, ignore strict “end of list” briefly so a sentinel already at the viewport bottom does not clear `hasMore` before the user can interact. */
-	const STRICT_FEED_END_GRACE_MS = 750;
+	const FEED_BATCH_BROWSE_DWELL_MS = 2000;
 
 	type LatestFeedMode = LatestRateFeedMode;
 	type LatestFeedStateResponse = {
@@ -151,7 +152,10 @@
 
 	/** Aborts any in-flight curated-feed polling when the page is torn down (e.g. navigation). */
 	const feedPollAbort = new AbortController();
-	onDestroy(() => feedPollAbort.abort());
+	onDestroy(() => {
+		feedPollAbort.abort();
+		clearFeedBatchBrowseDwellTimer();
+	});
 
 	/** Bumped when a new search overlay session starts; stale feed refreshes ignore flag writes. */
 	let searchFeedSessionId = $state(0);
@@ -463,8 +467,12 @@
 
 	let startedFromLatestFeed = $state(false);
 	let lastAppendWasFeed = $state(false);
-	let engagedWithPendingBatch = $state(false);
-	let suppressStrictFeedEndUntil = $state(0);
+	let feedBatchBrowseReady = $state(false);
+	let lastFeedBatchStartIndex = $state(0);
+	let lastFeedBatchAppendedCount = $state(0);
+	let feedBatchBrowseEligibleAt = $state(0);
+	let feedBatchBrowseGeneration = $state(0);
+	let feedBatchBrowseDwellTimer: ReturnType<typeof setTimeout> | null = null;
 	/** Cold `loadInitialMainList` used Top 100 because no access token was ready in time; retry feed once auth exists. */
 	let mainListFellBackDueToMissingAuthToken = $state(false);
 	let initialListDecisionSettled = $state(false);
@@ -492,31 +500,65 @@
 	}
 
 	function getFeedInteractionCount(): number {
-		return (
-			get(ratingsStore).size + get(planToReadStore).size + get(notInterestedStore).size
-		);
+		return get(ratingsStore).size + get(planToReadStore).size + get(notInterestedStore).size;
 	}
 
 	const paginationFeedOnly = $derived(startedFromLatestFeed && canRequestPersonalizedFeed);
 
 	const showMainListLoadMoreTile = $derived.by(() => {
 		if (popularBooks.length === 0 || loadingInitial) return false;
-		return !hasMore || (paginationFeedOnly && lastAppendWasFeed && !engagedWithPendingBatch);
+		return !hasMore || (paginationFeedOnly && lastAppendWasFeed && !feedBatchBrowseReady);
 	});
 
-	function armFeedBatchStrictGrace() {
-		suppressStrictFeedEndUntil = Date.now() + STRICT_FEED_END_GRACE_MS;
+	const feedBatchBrowseAnchorIndex = $derived.by(() => {
+		if (!lastAppendWasFeed || lastFeedBatchAppendedCount <= 0) return -1;
+		const target = lastFeedBatchStartIndex + Math.floor(lastFeedBatchAppendedCount * 0.5);
+		return Math.min(target, popularBooks.length - 1);
+	});
+
+	function clearFeedBatchBrowseDwellTimer() {
+		if (feedBatchBrowseDwellTimer) {
+			clearTimeout(feedBatchBrowseDwellTimer);
+			feedBatchBrowseDwellTimer = null;
+		}
 	}
 
-	/**
-	 * After “end of list” (`hasMore` false) — Top 100, latest curated hydrate, or strict feed end —
-	 * re-open the sentinel when the user has enough interactions so `loadCuratedFeedBatch` can run.
-	 */
-	function reviveMainListPaginationAfterEngagement() {
-		if (hasMore) return;
-		if (!(startedFromLatestFeed && canRequestPersonalizedFeed)) return;
-		hasMore = true;
-		armFeedBatchStrictGrace();
+	function openFeedBatchBrowseGate(generation: number) {
+		if (generation !== feedBatchBrowseGeneration || feedBatchBrowseReady) return;
+		const remaining = feedBatchBrowseEligibleAt - Date.now();
+		if (remaining > 0) {
+			clearFeedBatchBrowseDwellTimer();
+			feedBatchBrowseDwellTimer = setTimeout(() => {
+				feedBatchBrowseDwellTimer = null;
+				openFeedBatchBrowseGate(generation);
+			}, remaining);
+			return;
+		}
+		clearFeedBatchBrowseDwellTimer();
+		feedBatchBrowseReady = true;
+	}
+
+	function forceFeedBatchBrowseReady() {
+		clearFeedBatchBrowseDwellTimer();
+		feedBatchBrowseReady = true;
+	}
+
+	function armPendingFeedBatchBrowse(startIndex: number, appendedCount: number) {
+		clearFeedBatchBrowseDwellTimer();
+		feedBatchBrowseGeneration += 1;
+		feedBatchBrowseReady = false;
+		lastFeedBatchStartIndex = Math.max(0, startIndex);
+		lastFeedBatchAppendedCount = Math.max(0, appendedCount);
+		feedBatchBrowseEligibleAt = Date.now() + FEED_BATCH_BROWSE_DWELL_MS;
+	}
+
+	function resetFeedBatchBrowseGate() {
+		clearFeedBatchBrowseDwellTimer();
+		feedBatchBrowseGeneration += 1;
+		feedBatchBrowseReady = false;
+		lastFeedBatchStartIndex = 0;
+		lastFeedBatchAppendedCount = 0;
+		feedBatchBrowseEligibleAt = 0;
 	}
 
 	function onLibraryMutationForFeed() {
@@ -534,12 +576,9 @@
 			startedFromLatestFeed = true;
 			if (!hasMore) {
 				hasMore = true;
-				armFeedBatchStrictGrace();
 			}
 			return;
 		}
-		if (lastAppendWasFeed) engagedWithPendingBatch = true;
-		reviveMainListPaginationAfterEngagement();
 	}
 
 	/** Explicit “load more” — same loaders as infinite scroll; does not change rating / not-interested revival rules. */
@@ -556,8 +595,7 @@
 		}
 		if (paginationFeedOnly) {
 			if (!meetsFeedInteractionThreshold()) return;
-			engagedWithPendingBatch = true;
-			armFeedBatchStrictGrace();
+			forceFeedBatchBrowseReady();
 			void loadCuratedFeedBatch();
 			return;
 		}
@@ -571,6 +609,7 @@
 	let loadingSearchMore = $state(false);
 	let searchError = $state<string | null>(null);
 
+	let mainListEl = $state<HTMLUListElement | undefined>(undefined);
 	let sentinelEl = $state<HTMLDivElement | undefined>(undefined);
 	/** Scroll container for search results (`overflow-y: auto`); load-more uses this, not the viewport. */
 	let searchOverlayScrollEl = $state<HTMLDivElement | undefined>(undefined);
@@ -578,15 +617,13 @@
 	const SEARCH_SCROLL_LOAD_THRESHOLD_PX = 360;
 
 	/**
-	 * Two observers: a large bottom rootMargin prefetches the next page while the user is still
-	 * ~3 viewports away, but that same margin makes the sentinel "intersect" while it is still far
-	 * below the fold — which incorrectly fired `!engaged` and cleared `hasMore` before the user
-	 * could rate. Preload observer only fetches when engagement rules pass; a strict (0px) observer
-	 * alone ends the list when the user actually reaches the viewport bottom without engaging.
+	 * Preload observer (~3 viewports) starts the next page early; strict bottom observer (0px)
+	 * covers the case where the browse gate opens after the sentinel was already in the prefetch zone.
+	 * Feed mode still requires the browse gate (except the first curated batch).
 	 */
 	$effect(() => {
 		if (!sentinelEl) return;
-		void suppressStrictFeedEndUntil;
+		void feedBatchBrowseReady;
 		const prefetch = mainListPrefetchPx;
 		const next = nextOffset;
 		const more = hasMore;
@@ -595,49 +632,77 @@
 		const overlayBlocksFeed = searchOverlayOpen;
 		const feedOnly = paginationFeedOnly;
 		const lastFeed = lastAppendWasFeed;
-		const engaged = engagedWithPendingBatch;
+		const browseReady = feedBatchBrowseReady;
 		const feedEligible = canRequestPersonalizedFeed;
+
+		const tryLoadFromSentinel = () => {
+			if (loading || initial || overlayBlocksFeed || !more) return;
+			if (!lastFeed) {
+				// In personalized-feed mode but no curated batch appended yet (just promoted, or an
+				// exhausted-feed fallback): fetch the first curated batch instead of more Top 100.
+				if (feedOnly) {
+					void loadCuratedFeedBatch();
+				} else {
+					void loadPopular(next, 0);
+				}
+				return;
+			}
+			if (!feedOnly) {
+				void loadPopular(next, 0);
+				return;
+			}
+			if (!browseReady) return;
+			if (!feedEligible) return;
+			void loadCuratedFeedBatch();
+		};
 
 		const preloadObserver = new IntersectionObserver(
 			(entries) => {
-				if (!entries[0].isIntersecting || loading || initial || overlayBlocksFeed || !more) return;
-				if (!lastFeed) {
-					// In personalized-feed mode but no curated batch appended yet (just promoted, or an
-					// exhausted-feed fallback): fetch the first curated batch instead of more Top 100.
-					if (feedOnly) {
-						void loadCuratedFeedBatch();
-					} else {
-						void loadPopular(next, 0);
-					}
-					return;
-				}
-				if (!feedOnly) {
-					void loadPopular(next, 0);
-					return;
-				}
-				if (!engaged) return;
-				if (!feedEligible) return;
-				void loadCuratedFeedBatch();
+				if (!entries[0].isIntersecting) return;
+				tryLoadFromSentinel();
 			},
 			{ rootMargin: `0px 0px ${prefetch}px 0px` }
 		);
 
-		const strictEndObserver = new IntersectionObserver(
+		const strictBottomObserver = new IntersectionObserver(
 			(entries) => {
-				if (!entries[0].isIntersecting || loading || initial || overlayBlocksFeed || !more) return;
-				if (Date.now() < suppressStrictFeedEndUntil) return;
-				if (feedOnly && lastFeed && !engaged) {
-					hasMore = false;
-				}
+				if (!entries[0].isIntersecting) return;
+				tryLoadFromSentinel();
 			},
 			{ rootMargin: '0px' }
 		);
 
 		preloadObserver.observe(sentinelEl);
-		strictEndObserver.observe(sentinelEl);
+		strictBottomObserver.observe(sentinelEl);
 		return () => {
 			preloadObserver.disconnect();
-			strictEndObserver.disconnect();
+			strictBottomObserver.disconnect();
+		};
+	});
+
+	$effect(() => {
+		if (!browser || feedBatchBrowseReady) return;
+		const list = mainListEl;
+		const anchorIndex = feedBatchBrowseAnchorIndex;
+		const generation = feedBatchBrowseGeneration;
+		void popularBooks.length;
+		if (!list || anchorIndex < 0) return;
+
+		const anchor = list.querySelector<HTMLElement>('[data-feed-browse-anchor="true"]');
+		if (!anchor) return;
+
+		const browseObserver = new IntersectionObserver(
+			(entries) => {
+				if (entries[0]?.isIntersecting) {
+					openFeedBatchBrowseGate(generation);
+				}
+			},
+			{ rootMargin: '0px' }
+		);
+
+		browseObserver.observe(anchor);
+		return () => {
+			browseObserver.disconnect();
 		};
 	});
 
@@ -886,6 +951,7 @@
 
 	async function fetchLatestFeedState(token: string): Promise<LatestFeedStateResponse> {
 		const url = new URL(resolve('/api/feed/latest'), location.href);
+		url.searchParams.set('limit', String(FEED_REQUEST_BATCH_SIZE));
 		const res = await fetch(url.toString(), {
 			headers: { Authorization: `Bearer ${token}` }
 		});
@@ -924,11 +990,6 @@
 		return appended;
 	}
 
-	function armPendingFeedBatchEngagement() {
-		engagedWithPendingBatch = false;
-		armFeedBatchStrictGrace();
-	}
-
 	async function insertFeedRequestRowWithCooldown(
 		supabase: ReturnType<typeof getSupabase>,
 		userId: string
@@ -947,16 +1008,16 @@
 		initialListDecisionSettled = true;
 		mainListFellBackDueToMissingAuthToken = false;
 		startedFromLatestFeed = true;
-		setMainListBooks(books, 'replace');
+		const committedBooks = setMainListBooks(books, 'replace');
 		lastAppendWasFeed = true;
-		armPendingFeedBatchEngagement();
+		armPendingFeedBatchBrowse(0, committedBooks.length);
 		hasMore = true;
 	}
 
 	function clearFeedPaginationMode() {
 		startedFromLatestFeed = false;
 		lastAppendWasFeed = false;
-		engagedWithPendingBatch = false;
+		resetFeedBatchBrowseGate();
 		popularError = null;
 	}
 
@@ -1284,7 +1345,7 @@
 			nextOffset = data.nextOffset;
 			popularContinuationOffset = data.nextOffset;
 			lastAppendWasFeed = false;
-			engagedWithPendingBatch = false;
+			resetFeedBatchBrowseGate();
 
 			hasMore = data.hasMore ?? data.books.length > 0;
 
@@ -1366,13 +1427,14 @@
 			}
 
 			if (outcome.kind === 'completed') {
+				const batchStartIndex = popularBooks.length;
 				const books = setMainListBooks(outcome.books, 'append');
 				if (books.length === 0) {
 					hasMore = false;
 				} else {
-					hasMore = books.length >= FEED_PAGE_SIZE;
+					hasMore = books.length >= FEED_REQUEST_BATCH_SIZE;
 					lastAppendWasFeed = true;
-					armPendingFeedBatchEngagement();
+					armPendingFeedBatchBrowse(batchStartIndex, books.length);
 				}
 				return;
 			}
@@ -1615,11 +1677,12 @@
 					/>
 				{:else}
 					<ul
+						bind:this={mainListEl}
 						class="rate-page__list book-card-grid"
 						use:trackGridColumns={(c) => (feedGridColumns = c)}
 					>
 						{#each popularBooks as book, i (mainListKey(book))}
-							<li>
+							<li data-feed-browse-anchor={i === feedBatchBrowseAnchorIndex ? 'true' : undefined}>
 								<BookCard
 									context="rate"
 									{book}

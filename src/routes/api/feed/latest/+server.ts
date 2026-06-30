@@ -1,17 +1,16 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { FEED_REQUEST_BATCH_SIZE } from '$lib/feed/constants';
 import { loadLatestEligibleRateFeed } from '$lib/server/feedPayload';
 import { requireAccessToken } from '$lib/server/requestAuth';
 import { createSupabaseWithAuth } from '$lib/server/supabase';
-
-const DEFAULT_FEED_LIMIT = 20;
 
 export const GET: RequestHandler = async ({ request, url }) => {
 	const accessToken = requireAccessToken(request);
 	const limitParam = url.searchParams.get('limit');
 	const limit = limitParam
-		? Math.max(1, Number.parseInt(limitParam, 10) || DEFAULT_FEED_LIMIT)
-		: DEFAULT_FEED_LIMIT;
+		? Math.max(1, Number.parseInt(limitParam, 10) || FEED_REQUEST_BATCH_SIZE)
+		: FEED_REQUEST_BATCH_SIZE;
 	const supabase = createSupabaseWithAuth(accessToken);
 
 	try {
