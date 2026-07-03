@@ -6,6 +6,7 @@
 	import { mobileMenuOpen } from '$lib/stores/mobileMenu';
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
 	import AuthModal from '$lib/components/AuthModal.svelte';
+	import GoodreadsSyncModal from '$lib/components/GoodreadsSyncModal.svelte';
 	import AppHeaderMobileMenuAction from '$lib/components/AppHeaderMobileMenuAction.svelte';
 	import { UserRound } from 'lucide-svelte';
 	import { t } from '$lib/copy';
@@ -28,6 +29,7 @@
 	let { onOpenBugReport }: Props = $props();
 
 	let authModalOpen = $state(false);
+	let goodreadsSyncOpen = $state(false);
 	let authModalInitialTab = $state<'signin' | 'signup'>('signin');
 	let accountDropdownOpen = $state(false);
 	let accountTriggerEl = $state<HTMLButtonElement | null>(null);
@@ -61,6 +63,16 @@
 		getSupabase()?.auth.signOut();
 		closeAccountDropdown();
 		closeMobileMenu();
+	}
+
+	function openGoodreadsSync() {
+		goodreadsSyncOpen = true;
+		closeAccountDropdown();
+		closeMobileMenu();
+	}
+
+	function closeGoodreadsSync() {
+		goodreadsSyncOpen = false;
 	}
 
 	function toggleAccountDropdown() {
@@ -218,6 +230,14 @@
 								type="button"
 								role="menuitem"
 								class="app-header__account-item"
+								onclick={openGoodreadsSync}
+							>
+								{t('shared.header.syncGoodreads')}
+							</button>
+							<button
+								type="button"
+								role="menuitem"
+								class="app-header__account-item"
 								onclick={handleSignOut}
 							>
 								{t('shared.header.signOut')}
@@ -313,6 +333,9 @@
 						</button>
 					{:else if email}
 						<div class="app-header__account-email" role="presentation">{email}</div>
+						<button type="button" class="app-header__account-item" onclick={openGoodreadsSync}>
+							{t('shared.header.syncGoodreads')}
+						</button>
 						<button type="button" class="app-header__account-item" onclick={handleSignOut}>
 							{t('shared.header.signOut')}
 						</button>
@@ -365,6 +388,8 @@
 	draftResetKey={pathname}
 	restoreFocusTarget={authModalRestoreFocusTarget}
 />
+
+<GoodreadsSyncModal open={goodreadsSyncOpen} onClose={closeGoodreadsSync} />
 
 <style>
 	.app-header {

@@ -1,0 +1,33 @@
+/**
+ * @license
+ *
+ * Font Family: Inter
+ * Designed by: Rasmus Andersson
+ * URL: https://rsms.me/inter/  (https://fonts.google.com/specimen/Inter)
+ * SIL Open Font License 1.1 — see OFL.txt
+ *
+ * Self-hosted (latin subset, woff2) so first paint never depends on
+ * fonts.googleapis.com. Weights 400/500/600 match the interactive type scale;
+ * the browser selects a cut by font-weight. Fallback stack lives in primitives.css.
+ */
+@font-face {
+	font-family: 'Inter';
+	src: url('fonts/Inter-Regular.woff2') format('woff2');
+	font-weight: 400;
+	font-style: normal;
+	font-display: optional;
+}
+@font-face {
+	font-family: 'Inter';
+	src: url('fonts/Inter-Medium.woff2') format('woff2');
+	font-weight: 500;
+	font-style: normal;
+	font-display: optional;
+}
+@font-face {
+	font-family: 'Inter';
+	src: url('fonts/Inter-SemiBold.woff2') format('woff2');
+	font-weight: 600;
+	font-style: normal;
+	font-display: optional;
+}

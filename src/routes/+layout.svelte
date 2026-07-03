@@ -2,7 +2,8 @@
 	import { onMount } from 'svelte';
 	import { setOpenBugReportContext } from '$lib/bugReportContext';
 	import { get } from 'svelte/store';
-	import { afterNavigate, beforeNavigate } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
+	import { MAINTENANCE_ON, isAllowedDuringMaintenance } from '$lib/maintenance';
 	import { fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import {
@@ -49,6 +50,7 @@
 		refreshRecommendationsCountFromApi
 	} from '$lib/stores/recommendationsCount';
 	import { notInterestedStore } from '$lib/stores/notInterested';
+	import { GOODREADS_IMPORT_COMPLETE_EVENT } from '$lib/goodreads/runImport';
 	import { bookmarksPageStore } from '$lib/stores/bookmarksPage';
 	import { recommendationsPageStore } from '$lib/stores/recommendationsPage';
 	import {
@@ -177,6 +179,9 @@
 		};
 		window.addEventListener(AUTH_SIGNED_IN_EVENT, onSignedIn);
 
+		const onGoodreadsImportComplete = () => reloadLibraryForCurrentUser();
+		window.addEventListener(GOODREADS_IMPORT_COMPLETE_EVENT, onGoodreadsImportComplete);
+
 		return () => {
 			unmountAuth();
 			unmountRetry();
@@ -184,10 +189,18 @@
 			unregisterUserLibraryIdsLoader();
 			unregisterUserLibraryDetailsLoader();
 			window.removeEventListener(AUTH_SIGNED_IN_EVENT, onSignedIn);
+			window.removeEventListener(GOODREADS_IMPORT_COMPLETE_EVENT, onGoodreadsImportComplete);
 		};
 	});
 
-	beforeNavigate(({ from, to }) => {
+	beforeNavigate((navigation) => {
+		const { from, to } = navigation;
+		// Keep client-side navigation inside the allowlist while in maintenance mode.
+		if (MAINTENANCE_ON && to && !isAllowedDuringMaintenance(to.url.pathname)) {
+			navigation.cancel();
+			if (to.url.pathname !== '/') void goto('/');
+			return;
+		}
 		pageEnterTransition =
 			shouldMainNavPageTransition(from?.url.pathname ?? '', to?.url.pathname ?? '') &&
 			!prefersReducedMotion();
@@ -269,12 +282,6 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
-	<link rel="preconnect" href="https://fonts.googleapis.com" />
-	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-	<link
-		href="https://fonts.googleapis.com/css2?family=Beth+Ellen&family=Inter:wght@400;500;600&display=swap"
-		rel="stylesheet"
-	/>
 </svelte:head>
 
 <SkipLink />

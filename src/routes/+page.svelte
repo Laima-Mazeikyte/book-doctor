@@ -2,6 +2,8 @@
 	import homeLogo from '$lib/assets/unread-logo.svg';
 	import homeLogoVideo from '$lib/assets/Unread-animated.mp4';
 	import Button from '$lib/components/Button.svelte';
+	import MaintenanceCountdown from '$lib/components/MaintenanceCountdown.svelte';
+	import { MAINTENANCE_ON, MAINTENANCE_UNTIL } from '$lib/maintenance';
 	import { t } from '$lib/copy';
 </script>
 
@@ -32,9 +34,15 @@
 			decoding="async"
 		/>
 		<h1 class="landing__title typ-h1">{t('home.title')}</h1>
-		<p class="landing__lead typ-body">{t('home.lead')}</p>
 
-		<Button href="/rate" variant="primary" pill>{t('home.startRating')}</Button>
+		{#if MAINTENANCE_ON}
+			<p class="landing__lead typ-body">{t('maintenance.body')}</p>
+			<MaintenanceCountdown until={MAINTENANCE_UNTIL} />
+		{:else}
+			<p class="landing__lead typ-body">{t('home.lead')}</p>
+
+			<Button href="/rate" variant="primary" pill>{t('home.startRating')}</Button>
+		{/if}
 	</div>
 </div>
 

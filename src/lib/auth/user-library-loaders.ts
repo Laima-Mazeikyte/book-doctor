@@ -112,8 +112,8 @@ export function attachRatingsPersistence(
 				{
 					user_id: userId,
 					book_id: bookId,
-					book_rating: value,
-					updated_at: new Date().toISOString()
+					book_rating: value
+					// updated_at is set by the set_user_ratings_updated_at trigger / column default
 				},
 				{ onConflict: 'user_id,book_id' }
 			);
@@ -136,6 +136,33 @@ export function attachRatingsPersistence(
 			notifyLibraryPersistedMutationForBrowseFeedWarm();
 		}
 	});
+}
+
+/**
+ * ULIDs whose embedded `books(id, …)` join did not resolve — the subset that needs a
+ * separate lookup. Empty on the common path where every row already carries `books.id`.
+ * (book_id is declared integer but stored as ULID text; see the book_id type-drift note.)
+ */
+function unresolvedBookUlids(
+	rows: Array<{ book_id: string; books?: { id?: unknown } | null }>
+): string[] {
+	if (rows.length === 0 || !rows.some((row) => !row.books?.id)) return [];
+	return [...new Set(rows.map((row) => row.book_id))];
+}
+
+/**
+ * ULID→UUID map for the rows whose join row lacked `books.id`. Empty (no extra query) when
+ * nothing needs resolving. Used by the id-only loaders; the details loader needs full book
+ * rows for its fallback and issues its own query off {@link unresolvedBookUlids}.
+ */
+async function resolveUuidMapForRows(
+	supabase: SupabaseClient,
+	rows: Array<{ book_id: string; books?: { id?: unknown } | null }>,
+	isStale: () => boolean
+): Promise<Record<string, string>> {
+	const ulids = unresolvedBookUlids(rows);
+	if (ulids.length === 0) return {};
+	return fetchUuidByUlid(supabase, ulids, isStale);
 }
 
 export async function loadUserLibraryIds(
@@ -179,12 +206,8 @@ async function loadUserLibraryIdsBody(
 	}
 
 	const rawRatingRows = (ratingRows ?? []) as unknown as RatingIdRow[];
-	let ratingUuidByUlid: Record<string, string> = {};
-	if (rawRatingRows.some((row) => !row.books?.id) && rawRatingRows.length > 0) {
-		const bookIds = [...new Set(rawRatingRows.map((row) => row.book_id))];
-		ratingUuidByUlid = await fetchUuidByUlid(supabase, bookIds, isStale);
-		if (isStale()) return;
-	}
+	const ratingUuidByUlid = await resolveUuidMapForRows(supabase, rawRatingRows, isStale);
+	if (isStale()) return;
 
 	const ratingEntries = rawRatingRows.flatMap((row) => {
 		const bookId = bookUuidFromJoinRow(row, ratingUuidByUlid);
@@ -202,12 +225,8 @@ async function loadUserLibraryIdsBody(
 	}
 
 	const rawBookmarkRows = (bmRows ?? []) as unknown as BookIdJoinRow[];
-	let bookmarkUuidByUlid: Record<string, string> = {};
-	if (rawBookmarkRows.some((row) => !row.books?.id) && rawBookmarkRows.length > 0) {
-		const bookIds = [...new Set(rawBookmarkRows.map((row) => row.book_id))];
-		bookmarkUuidByUlid = await fetchUuidByUlid(supabase, bookIds, isStale);
-		if (isStale()) return;
-	}
+	const bookmarkUuidByUlid = await resolveUuidMapForRows(supabase, rawBookmarkRows, isStale);
+	if (isStale()) return;
 
 	if (rawBookmarkRows.length > 0) {
 		const resolvedBookmarks = rawBookmarkRows.flatMap((row) => {
@@ -275,7 +294,9 @@ async function loadUserLibraryDetailsBody(
 	}
 
 	const rawRows = rows ?? [];
-	const needBookIds = rawRows.some((row) => !(row as { books?: { id?: string } }).books?.id);
+	const unresolvedDetailUlids = unresolvedBookUlids(
+		rawRows as Array<{ book_id: string; books?: { id?: unknown } | null }>
+	);
 	let bookIdByUlid: Record<string, string> = {};
 	let fallbackBooks: Array<
 		{
@@ -288,12 +309,11 @@ async function loadUserLibraryDetailsBody(
 		} & BookGenreSlotRow & { type?: string | null }
 	> = [];
 
-	if (needBookIds && rawRows.length > 0) {
-		const bookIds = [...new Set(rawRows.map((r) => r.book_id))];
+	if (unresolvedDetailUlids.length > 0) {
 		const { data: bookRows } = await supabase
 			.from('books')
 			.select(`id, book_id, book_name, author, year, summary, ${BOOK_GENRE_TYPE_SELECT}`)
-			.in('book_id', bookIds);
+			.in('book_id', unresolvedDetailUlids);
 		if (isStale()) return;
 		if (bookRows) {
 			bookIdByUlid = Object.fromEntries(bookRows.map((b) => [b.book_id, String(b.id)])) as Record<

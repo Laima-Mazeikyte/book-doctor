@@ -1,0 +1,19 @@
+/**
+ * @license
+ *
+ * Font Family: Beth Ellen
+ * Designed by: Kimberly Geswein
+ * URL: https://fonts.google.com/specimen/Beth+Ellen
+ * SIL Open Font License 1.1 — see OFL.txt
+ *
+ * Self-hosted (latin subset, woff2) so first paint never depends on
+ * fonts.googleapis.com. Decorative display face (--primitive-font-family-display);
+ * fallback is `cursive` in primitives.css.
+ */
+@font-face {
+	font-family: 'Beth Ellen';
+	src: url('fonts/BethEllen-Regular.woff2') format('woff2');
+	font-weight: 400;
+	font-style: normal;
+	font-display: optional;
+}

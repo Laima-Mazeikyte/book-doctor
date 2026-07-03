@@ -7,6 +7,16 @@ en:
     metaDescription: 'Discover books matched to your taste with Unread. Search titles, add ratings, and discover books that are worth reading.'
     startRating: 'Start rating'
 
+  maintenance:
+    heading: 'Down for maintenance'
+    body: "We're doing some scheduled maintenance and will be back shortly. Thanks for your patience."
+    backOnlineLabel: 'Estimated time back online'
+    backSoon: 'We should be back any moment — checking…'
+    noEta: "We'll be back as soon as we can."
+    hoursLabel: 'Hours'
+    minutesLabel: 'Minutes'
+    secondsLabel: 'Seconds'
+
   rate:
     pageTitle: 'Browse & Rate'
     metaDescription: 'Browse books and rate titles on Unread. Your curated feed adjusts to your ratings with time.'
@@ -82,40 +92,40 @@ en:
       ariaLabel: 'Filter recommendations'
       recommended: 'Recommended'
     sort:
-      ariaLabel: "Sort recommendations"
-      newest: "Newest"
-      oldest: "Oldest"
-      bestFit: "Best fit"
-    emptyRecommendedTab: "No recommendations in this list yet."
-    emptyBookmarkedTab: "No bookmarked recommendations yet."
-    emptyNotInterestedTab: "No recommended titles marked not interested yet."
-    loadingList: "Loading…"
+      ariaLabel: 'Sort recommendations'
+      newest: 'Newest'
+      oldest: 'Oldest'
+      bestFit: 'Best fit'
+    emptyRecommendedTab: 'No recommendations in this list yet.'
+    emptyBookmarkedTab: 'No bookmarked recommendations yet.'
+    emptyNotInterestedTab: 'No recommended titles marked not interested yet.'
+    loadingList: 'Loading…'
     shortlist:
-      title: "Your shortlist"
+      title: 'Your shortlist'
       description: "Seven books for you based on what you've rated."
-      close: "Close"
-      metaDescription: "Swipe through your latest book recommendations on Unread."
-      loading: "Finding books for you…"
-      timeoutTitle: "Still working on it"
-      timeoutMessage: "This is taking longer than expected. Try again in a moment."
-      errorTitle: "Could not load your shortlist"
-      errorDefault: "Something went wrong while loading your recommendations."
-      retry: "Try again"
-      typeLabel: "Type"
-      carouselAriaLabel: "Your recommended books"
-      prevBook: "Previous book"
-      nextBook: "Next book"
-      slideAriaLabel: "{{title}}, book {{position}} of {{total}}"
-      positionAriaLabel: "Book {{position}} of {{total}}"
-      coverNavAriaLabel: "Browse shortlist books"
+      close: 'Close'
+      metaDescription: 'Swipe through your latest book recommendations on Unread.'
+      loading: 'Finding books for you…'
+      timeoutTitle: 'Still working on it'
+      timeoutMessage: 'This is taking longer than expected. Try again in a moment.'
+      errorTitle: 'Could not load your shortlist'
+      errorDefault: 'Something went wrong while loading your recommendations.'
+      retry: 'Try again'
+      typeLabel: 'Type'
+      carouselAriaLabel: 'Your recommended books'
+      prevBook: 'Previous book'
+      nextBook: 'Next book'
+      slideAriaLabel: '{{title}}, book {{position}} of {{total}}'
+      positionAriaLabel: 'Book {{position}} of {{total}}'
+      coverNavAriaLabel: 'Browse shortlist books'
       iveReadIt: "I've read it"
       removeIveReadIt: "Remove I've read it"
-      offerAnotherBook: "Get another book"
-      getNewRecommendations: "Get new recommendations"
+      offerAnotherBook: 'Get another book'
+      getNewRecommendations: 'Get new recommendations'
     saveAccountPrompt:
-      title: "Save your progress"
-      message: "Create an account to keep your ratings and recommendations."
-      dismiss: "Dismiss save prompt"
+      title: 'Save your progress'
+      message: 'Create an account to keep your ratings and recommendations.'
+      dismiss: 'Dismiss save prompt'
 
   faq:
     title: 'Frequently Asked Questions'
@@ -137,6 +147,7 @@ en:
       ratedBooks: 'My Ratings'
       myBookshelf: 'Bookshelf'
       account: 'Account'
+      syncGoodreads: 'Sync Goodreads'
       signOut: 'Sign out'
       menu: 'Menu'
       openMenu: 'Open menu'
@@ -256,3 +267,23 @@ en:
       successMessage: 'Thanks for your feedback!'
       errorSubmit: 'Could not send. Please try again.'
       reportBugAriaLabel: 'Report a bug or send feedback'
+    goodreadsModal:
+      title: 'Sync Goodreads'
+      intro: 'Export your Goodreads library as a CSV, then upload it here to import your ratings.'
+      previewSummary_one: '{{count}} rated book found. Import it?'
+      previewSummary_other: '{{count}} rated books found. Import them?'
+      previewNone: 'No rated books were found in this file. Make sure you exported your full Goodreads library.'
+      chooseAnother: 'Choose another file'
+      import: 'Import ratings'
+      importing: 'Importing your ratings…'
+      doneSummary_one: '{{count}} rating imported.'
+      doneSummary_other: '{{count}} ratings imported.'
+      unmatchedHeading: 'Not in our library yet ({{count}}):'
+      timeout: 'Still importing — this is taking longer than usual. Your ratings will appear once it finishes; you can close this and check back shortly.'
+      errorParse: "This doesn't look like a Goodreads export. Please upload the CSV you exported from Goodreads."
+      errorFileTooLarge: 'That file is larger than the 5 MB limit. Please upload the CSV you exported from Goodreads.'
+      errorTooManyRows: 'That file has more books than we can import at once. Please contact us if you need a larger import.'
+      errorSubmit: 'Could not start the import. Please try again.'
+      errorGeneric: 'Something went wrong reading that file. Please try again.'
+      done: 'Done'
+      close: 'Close'
