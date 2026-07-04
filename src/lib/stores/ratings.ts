@@ -380,11 +380,16 @@ function createRatingsStore() {
 		},
 		setRating(bookId: string, value: RatingValue, bookUlid?: string, book?: Book) {
 			update((m) => {
-				// Put this rating first so the side panel shows most recent at the top
+				// A brand-new rating surfaces at the top; re-rating an existing book keeps its
+				// current position so the list doesn't jump under the user. Recency reordering
+				// (updated_at DESC) is applied server-side on the next load/hydrate.
+				if (m.has(bookId)) {
+					return new Map(m).set(bookId, value);
+				}
 				const next = new Map<string, RatingValue>();
 				next.set(bookId, value);
 				for (const [k, v] of m) {
-					if (k !== bookId) next.set(k, v);
+					next.set(k, v);
 				}
 				return next;
 			});

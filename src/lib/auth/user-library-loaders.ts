@@ -192,6 +192,10 @@ async function loadUserLibraryIdsBody(
 		supabase
 			.from('user_ratings')
 			.select('book_id, book_rating, books(id, book_id)')
+			// Drives the bookshelf "Newest" order: most recently rated/re-rated first, with
+			// book_id as a stable tiebreaker so batch imports (shared updated_at) don't shuffle.
+			.order('updated_at', { ascending: false })
+			.order('book_id', { ascending: true })
 			.eq('user_id', userId),
 		supabase.from('user_bookmarks').select('book_id, books(id, book_id)').eq('user_id', userId),
 		supabase.from('user_not_interested').select('book_id').eq('user_id', userId)

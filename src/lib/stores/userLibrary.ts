@@ -54,6 +54,16 @@ export function isUserLibraryIdsReady(
 	return hydration.idsReady;
 }
 
+/** True when rated-book details (titles/covers) are hydrated for the active user. */
+export function isUserLibraryDetailsReady(
+	userId: string | null | undefined,
+	hydration: UserLibraryHydrationState
+): boolean {
+	if (!userId) return true;
+	if (hydration.userId !== userId) return false;
+	return hydration.detailsReady;
+}
+
 /** Layout registers the deferred library id loader. */
 export function registerUserLibraryIdsLoader(fn: (userId: string) => void): void {
 	idsLoader = fn;

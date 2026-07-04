@@ -2,6 +2,8 @@
 	import { tick } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import { get } from 'svelte/store';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import Button from '$lib/components/Button.svelte';
 	import { authStore } from '$lib/stores/auth';
 	import {
@@ -132,6 +134,12 @@
 		imported = result.imported;
 		misses = result.misses;
 		phase = 'done';
+
+		// Send the user to their bookshelf so the freshly imported ratings are waiting when
+		// they close this modal. The modal is portaled to <body> and lives in the persistent
+		// header, so it stays open across this navigation — the user closes it manually after
+		// reviewing any unmatched items (and to confirm the import finished).
+		void goto(resolve('/my-bookshelf'));
 	}
 </script>
 

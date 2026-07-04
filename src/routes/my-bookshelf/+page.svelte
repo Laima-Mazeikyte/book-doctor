@@ -6,13 +6,17 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/stores';
-	import { authStore } from '$lib/stores/auth';
+	import { authStore, authReady } from '$lib/stores/auth';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { notInterestedStore } from '$lib/stores/notInterested';
 	import { bookmarksPageStore } from '$lib/stores/bookmarksPage';
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
 	import { ratedSummarySheetKeepAlive } from '$lib/stores/ratedSummarySheetKeepAlive';
+	import {
+		isUserLibraryDetailsReady,
+		userLibraryHydrationStore
+	} from '$lib/stores/userLibrary';
 	import BookCard from '$lib/components/BookCard.svelte';
 	import BookCardGridSkeleton from '$lib/components/BookCardGridSkeleton.svelte';
 	import {
@@ -100,7 +104,13 @@
 	let activeFilter = $state<FilterId>('rated');
 	let sortOrder = $state<ShelfSortId>(readSortFromLs());
 
+	// Book titles/covers live in a separate store that hydrates after the rating ids. Subscribe to
+	// it so the rated list rebuilds when details arrive (e.g. on a direct/refreshed load), rather
+	// than staying empty until the page is remounted. Mirrors /rate's ratedEntries.
+	const ratedBooksDetailsStore = ratingsStore.ratedBooksDetails;
+
 	const ratedDisplayEntries = $derived.by(() => {
+		void $ratedBooksDetailsStore;
 		type RatedEntry = { book: Book; ratingAtLoad: RatingValue };
 		const baseEntries: RatedEntry[] = Array.from($ratingsStore.entries())
 			.map(([bookId, rating]) => {
@@ -235,11 +245,12 @@
 		});
 	});
 
-	const ratedBooksForPartition = $derived(
-		Array.from($ratingsStore.entries())
+	const ratedBooksForPartition = $derived.by(() => {
+		void $ratedBooksDetailsStore;
+		return Array.from($ratingsStore.entries())
 			.map(([id]) => ratingsStore.getRatedBook(id))
-			.filter((b): b is Book => b != null)
-	);
+			.filter((b): b is Book => b != null);
+	});
 
 	const unionBooksById = $derived.by(() => {
 		const m = new SvelteMap<string, Book>();
@@ -254,7 +265,35 @@
 	const notInterestedIds = $derived.by(() => new SvelteSet([...$notInterestedStore]));
 	const planIds = $derived($planToReadStore);
 
-	const countsReady = $derived(!$authStore.session?.access_token || !bmNiLoading);
+	// True until we actually know the rated set: auth must be resolved and, for a signed-in/anon
+	// user, the rated-book details must have hydrated (the rated list renders purely from details).
+	// Distinguishes "still loading" from "confirmed zero" so we don't flash the empty state on load.
+	const ratedHydrating = $derived.by(() => {
+		if (!$authReady) return true;
+		const user = $authStore.user;
+		if (!user) return false;
+		return !isUserLibraryDetailsReady(user.id, $userLibraryHydrationStore);
+	});
+
+	const countsReady = $derived(
+		(!$authStore.session?.access_token || !bmNiLoading) && !ratedHydrating
+	);
+
+	// Escape hatch: if hydration hasn't finished within 15s (e.g. a request that never resolves),
+	// stop showing the skeleton forever and surface a retry message instead. Resets whenever
+	// hydration completes or a new load begins.
+	let ratedLoadTimedOut = $state(false);
+	$effect(() => {
+		if (!ratedHydrating) {
+			ratedLoadTimedOut = false;
+			return;
+		}
+		ratedLoadTimedOut = false;
+		const id = setTimeout(() => {
+			ratedLoadTimedOut = true;
+		}, 15_000);
+		return () => clearTimeout(id);
+	});
 
 	const partitionCounts = $derived.by(() => {
 		if (!countsReady) return { ni: 0, rated: 0, bookmarked: 0 };
@@ -321,6 +360,13 @@
 	);
 
 	const listLoading = $derived($authStore.session?.access_token && listNeedsBmNi && bmNiLoading);
+
+	// Rated tab: show the loading skeleton (not the empty message) while the library is still
+	// hydrating and we have nothing to show yet. Locally-cached ratings render immediately, so this
+	// only kicks in when the list is genuinely empty pending the server sync.
+	const ratedListLoading = $derived(
+		activeFilter === 'rated' && ratedHydrating && ratedDisplayEntries.length === 0
+	);
 
 	const currentListBooks = $derived.by((): Book[] => {
 		if (activeFilter === 'rated') return ratedDisplayEntries.map((e) => e.book);
@@ -452,7 +498,9 @@
 		role="tabpanel"
 		aria-labelledby="bookshelf-tab-{activeFilter}"
 	>
-		{#if listLoading}
+		{#if ratedListLoading && ratedLoadTimedOut}
+			<p class="bookshelf-page__empty" role="alert">{t('rated.loadError')}</p>
+		{:else if listLoading || ratedListLoading}
 			<p class="bookshelf-page__loading typ-body">{t('rated.loadingList')}</p>
 			<BookCardGridSkeleton class="bookshelf-page__list" ariaLabel={t('rated.title')} />
 		{:else if activeFilter === 'rated' && ratedDisplayEntries.length === 0}

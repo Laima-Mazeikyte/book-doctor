@@ -56,6 +56,7 @@ en:
     metaDescription: 'Your Unread bookshelf: rated titles, bookmarks, and books marked not interested. Easy to browse and manage.'
     empty: 'No books rated yet. Rate at least 10 to get recommendations.'
     loadingList: 'Loading your library…'
+    loadError: "Couldn't load your bookshelf right now. Please refresh to try again."
     emptyBookmarked: 'No bookmarked books yet. Titles you save stay here even if you also rate them.'
     emptyNotInterested: 'No books marked as not interested yet.'
     tabs:
