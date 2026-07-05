@@ -1,6 +1,8 @@
-import { get, writable } from 'svelte/store';
+import { derived, get, writable } from 'svelte/store';
 import type { Book, RatingValue } from '$lib/types/book';
+import { coverUrlForBookId } from '$lib/book-cover';
 import { notInterestedStore } from './notInterested';
+import type { CachedRatedBook } from './libraryCache';
 
 const LOCAL_STORAGE_KEY = 'book-doctor:ratings-pending:v2';
 const FLUSH_REQUEST_TIMEOUT_MS = 15_000;
@@ -128,6 +130,21 @@ function parseQueue(raw: string | null): Map<string, QueuedRatingOperation> {
 function createRatingsStore() {
 	const { subscribe, set, update } = writable<Map<string, RatingValue>>(new Map());
 	const ratedBooksDetails = writable<Map<string, Book>>(new Map());
+
+	/**
+	 * Canonical reactive list of rated books joined with their details, in ratings-map order
+	 * (the "newest"/re-rate ordering is preserved). Entries whose details haven't hydrated yet
+	 * are skipped. Views should read this instead of hand-joining the values + details maps via
+	 * the non-reactive getRatedBook() — that pattern silently renders empty until remount.
+	 */
+	const ratedBooks = derived([{ subscribe }, ratedBooksDetails], ([$ratings, $details]) => {
+		const out: Array<{ book: Book; rating: RatingValue }> = [];
+		for (const [id, rating] of $ratings) {
+			const book = $details.get(id);
+			if (book) out.push({ book, rating });
+		}
+		return out;
+	});
 	const syncStates = writable<Map<string, RatingSyncState>>(new Map());
 	const syncMeta = writable<RatingsSyncMeta>({
 		pendingCount: 0,
@@ -315,6 +332,8 @@ function createRatingsStore() {
 		subscribe,
 		/** Book details loaded with ratings (so the rating list can show all rated books after refresh). */
 		ratedBooksDetails: { subscribe: ratedBooksDetails.subscribe },
+		/** Canonical reactive rated-book list (values ⋈ details); read this instead of hand-joining. */
+		ratedBooks: { subscribe: ratedBooks.subscribe },
 		syncStates: { subscribe: syncStates.subscribe },
 		syncMeta: { subscribe: syncMeta.subscribe },
 		/** Set callbacks to persist ratings to Supabase (upsert/delete). Called from layout after session exists. */
@@ -354,6 +373,32 @@ function createRatingsStore() {
 			const next = applyQueuedOperations(baseRatings);
 			set(next);
 			rebuildSyncStates(next);
+		},
+		/**
+		 * Paint the rated library instantly from the localStorage cache (stale-while-revalidate),
+		 * before the server load returns. No-op on empty input so it never clobbers pending/in-session
+		 * ratings or a good server load; the covers are re-derived from `book_id`.
+		 */
+		hydrateFromCache(entries: CachedRatedBook[]) {
+			if (entries.length === 0) return;
+			const baseRatings = new Map<string, RatingValue>(entries.map((e) => [e.id, e.rating]));
+			const nextRatings = applyQueuedOperations(baseRatings);
+			set(nextRatings);
+			const detailsMap = new Map<string, Book>(
+				entries.map((e) => [
+					e.id,
+					{
+						id: e.id,
+						book_id: e.book_id,
+						title: e.title,
+						author: e.author,
+						coverUrl: coverUrlForBookId(e.book_id)
+					}
+				])
+			);
+			ratedBooksDetails.set(detailsMap);
+			applyQueuedBooksToDetails();
+			rebuildSyncStates(nextRatings);
 		},
 		async flushPending() {
 			await flushPending();

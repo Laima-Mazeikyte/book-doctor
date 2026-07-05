@@ -45,6 +45,7 @@
 		unregisterUserLibraryIdsLoader
 	} from '$lib/stores/userLibrary';
 	import { ratingsStore } from '$lib/stores/ratings';
+	import { readLibraryCache, writeLibraryCache } from '$lib/stores/libraryCache';
 	import {
 		recommendationsCountStore,
 		refreshRecommendationsCountFromApi
@@ -259,6 +260,8 @@
 
 		const pathname = page.url.pathname;
 		if (libraryHydratedForUserId.current !== user.id) {
+			// Paint the rated library instantly from the local cache, then revalidate from the server.
+			ratingsStore.hydrateFromCache(readLibraryCache(user.id) ?? []);
 			activeLibraryLoadRequestId = startUserLibraryIdsLoad(
 				supabase,
 				user.id,
@@ -277,6 +280,25 @@
 				}
 			});
 		}
+	});
+
+	// Persist a compact snapshot of the rated library (5 fields) so the next load paints instantly.
+	// Debounced, and only non-empty snapshots are written — a transient empty state or a failed
+	// server load never clobbers a good cache.
+	const ratedBooksForCache = ratingsStore.ratedBooks;
+	$effect(() => {
+		const user = $authStore.user;
+		const entries = $ratedBooksForCache;
+		if (!user || entries.length === 0) return;
+		const snapshot = entries.map(({ book, rating }) => ({
+			id: book.id,
+			book_id: book.book_id,
+			title: book.title,
+			author: book.author,
+			rating
+		}));
+		const timer = setTimeout(() => writeLibraryCache(user.id, snapshot), 800);
+		return () => clearTimeout(timer);
 	});
 </script>
 

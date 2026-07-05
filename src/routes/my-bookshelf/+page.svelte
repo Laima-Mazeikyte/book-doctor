@@ -104,20 +104,17 @@
 	let activeFilter = $state<FilterId>('rated');
 	let sortOrder = $state<ShelfSortId>(readSortFromLs());
 
-	// Book titles/covers live in a separate store that hydrates after the rating ids. Subscribe to
-	// it so the rated list rebuilds when details arrive (e.g. on a direct/refreshed load), rather
-	// than staying empty until the page is remounted. Mirrors /rate's ratedEntries.
-	const ratedBooksDetailsStore = ratingsStore.ratedBooksDetails;
+	// Canonical reactive rated-book list (rating values joined with book details). Reading this —
+	// instead of hand-joining $ratingsStore + getRatedBook — is what keeps the list rebuilding as
+	// details hydrate; it can't silently render empty like the old two-map pattern.
+	const ratedBooksStore = ratingsStore.ratedBooks;
 
 	const ratedDisplayEntries = $derived.by(() => {
-		void $ratedBooksDetailsStore;
 		type RatedEntry = { book: Book; ratingAtLoad: RatingValue };
-		const baseEntries: RatedEntry[] = Array.from($ratingsStore.entries())
-			.map(([bookId, rating]) => {
-				const book = ratingsStore.getRatedBook(bookId);
-				return book ? { book, ratingAtLoad: rating } : null;
-			})
-			.filter((e): e is RatedEntry => e !== null);
+		const baseEntries: RatedEntry[] = $ratedBooksStore.map(({ book, rating }) => ({
+			book,
+			ratingAtLoad: rating
+		}));
 
 		let entries: RatedEntry[];
 		if (sortOrder === 'newest') {
@@ -245,12 +242,8 @@
 		});
 	});
 
-	const ratedBooksForPartition = $derived.by(() => {
-		void $ratedBooksDetailsStore;
-		return Array.from($ratingsStore.entries())
-			.map(([id]) => ratingsStore.getRatedBook(id))
-			.filter((b): b is Book => b != null);
-	});
+	const ratedBooksForPartition = $derived($ratedBooksStore.map((e) => e.book));
+	const ratedIdSet = $derived(new SvelteSet($ratedBooksStore.map((e) => e.book.id)));
 
 	const unionBooksById = $derived.by(() => {
 		const m = new SvelteMap<string, Book>();
@@ -300,13 +293,12 @@
 		let ni = 0;
 		let rated = 0;
 		let bookmarked = 0;
-		const ratings = $ratingsStore;
 		for (const book of unionBooksById.values()) {
 			if (isNotInterested(book, notInterestedIds)) {
 				ni++;
 				continue;
 			}
-			if (ratings.has(book.id) && ratingsStore.getRatedBook(book.id)) rated++;
+			if (ratedIdSet.has(book.id)) rated++;
 			if (planIds.has(book.id)) bookmarked++;
 		}
 		return { ni, rated, bookmarked };

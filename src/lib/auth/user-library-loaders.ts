@@ -16,6 +16,7 @@ import { notifyLibraryPersistedMutationForBrowseFeedWarm } from '$lib/feed/brows
 import { notInterestedStore } from '$lib/stores/notInterested';
 import { planToReadStore } from '$lib/stores/planToRead';
 import { ratingsStore } from '$lib/stores/ratings';
+import { clearLibraryCache } from '$lib/stores/libraryCache';
 import {
 	markUserLibraryDetailsReady,
 	markUserLibraryIdsReady,
@@ -423,6 +424,8 @@ export function reloadUserLibraryAfterMigration(
 ): number {
 	attachRatingsPersistence(supabase, userId, persistenceUserId);
 	void ratingsStore.flushPending();
+	// Drop any stale (e.g. anonymous) library cache; the account's cache is rebuilt after this load.
+	clearLibraryCache();
 	hydratedForUserId.current = null;
 	return startUserLibraryIdsLoad(supabase, userId, coordinator, hydratedForUserId);
 }
@@ -436,6 +439,7 @@ export function resetUserLibraryOnSignOut(hadUserBefore: { current: boolean }): 
 		planToReadStore.reset();
 		notInterestedStore.reset();
 		notInterestedStore.clearLocalStorage();
+		clearLibraryCache();
 	}
 	hadUserBefore.current = false;
 }
