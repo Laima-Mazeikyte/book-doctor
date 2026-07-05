@@ -6,6 +6,7 @@ const COL_BOOK_ID = 'Book Id';
 const COL_RATING = 'My Rating';
 const COL_TITLE = 'Title';
 const COL_AUTHOR = 'Author';
+const COL_ORIG_YEAR = 'Original Publication Year';
 
 /** Reject files larger than this before parsing, so a giant upload can't OOM the tab. */
 export const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -73,20 +74,26 @@ function sanitizeDisplay(value: string | undefined): string {
 }
 
 function toRow(raw: Record<string, string>): GoodreadsRow | null {
-	const goodreads_id = strictInt(raw[COL_BOOK_ID]);
 	const rating = strictInt(raw[COL_RATING]);
 
-	// Keep only resolvable, actually-rated rows. Goodreads writes 0 for "unrated",
-	// and user_ratings only accepts 1-5, so unrated rows carry nothing to import.
-	if (goodreads_id == null || goodreads_id <= 0) return null;
+	// Goodreads writes 0 for "unrated", and user_ratings only accepts 1-5, so
+	// unrated rows carry nothing to import.
 	if (rating == null || rating < 1 || rating > 5) return null;
 
-	return {
-		goodreads_id,
-		rating,
-		title: sanitizeDisplay(raw[COL_TITLE]),
-		author: sanitizeDisplay(raw[COL_AUTHOR])
-	};
+	const parsedId = strictInt(raw[COL_BOOK_ID]);
+	const goodreads_id = parsedId != null && parsedId > 0 ? parsedId : null;
+
+	const title = sanitizeDisplay(raw[COL_TITLE]);
+	const author = sanitizeDisplay(raw[COL_AUTHOR]);
+
+	// A row is matchable if it has a Book Id OR enough metadata (title + author)
+	// for the map-server to fall back on. Drop rows with neither.
+	if (goodreads_id == null && !(title && author)) return null;
+
+	// Original Publication Year is optional — a missing/unparseable value is NA (null).
+	const year = strictInt(raw[COL_ORIG_YEAR]);
+
+	return { goodreads_id, rating, title, author, year };
 }
 
 /**

@@ -8,7 +8,7 @@ import { createImportJob, pollImportJob, type PollOptions } from './importJobs';
 export const GOODREADS_IMPORT_COMPLETE_EVENT = 'goodreads:import-complete';
 
 export interface ImportMiss {
-	goodreads_id: number;
+	index: number;
 	title: string;
 	author: string;
 }
@@ -16,47 +16,58 @@ export interface ImportMiss {
 export type ImportUiResult =
 	| { kind: 'done'; imported: number; misses: ImportMiss[] }
 	| { kind: 'timeout' }
-	| { kind: 'error' };
+	| { kind: 'error'; message?: string };
 
 /**
- * Map the map-server's `unmatched` ids back to their in-memory title/author.
+ * Map the map-server's `unmatched` row indices back to their title/author.
  *
- * Keyed on the string form of the id on both sides: `rows` carries numeric ids
- * (from strictInt), while the backend serializes `unmatched` as JSON — which may
- * arrive as numbers or strings. String-keying makes the lookup type-agnostic.
+ * The backend serializes `unmatched` as JSON, so an index may arrive as a number
+ * or a string — Number() normalizes both. Any index outside `rows` is skipped
+ * defensively (a malformed backend write shouldn't surface a blank miss).
  */
 export function buildMisses(
 	rows: GoodreadsRow[],
 	unmatched: ReadonlyArray<number | string>
 ): ImportMiss[] {
-	const byId = new Map(rows.map((r) => [String(r.goodreads_id), r]));
-	return unmatched.map((id) => {
-		const row = byId.get(String(id));
-		return { goodreads_id: Number(id), title: row?.title ?? '', author: row?.author ?? '' };
+	return unmatched.flatMap((raw) => {
+		const index = Number(raw);
+		const row = rows[index];
+		if (!row) return [];
+		return [{ index, title: row.title, author: row.author }];
 	});
 }
 
 /**
- * Orchestrates a single import: send { goodreads_id, rating } for the rated rows,
- * poll for the map-server's result, then map any unmatched ids back to the
- * in-memory title/author so the UI can list what couldn't be found.
- *
- * Titles/authors never leave the browser — `rows` is the retained parse output.
+ * Orchestrates a single import: send { index, goodreads_id, rating, title,
+ * author, year } for the rated rows, poll for the map-server's result, then map
+ * any unmatched indices back to their title/author so the UI can list what
+ * couldn't be found.
  */
 export async function runGoodreadsImport(
 	userId: string,
 	rows: GoodreadsRow[],
 	poll?: PollOptions
 ): Promise<ImportUiResult> {
-	const items = rows.map(({ goodreads_id, rating }) => ({ goodreads_id, rating }));
+	const items = rows.map((row, index) => ({ index, ...row }));
 
 	const { id, error } = await createImportJob(userId, items);
-	if (error || !id) return { kind: 'error' };
+	if (error || !id) {
+		console.error('[goodreads-import] could not create job row:', error);
+		return { kind: 'error', message: error?.message };
+	}
 
 	const outcome = await pollImportJob(id, poll);
 
 	if (outcome.status === 'timeout') return { kind: 'timeout' };
-	if (outcome.status === 'failed' || outcome.status === 'error') return { kind: 'error' };
+	if (outcome.status === 'failed') {
+		console.error('[goodreads-import] polling failed:', outcome.error);
+		return { kind: 'error', message: outcome.error.message };
+	}
+	if (outcome.status === 'error') {
+		// The map-server ran but recorded a failure; the reason is in the row's `error` column.
+		console.error('[goodreads-import] map-server reported error:', outcome.result.error);
+		return { kind: 'error', message: outcome.result.error ?? undefined };
+	}
 
 	// status === 'done'
 	const misses = buildMisses(rows, outcome.result.unmatched);

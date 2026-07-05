@@ -3,24 +3,37 @@ import { buildMisses } from './runImport';
 import type { GoodreadsRow } from './types';
 
 const rows: GoodreadsRow[] = [
-	{ goodreads_id: 13278990, rating: 5, title: 'The Housing Monster', author: 'prole.info' },
-	{ goodreads_id: 7805, rating: 3, title: 'Pale Fire', author: 'Vladimir Nabokov' }
+	{
+		goodreads_id: 13278990,
+		rating: 5,
+		title: 'The Housing Monster',
+		author: 'prole.info',
+		year: 2012
+	},
+	{ goodreads_id: 7805, rating: 3, title: 'Pale Fire', author: 'Vladimir Nabokov', year: 1962 },
+	{ goodreads_id: null, rating: 4, title: 'No Id Book', author: 'Anon', year: null }
 ];
 
 describe('buildMisses', () => {
-	it('resolves title/author when the backend returns numeric ids', () => {
-		expect(buildMisses(rows, [7805])).toEqual([
-			{ goodreads_id: 7805, title: 'Pale Fire', author: 'Vladimir Nabokov' }
+	it('resolves title/author from a numeric row index', () => {
+		expect(buildMisses(rows, [1])).toEqual([
+			{ index: 1, title: 'Pale Fire', author: 'Vladimir Nabokov' }
 		]);
 	});
 
-	it('resolves title/author when the backend returns string ids', () => {
-		expect(buildMisses(rows, ['7805'])).toEqual([
-			{ goodreads_id: 7805, title: 'Pale Fire', author: 'Vladimir Nabokov' }
+	it('resolves title/author from a string index', () => {
+		expect(buildMisses(rows, ['1'])).toEqual([
+			{ index: 1, title: 'Pale Fire', author: 'Vladimir Nabokov' }
 		]);
 	});
 
-	it('falls back to empty strings for an id not in the parsed rows', () => {
-		expect(buildMisses(rows, [999999])).toEqual([{ goodreads_id: 999999, title: '', author: '' }]);
+	it('resolves rows that have no goodreads_id', () => {
+		expect(buildMisses(rows, [2])).toEqual([{ index: 2, title: 'No Id Book', author: 'Anon' }]);
+	});
+
+	it('skips an index outside the parsed rows', () => {
+		expect(buildMisses(rows, [0, 999])).toEqual([
+			{ index: 0, title: 'The Housing Monster', author: 'prole.info' }
+		]);
 	});
 });

@@ -4,6 +4,7 @@
 	import { get } from 'svelte/store';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { dev } from '$app/environment';
 	import Button from '$lib/components/Button.svelte';
 	import { authStore } from '$lib/stores/auth';
 	import {
@@ -122,7 +123,11 @@
 		const result = await runGoodreadsImport(userId, rows);
 
 		if (result.kind === 'error') {
-			error = t('shared.goodreadsModal.errorSubmit');
+			// Show the backend's reason only in dev; production users get the friendly copy.
+			error =
+				dev && result.message
+					? `${t('shared.goodreadsModal.errorSubmit')} (${result.message})`
+					: t('shared.goodreadsModal.errorSubmit');
 			phase = 'preview';
 			return;
 		}
@@ -227,7 +232,7 @@
 						{t('shared.goodreadsModal.unmatchedHeading', { count: misses.length })}
 					</p>
 					<ul class="gr-modal__misses">
-						{#each misses as miss (miss.goodreads_id)}
+						{#each misses as miss (miss.index)}
 							<li class="gr-modal__miss">
 								<span class="gr-modal__miss-title">{miss.title}</span>
 								{#if miss.author}<span class="gr-modal__miss-author"> — {miss.author}</span>{/if}
