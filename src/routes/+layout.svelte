@@ -19,11 +19,7 @@
 	import AppFooter from '$lib/components/AppFooter.svelte';
 	import BugReportModal from '$lib/components/BugReportModal.svelte';
 	import SaveAccountPrompt from '$lib/components/SaveAccountPrompt.svelte';
-	import {
-		createLayoutAuthController,
-		mountRatingsMigratedListener,
-		mountRatingsRetryListeners
-	} from '$lib/auth/bootstrap-auth';
+	import { createLayoutAuthController, mountRatingsRetryListeners } from '$lib/auth/bootstrap-auth';
 	import { AUTH_SIGNED_IN_EVENT, isAuthTransitionActive } from '$lib/auth/completeAuthSuccess';
 	import { onAfterNavigateForBrowseFeedWarm } from '$lib/feed/browseFeedWarm';
 	import { isRateShellPath } from '$lib/navigation/rateShell';
@@ -148,7 +144,6 @@
 		const authController = createLayoutAuthController(supabaseClient);
 		const unmountAuth = authController.mount();
 		const unmountRetry = mountRatingsRetryListeners();
-		const unmountMigrated = mountRatingsMigratedListener(reloadLibraryForCurrentUser);
 
 		registerUserLibraryIdsLoader((userId) => {
 			const supabase = getSupabase();
@@ -186,7 +181,6 @@
 		return () => {
 			unmountAuth();
 			unmountRetry();
-			unmountMigrated();
 			unregisterUserLibraryIdsLoader();
 			unregisterUserLibraryDetailsLoader();
 			window.removeEventListener(AUTH_SIGNED_IN_EVENT, onSignedIn);

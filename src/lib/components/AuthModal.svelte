@@ -2,11 +2,7 @@
 	import { tick } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import Button from '$lib/components/Button.svelte';
-	import {
-		beginAuthTransition,
-		clearAuthTransition,
-		completeAuthSuccess
-	} from '$lib/auth/completeAuthSuccess';
+	import { completeAuthSuccess } from '$lib/auth/completeAuthSuccess';
 	import { getSupabase } from '$lib/supabase';
 	import { t } from '$lib/copy';
 	import { Eye, EyeOff } from 'lucide-svelte';
@@ -302,46 +298,13 @@
 					password: signUpPassword
 				});
 				if (!isCurrentAuthRequest(requestId)) return;
-				if (!updateErr) {
-					await closeAfterAuthSuccess({ previousAnonymousUserId: anonymousUserId });
+				// Native anonymous→permanent conversion keeps the same user_id, so the account already
+				// owns all its data — no migration needed. On failure (e.g. the email is already
+				// registered) surface the error instead of forking to a new account + service-role copy.
+				if (updateErr) {
+					error = updateErr.message ?? t('shared.authModal.errorSignUpFailed');
 					return;
 				}
-
-				beginAuthTransition();
-				const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
-					email,
-					password: signUpPassword
-				});
-				if (!isCurrentAuthRequest(requestId)) return;
-				if (signUpErr) {
-					error = signUpErr.message ?? t('shared.authModal.errorSignUpFailed');
-					clearAuthTransition();
-					return;
-				}
-
-				const accessToken = signUpData?.session?.access_token;
-				if (accessToken) {
-					try {
-						const base = typeof window !== 'undefined' ? window.location.origin : '';
-						const res = await fetch(`${base}/api/migrate-anonymous-data`, {
-							method: 'POST',
-							headers: {
-								'Content-Type': 'application/json',
-								Authorization: `Bearer ${accessToken}`
-							},
-							body: JSON.stringify({ anonymousUserId })
-						});
-						if (!isCurrentAuthRequest(requestId)) return;
-						if (res.ok) {
-							window.dispatchEvent(new CustomEvent('auth:ratings-migrated'));
-						} else {
-							console.warn('[auth] Migrate anonymous data failed:', res.status, await res.text());
-						}
-					} catch (migrateErr) {
-						console.warn('[auth] Migrate anonymous data request failed', migrateErr);
-					}
-				}
-				if (!isCurrentAuthRequest(requestId)) return;
 				await closeAfterAuthSuccess({ previousAnonymousUserId: anonymousUserId });
 				return;
 			}

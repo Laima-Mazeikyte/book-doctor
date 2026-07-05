@@ -34,9 +34,6 @@ Fill in values as needed. The table below matches `.env.example`.
 | `VITE_SUPABASE_ANON_KEY`    | **Yes**                  | Supabase anon (public) key. Same note as above.                                                               |
 | `PUBLIC_SUPABASE_URL`       | **Yes** (browser client) | Same URL as above, for the browser Supabase client (`$env/static/public`).                                    |
 | `PUBLIC_SUPABASE_ANON_KEY`  | **Yes** (browser client) | Same anon key as above.                                                                                       |
-| `SUPABASE_SERVICE_ROLE_KEY` | No                       | Service role key for server features that bypass RLS (for example webhook / recommendation flows).            |
-| `SUPABASE_WEBHOOK_SECRET`   | No                       | Optional shared secret for validating webhook requests.                                                       |
-| `BOOKDOC_RECOMMEND_URL`     | No                       | Optional external recommendation API.                                                                         |
 | `PUBLIC_BUNNY_COVERS_BASE`  | No                       | Base URL for book cover images (Bunny.net pull zone). If unset, covers are omitted.                           |
 
 **Practical tip:** For local development, set **`VITE_*` and `PUBLIC_*` pairs to the same URL and the same anon key** so both server and browser stay in sync.

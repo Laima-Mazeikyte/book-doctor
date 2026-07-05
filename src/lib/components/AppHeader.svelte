@@ -1,7 +1,13 @@
 <script lang="ts">
 	import { get } from 'svelte/store';
 	import { getSupabase } from '$lib/supabase';
-	import { authRestorePending, authReady, isAnonymousOrSignedOut, signedInEmail } from '$lib/stores/auth';
+	import {
+		authRestorePending,
+		authReady,
+		authStore,
+		isAnonymousOrSignedOut,
+		signedInEmail
+	} from '$lib/stores/auth';
 	import { authModalRequestStore } from '$lib/stores/authModalRequest';
 	import { mobileMenuOpen } from '$lib/stores/mobileMenu';
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
@@ -43,6 +49,15 @@
 	/** Signed-in (non-anonymous) users always see primary nav; anonymous users only when they already have recommendations. */
 	let showMainNav = $derived(
 		$authReady && (!$isAnonymousOrSignedOut || $recommendationsCountStore > 0)
+	);
+	/**
+	 * Show the Recommendations nav item only once the user has actually requested recommendations.
+	 * The `has_recommendations` app_metadata flag rides in the session JWT, so it's known
+	 * synchronously at first paint (no async pop-in); the count store covers the case where a run
+	 * just completed this session, before the token has refreshed to carry the flag.
+	 */
+	let showRecommendationsNav = $derived(
+		Boolean($authStore.user?.app_metadata?.has_recommendations) || $recommendationsCountStore > 0
 	);
 	function openAuthModal(tab: 'signin' | 'signup' = 'signin', opener?: HTMLElement | null) {
 		authModalInitialTab = tab;
@@ -173,13 +188,15 @@
 				>
 					{t('shared.header.myBookshelf')}
 				</a>
-				<a
-					href={resolve('/rate/recommendations')}
-					class="chrome-nav-link"
-					aria-current={isNavHrefActive('/rate/recommendations', pathname) ? 'page' : undefined}
-				>
-					{t('shared.header.myRecommendations')}
-				</a>
+				{#if showRecommendationsNav}
+					<a
+						href={resolve('/rate/recommendations')}
+						class="chrome-nav-link"
+						aria-current={isNavHrefActive('/rate/recommendations', pathname) ? 'page' : undefined}
+					>
+						{t('shared.header.myRecommendations')}
+					</a>
+				{/if}
 			</nav>
 		{/if}
 
@@ -303,14 +320,18 @@
 						>
 							{t('shared.header.myBookshelf')}
 						</a>
-						<a
-							href={resolve('/rate/recommendations')}
-							class="chrome-nav-link"
-							aria-current={isNavHrefActive('/rate/recommendations', pathname) ? 'page' : undefined}
-							onclick={closeMobileMenu}
-						>
-							{t('shared.header.myRecommendations')}
-						</a>
+						{#if showRecommendationsNav}
+							<a
+								href={resolve('/rate/recommendations')}
+								class="chrome-nav-link"
+								aria-current={isNavHrefActive('/rate/recommendations', pathname)
+									? 'page'
+									: undefined}
+								onclick={closeMobileMenu}
+							>
+								{t('shared.header.myRecommendations')}
+							</a>
+						{/if}
 					</nav>
 				{/if}
 				<div class="app-header__mobile-account">

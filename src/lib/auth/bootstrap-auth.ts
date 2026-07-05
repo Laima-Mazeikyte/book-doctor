@@ -149,9 +149,3 @@ export function mountRatingsRetryListeners(): () => void {
 		document.removeEventListener('visibilitychange', handleVisibilityChange);
 	};
 }
-
-export function mountRatingsMigratedListener(reloadLibrary: () => void): () => void {
-	const handler = () => reloadLibrary();
-	window.addEventListener('auth:ratings-migrated', handler);
-	return () => window.removeEventListener('auth:ratings-migrated', handler);
-}
