@@ -53,8 +53,8 @@ en:
       answer: "You definitely should! But even close friends don't always share taste in books! We’re here to fill the gap when you need a recommendation tailored to you."
 
     - id: import_data
-      question: 'Can I import my data from other sites (like Goodreads)?'
-      answer: 'Not yet, but we hear you! Data import is on our roadmap.'
+      question: 'Can I import my data from other sites (like Goodreads, StoryGraph, or Hardcover)?'
+      answer: 'Yes! Use "Sync library" in the account menu to upload a CSV exported from Goodreads, StoryGraph, or Hardcover — or your own CSV with Title, Author, and Rating columns — and we''ll import your ratings.'
 
     - id: is_free
       question: 'Is it free?'

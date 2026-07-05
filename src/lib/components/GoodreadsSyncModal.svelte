@@ -4,7 +4,6 @@
 	import { get } from 'svelte/store';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { dev } from '$app/environment';
 	import Button from '$lib/components/Button.svelte';
 	import { authStore } from '$lib/stores/auth';
 	import {
@@ -123,11 +122,7 @@
 		const result = await runGoodreadsImport(userId, rows);
 
 		if (result.kind === 'error') {
-			// Show the backend's reason only in dev; production users get the friendly copy.
-			error =
-				dev && result.message
-					? `${t('shared.goodreadsModal.errorSubmit')} (${result.message})`
-					: t('shared.goodreadsModal.errorSubmit');
+			error = t('shared.goodreadsModal.errorSubmit');
 			phase = 'preview';
 			return;
 		}

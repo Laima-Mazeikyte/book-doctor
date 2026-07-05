@@ -16,7 +16,7 @@ export interface ImportMiss {
 export type ImportUiResult =
 	| { kind: 'done'; imported: number; misses: ImportMiss[] }
 	| { kind: 'timeout' }
-	| { kind: 'error'; message?: string };
+	| { kind: 'error' };
 
 /**
  * Map the map-server's `unmatched` row indices back to their title/author.
@@ -51,23 +51,12 @@ export async function runGoodreadsImport(
 	const items = rows.map((row, index) => ({ index, ...row }));
 
 	const { id, error } = await createImportJob(userId, items);
-	if (error || !id) {
-		console.error('[goodreads-import] could not create job row:', error);
-		return { kind: 'error', message: error?.message };
-	}
+	if (error || !id) return { kind: 'error' };
 
 	const outcome = await pollImportJob(id, poll);
 
 	if (outcome.status === 'timeout') return { kind: 'timeout' };
-	if (outcome.status === 'failed') {
-		console.error('[goodreads-import] polling failed:', outcome.error);
-		return { kind: 'error', message: outcome.error.message };
-	}
-	if (outcome.status === 'error') {
-		// The map-server ran but recorded a failure; the reason is in the row's `error` column.
-		console.error('[goodreads-import] map-server reported error:', outcome.result.error);
-		return { kind: 'error', message: outcome.result.error ?? undefined };
-	}
+	if (outcome.status === 'failed' || outcome.status === 'error') return { kind: 'error' };
 
 	// status === 'done'
 	const misses = buildMisses(rows, outcome.result.unmatched);
