@@ -5,7 +5,6 @@ import { mapBookRowToBook } from '$lib/search/mapBookRowToBook';
 import { supabase, createSupabaseWithAuth } from '$lib/server/supabase';
 
 const PAGE_SIZE = 20;
-const TOP_100_SIZE = 100;
 
 /** Seeded RNG (mulberry32) so the same seed gives the same order across requests. */
 function createSeededRng(seedStr: string): () => number {
@@ -123,50 +122,11 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	const offsetParam = url.searchParams.get('offset');
 	const offset = offsetParam ? parseInt(offsetParam, 10) : 0;
 	const seedParam = url.searchParams.get('seed');
-	const excludeParam = url.searchParams.get('exclude');
-	const excludeIds = excludeParam
-		? excludeParam
-				.split(',')
-				.map((s) => s.trim())
-				.filter(Boolean)
-		: [];
 
 	const authHeader = request.headers.get('Authorization');
 	const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
-	if (offset < TOP_100_SIZE) {
-		const catalog = await loadTop100Catalog(accessToken);
-		const payload = buildTop100Page(catalog, offset, seedParam);
-		return json(payload);
-	}
-
-	const { data: top100Rows } = await supabase.from('top_100_books').select('book_id');
-	const top100Ids = (top100Rows ?? []).map((r) => String(r.book_id));
-	const excludeArr = [...new Set([...top100Ids, ...excludeIds])];
-
-	const candidateLimit = Math.max(PAGE_SIZE * 3, 60);
-	const supabaseClient = accessToken ? createSupabaseWithAuth(accessToken) : supabase;
-	const { data: candidates, error: restError } = await supabaseClient.rpc(
-		'get_eligible_books_excluding_ids',
-		{
-			p_exclude_ids: excludeArr.length > 0 ? excludeArr : null,
-			p_limit_count: candidateLimit
-		}
-	);
-
-	if (restError) {
-		console.error(restError);
-		throw error(500, 'Failed to load books');
-	}
-
-	const list = [...(candidates ?? [])].sort((a, b) => {
-		const ap = typeof a.popularity === 'number' ? a.popularity : 0;
-		const bp = typeof b.popularity === 'number' ? b.popularity : 0;
-		return bp - ap;
-	});
-	const books = list.slice(0, PAGE_SIZE).map((b) => mapRowToBook(b as BookRow));
-	const hasMore = books.length === PAGE_SIZE;
-	const nextOffset = offset + books.length;
-
-	return json({ books, nextOffset, hasMore });
+	const catalog = await loadTop100Catalog(accessToken);
+	const payload = buildTop100Page(catalog, offset, seedParam);
+	return json(payload);
 };

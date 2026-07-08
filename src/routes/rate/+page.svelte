@@ -469,7 +469,6 @@
 	let nextOffset = $state(0);
 	let hasMore = $state(true);
 	let popularSeed = $state<string | null>(null);
-	let popularContinuationOffset = $state(0);
 	let loadingInitial = $state(true);
 	let loadingMore = $state(false);
 	let popularError = $state<string | null>(null);
@@ -1128,7 +1127,6 @@
 		clearFeedPaginationMode();
 		popularSeed = null;
 		nextOffset = 0;
-		popularContinuationOffset = 0;
 		hasMore = true;
 
 		if (searchOverlayOpen) {
@@ -1417,13 +1415,6 @@
 		try {
 			const params = new SvelteURLSearchParams({ offset: String(offset) });
 			if (popularSeed) params.set('seed', popularSeed);
-			if (offset >= 100 && popularBooks.length > 0) {
-				const exclude = popularBooks
-					.map((b) => b.book_id)
-					.filter(Boolean)
-					.join(',');
-				if (exclude) params.set('exclude', exclude);
-			}
 			const headers: Record<string, string> = {};
 			const accessToken = get(authStore).session?.access_token ?? null;
 			if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
@@ -1440,7 +1431,6 @@
 			if (offset === 0 && data.seed) popularSeed = data.seed;
 
 			nextOffset = data.nextOffset;
-			popularContinuationOffset = data.nextOffset;
 			lastAppendWasFeed = false;
 			dispatchFeedPagination({ type: 'RESET' });
 
