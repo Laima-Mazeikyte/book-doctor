@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+	MIN_INTERACTIONS_FOR_RATE_FEED,
 	feedInteractionCountFromParts,
 	feedStateMeetsInteractionThreshold,
+	meetsRateFeedInteractionThreshold,
 	shouldRequestInitialPersonalizedFeed,
 	shouldShowLatestRateFeed
 } from './feedEligibility';
@@ -13,12 +15,29 @@ describe('feedEligibility', () => {
 		).toBe(3);
 	});
 
+	it('unlocks the feed at a single interaction, but not at zero', () => {
+		expect(MIN_INTERACTIONS_FOR_RATE_FEED).toBe(1);
+		expect(meetsRateFeedInteractionThreshold(0)).toBe(false);
+		expect(meetsRateFeedInteractionThreshold(1)).toBe(true);
+	});
+
+	it('meets the threshold with a single interaction when the server marks it eligible', () => {
+		expect(
+			feedStateMeetsInteractionThreshold({
+				mode: 'no_feed_yet',
+				books: [],
+				interaction_count: 1,
+				eligible_for_feed: true
+			})
+		).toBe(true);
+	});
+
 	it('does not show latest feed below threshold even with eligible books', () => {
 		expect(
 			shouldShowLatestRateFeed({
 				mode: 'has_eligible_feed',
 				books: [{ id: '1' }],
-				interaction_count: 2,
+				interaction_count: 0,
 				eligible_for_feed: false
 			})
 		).toBe(false);

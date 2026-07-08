@@ -1,5 +1,5 @@
 /** Minimum rated / bookmarked / not-interested books before requesting a personalized feed. */
-export const MIN_INTERACTIONS_FOR_RATE_FEED = 3;
+export const MIN_INTERACTIONS_FOR_RATE_FEED = 1;
 
 export type LatestRateFeedMode =
 	| 'has_eligible_feed'

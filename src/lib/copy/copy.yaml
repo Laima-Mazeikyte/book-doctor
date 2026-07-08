@@ -39,6 +39,7 @@ en:
     emptySearch: "No books found for '{{query}}'."
     loadMoreBooks: 'Load more books'
     loadMoreBooksAriaLabel: 'Load more books into the list'
+    feedUnlockHint: 'Rate a book to unlock your personalized feed'
     aria:
       searching: 'Searching…'
       loadingBooks: 'Loading books…'

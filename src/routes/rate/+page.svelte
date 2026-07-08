@@ -510,8 +510,23 @@
 
 	const paginationFeedOnly = $derived(startedFromLatestFeed && canRequestPersonalizedFeed);
 
+	/**
+	 * User has interacted with nothing and scrolled to the end of the curated Top 100. There is no
+	 * personalized feed to fetch and nothing more to browse, so we drop the (dead) load-more tile and
+	 * nudge them to rate a book instead.
+	 */
+	const belowThresholdListEnd = $derived(
+		popularBooks.length > 0 &&
+			!startedFromLatestFeed &&
+			!canRequestPersonalizedFeed &&
+			!hasMore
+	);
+
+	const showFeedUnlockHint = $derived(belowThresholdListEnd && !loadingInitial && !loadingMore);
+
 	const showMainListLoadMoreTile = $derived.by(() => {
 		if (popularBooks.length === 0 || loadingInitial) return false;
+		if (belowThresholdListEnd) return false;
 		return (
 			!hasMore ||
 			(paginationFeedOnly && lastAppendWasFeed && feedPagination.phase === 'creditPending')
@@ -1821,6 +1836,10 @@
 						</div>
 					{/if}
 
+					{#if showFeedUnlockHint}
+						<p class="rate-page__feed-unlock-hint typ-body-1">{t('rate.feedUnlockHint')}</p>
+					{/if}
+
 					{#if hasMore || (paginationFeedOnly && lastAppendWasFeed && feedPagination.phase !== 'exhausted')}
 						<div bind:this={sentinelEl} class="rate-page__sentinel" aria-hidden="true"></div>
 					{/if}
@@ -2120,6 +2139,12 @@
 	}
 	.rate-page__empty {
 		text-align: center;
+	}
+
+	.rate-page__feed-unlock-hint {
+		text-align: center;
+		color: var(--color-text-muted);
+		margin: var(--space-6) 0 var(--space-4);
 	}
 
 	.rate-page__below-overlay--inert-fallback {
