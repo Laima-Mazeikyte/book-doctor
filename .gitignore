@@ -29,6 +29,9 @@ test-results
 # Supabase
 .temp
 
+# Locally generated lab artifacts (~90 MB) served by the dev-only Vite middleware
+temp
+
 # Other
 .make-it-accessible-skill/
 .example data

@@ -2,9 +2,14 @@ import { defineConfig } from 'vitest/config';
 import { playwright } from '@vitest/browser-playwright';
 import { sveltekit } from '@sveltejs/kit/vite';
 import ViteYaml from '@modyfi/vite-plugin-yaml';
+import { localLabArtifacts } from './vite-plugin-local-lab-artifacts';
 
 export default defineConfig({
-	plugins: [sveltekit(), ViteYaml()],
+	plugins: [
+		sveltekit(),
+		ViteYaml(),
+		localLabArtifacts({ prefix: '/author-prominence-local', root: 'temp/author_prominence' })
+	],
 	server: {
 		// Listen on all local interfaces so http://book-doctor.test:<port> works
 		// when that name is mapped to 127.0.0.1 in /etc/hosts (no secrets here).

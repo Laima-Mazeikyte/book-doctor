@@ -13,7 +13,13 @@ export const MAINTENANCE_ON = env.PUBLIC_MAINTENANCE_MODE === 'true';
 export const MAINTENANCE_UNTIL = env.PUBLIC_MAINTENANCE_UNTIL ?? '';
 
 /** Page routes that stay reachable while maintenance mode is on. */
-const ALLOWED_PATHS = new Set(['/', '/faq']);
+const ALLOWED_PATHS = new Set([
+	'/',
+	'/faq',
+	'/lab',
+	'/lab/author-connections',
+	'/lab/author-prominence'
+]);
 
 /**
  * True if a request path should be served normally during maintenance.

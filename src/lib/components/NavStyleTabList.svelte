@@ -20,6 +20,8 @@
 		idPrefix?: string;
 		/** When false, counts are replaced by the ratings sync–style dot (per-tab). */
 		countsReady?: boolean;
+		/** When false, the count pill is omitted entirely (tabs that have nothing to count). */
+		showCounts?: boolean;
 		/** Return numeric count for a tab id (shown in a small pill). */
 		getCount?: (id: string) => number;
 		onSelect?: (id: string) => void;
@@ -37,6 +39,7 @@
 		panelId,
 		idPrefix = 'tab',
 		countsReady = true,
+		showCounts = true,
 		getCount = () => 0,
 		onSelect,
 		scrollSingleRow = false
@@ -87,7 +90,7 @@
 	}
 
 	function tabAriaLabel(item: NavStyleTabItem): string {
-		if (!countsReady) return item.label;
+		if (!showCounts || !countsReady) return item.label;
 		return `${item.label}, ${getCount(item.id)}`;
 	}
 </script>
@@ -109,17 +112,19 @@
 				onkeydown={(e) => handleTabKeydown(e, item.id)}
 			>
 				<span class="nav-style-tabs__tab-label">{item.label}</span>
-				<span
-					class="nav-style-tabs__count"
-					class:nav-style-tabs__count--triple={countsReady && getCount(item.id) >= 100}
-					aria-hidden="true"
-				>
-					{#if !countsReady}
-						<span class="nav-style-tabs__sync-dot"><RatingsSyncDot variant="pending" /></span>
-					{:else}
-						{getCount(item.id)}
-					{/if}
-				</span>
+				{#if showCounts}
+					<span
+						class="nav-style-tabs__count"
+						class:nav-style-tabs__count--triple={countsReady && getCount(item.id) >= 100}
+						aria-hidden="true"
+					>
+						{#if !countsReady}
+							<span class="nav-style-tabs__sync-dot"><RatingsSyncDot variant="pending" /></span>
+						{:else}
+							{getCount(item.id)}
+						{/if}
+					</span>
+				{/if}
 			</button>
 		{/each}
 	</div>

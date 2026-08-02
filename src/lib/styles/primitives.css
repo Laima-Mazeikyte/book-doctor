@@ -47,6 +47,16 @@
 	--primitive-emerald-500: #10b981;
 	--primitive-emerald-600: #059669;
 	--primitive-emerald-800: #065f46;
+
+	/* Categorical series hues (Lab charts).
+	   Validated as a set against the card surface (#121c1c) on the all-pairs list:
+	   worst CVD ΔE 8.4 (protanopia, OKLab ×100, ≥8 target), worst normal-vision ΔE 19.8
+	   (≥15 floor), all three ≥ 3:1 contrast, all inside the dark lightness band.
+	   Do not eyeball a replacement — re-run the palette validator on any change. */
+	--primitive-series-aqua: #199e70;
+	--primitive-series-violet: #9085e9;
+	--primitive-series-amber: #c98500;
+
 	/* Shadow (opacity only; color from theme) */
 	--primitive-shadow-opacity-subtle: 0.25;
 	--primitive-shadow-opacity-hairline: 0.04;

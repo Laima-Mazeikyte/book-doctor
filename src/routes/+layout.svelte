@@ -89,7 +89,10 @@
 		return !page.url.searchParams.get('request_id')?.trim();
 	});
 
-	/** Routes with `.book-card-grid` — drop main max-width so more columns fit on large screens */
+	/**
+	 * Wide `main` shell: routes with `.book-card-grid` (more columns on large screens) plus
+	 * `/lab`, where the map wants the full viewport width.
+	 */
 	const isBookGridShell = $derived.by(() => {
 		const pathname = page.url.pathname;
 		if (isShortlistShell) return false;
@@ -98,7 +101,8 @@
 			pathname === '/not-interested' ||
 			pathname === '/faq' ||
 			pathname === '/rate' ||
-			pathname.startsWith('/rate/')
+			pathname.startsWith('/rate/') ||
+			pathname.startsWith('/lab')
 		);
 	});
 

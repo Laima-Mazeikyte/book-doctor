@@ -133,6 +133,230 @@ en:
     title: 'Frequently Asked Questions'
     metaDescription: 'Answers about Unread: how recommendations work and other common questions answered.'
 
+  lab:
+    title: 'Lab'
+    metaDescription: 'Interactive graphs built from what Unread readers actually rate.'
+    lead: 'Interactive graphs built from what readers here actually rate. Rough edges expected — that is the point of a lab.'
+    experiments:
+      authorConnections:
+        name: 'Author connections'
+        blurb: 'A map of who shares readers with whom, and the rare pairs where the trail runs one way only: their readers come to you, yours never go back.'
+        cta: 'Open'
+      authorProminence:
+        name: 'Author prominence'
+        blurb: 'Ratings, readership and prizes, weighted however you like. Move the sliders and watch the leaderboard rearrange itself.'
+        cta: 'Open'
+    authorConnections:
+      title: 'A 3D map of relationships between ~8,000 authors'
+      metaDescription: 'A map of which authors share readers, and where the evidence shows the trail running one way rather than both.'
+      modes:
+        browse: 'Explore the map'
+        compare: 'Compare two authors'
+        compareHint: 'Choose two authors to see whether readers of each tend to like the other.'
+      availability:
+        connectionsOnly: 'has relationships, but no place on the map'
+        mapOnly: 'on the map, but nothing held up'
+        neither: 'not enough rated books to compare'
+      communities:
+        heading: 'Reading communities'
+        showAll: 'Show all'
+        size: '{{count}} authors'
+        within: 'Inside {{community}}'
+      browse:
+        searchLabel: 'Search authors'
+        oneSidedSeeds: 'Authors with one-way relationships'
+        landmarks: 'Authors with the most connections'
+        noConnections: 'Nothing held up for {{author}} — too few readers here have rated them alongside anyone else.'
+        noConnectionsAction: 'Try one of these instead.'
+        tally: '{{total}} relationships · {{oneSided}} one-way · {{opposing}} opposing'
+        focusUnmapped: '{{author}} has no position on the map. Their relationships are listed below.'
+        orbitHint: 'Drag to orbit · shift-drag to pan · scroll to zoom · Esc to deselect'
+        mapNote: 'Authors sit close together when they share readers. Color shows their reading community.'
+        mapNoteLabel: 'About this map'
+        legend:
+          heading: 'Lines from the selected author'
+          oneWay: 'One way'
+          both: 'Both ways'
+          opposing: 'Opposing'
+          unclear: 'Unclear'
+        resetView: 'Reset view'
+        zoomIn: 'Zoom in'
+        zoomOut: 'Zoom out'
+        mapLabel: 'Author map'
+        mapDescription: 'A three-dimensional map of authors, placed so that those who share readers sit close together, and colored by reading community. The table below carries the same information as text.'
+        personal:
+          show: 'Show my ratings'
+          hide: 'Hide my ratings'
+          loved: 'Loved'
+          hated: 'Hated'
+          neutral: 'Neutral or mixed'
+          tasteCenter: 'Your taste center'
+          averageRating: 'Your average: {{average}} · {{category}}'
+          noMappedRatings: 'None of your rated authors are on this map yet'
+      compare:
+        firstAuthor: 'First author'
+        secondAuthor: 'Second author'
+        placeholder: 'Start typing an author…'
+        swap: 'Swap'
+        clear: 'Clear'
+        help: 'Choose two authors to see the evidence in both directions.'
+        emptyBoth: 'Pick two authors to compare.'
+        emptyOne: 'Pick one more author.'
+        sameAuthor: 'Pick two different authors.'
+        loading: 'Loading the evidence for these two…'
+        noResults: 'No authors match that.'
+        resultsLabel: 'Author suggestions'
+      states:
+        validated: 'Validated'
+        evidenceThresholdNotMet: 'Does not meet evidence threshold'
+        onDemandNotFormallyValidated: 'Does not meet evidence threshold'
+        notEnoughData: 'Not enough data'
+      stateNotes:
+        validated: |-
+          This release comparison is validated when it passes all four checks:
+
+          • Benjamini–Hochberg False Discovery Rate q ≤ 0.05
+          • A 95% confidence interval excludes zero
+          • A ≥5 percentage point difference in liking
+          • An empirical-Bayes score >0.25
+        evidenceThresholdNotMet: 'Validation requires four checks: q-value, confidence interval, liking difference, and evidence score. One or more checks was not met.'
+        onDemandNotFormallyValidated: 'Validation requires four checks: q-value, confidence interval, liking difference, and evidence score. One or more checks was not met.'
+        notEnoughData: 'The available observations do not support a usable comparison.'
+      # The five directionality classes ship with the release and are authoritative. A missing
+      # or weak reverse direction is NOT one of them — that is `unresolved`, which means the
+      # evidence did not settle the question either way. The two one-way classes differ only in
+      # which name leads, so they share one headline and note.
+      status:
+        unresolved:
+          short: 'Unclear'
+          headline: 'Related, but the direction is unclear'
+          note: 'These two share readers more than chance explains. Which way it runs is not settled.'
+        reciprocal:
+          short: 'Both ways'
+          headline: 'The relationship runs both ways'
+          note: 'Readers of each are more likely to enjoy the other.'
+        oneSidedOut:
+          short: 'One way →'
+        oneSidedIn:
+          short: '← One way'
+        oneSided:
+          headline: '{{leader}} leads to {{follower}}, but not back'
+          note: 'Readers of {{leader}} are reliably more likely to enjoy {{follower}}. The reverse effect is too small to matter.'
+        opposing:
+          short: 'Opposing'
+          headline: 'These two pull against each other'
+          note: 'Both directions held up with opposite signs: readers who like one tend to be cooler on the other.'
+      wording:
+        rateQuestion: 'How often did each group like {{target}}?'
+        sourceGroup: 'Among {{source}} readers'
+        otherGroup: 'Among all other readers'
+        notEnoughDataNote: 'The available observations do not support a usable comparison.'
+      evidence:
+        label: 'Evidence'
+        strong: 'strong'
+        moderate: 'moderate'
+        weak: 'weak'
+      table:
+        heading: 'Relationships as a table'
+        caption: 'Select an author to center the map on them. Authors with no position on the map appear here only.'
+        author: 'Author'
+        verdict: 'Relationship'
+        outward: '{{author}} → them'
+        inward: 'Them → {{author}}'
+        evidence: 'Evidence'
+        genre: 'Mostly writes'
+        about:
+          author: 'The other author in this relationship. Select a name to center the map on them.'
+          verdict: 'Which way the relationship runs. Both ways means readers of each tend to enjoy the other; one way means the trail runs in a single direction only; opposing means they pull against each other.'
+          outward: 'How often readers of this author liked the other one, against how often everyone else who rated them did.'
+          inward: 'How often readers of the other author liked this one, against how often everyone else who rated them did.'
+          evidence: 'How much data stands behind the stronger of the two directions. Strong means it would be very unlikely to turn up by chance.'
+          genre: 'The genre this author publishes in most often.'
+        dimNote: 'Grayed figures were too small a difference to count, and are shown for context.'
+        showing: 'Showing {{count}} of {{total}}.'
+        defaultNote: 'Strongest first, with any one-way or opposing results added at the end.'
+        noMatches: 'No relationships match that search.'
+        searchAuthor: 'Search authors'
+        filterGenre: 'Filter by genre'
+        allGenres: 'All genres'
+        sortBy: 'Sort by {{column}}'
+      technical:
+        summary: 'Technical details'
+        rateDifference: 'Difference in like rate (percentage points)'
+        rateDifferenceNote: 'The percentage-point difference between how often readers of one author liked the other and how often all other readers did.'
+        ci: '95% confidence interval (percentage points)'
+        ciNote: 'Shows how much the estimated difference could vary because of sampling uncertainty; an interval crossing zero means no difference is also plausible.'
+        logOddsRatio: 'Log odds ratio (smoothed)'
+        logOddsRatioNote: 'Compares the odds of liking in the two groups using the underlying smoothed rating counts.'
+        evidenceScore: 'Evidence score'
+        evidenceScoreNote: 'The evidence score estimates the smallest effect that is still reasonably supported by the data, after reducing effects that may look large only because the estimate is noisy. A score of 0 means the data do not support a clear effect, while a score above 0.25 means that even a cautious estimate exceeds 0.25 on the log-odds scale.'
+        qValueExact: 'q-value'
+        qValueNote: 'The q-value estimates the expected share of false discoveries. Lower values are stronger; 0.05 or lower passes validation.'
+      about:
+        heading: 'How to read this'
+        proximity: 'Authors sit close together when they share readers, not necessarily a genre. The map is honest about nearby and vague about far.'
+        direction: 'Relationships have a direction. Readers of A liking B does not mean readers of B like A.'
+        communities: 'Reading communities emerged from the ratings on their own. Names were added afterwards, to describe what turned up.'
+        provenance: 'Release {{version}} · layout {{map}} · graph {{graph}}'
+      errors:
+        load: 'Could not load the author data.'
+        shard: 'Could not load the relationships for this author.'
+        comparison: 'Could not work out the comparison for these two authors.'
+        format: 'The relationship data was not in the expected format.'
+        retry: 'Try again'
+      loading:
+        authors: 'Loading authors…'
+        connections: 'Loading relationships…'
+
+    # Page chrome only. The disclosure text, badge wording, feature blurbs and preset notes
+    # come from the release manifest, because those are the words the audit approved — see
+    # prominenceWebSchema.md. Copy edits to those need a re-export, not a change here.
+    authorProminence:
+      title: 'Author prominence'
+      metaDescription: 'Rank authors by reader regard, audience reach and critical recognition — and decide for yourself how much each one counts.'
+      lead: 'Three things we can measure about an author. You decide how much each one counts, and the ranking follows.'
+      loading: 'Loading authors…'
+      weights:
+        heading: 'Weights'
+        # Announced in place of the raw slider position, which has no meaning on its own.
+        shareValueText: '{{percent}}% of the weighting'
+        mixNote: 'Only the balance between the three matters. Sliding all three to the top is the same as leaving them all in the middle.'
+      presets:
+        heading: 'Presets'
+        tested: '· tested default'
+      board:
+        heading: 'Top {{count}} of {{total}} ranked authors'
+        readers: '{{count}} readers'
+        books: '{{count}} books'
+        awards: '{{count}} awards, best tier {{tier}}'
+        noAwards: 'no recorded awards'
+        scaleNote: 'The score is the three contributions added together, on a scale where zero is the average ranked author. It is not a rating, and gaps do not convert into odds.'
+        scaleNoteCalibrated: 'Calibrated against head-to-head reader preferences.'
+      detail:
+        heading: 'Selection'
+        empty: 'Select an author to see how their score is composed.'
+        score: 'Composite score'
+        scoreCalibrated: 'Prominence index'
+        rank: 'Rank at these weights'
+        rankValue: '{{place}} of {{total}}'
+        aheadOf: 'Ahead of'
+        aheadOfValue: '{{percent}}% of ranked authors'
+        readers: 'Distinct readers'
+        books: 'Books in catalogue'
+        awards: 'Awards'
+        awardsValue: '{{count}} (best tier {{tier}})'
+        awardsNone: 'none recorded'
+        concentration: 'Audience concentration'
+        concentrationNote: 'Audience concentration is shown for information only and is never part of the score.'
+        composition: 'Where the score comes from'
+      about:
+        heading: 'About this ranking'
+        provenance: 'Ranked here: {{eligible}} of {{source}} authors in the catalogue. The rest have fewer than {{books}} books or too few clear ratings to score.'
+      errors:
+        load: 'Could not load the ranking data.'
+        format: 'The ranking data was not in the expected format.'
+        retry: 'Try again'
+
   shared:
     skipToContent: 'Skip to main content'
     listBookCount: '{{count}} book'
@@ -157,6 +381,7 @@ en:
     footer:
       ariaLabel: 'Site footer'
       faq: 'FAQ'
+      lab: 'Lab'
       reportBug: 'Give feedback'
     errorBanner:
       dismiss: 'Dismiss error'

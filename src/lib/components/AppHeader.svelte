@@ -366,6 +366,9 @@
 					<AppHeaderMobileMenuAction href="/faq" onclick={closeMobileMenu}>
 						{t('shared.footer.faq')}
 					</AppHeaderMobileMenuAction>
+					<AppHeaderMobileMenuAction href="/lab" onclick={closeMobileMenu}>
+						{t('shared.footer.lab')}
+					</AppHeaderMobileMenuAction>
 					<AppHeaderMobileMenuAction
 						onclick={openBugReportFromMenu}
 						aria-label={t('shared.bugModal.reportBugAriaLabel')}

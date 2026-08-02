@@ -16,6 +16,9 @@
 				<a href={resolve('/faq')} class="app-footer__link">{t('shared.footer.faq')}</a>
 			</li>
 			<li>
+				<a href={resolve('/lab')} class="app-footer__link">{t('shared.footer.lab')}</a>
+			</li>
+			<li>
 				<button type="button" class="app-footer__link" onclick={onOpenBugReport}>
 					{t('shared.footer.reportBug')}
 				</button>

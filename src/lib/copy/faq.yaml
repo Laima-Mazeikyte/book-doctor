@@ -7,7 +7,7 @@ en:
     - id: how_know_taste
       question: 'How do you know what I’ll like?'
       answer: |
-        Every time you ask for a recommendation, we analyze at least 20 different "style levers" to choose and rank your top 10 books based on your current ratings, bookmarks, and "not interested".
+        Every time you ask for a recommendation, we analyze at least 20 different "style levers" to choose and rank your top 7 books based on your current ratings, bookmarks, and "not interested".
 
         > **For the Data Scientists:** Our proprietary two-stage model uses a Two-Towers retriever paired with a FiBiNET ranker to ensure high-precision matching.
 

@@ -113,6 +113,47 @@
 		var(--color-text-muted)
 	);
 
+	/*
+	 * ── Data visualisation (Lab) ────────────────────────────────────────────
+	 * Shared by every interactive science graph so they read as one system.
+	 * Affinity / conflict are the only two signed encodings; both must clear
+	 * contrast on `--color-bg` (#0e1616) rather than on a white chart canvas.
+	 */
+	--color-viz-affinity: var(--primitive-emerald-300);
+	--color-viz-affinity-muted: color-mix(in srgb, var(--primitive-emerald-300) 45%, transparent);
+	--color-viz-conflict: var(--primitive-red-800);
+	--color-viz-conflict-muted: color-mix(in srgb, var(--primitive-red-800) 45%, transparent);
+	/** Unsupported / assessed-but-inconclusive. Deliberately colourless. */
+	--color-viz-neutral: var(--primitive-gray-500);
+	/** Not assessable (no record). Dimmer than neutral — absence, not a result. */
+	--color-viz-unknown: var(--primitive-gray-400);
+
+	/*
+	 * Categorical series slots — identity only (which series), never magnitude or sign.
+	 * Assigned in fixed order and never cycled; a chart with more series than slots folds
+	 * the remainder together rather than generating a hue. Signed values are encoded by
+	 * position against a baseline, so colour is free to carry identity alone.
+	 * Deliberately distinct from affinity/conflict above, which are reserved for polarity.
+	 */
+	--color-viz-series-1: var(--primitive-series-aqua);
+	--color-viz-series-2: var(--primitive-series-violet);
+	--color-viz-series-3: var(--primitive-series-amber);
+	/** Unfilled track behind a bar, and the zero baseline drawn across it. */
+	--color-viz-track: var(--primitive-gray-300);
+	--color-viz-baseline: var(--primitive-gray-400);
+
+	/** Author map: density backdrop. Evidence-bearing points vs single-book points. */
+	--color-viz-map-point: var(--primitive-pale-aqua);
+	--color-viz-map-point-dim: var(--primitive-gray-400);
+	/** Selected / focused node chrome on the map. */
+	--color-viz-map-focus: var(--primitive-accent-brand);
+	--color-viz-map-focus-ring: color-mix(in srgb, var(--primitive-accent-brand) 35%, transparent);
+	/** Label halo so names stay legible over the nebula. */
+	--color-viz-map-label: var(--primitive-gray-900);
+	--color-viz-map-label-halo: var(--primitive-gray-50);
+	/** Map viewport surface — slightly deeper than the page so the cloud reads as depth. */
+	--color-viz-map-bg: #0a1111;
+
 	/* ── Overlays & scrims ───────────────────────────────────────────────── */
 	--color-overlay-scrim: rgba(0, 0, 0, var(--primitive-overlay-scrim-opacity));
 	--color-overlay-scrim-soft: rgba(0, 0, 0, var(--primitive-overlay-scrim-opacity-soft));
