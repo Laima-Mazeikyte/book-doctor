@@ -146,6 +146,10 @@ en:
         name: 'Author prominence'
         blurb: 'Ratings, readership and prizes, weighted however you like. Move the sliders and watch the leaderboard rearrange itself.'
         cta: 'Open'
+      bookSearch:
+        name: 'Book search'
+        blurb: 'Find the books that stand out here — for reader regard, reach, recognition, or the disagreement they stir.'
+        cta: 'Open'
     authorConnections:
       title: 'A 3D map of relationships between ~8,000 authors'
       metaDescription: 'A map of which authors share readers, and where the evidence shows the trail running one way rather than both.'
@@ -355,6 +359,93 @@ en:
       errors:
         load: 'Could not load the ranking data.'
         format: 'The ranking data was not in the expected format.'
+        retry: 'Try again'
+
+    bookSearch:
+      title: 'A search through the books readers here have rated'
+      metaDescription: 'Search evidence-weighted rankings of books and series built from what Unread readers rate.'
+      lead: 'Find a book, then see what puts it where it is. The list is about standing in this reader community, not a timeless canon.'
+      loading: 'Loading the books…'
+      modes:
+        label: 'Ranking view'
+        bestBooks: 'Best books'
+        bestSeries: 'Best series'
+        polarizingBooks: 'Most polarizing books'
+        polarizingSeries: 'Most polarizing series'
+      search:
+        label: 'Find a book'
+        placeholder: 'Search by title, author, or series…'
+        clear: 'Clear book search'
+      features:
+        regard:
+          label: 'Reader regard'
+          blurb: 'How strongly readers rate a work, among people who chose to read it.'
+        reach:
+          label: 'Current reach'
+          blurb: 'How widely the work appears in this observed reading community.'
+        recognition:
+          label: 'Critical recognition'
+          blurb: 'Recorded recognition and award depth, kept separate from reader response.'
+        disagreement:
+          label: 'Reader disagreement'
+          blurb: 'How sharply the observed responses split between readers.'
+        balance:
+          label: 'Positive–negative balance'
+          blurb: 'How evenly the positive and negative camps are balanced.'
+        intensity:
+          label: 'Reaction intensity'
+          blurb: 'How often the reactions land at the extremes.'
+      weights:
+        heading: 'Weights'
+        shareValueText: '{{percent}}% of the weighting'
+        mixNote: 'Only the balance between the three matters. Sliding all three to the top is the same as leaving them all in the middle.'
+      culturalReach:
+        heading: 'Cultural reach'
+        label: 'Audience share'
+        value: '{{percent}}% of the score'
+        blurb: 'How much substantial audience reach should matter alongside statistical polarization.'
+      presets:
+        heading: 'Presets'
+        best:
+          default: 'The configured starting point, with the three signals in balance.'
+          regard: 'Leans on reader response. A work can rise here with a devoted audience.'
+          reach: 'Leans on how widely a work appears in the dataset. Closer to popularity.'
+          recognition: 'Leans on recorded recognition. It follows the evidence, with its genre tilt.'
+        polarizing:
+          pure: 'Purely statistical polarization: the split in observed responses.'
+          cultural: 'Blends response polarization with substantial audience reach.'
+          broad: 'Broadens the reach correction for a wider cultural controversy.'
+      board:
+        heading: 'Top {{count}} of {{total}} ranked works'
+        searchHeading: '{{count}} matching works'
+        showing: 'Showing {{count}} matches, ranked at these settings.'
+        showingLimited: 'Showing the first {{shown}} of {{total}} matches, ranked at these settings.'
+        defaultNote: 'Select a work to see how its score is composed.'
+        listLabel: 'Ranked works'
+        itemAriaLabel: '{{title}} by {{author}}, rank {{rank}}'
+        noMatches: 'No books or series match that search.'
+        scoreNote: 'The score is the three weighted contributions shown beneath each work. It is not a rating, and score gaps do not convert into odds.'
+        polarizingNote: 'Polarization measures disagreement in the observed responses. It does not mean a work is bad or good.'
+      detail:
+        heading: 'Selection'
+        empty: 'Select a book or series to see how its score is composed.'
+        score: 'Score at these settings'
+        statisticalScore: 'Statistical score'
+        rank: 'Rank at these settings'
+        aheadOf: 'Ahead of'
+        kind: 'Kind'
+        book: 'Standalone book'
+        series: 'Book series'
+        volumes: 'Volumes represented'
+        composition: 'Where the score comes from'
+        scoreNote: 'The ranking population is fixed when the release is built. Moving the sliders changes the emphasis, not which works are eligible.'
+        polarizingNote: 'The final polarization score blends the three response features with the audience-share setting above.'
+      about:
+        heading: 'How to read this'
+        provenance: 'Release {{version}} · {{count}} works in this view.'
+      errors:
+        load: 'Could not load the book data.'
+        format: 'The book-ranking data was not in the expected format.'
         retry: 'Try again'
 
   shared:

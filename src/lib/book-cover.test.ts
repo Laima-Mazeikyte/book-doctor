@@ -9,6 +9,12 @@ describe('coverUrlForBookIdWithBase', () => {
 		).toBe('https://covers.example.test/01KR2ADTNG29NSQV23VAGV8FXB-720.avif');
 	});
 
+	it('supports smaller cover variants for dense lists', () => {
+		expect(
+			coverUrlForBookIdWithBase('https://covers.example.test/', '01KR2ADTNG29NSQV23VAGV8FXB', 200)
+		).toBe('https://covers.example.test/01KR2ADTNG29NSQV23VAGV8FXB-200.avif');
+	});
+
 	it('omits covers for non-string legacy ids', () => {
 		expect(coverUrlForBookIdWithBase('https://covers.example.test/', 12345)).toBeUndefined();
 	});

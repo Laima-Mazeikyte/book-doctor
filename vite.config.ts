@@ -8,7 +8,8 @@ export default defineConfig({
 	plugins: [
 		sveltekit(),
 		ViteYaml(),
-		localLabArtifacts({ prefix: '/author-prominence-local', root: 'temp/author_prominence' })
+		localLabArtifacts({ prefix: '/author-prominence-local', root: 'temp/author_prominence' }),
+		localLabArtifacts({ prefix: '/best-book-search-local', root: 'temp/best_book_search/handoff' })
 	],
 	server: {
 		// Listen on all local interfaces so http://book-doctor.test:<port> works

@@ -5,7 +5,8 @@
 	/** Copy for each card lives under `lab.experiments.<key>`. */
 	const experiments = [
 		{ key: 'authorConnections', path: '/lab/author-connections' },
-		{ key: 'authorProminence', path: '/lab/author-prominence' }
+		{ key: 'authorProminence', path: '/lab/author-prominence' },
+		{ key: 'bookSearch', path: '/lab/book-search' }
 	] as const;
 </script>
 

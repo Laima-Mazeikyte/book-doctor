@@ -18,7 +18,8 @@ const ALLOWED_PATHS = new Set([
 	'/faq',
 	'/lab',
 	'/lab/author-connections',
-	'/lab/author-prominence'
+	'/lab/author-prominence',
+	'/lab/book-search'
 ]);
 
 /**
