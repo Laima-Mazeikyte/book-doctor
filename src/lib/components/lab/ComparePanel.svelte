@@ -96,18 +96,8 @@
 
 		<!-- The two directions are a matched pair, so they sit side by side rather than stacked. -->
 		<div class="compare-panel__directions">
-			<DirectionCard
-				estimate={record.self}
-				source={first}
-				target={second}
-				showEvidence={releaseComparison}
-			/>
-			<DirectionCard
-				estimate={record.reverse}
-				source={second}
-				target={first}
-				showEvidence={releaseComparison}
-			/>
+			<DirectionCard estimate={record.self} source={first} target={second} />
+			<DirectionCard estimate={record.reverse} source={second} target={first} />
 		</div>
 	{/if}
 </div>

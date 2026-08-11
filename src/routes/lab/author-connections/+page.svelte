@@ -629,9 +629,9 @@
 
 		<section class="ac-page__about">
 			<h2 class="typ-h3">{t('lab.authorConnections.about.heading')}</h2>
-			<p>{t('lab.authorConnections.about.proximity')}</p>
-			<p>{t('lab.authorConnections.about.direction')}</p>
-			<p>{t('lab.authorConnections.about.communities')}</p>
+			<p><strong>Space:</strong> {t('lab.authorConnections.about.space')}</p>
+			<p><strong>Direction:</strong> {t('lab.authorConnections.about.direction')}</p>
+			<p><strong>Communities:</strong> {t('lab.authorConnections.about.communities')}</p>
 		</section>
 
 		<p class="ac-page__provenance">

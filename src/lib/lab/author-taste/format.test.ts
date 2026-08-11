@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
-	evidenceStrength,
+	directionColorWeight,
 	excludesZero,
 	formatInterval,
+	formatPValue,
 	formatPercentagePoints,
 	formatQValue,
 	formatRate,
+	formatRelativeLikelihood,
 	percentagePoints,
-	qValueFromNegLog10
+	qValueFromNegLog10,
+	relativeDirectionColorWeight,
+	relativeLikelihoodPercent
 } from './format';
 
 describe('formatPercentagePoints', () => {
@@ -63,6 +67,36 @@ describe('formatRate', () => {
 	});
 });
 
+describe('relative likelihood', () => {
+	it('calculates relative differences from the baseline rate', () => {
+		expect(relativeLikelihoodPercent(0.87, 0.81)).toBeCloseTo(7.407, 3);
+		expect(relativeLikelihoodPercent(0.54, 0.59)).toBeCloseTo(-8.475, 3);
+		expect(relativeLikelihoodPercent(0, 0)).toBe(0);
+		expect(relativeLikelihoodPercent(0.06, 0)).toBe(Number.POSITIVE_INFINITY);
+		expect(relativeLikelihoodPercent(null, 0.5)).toBeNull();
+	});
+
+	it('formats a compact signed percentage and caps large positive values', () => {
+		expect(formatRelativeLikelihood(7.407)).toBe('+7%');
+		expect(formatRelativeLikelihood(-8.475)).toBe('−8%');
+		expect(formatRelativeLikelihood(0)).toBe('0%');
+		expect(formatRelativeLikelihood(100)).toBe('+100%');
+		expect(formatRelativeLikelihood(100.1)).toBe('100%+');
+		expect(formatRelativeLikelihood(Number.POSITIVE_INFINITY)).toBe('100%+');
+		expect(formatRelativeLikelihood(null)).toBe('—');
+	});
+
+	it('maps selected relative effects onto a muted-to-saturated scale', () => {
+		expect(relativeDirectionColorWeight(50, false)).toBeNull();
+		expect(relativeDirectionColorWeight(null, true)).toBeNull();
+		expect(relativeDirectionColorWeight(0, true)).toBe(45);
+		expect(relativeDirectionColorWeight(-50, true)).toBeCloseTo(72.5, 5);
+		expect(relativeDirectionColorWeight(100, true)).toBe(100);
+		expect(relativeDirectionColorWeight(500, true)).toBe(100);
+		expect(relativeDirectionColorWeight(Number.POSITIVE_INFINITY, true)).toBe(100);
+	});
+});
+
 describe('q-values', () => {
 	/* The artifact stores −log10(q) so strong evidence survives a float32 instead of hitting 0. */
 	it('inverts the stored transform', () => {
@@ -77,13 +111,29 @@ describe('q-values', () => {
 		expect(formatQValue(400)).toBe('< 1e-300');
 		expect(formatQValue(Number.NaN)).toBe('—');
 	});
+});
 
-	it('tiers evidence on the stored scale', () => {
-		expect(evidenceStrength(4)).toBe('strong');
-		expect(evidenceStrength(3)).toBe('strong');
-		expect(evidenceStrength(2.5)).toBe('moderate');
-		expect(evidenceStrength(1.3)).toBe('weak');
-		expect(evidenceStrength(Number.NaN)).toBe('weak');
+describe('formatPValue', () => {
+	it('formats an on-demand probability without implying a corrected q-value', () => {
+		expect(formatPValue(0.0184)).toBe('0.018');
+		expect(formatPValue(0.00042)).toBe('4.2e-4');
+		expect(formatPValue(0)).toBe('< 1e-300');
+		expect(formatPValue(null)).toBe('—');
+	});
+});
+
+describe('directionColorWeight', () => {
+	it('keeps on-demand and unselected directions neutral', () => {
+		expect(directionColorWeight(0.1, false)).toBeNull();
+		expect(directionColorWeight(null, true)).toBeNull();
+	});
+
+	it('starts at five points and saturates at ten', () => {
+		expect(directionColorWeight(0.0499, true)).toBeNull();
+		expect(directionColorWeight(0.05, true)).toBe(45);
+		expect(directionColorWeight(-0.075, true)).toBeCloseTo(72.5, 5);
+		expect(directionColorWeight(0.1, true)).toBe(100);
+		expect(directionColorWeight(0.25, true)).toBe(100);
 	});
 });
 

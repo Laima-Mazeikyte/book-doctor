@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { t } from '$lib/copy';
+	import MetricTooltip from './MetricTooltip.svelte';
 	import {
-		evidenceStrength,
+		directionColorWeight,
 		formatInterval,
+		formatPValue,
 		formatPercentagePoints,
 		formatQValue,
 		formatRate
@@ -17,15 +19,9 @@
 		estimate: ComparisonDirectionEstimate;
 		source: Author;
 		target: Author;
-		/** Selection rule the release applied, for the technical note. */
-		/**
-		 * Only the checked set carries a globally corrected q-value. A pair worked out on request
-		 * has none, and calling its evidence "weak" would assert something never measured.
-		 */
-		showEvidence?: boolean;
 	}
 
-	let { estimate, source, target, showEvidence = true }: Props = $props();
+	let { estimate, source, target }: Props = $props();
 
 	const points = $derived(estimate.rateDifference === null ? null : estimate.rateDifference * 100);
 	const positive = $derived((estimate.rateDifference ?? 0) >= 0);
@@ -38,20 +34,61 @@
 	const evidenceScore = $derived(
 		estimate.evidenceScore === null ? '—' : estimate.evidenceScore.toFixed(3)
 	);
+	const colorWeight = $derived(
+		directionColorWeight(estimate.rateDifference, estimate.mode === 'release' && estimate.selected)
+	);
+	const directionColor = $derived.by(() => {
+		if (colorWeight === null) return 'var(--color-viz-neutral)';
+		const hue = positive ? 'var(--color-viz-affinity)' : 'var(--color-viz-conflict)';
+		return `color-mix(in srgb, ${hue} ${colorWeight}%, var(--color-text-muted))`;
+	});
+	const tooltipMessage = $derived(
+		estimate.ciLower === null || estimate.ciUpper === null
+			? t('lab.authorConnections.hover.insufficient')
+			: null
+	);
+	const tooltipMetrics = $derived([
+		{
+			label: t('lab.authorConnections.hover.ci'),
+			value: formatInterval(estimate.ciLower, estimate.ciUpper)
+		},
+		{
+			label: t(
+				estimate.mode === 'release'
+					? 'lab.authorConnections.hover.qValue'
+					: 'lab.authorConnections.hover.pValue'
+			),
+			value:
+				estimate.mode === 'release'
+					? formatQValue(estimate.negLog10Q)
+					: formatPValue(estimate.pValue)
+		}
+	]);
+	const probabilityLabel = $derived(
+		t(
+			estimate.mode === 'release'
+				? 'lab.authorConnections.technical.qValueExact'
+				: 'lab.authorConnections.technical.pValueExact'
+		)
+	);
+	const probabilityNote = $derived(
+		t(
+			estimate.mode === 'release'
+				? 'lab.authorConnections.technical.qValueNote'
+				: 'lab.authorConnections.technical.pValueNote'
+		)
+	);
+	const probabilityValue = $derived(
+		estimate.mode === 'release' ? formatQValue(estimate.negLog10Q) : formatPValue(estimate.pValue)
+	);
 </script>
 
 <!--
-	One direction of a pair, as shipped. Every number here was computed upstream: the rate
-	difference, its interval, the shrunken evidence score and the q-value all arrive finished
-	in the connection record. Nothing is re-derived and nothing is re-thresholded, because the
-	pair's directionality verdict was computed against these exact values.
+	One direction of a pair, as shipped. The rate difference, interval, shrunken evidence score
+	and applicable p- or q-value all arrive finished. Release directionality remains authoritative;
+	the frontend only formats those values and maps selected release effects onto the colour scale.
 -->
-<section
-	class="direction-card"
-	class:direction-card--positive={estimate.displayState === 'validated' && positive}
-	class:direction-card--negative={estimate.displayState === 'validated' && !positive}
-	class:direction-card--unselected={estimate.displayState !== 'validated'}
->
+<section class="direction-card" style:--direction-color={directionColor}>
 	<h3 class="direction-card__title">{source.name} → {target.name}</h3>
 
 	<p class="direction-card__significance">
@@ -68,31 +105,29 @@
 	<p class="direction-card__question">
 		{t('lab.authorConnections.wording.rateQuestion', { target: target.name })}
 	</p>
-	<div class="direction-card__rates">
-		<div class="direction-card__rate-group">
-			<span class="direction-card__rate-label">
-				{t('lab.authorConnections.wording.sourceGroup', { source: source.name })}
+	<div class="direction-card__rates-shell">
+		<MetricTooltip
+			id="author-direction-{source.id}-{target.id}-stats"
+			metrics={tooltipMetrics}
+			message={tooltipMessage}
+			block={true}
+		>
+			<span class="direction-card__rates">
+				<span class="direction-card__rate-group">
+					<span class="direction-card__rate-label">
+						{t('lab.authorConnections.wording.sourceGroup', { source: source.name })}
+					</span>
+					<strong class="direction-card__rate">{rate}</strong>
+				</span>
+				<span class="direction-card__rate-group">
+					<span class="direction-card__rate-label">
+						{t('lab.authorConnections.wording.otherGroup')}
+					</span>
+					<strong class="direction-card__rate">{baseline}</strong>
+				</span>
 			</span>
-			<strong class="direction-card__rate">{rate}</strong>
-		</div>
-		<div class="direction-card__rate-group">
-			<span class="direction-card__rate-label">
-				{t('lab.authorConnections.wording.otherGroup')}
-			</span>
-			<strong class="direction-card__rate">{baseline}</strong>
-		</div>
+		</MetricTooltip>
 	</div>
-
-	<!-- The strength word carries the meaning; the q-value it came from lives in the details. -->
-	{#if showEvidence && estimate.negLog10Q !== null}
-		<p class="direction-card__evidence">
-			<strong
-				>{t('lab.authorConnections.evidence.label')}: {t(
-					`lab.authorConnections.evidence.${evidenceStrength(estimate.negLog10Q)}`
-				)}</strong
-			>
-		</p>
-	{/if}
 
 	<details class="direction-card__technical">
 		<summary>{t('lab.authorConnections.technical.summary')}</summary>
@@ -165,18 +200,14 @@
 				<tr>
 					<td>
 						<span class="direction-card__technical-label">
-							{t('lab.authorConnections.technical.qValueExact')}
-							<span
-								class="direction-card__info"
-								title={t('lab.authorConnections.technical.qValueNote')}
-								aria-hidden="true">i</span
-							>
+							{probabilityLabel}
+							<span class="direction-card__info" title={probabilityNote} aria-hidden="true">i</span>
 							<span class="direction-card__sr-only">
-								{t('lab.authorConnections.technical.qValueNote')}
+								{probabilityNote}
 							</span>
 						</span>
 					</td>
-					<td>{formatQValue(estimate.negLog10Q)}</td>
+					<td>{probabilityValue}</td>
 				</tr>
 			</tbody>
 		</table>
@@ -190,20 +221,10 @@
 		gap: var(--space-2);
 		padding: var(--space-4);
 		border: 1px solid var(--color-border);
-		border-left: 4px solid var(--color-viz-neutral);
+		border-left: 4px solid var(--direction-color);
 		border-radius: var(--radius);
 		background: var(--color-card-bg);
 	}
-	.direction-card--positive {
-		border-left-color: var(--color-viz-affinity);
-	}
-	.direction-card--negative {
-		border-left-color: var(--color-viz-conflict);
-	}
-	.direction-card--unselected {
-		border-left-color: var(--color-viz-neutral);
-	}
-
 	.direction-card__title {
 		font-family: var(--typ-h3-font-family);
 		font-size: var(--primitive-type-size-16);
@@ -224,6 +245,10 @@
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: var(--space-3);
+		width: 100%;
+	}
+	.direction-card__rates-shell {
+		color: var(--direction-color);
 	}
 	.direction-card__rate-group {
 		display: flex;
@@ -241,7 +266,7 @@
 		font-family: var(--typ-caption-font-family);
 		font-size: var(--primitive-type-size-20);
 		line-height: 1.1;
-		color: var(--color-text);
+		color: inherit;
 		font-variant-numeric: tabular-nums;
 	}
 	.direction-card__significance {
@@ -249,12 +274,6 @@
 		font-size: var(--primitive-type-size-16);
 		font-weight: 600;
 		color: var(--color-text);
-	}
-	.direction-card__evidence {
-		font-family: var(--font-family-interactive);
-		font-size: var(--primitive-type-size-14);
-		line-height: 1.5;
-		color: var(--color-text-muted);
 	}
 	.direction-card__technical {
 		margin-top: var(--space-1);

@@ -162,6 +162,7 @@ export interface ComparisonDirectionEstimate {
 	ciUpper: number | null;
 	logOddsRatio: number | null;
 	evidenceScore: number | null;
+	pValue: number | null;
 	negLog10Q: number | null;
 	likeRate: number | null;
 	baselineRate: number | null;
@@ -183,6 +184,7 @@ function toEstimate(
 		ciUpper: finiteOrNull(direction.rate_difference_ci_upper),
 		logOddsRatio: finiteOrNull(direction.log_odds_ratio),
 		evidenceScore: finiteOrNull(direction.evidence_score),
+		pValue: finiteOrNull(direction.p_value),
 		negLog10Q: negLog10(qValue),
 		likeRate: finiteOrNull(direction.like_rate),
 		baselineRate: finiteOrNull(direction.baseline_rate)

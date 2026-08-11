@@ -1,9 +1,23 @@
 <script lang="ts">
 	import { t } from '$lib/copy';
+	import MetricTooltip from './MetricTooltip.svelte';
 	import { composeDefaultOrder, statusRank } from '$lib/lab/author-taste/client';
 	import { normaliseName } from '$lib/lab/author-taste/authors';
-	import { evidenceStrength, formatRate } from '$lib/lab/author-taste/format';
-	import { STATUS_KEYS, type Author, type Connection } from '$lib/lab/author-taste/types';
+	import {
+		formatInterval,
+		formatPercentagePoints,
+		formatQValue,
+		formatRate,
+		formatRelativeLikelihood,
+		relativeDirectionColorWeight,
+		relativeLikelihoodPercent
+	} from '$lib/lab/author-taste/format';
+	import {
+		STATUS_KEYS,
+		type Author,
+		type Connection,
+		type DirectionEstimate
+	} from '$lib/lab/author-taste/types';
 
 	interface Props {
 		focus: Author;
@@ -56,12 +70,25 @@
 			case 'verdict':
 				return statusRank(a) - statusRank(b);
 			case 'outward':
-				return a.record.self.rateDifference - b.record.self.rateDifference;
+				return compareRelative(a.record.self, b.record.self);
 			case 'inward':
-				return a.record.reverse.rateDifference - b.record.reverse.rateDifference;
+				return compareRelative(a.record.reverse, b.record.reverse);
 			default:
 				return 0;
 		}
+	}
+
+	function relativeDifference(estimate: DirectionEstimate): number | null {
+		return relativeLikelihoodPercent(estimate.likeRate, estimate.baselineRate);
+	}
+
+	function compareRelative(a: DirectionEstimate, b: DirectionEstimate): number {
+		const first = relativeDifference(a);
+		const second = relativeDifference(b);
+		if (first === second) return 0;
+		if (first === null) return -1;
+		if (second === null) return 1;
+		return first < second ? -1 : 1;
 	}
 
 	/** Accent- and case-insensitive, matching how the author search behaves elsewhere. */
@@ -116,6 +143,43 @@
 		return t(`lab.authorConnections.status.${STATUS_KEYS[connection.record.status]}.short`);
 	}
 
+	function directionColor(relativePercent: number | null, selected: boolean): string {
+		const weight = relativeDirectionColorWeight(relativePercent, selected);
+		if (weight === null) return 'var(--color-text-muted)';
+		const hue =
+			relativePercent !== null && relativePercent < 0
+				? 'var(--color-viz-conflict)'
+				: 'var(--color-viz-affinity)';
+		return `color-mix(in srgb, ${hue} ${weight}%, var(--color-text-muted))`;
+	}
+
+	function relativeAriaLabel(relativePercent: number | null): string {
+		if (relativePercent === null || Number.isNaN(relativePercent)) {
+			return t('lab.authorConnections.hover.insufficient');
+		}
+		if (relativePercent === Number.POSITIVE_INFINITY || relativePercent > 100) {
+			return t('lab.authorConnections.hover.overCap');
+		}
+		const value = Math.round(Math.abs(relativePercent));
+		if (value === 0) return t('lab.authorConnections.hover.sameLikelihood');
+		return t(
+			relativePercent > 0
+				? 'lab.authorConnections.hover.moreLikely'
+				: 'lab.authorConnections.hover.lessLikely',
+			{ value }
+		);
+	}
+
+	function cappedRelativeDetail(relativePercent: number | null): string | null {
+		if (relativePercent === Number.POSITIVE_INFINITY) {
+			return t('lab.authorConnections.hover.zeroBaseline');
+		}
+		if (relativePercent !== null && Number.isFinite(relativePercent) && relativePercent > 100) {
+			return `+${relativePercent.toFixed(1)}%`;
+		}
+		return null;
+	}
+
 	/**
 	 * Column headings, each with the sentence that explains it, plus whether it can be sorted
 	 * or searched.
@@ -147,7 +211,6 @@
 					label: t('lab.authorConnections.table.inward', { author: focus.name }),
 					sort: 'inward'
 				},
-				{ key: 'evidence', label: t('lab.authorConnections.table.evidence') },
 				{ key: 'genre', label: t('lab.authorConnections.table.genre'), search: 'genre' }
 			] as Omit<Column, 'about'>[]
 		).map(
@@ -232,6 +295,10 @@
 				{#each rows as connection (connection.other.id)}
 					{@const record = connection.record}
 					{@const oneSided = record.status === 2 || record.status === 3}
+					{@const outwardRelative = relativeDifference(record.self)}
+					{@const inwardRelative = relativeDifference(record.reverse)}
+					{@const outwardCappedDetail = cappedRelativeDetail(outwardRelative)}
+					{@const inwardCappedDetail = cappedRelativeDetail(inwardRelative)}
 					<tr>
 						<th scope="row">
 							<button
@@ -245,36 +312,91 @@
 						<td class:connection-table__verdict--one-sided={oneSided}>
 							{statusLabel(connection)}
 						</td>
-						<!--
-							Two plain rates rather than a difference in percentage points: "89% vs 74%" is
-							the same fact and needs no statistics to read.
-						-->
 						<td
 							class="connection-table__effect"
-							class:connection-table__effect--negative={record.self.rateDifference < 0}
-							class:connection-table__effect--dim={!record.self.selected}
+							style:--direction-color={directionColor(outwardRelative, record.self.selected)}
 						>
-							{formatRate(record.self.likeRate)}
-							<span class="connection-table__against"
-								>vs {formatRate(record.self.baselineRate)}</span
+							<MetricTooltip
+								id="connection-{focus.id}-{connection.other.id}-outward-stats"
+								ariaLabel={relativeAriaLabel(outwardRelative)}
+								metrics={[
+									...(outwardCappedDetail === null
+										? []
+										: [
+												{
+													label: t('lab.authorConnections.hover.relativeDifference'),
+													value: outwardCappedDetail
+												}
+											]),
+									{
+										label: t('lab.authorConnections.hover.readerRate', {
+											author: focus.name
+										}),
+										value: formatRate(record.self.likeRate)
+									},
+									{
+										label: t('lab.authorConnections.hover.otherReaderRate'),
+										value: formatRate(record.self.baselineRate)
+									},
+									{
+										label: t('lab.authorConnections.hover.pointDifference'),
+										value: formatPercentagePoints(record.self.rateDifference * 100)
+									},
+									{
+										label: t('lab.authorConnections.hover.pointDifferenceCi'),
+										value: formatInterval(record.self.ciLower, record.self.ciUpper)
+									},
+									{
+										label: t('lab.authorConnections.hover.qValue'),
+										value: formatQValue(record.self.negLog10Q)
+									}
+								]}
 							>
+								{formatRelativeLikelihood(outwardRelative)}
+							</MetricTooltip>
 						</td>
 						<td
 							class="connection-table__effect"
-							class:connection-table__effect--negative={record.reverse.rateDifference < 0}
-							class:connection-table__effect--dim={!record.reverse.selected}
+							style:--direction-color={directionColor(inwardRelative, record.reverse.selected)}
 						>
-							{formatRate(record.reverse.likeRate)}
-							<span class="connection-table__against"
-								>vs {formatRate(record.reverse.baselineRate)}</span
+							<MetricTooltip
+								id="connection-{focus.id}-{connection.other.id}-inward-stats"
+								ariaLabel={relativeAriaLabel(inwardRelative)}
+								metrics={[
+									...(inwardCappedDetail === null
+										? []
+										: [
+												{
+													label: t('lab.authorConnections.hover.relativeDifference'),
+													value: inwardCappedDetail
+												}
+											]),
+									{
+										label: t('lab.authorConnections.hover.readerRate', {
+											author: connection.other.name
+										}),
+										value: formatRate(record.reverse.likeRate)
+									},
+									{
+										label: t('lab.authorConnections.hover.otherReaderRate'),
+										value: formatRate(record.reverse.baselineRate)
+									},
+									{
+										label: t('lab.authorConnections.hover.pointDifference'),
+										value: formatPercentagePoints(record.reverse.rateDifference * 100)
+									},
+									{
+										label: t('lab.authorConnections.hover.pointDifferenceCi'),
+										value: formatInterval(record.reverse.ciLower, record.reverse.ciUpper)
+									},
+									{
+										label: t('lab.authorConnections.hover.qValue'),
+										value: formatQValue(record.reverse.negLog10Q)
+									}
+								]}
 							>
-						</td>
-						<td>
-							{t(
-								`lab.authorConnections.evidence.${evidenceStrength(
-									Math.max(record.self.negLog10Q, record.reverse.negLog10Q)
-								)}`
-							)}
+								{formatRelativeLikelihood(inwardRelative)}
+							</MetricTooltip>
 						</td>
 						<td>{connection.other.genre}</td>
 					</tr>
@@ -434,25 +556,9 @@
 		border: 0;
 	}
 	.connection-table__effect {
-		color: var(--color-viz-affinity);
+		color: var(--direction-color);
+		font-weight: var(--primitive-font-weight-semibold);
 		font-variant-numeric: tabular-nums;
-	}
-	/* The baseline it is measured against, subordinate to the rate itself. */
-	.connection-table__against {
-		color: var(--color-text-muted);
-		font-size: var(--primitive-type-size-14);
-	}
-	.connection-table__effect--negative {
-		color: var(--color-viz-conflict);
-	}
-	/*
-	 * A direction that did not pass selection still has an observed difference, and showing it
-	 * is more honest than blanking the cell — but it must not read as a finding, so it is
-	 * dimmed to neutral rather than coloured by sign.
-	 */
-	.connection-table__effect--dim {
-		color: var(--color-text-muted);
-		opacity: 0.75;
 	}
 	.connection-table__verdict--one-sided {
 		color: var(--color-viz-map-focus);
