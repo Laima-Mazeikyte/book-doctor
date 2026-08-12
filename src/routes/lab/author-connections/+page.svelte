@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { t } from '$lib/copy';
+	import { getFooterSupplementContext } from '$lib/footerSupplementContext';
 	import { isAnonymousOrSignedOut } from '$lib/stores/auth';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import {
@@ -51,6 +52,10 @@
 	let release = $state<Release | null>(null);
 	let store: ConnectionStore | null = null;
 	let loadError = $state<string | null>(null);
+	const footerSupplement = getFooterSupplementContext();
+	const footerSupplementOwner = Symbol('author-connections');
+	let releaseRequestId = 0;
+	let pageDestroyed = false;
 
 	/*
 	 * Browse leads. The release's own headline is its directionality catalogue — 1,262 pairs
@@ -63,6 +68,7 @@
 	// Browse mode
 	let focus = $state<Author | null>(null);
 	let neighbourhood = $state<Neighbourhood | null>(null);
+	let neighbourhoodFocusId = $state<number | null>(null);
 	let browsing = $state(false);
 	let browseError = $state<string | null>(null);
 	let browseRequestId = 0;
@@ -81,8 +87,10 @@
 	let connectionLimit = $state(24);
 
 	let map = $state<ReturnType<typeof AuthorMap> | null>(null);
+	let modeTabs = $state<HTMLDivElement | null>(null);
 	let ratedBooks = $state<RatedBook[]>([]);
 	let showPersonalRatings = $state(false);
+	let tablePreviewAuthorId = $state<number | null>(null);
 
 	const landmarks = $derived(release ? landmarkAuthors(release.index, 8) : []);
 	const oneSidedSeeds = $derived(release ? oneSidedAuthors(release.index, 8) : []);
@@ -108,7 +116,25 @@
 	 * table's sort and filter controls steer both.
 	 */
 	let tableRows = $state<Connection[]>([]);
-	const connections = $derived(mode === 'browse' && focus ? tableRows : []);
+	/** The table has published its initial visible set for this focus, including an empty set. */
+	let tableRowsFocusId = $state<number | null>(null);
+	const connections = $derived(
+		mode === 'browse' &&
+			focus &&
+			neighbourhoodFocusId === focus.id &&
+			neighbourhood &&
+			!browsing &&
+			!browseError
+			? tableRows
+			: []
+	);
+	const mapFramingReady = $derived(
+		mode !== 'browse' ||
+			focus === null ||
+			!hasConnections(focus) ||
+			browseError !== null ||
+			tableRowsFocusId === focus.id
+	);
 
 	/**
 	 * Flying the camera to a subgroup is not enough on its own to show which points belong to
@@ -117,14 +143,16 @@
 	 * what actually answers "which ones are these".
 	 */
 	const emphasis = $derived(
-		selectedSubcommunity
-			? {
-					communityId: selectedSubcommunity.communityId,
-					subcommunityId: selectedSubcommunity.id
-				}
-			: selectedCommunity
-				? { communityId: selectedCommunity.id, subcommunityId: null }
-				: null
+		mode === 'browse'
+			? selectedSubcommunity
+				? {
+						communityId: selectedSubcommunity.communityId,
+						subcommunityId: selectedSubcommunity.id
+					}
+				: selectedCommunity
+					? { communityId: selectedCommunity.id, subcommunityId: null }
+					: null
+			: null
 	);
 
 	const tabItems = $derived([
@@ -139,17 +167,23 @@
 	}
 
 	async function runNeighbourhood(): Promise<void> {
+		const requestId = ++browseRequestId;
+		neighbourhood = null;
+		neighbourhoodFocusId = null;
+		tableRows = [];
+		tableRowsFocusId = null;
+		browseError = null;
+		browsing = false;
 		if (!store || !release || !focus) {
-			neighbourhood = null;
 			return;
 		}
-		const requestId = ++browseRequestId;
+		const focusId = focus.id;
 		browsing = true;
-		browseError = null;
 		try {
 			const result = await loadNeighbourhood(store, release.index, focus);
 			if (requestId !== browseRequestId) return;
 			neighbourhood = result;
+			neighbourhoodFocusId = focusId;
 		} catch (error) {
 			if (requestId !== browseRequestId) return;
 			browseError = describeError(error);
@@ -157,6 +191,12 @@
 		} finally {
 			if (requestId === browseRequestId) browsing = false;
 		}
+	}
+
+	function publishTableRows(focusId: number, rows: Connection[]): void {
+		if (focus?.id !== focusId) return;
+		tableRows = rows;
+		tableRowsFocusId = focusId;
 	}
 
 	async function runComparison(): Promise<void> {
@@ -197,6 +237,19 @@
 		else if (author.id !== first.id) second = author;
 	}
 
+	function compareFromTable(author: Author): void {
+		if (!focus || author.id === focus.id) return;
+		first = focus;
+		second = author;
+		mode = 'compare';
+		void focusActiveModeTab();
+	}
+
+	async function focusActiveModeTab(): Promise<void> {
+		await tick();
+		modeTabs?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+	}
+
 	function chooseCommunity(community: Community | null): void {
 		selectedCommunity = community;
 		// Nested ids only mean anything inside their parent, so changing parent always clears it.
@@ -230,12 +283,6 @@
 	function focusAuthorNamed(name: string): void {
 		const found = release?.index.byName.get(normaliseName(name));
 		if (found) focus = found;
-	}
-
-	function swap(): void {
-		const previous = first;
-		first = second;
-		second = previous;
 	}
 
 	function clearPair(): void {
@@ -288,13 +335,22 @@
 	}
 
 	function attempt(): void {
+		const requestId = ++releaseRequestId;
 		loadError = null;
+		release = null;
+		store = null;
+		footerSupplement?.clear(footerSupplementOwner);
 		void loadRelease()
 			.then((loaded) => {
+				if (pageDestroyed || requestId !== releaseRequestId) return;
 				release = loaded;
 				store = new ConnectionStore(loaded);
 			})
 			.catch(() => {
+				if (pageDestroyed || requestId !== releaseRequestId) return;
+				release = null;
+				store = null;
+				footerSupplement?.clear(footerSupplementOwner);
 				loadError = t('lab.authorConnections.errors.load');
 			});
 	}
@@ -328,8 +384,8 @@
 		};
 	});
 
-	// Selection is fixed upstream, so a neighbourhood only reloads when the author or the row
-	// budget changes — there is no threshold for the reader to move and nothing to reclassify.
+	// Selection is fixed upstream, so a neighbourhood reloads only when the author changes —
+	// there is no threshold for the reader to move and nothing to reclassify.
 	$effect(() => {
 		void focus?.id;
 		void store;
@@ -345,6 +401,33 @@
 
 	$effect(() => {
 		if (!canShowPersonalRatings) showPersonalRatings = false;
+	});
+
+	$effect(() => {
+		void mode;
+		void focus?.id;
+		tablePreviewAuthorId = null;
+	});
+
+	$effect(() => {
+		if (!release) {
+			footerSupplement?.clear(footerSupplementOwner);
+			return;
+		}
+		footerSupplement?.set(
+			footerSupplementOwner,
+			t('lab.authorConnections.about.provenance', {
+				version: release.manifest.version,
+				map: release.manifest.sources.map_version,
+				graph: release.manifest.sources.author_graph_version
+			})
+		);
+	});
+
+	onDestroy(() => {
+		pageDestroyed = true;
+		releaseRequestId += 1;
+		footerSupplement?.clear(footerSupplementOwner);
 	});
 
 	/*
@@ -375,6 +458,19 @@
 		<h1 class="ac-page__title typ-display2 typ-display2--content">
 			{t('lab.authorConnections.title')}
 		</h1>
+		{#if release}
+			<div class="ac-page__mode-tabs" bind:this={modeTabs}>
+				<NavStyleTabList
+					items={tabItems}
+					selectedId={mode}
+					ariaLabel={t('lab.authorConnections.title')}
+					panelId="ac-panel"
+					idPrefix="ac-mode"
+					showCounts={false}
+					onSelect={(id) => (mode = id as Mode)}
+				/>
+			</div>
+		{/if}
 	</header>
 
 	{#if loadError}
@@ -390,140 +486,77 @@
 			<p>{t('lab.authorConnections.loading.authors')}</p>
 		</div>
 	{:else}
-		<NavStyleTabList
-			items={tabItems}
-			selectedId={mode}
-			ariaLabel={t('lab.authorConnections.title')}
-			panelId="ac-panel"
-			idPrefix="ac-mode"
-			showCounts={false}
-			onSelect={(id) => (mode = id as Mode)}
-		/>
+		<div
+			class="ac-page__workbench"
+			class:ac-page__workbench--compare={mode === 'compare'}
+			class:ac-page__workbench--selected={mode === 'browse' && focus !== null}
+			id="ac-panel"
+			role="tabpanel"
+			aria-labelledby="ac-mode-{mode}"
+		>
+			<div class="ac-page__map-column">
+				<AuthorMap
+					bind:this={map}
+					index={release.index}
+					focus={mode === 'browse' ? focus : null}
+					{connections}
+					{highlighted}
+					{emphasis}
+					previewAuthorId={tablePreviewAuthorId}
+					framingReady={mapFramingReady}
+					personalRatings={canShowPersonalRatings ? personalRatings : new Map()}
+					showPersonalRatings={personalLayerVisible}
+					tasteCenter={canShowPersonalRatings ? tasteCenter : null}
+					onTogglePersonalRatings={canShowPersonalRatings ? togglePersonalRatings : undefined}
+					onSelectAuthor={selectFromMap}
+					onClearSelection={clearSelection}
+				/>
+			</div>
 
-		<div class="ac-page__panel" id="ac-panel" role="tabpanel" aria-labelledby="ac-mode-{mode}">
-			<AuthorMap
-				bind:this={map}
-				index={release.index}
-				focus={mode === 'browse' ? focus : null}
-				{connections}
-				{highlighted}
-				{emphasis}
-				personalRatings={canShowPersonalRatings ? personalRatings : new Map()}
-				showPersonalRatings={personalLayerVisible}
-				tasteCenter={canShowPersonalRatings ? tasteCenter : null}
-				onTogglePersonalRatings={canShowPersonalRatings ? togglePersonalRatings : undefined}
-				onSelectAuthor={selectFromMap}
-				onClearSelection={clearSelection}
-			/>
-
-			{#if mode === 'browse'}
-				<div class="ac-page__browse">
-					{#if !focus}
-						<div class="ac-page__seed">
-							<AuthorPicker
-								index={release.index}
-								id="ac-focus-author"
-								label={t('lab.authorConnections.browse.searchLabel')}
-								hideLabel
-								selected={null}
-								onSelect={(author) => (focus = author)}
-							/>
-
-							<!-- Recognisable names first: the readiest way in for someone with no author in mind. -->
-							<h2 class="ac-page__seed-heading typ-h3">
-								{t('lab.authorConnections.browse.landmarks')}
-							</h2>
-							<ul class="ac-page__chips">
-								{#each landmarks as author (author.id)}
-									<li>
-										<button
-											type="button"
-											class="btn btn--secondary btn--compact"
-											onclick={() => (focus = author)}
-										>
-											{author.name}
-										</button>
-									</li>
-								{/each}
-							</ul>
-
-							<h2 class="ac-page__seed-heading typ-h3">
-								{t('lab.authorConnections.browse.oneSidedSeeds')}
-							</h2>
-							<ul class="ac-page__chips">
-								{#each oneSidedSeeds as author (author.id)}
-									<li>
-										<button
-											type="button"
-											class="btn btn--secondary btn--compact"
-											onclick={() => (focus = author)}
-										>
-											{author.name}
-										</button>
-									</li>
-								{/each}
-							</ul>
-						</div>
-					{:else}
-						<div class="ac-page__focus-bar">
-							<div class="ac-page__focus-identity">
-								<p class="ac-page__focus-name">{focus.name}</p>
-								<p class="ac-page__focus-meta">
-									{focus.genre}
-									{#if release.index.communityById.get(focus.communityId)}
-										<span class="ac-page__dot">·</span>
-										{release.index.communityById.get(focus.communityId)?.label}
-										{#if release.index.subcommunityByKey.get(subcommunityKey(focus.communityId, focus.subcommunityId))}
-											<span class="ac-page__dot">›</span>
-											{release.index.subcommunityByKey.get(
-												subcommunityKey(focus.communityId, focus.subcommunityId)
-											)?.label}
-										{/if}
-									{/if}
-								</p>
-								{#if focus.sampleTitles.length > 0}
-									<p class="ac-page__focus-titles">
-										{focus.sampleTitles.slice(0, 3).join(' · ')}
-									</p>
-								{/if}
-								{#if availability(focus) !== 'both'}
-									<p class="ac-page__focus-availability">
-										{t(`lab.authorConnections.availability.${availability(focus)}`)}
-									</p>
-								{/if}
-							</div>
-							<button type="button" class="btn btn--tertiary btn--compact" onclick={clearFocus}>
-								{t('lab.authorConnections.compare.clear')}
-							</button>
-						</div>
-
-						{#if browseError}
-							<div class="ac-page__error" role="alert">
-								<p>{browseError}</p>
-								<button
-									type="button"
-									class="btn btn--secondary btn--compact"
-									onclick={() => void runNeighbourhood()}
-								>
-									{t('lab.authorConnections.errors.retry')}
-								</button>
-							</div>
-						{:else if browsing}
-							<div class="ac-page__loading">
-								<Spinner />
-								<p>{t('lab.authorConnections.loading.connections')}</p>
-							</div>
-						{:else if !hasConnections(focus)}
-							<!-- A dead end needs a way out, not just an explanation of why it is one. -->
+			<aside
+				class="ac-page__inspector"
+				class:ac-page__inspector--selected={mode === 'browse' && focus !== null}
+			>
+				<div
+					class="ac-page__inspector-view"
+					hidden={mode !== 'browse'}
+					aria-hidden={mode !== 'browse'}
+				>
+					<div class="ac-page__browse" class:ac-page__browse--selected={focus !== null}>
+						{#if !focus}
 							<div class="ac-page__seed">
-								<p class="ac-page__help">
-									{t('lab.authorConnections.browse.noConnections', { author: focus.name })}
-								</p>
-								<p class="ac-page__help">
-									{t('lab.authorConnections.browse.noConnectionsAction')}
-								</p>
+								<AuthorPicker
+									index={release.index}
+									id="ac-focus-author"
+									label={t('lab.authorConnections.browse.searchLabel')}
+									hideLabel
+									selected={null}
+									onSelect={(author) => (focus = author)}
+								/>
+
+								<!-- Recognisable names first: the readiest way in for someone with no author in mind. -->
+								<h2 class="ac-page__seed-heading typ-h3">
+									{t('lab.authorConnections.browse.landmarks')}
+								</h2>
 								<ul class="ac-page__chips">
-									{#each oneSidedSeeds.slice(0, 6) as author (author.id)}
+									{#each landmarks as author (author.id)}
+										<li>
+											<button
+												type="button"
+												class="btn btn--secondary btn--compact"
+												onclick={() => (focus = author)}
+											>
+												{author.name}
+											</button>
+										</li>
+									{/each}
+								</ul>
+
+								<h2 class="ac-page__seed-heading typ-h3">
+									{t('lab.authorConnections.browse.oneSidedSeeds')}
+								</h2>
+								<ul class="ac-page__chips">
+									{#each oneSidedSeeds as author (author.id)}
 										<li>
 											<button
 												type="button"
@@ -536,129 +569,205 @@
 									{/each}
 								</ul>
 							</div>
-						{:else if neighbourhood}
-							<div class="ac-page__tallies">
-								<p>
-									{t('lab.authorConnections.browse.tally', {
-										total: neighbourhood.total.toLocaleString(),
-										oneSided: neighbourhood.oneSidedTotal.toLocaleString(),
-										opposing: neighbourhood.opposingTotal.toLocaleString()
-									})}
-								</p>
-							</div>
-							<ConnectionTable
-								{focus}
-								connections={neighbourhood.connections}
-								limit={connectionLimit}
-								bind:visibleRows={tableRows}
-								onSelectAuthor={(author) => (focus = author)}
-							/>
-						{/if}
-					{/if}
+						{:else}
+							<div class="ac-page__selected">
+								<div class="ac-page__selected-summary">
+									<div class="ac-page__focus-bar">
+										<div class="ac-page__focus-identity">
+											<p class="ac-page__focus-name">{focus.name}</p>
+											<p class="ac-page__focus-meta">
+												{focus.genre}
+												{#if release.index.communityById.get(focus.communityId)}
+													<span class="ac-page__dot">·</span>
+													{release.index.communityById.get(focus.communityId)?.label}
+													{#if release.index.subcommunityByKey.get(subcommunityKey(focus.communityId, focus.subcommunityId))}
+														<span class="ac-page__dot">›</span>
+														{release.index.subcommunityByKey.get(
+															subcommunityKey(focus.communityId, focus.subcommunityId)
+														)?.label}
+													{/if}
+												{/if}
+											</p>
+											{#if focus.sampleTitles.length > 0}
+												<p class="ac-page__focus-titles">
+													{focus.sampleTitles.slice(0, 3).join(' · ')}
+												</p>
+											{/if}
+											{#if availability(focus) !== 'both'}
+												<p class="ac-page__focus-availability">
+													{t(`lab.authorConnections.availability.${availability(focus)}`)}
+												</p>
+											{/if}
+										</div>
+										<button
+											type="button"
+											class="btn btn--tertiary btn--compact"
+											onclick={clearFocus}
+										>
+											{t('lab.authorConnections.compare.clear')}
+										</button>
+									</div>
 
-					<!--
+									{#if neighbourhood && neighbourhoodFocusId === focus.id && !browsing && !browseError && hasConnections(focus)}
+										<div class="ac-page__tallies">
+											<p>
+												{t('lab.authorConnections.browse.tally', {
+													total: neighbourhood.total.toLocaleString(),
+													oneSided: neighbourhood.oneSidedTotal.toLocaleString(),
+													opposing: neighbourhood.opposingTotal.toLocaleString()
+												})}
+											</p>
+										</div>
+									{/if}
+								</div>
+
+								<div class="ac-page__relationship-region">
+									<h3 class="ac-page__relationship-heading typ-h3">
+										{t('lab.authorConnections.table.heading')}
+									</h3>
+									{#if browseError}
+										<div class="ac-page__error" role="alert">
+											<p>{browseError}</p>
+											<button
+												type="button"
+												class="btn btn--secondary btn--compact"
+												onclick={() => void runNeighbourhood()}
+											>
+												{t('lab.authorConnections.errors.retry')}
+											</button>
+										</div>
+									{:else if browsing}
+										<div class="ac-page__loading">
+											<Spinner />
+											<p>{t('lab.authorConnections.loading.connections')}</p>
+										</div>
+									{:else if !hasConnections(focus)}
+										<!-- A dead end needs a way out, not just an explanation of why it is one. -->
+										<div class="ac-page__seed">
+											<p class="ac-page__help">
+												{t('lab.authorConnections.browse.noConnections', { author: focus.name })}
+											</p>
+											<p class="ac-page__help">
+												{t('lab.authorConnections.browse.noConnectionsAction')}
+											</p>
+											<ul class="ac-page__chips">
+												{#each oneSidedSeeds.slice(0, 6) as author (author.id)}
+													<li>
+														<button
+															type="button"
+															class="btn btn--secondary btn--compact"
+															onclick={() => (focus = author)}
+														>
+															{author.name}
+														</button>
+													</li>
+												{/each}
+											</ul>
+										</div>
+									{:else if neighbourhood && neighbourhoodFocusId === focus.id}
+										{#key focus.id}
+											<ConnectionTable
+												{focus}
+												connections={neighbourhood.connections}
+												limit={connectionLimit}
+												onVisibleRowsChange={publishTableRows}
+												onCompareAuthor={compareFromTable}
+												onPreviewAuthor={(author) => (tablePreviewAuthorId = author?.id ?? null)}
+											/>
+										{/key}
+									{/if}
+								</div>
+							</div>
+						{/if}
+
+						<!--
 					Only while nothing is selected. Once an author is in focus the page is about them,
 					and a second selectable grouping alongside their relationships just competes.
 				-->
-					{#if !focus}
-						<CommunityLegend
-							communities={release.index.communities}
-							subcommunitiesByCommunity={release.index.subcommunitiesByCommunity}
-							selectedCommunityId={selectedCommunity?.id ?? null}
-							selectedSubcommunityId={selectedSubcommunity?.id ?? null}
-							onSelectCommunity={chooseCommunity}
-							onSelectSubcommunity={chooseSubcommunity}
-							onSelectAuthorNamed={focusAuthorNamed}
-						/>
-					{/if}
+						{#if !focus}
+							<CommunityLegend
+								communities={release.index.communities}
+								subcommunitiesByCommunity={release.index.subcommunitiesByCommunity}
+								selectedCommunityId={selectedCommunity?.id ?? null}
+								selectedSubcommunityId={selectedSubcommunity?.id ?? null}
+								onSelectCommunity={chooseCommunity}
+								onSelectSubcommunity={chooseSubcommunity}
+								onSelectAuthorNamed={focusAuthorNamed}
+							/>
+						{/if}
+					</div>
 				</div>
-			{:else}
-				<!--
-					The two pickers sit side by side above the result rather than in a narrow rail
-					beside it. They are a matched pair, and the panel below needs the full width to
-					put the two directions next to each other.
-				-->
-				<p class="ac-page__mode-hint">{t('lab.authorConnections.modes.compareHint')}</p>
-				<div class="ac-page__compare">
-					<div class="ac-page__pickers">
-						<AuthorPicker
-							index={release.index}
-							id="ac-first-author"
-							label={t('lab.authorConnections.compare.firstAuthor')}
-							selected={first}
-							onSelect={(author) => (first = author)}
-						/>
-						<AuthorPicker
-							index={release.index}
-							id="ac-second-author"
-							label={t('lab.authorConnections.compare.secondAuthor')}
-							selected={second}
-							onSelect={(author) => (second = author)}
-						/>
-						<div class="ac-page__buttons">
-							<button
-								type="button"
-								class="btn btn--secondary btn--compact"
-								onclick={swap}
-								disabled={!first && !second}
-							>
-								{t('lab.authorConnections.compare.swap')}
-							</button>
-							<button
-								type="button"
-								class="btn btn--tertiary btn--compact"
-								onclick={clearPair}
-								disabled={!first && !second}
-							>
-								{t('lab.authorConnections.compare.clear')}
-							</button>
+
+				<div
+					class="ac-page__inspector-view"
+					hidden={mode !== 'compare'}
+					aria-hidden={mode !== 'compare'}
+				>
+					<div class="ac-page__compare">
+						<div class="ac-page__compare-pickers">
+							<p class="ac-page__mode-hint">{t('lab.authorConnections.modes.compareHint')}</p>
+							<div class="ac-page__pickers">
+								<AuthorPicker
+									index={release.index}
+									id="ac-first-author"
+									label={t('lab.authorConnections.compare.firstAuthor')}
+									selected={first}
+									onSelect={(author) => (first = author)}
+								/>
+								<AuthorPicker
+									index={release.index}
+									id="ac-second-author"
+									label={t('lab.authorConnections.compare.secondAuthor')}
+									selected={second}
+									onSelect={(author) => (second = author)}
+								/>
+								<div class="ac-page__buttons">
+									<button
+										type="button"
+										class="btn btn--tertiary btn--compact"
+										onclick={clearPair}
+										disabled={!first && !second}
+									>
+										{t('lab.authorConnections.compare.clear')}
+									</button>
+								</div>
+							</div>
+						</div>
+
+						<div class="ac-page__compare-result">
+							<ComparePanel
+								{first}
+								{second}
+								{record}
+								loading={comparing}
+								error={compareError}
+								onRetry={() => void runComparison()}
+							/>
 						</div>
 					</div>
-
-					<ComparePanel
-						{first}
-						{second}
-						{record}
-						loading={comparing}
-						error={compareError}
-						onRetry={() => void runComparison()}
-					/>
 				</div>
-			{/if}
+			</aside>
 		</div>
-
-		<section class="ac-page__about">
-			<h2 class="typ-h3">{t('lab.authorConnections.about.heading')}</h2>
-			<p><strong>Space:</strong> {t('lab.authorConnections.about.space')}</p>
-			<p><strong>Direction:</strong> {t('lab.authorConnections.about.direction')}</p>
-			<p><strong>Communities:</strong> {t('lab.authorConnections.about.communities')}</p>
-		</section>
-
-		<p class="ac-page__provenance">
-			{t('lab.authorConnections.about.provenance', {
-				version: release.manifest.version,
-				map: release.manifest.sources.map_version,
-				graph: release.manifest.sources.author_graph_version
-			})}
-		</p>
 	{/if}
 </div>
 
 <style>
 	.ac-page {
 		display: flex;
+		flex: 1 1 auto;
 		flex-direction: column;
 		gap: var(--space-5);
 		width: 100%;
 		min-width: 0;
-		padding-bottom: var(--space-8);
+		min-height: 0;
+		container: author-connections / inline-size;
 	}
 	.ac-page__header {
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-3);
-		align-items: center;
-		text-align: center;
+		align-items: flex-start;
+		text-align: left;
 	}
 	.ac-page__title {
 		margin: 0;
@@ -667,23 +776,18 @@
 		margin: 0;
 		font-family: var(--font-family-interactive);
 		font-size: var(--primitive-type-size-14);
+		line-height: 1.45;
 		color: var(--color-text-muted);
-	}
-	.ac-page__panel {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-5);
-		min-width: 0;
 	}
 	.ac-page__compare {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-5);
+		gap: 0;
 		min-width: 0;
 	}
 	.ac-page__pickers {
 		display: grid;
-		gap: var(--space-3);
+		gap: var(--space-2);
 		align-items: end;
 	}
 	@media (min-width: 48rem) {
@@ -694,6 +798,7 @@
 	.ac-page__buttons {
 		display: flex;
 		gap: var(--space-2);
+		flex-wrap: wrap;
 	}
 	.ac-page__help {
 		margin: 0;
@@ -705,8 +810,9 @@
 	.ac-page__browse {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-5);
+		gap: var(--space-4);
 		min-width: 0;
+		padding: var(--space-4);
 	}
 	.ac-page__seed {
 		display: flex;
@@ -714,7 +820,7 @@
 		gap: var(--space-3);
 	}
 	.ac-page__seed-heading {
-		margin: var(--space-2) 0 0 0;
+		margin: var(--space-1) 0 0;
 	}
 	.ac-page__chips {
 		list-style: none;
@@ -729,10 +835,11 @@
 		align-items: flex-start;
 		justify-content: space-between;
 		gap: var(--space-4);
-		padding: var(--space-4);
-		background: var(--color-card-bg);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius);
+		padding: var(--space-2) 0 var(--space-4);
+		background: transparent;
+		border: none;
+		border-bottom: 1px solid var(--color-border);
+		border-radius: 0;
 	}
 	.ac-page__focus-identity {
 		display: flex;
@@ -802,34 +909,171 @@
 	.ac-page__error p {
 		margin: 0;
 	}
-	.ac-page__about {
+	/* Observatory shell: the map and its inspector share one measured instrument surface. */
+	.ac-page__mode-tabs {
+		width: 100%;
+		min-width: 0;
+	}
+	.ac-page__mode-tabs :global(.nav-style-tabs__list) {
+		justify-content: flex-start;
+	}
+	.ac-page__workbench {
+		display: grid;
+		flex: 1 1 auto;
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-areas:
+			'map'
+			'inspector';
+		gap: var(--space-5);
+		min-width: 0;
+		min-height: 0;
+	}
+	.ac-page__inspector-view {
+		min-width: 0;
+		min-height: 0;
+	}
+	.ac-page__map-column {
+		grid-area: map;
+		min-width: 0;
+	}
+	.ac-page__inspector {
+		grid-area: inspector;
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+		min-height: 0;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius);
+		background: var(--color-card-bg);
+	}
+	.ac-page__browse--selected {
+		min-height: 0;
+	}
+	.ac-page__selected {
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-3);
-		max-width: 44rem;
-		margin-top: var(--space-4);
-		padding-top: var(--space-5);
-		border-top: 1px solid var(--color-border);
+		min-width: 0;
+		min-height: 0;
 	}
-	.ac-page__about h2 {
-		margin: 0;
+	.ac-page__selected-summary {
+		flex: 0 0 auto;
+		min-width: 0;
 	}
-	.ac-page__about p {
-		margin: 0;
-		font-family: var(--font-family-interactive);
-		font-size: var(--primitive-type-size-14);
-		line-height: 1.6;
-		color: var(--color-text-muted);
+	.ac-page__relationship-region {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-3);
+		min-width: 0;
+		min-height: clamp(20rem, 56dvh, 36rem);
+		padding-top: var(--space-1);
 	}
-	/* Build metadata: findable at the foot of the page, not mixed into the explanations. */
-	.ac-page__provenance {
+	.ac-page__relationship-heading {
+		flex: 0 0 auto;
 		margin: 0;
-		padding-top: var(--space-4);
-		border-top: 1px solid var(--color-border);
-		font-family: var(--font-family-interactive);
-		font-size: var(--primitive-type-size-14);
-		font-variant-numeric: tabular-nums;
-		color: var(--color-text-muted);
-		opacity: 0.85;
+		color: var(--color-text);
+	}
+	.ac-page__relationship-region :global(.connection-table) {
+		min-height: 0;
+	}
+	.ac-page__compare-pickers {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-3);
+		padding: var(--space-4);
+		border-bottom: 1px solid var(--color-border);
+		background: var(--color-card-bg);
+	}
+	.ac-page__compare-result {
+		padding: var(--space-4);
+	}
+	@container author-connections (min-width: 48rem) and (max-width: 69.99rem) {
+		.ac-page__mode-tabs {
+			width: max-content;
+			max-width: 100%;
+		}
+		.ac-page__mode-tabs :global(.nav-style-tabs__list) {
+			justify-content: flex-start;
+		}
+	}
+
+	@container author-connections (min-width: 70rem) {
+		.ac-page__header {
+			flex-direction: row;
+			align-items: center;
+			justify-content: space-between;
+			gap: var(--space-5);
+		}
+		.ac-page__mode-tabs {
+			width: max-content;
+			max-width: 50%;
+			margin-left: auto;
+		}
+		.ac-page__mode-tabs :global(.nav-style-tabs__list) {
+			justify-content: flex-end;
+		}
+		.ac-page__workbench {
+			grid-template-columns: minmax(0, 58fr) minmax(19rem, 42fr);
+			grid-template-rows: minmax(0, 1fr);
+			grid-template-areas: 'map inspector';
+			column-gap: var(--space-5);
+			min-height: 36rem;
+			align-items: stretch;
+		}
+		.ac-page__map-column,
+		.ac-page__inspector {
+			height: 100%;
+			min-height: 0;
+		}
+		.ac-page__inspector {
+			overflow: auto;
+			overflow-x: hidden;
+			overscroll-behavior: contain;
+		}
+		.ac-page__compare-pickers {
+			position: sticky;
+			top: 0;
+			z-index: 2;
+		}
+		.ac-page__pickers {
+			grid-template-columns: minmax(0, 1fr);
+			align-items: stretch;
+		}
+		.ac-page__workbench--selected .ac-page__inspector.ac-page__inspector--selected {
+			overflow: hidden;
+		}
+		.ac-page__inspector--selected .ac-page__inspector-view:not([hidden]) {
+			height: 100%;
+			min-height: 0;
+		}
+		.ac-page__browse--selected {
+			height: 100%;
+			min-height: 0;
+			gap: 0;
+		}
+		.ac-page__selected {
+			height: 100%;
+		}
+		.ac-page__relationship-region {
+			flex: 1 1 auto;
+			min-height: 0;
+			overflow: hidden;
+		}
+		.ac-page__relationship-region :global(.connection-table) {
+			display: flex;
+			flex: 1 1 auto;
+			min-height: 0;
+		}
+		.ac-page__relationship-region :global(.connection-table__scroll) {
+			flex: 1 1 auto;
+			min-height: 0;
+			max-height: none;
+		}
+	}
+
+	@media (max-width: 47.99rem) {
+		.ac-page__workbench {
+			gap: var(--space-4);
+		}
 	}
 </style>

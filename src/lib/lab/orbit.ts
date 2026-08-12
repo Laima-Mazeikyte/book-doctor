@@ -102,7 +102,10 @@ function quantile(values: number[], q: number): number {
  * The 98th percentile of the distance to the median is the framing radius: with a dense
  * cloud plus a thin tail, using the maximum would waste most of the viewport on empty space.
  */
-export function fitPoints(points: Point3D[]): Pick<OrbitState, 'centre' | 'radius'> {
+export function fitPoints(
+	points: Point3D[],
+	minimumRadius = 1e-6
+): Pick<OrbitState, 'centre' | 'radius'> {
 	if (points.length === 0) return { centre: [0, 0, 0], radius: 1 };
 	const centre: [number, number, number] = [
 		median(points.map((p) => p.x)),
@@ -112,7 +115,7 @@ export function fitPoints(points: Point3D[]): Pick<OrbitState, 'centre' | 'radiu
 	const distances = points.map((p) =>
 		Math.hypot(p.x - centre[0], p.y - centre[1], p.z - centre[2])
 	);
-	return { centre, radius: Math.max(quantile(distances, 0.98), 1e-6) };
+	return { centre, radius: Math.max(quantile(distances, 0.98), minimumRadius, 1e-6) };
 }
 
 export function homeState(points: Point3D[]): OrbitState {
@@ -138,7 +141,7 @@ export function project(state: OrbitState, viewport: Viewport, point: Point3D): 
 
 /**
  * Build a projection closure with the per-frame trigonometry and scale precomputed.
- * Projecting 7,911 points calls this once instead of computing four transcendentals each.
+ * The SVG foreground uses this for its small active set; the canvas uses `projectorInto`.
  */
 export function projector(state: OrbitState, viewport: Viewport): (point: Point3D) => Projected {
 	const { centre, radius } = state;
@@ -174,6 +177,90 @@ export function projector(state: OrbitState, viewport: Viewport): (point: Point3
 	};
 }
 
+/**
+ * Allocation-free version of `projector()` for the full point cloud.
+ *
+ * The object-returning projector is convenient for the small SVG foreground. The canvas path
+ * calls this thousands of times per frame, so it writes into the existing typed arrays and
+ * returns only the perspective multiplier needed to derive point size.
+ */
+export function projectorInto(
+	state: OrbitState,
+	viewport: Viewport,
+	screenX: Float32Array,
+	screenY: Float32Array,
+	screenDepth: Float32Array
+): (slot: number, x: number, y: number, z: number) => number {
+	const { centre, radius } = state;
+	const cosYaw = Math.cos(state.yaw);
+	const sinYaw = Math.sin(state.yaw);
+	const cosPitch = Math.cos(state.pitch);
+	const sinPitch = Math.sin(state.pitch);
+	const scale = Math.min(viewport.width, viewport.height) * FIT_FRACTION * state.zoom;
+	const originX = viewport.width / 2 + state.panX;
+	const originY = viewport.height / 2 + state.panY;
+
+	return (slot: number, x: number, y: number, z: number): number => {
+		const nx = (x - centre[0]) / radius;
+		const ny = (y - centre[1]) / radius;
+		const nz = (z - centre[2]) / radius;
+		const yawX = cosYaw * nx + sinYaw * nz;
+		const yawZ = -sinYaw * nx + cosYaw * nz;
+		const pitchY = cosPitch * ny - sinPitch * yawZ;
+		const depth = sinPitch * ny + cosPitch * yawZ;
+		const perspective = CAMERA_DISTANCE / Math.max(NEAR_CLAMP, CAMERA_DISTANCE - depth);
+
+		screenX[slot] = originX + yawX * scale * perspective;
+		screenY[slot] = originY - pitchY * scale * perspective;
+		screenDepth[slot] = depth;
+		return perspective;
+	};
+}
+
+const MIN_FLIGHT_MS = 250;
+const MAX_FLIGHT_MS = 750;
+const SNAP_PIXELS = 8;
+const SNAP_SCALE_CHANGE = Math.log(1.03);
+const FULL_TRAVEL_PIXELS = 600;
+const FULL_SCALE_CHANGE = Math.log(16);
+
+/**
+ * Camera duration based on how much the projected view changes.
+ *
+ * Tiny corrections cut directly to their target, ordinary neighborhood changes take roughly
+ * half a second, and only a large pan/orbit or a sixteen-fold scale change receives the old
+ * 750 ms maximum.
+ */
+export function flightDuration(from: OrbitState, to: OrbitState, viewport: Viewport): number {
+	const viewportScale = Math.min(viewport.width, viewport.height) * FIT_FRACTION;
+	const referenceRadius = Math.max(from.radius, to.radius, 1e-6);
+	const centrePixels =
+		(Math.hypot(
+			to.centre[0] - from.centre[0],
+			to.centre[1] - from.centre[1],
+			to.centre[2] - from.centre[2]
+		) /
+			referenceRadius) *
+		viewportScale;
+	const panPixels = Math.hypot(to.panX - from.panX, to.panY - from.panY);
+	let yawDelta = (to.yaw - from.yaw) % (Math.PI * 2);
+	if (yawDelta > Math.PI) yawDelta -= Math.PI * 2;
+	if (yawDelta < -Math.PI) yawDelta += Math.PI * 2;
+	const orbitPixels = Math.hypot(yawDelta, to.pitch - from.pitch) * Math.max(viewportScale, 1);
+	const spatialPixels = Math.max(centrePixels, panPixels, orbitPixels);
+	const fromScale = from.zoom / from.radius;
+	const toScale = to.zoom / to.radius;
+	const scaleChange = Math.abs(Math.log(toScale / fromScale));
+
+	if (spatialPixels < SNAP_PIXELS && scaleChange < SNAP_SCALE_CHANGE) return 0;
+
+	const travel = Math.min(
+		1,
+		Math.max(spatialPixels / FULL_TRAVEL_PIXELS, scaleChange / FULL_SCALE_CHANGE)
+	);
+	return MIN_FLIGHT_MS + (MAX_FLIGHT_MS - MIN_FLIGHT_MS) * travel;
+}
+
 function cubicOut(t: number): number {
 	const f = t - 1;
 	return f * f * f + 1;
@@ -186,6 +273,18 @@ function cubicOut(t: number): number {
 export function interpolate(from: OrbitState, to: OrbitState, t: number): OrbitState {
 	const eased = cubicOut(Math.min(1, Math.max(0, t)));
 	const lerp = (a: number, b: number) => a + (b - a) * eased;
+	/*
+	 * Interpolate the inverse radius and centre/radius together. Interpolating the centre
+	 * linearly while shrinking the radius geometrically makes the two parts of the camera
+	 * disagree: during a tight refit, the old centre can be divided by almost the final tiny
+	 * radius and throw the target millions of pixels off screen. This form makes every point's
+	 * normalised coordinate interpolate linearly between its two endpoint coordinates.
+	 */
+	const inverseRadius = lerp(1 / from.radius, 1 / to.radius);
+	const radius = 1 / inverseRadius;
+	const centre = from.centre.map(
+		(value, axis) => radius * lerp(value / from.radius, to.centre[axis] / to.radius)
+	) as OrbitState['centre'];
 
 	let yawDelta = (to.yaw - from.yaw) % (Math.PI * 2);
 	if (yawDelta > Math.PI) yawDelta -= Math.PI * 2;
@@ -197,12 +296,8 @@ export function interpolate(from: OrbitState, to: OrbitState, t: number): OrbitS
 		zoom: from.zoom * Math.pow(to.zoom / from.zoom, eased),
 		panX: lerp(from.panX, to.panX),
 		panY: lerp(from.panY, to.panY),
-		centre: [
-			lerp(from.centre[0], to.centre[0]),
-			lerp(from.centre[1], to.centre[1]),
-			lerp(from.centre[2], to.centre[2])
-		],
-		radius: from.radius * Math.pow(to.radius / from.radius, eased)
+		centre,
+		radius
 	};
 }
 

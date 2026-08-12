@@ -1,6 +1,10 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { setOpenBugReportContext } from '$lib/bugReportContext';
+	import {
+		createFooterSupplementController,
+		setFooterSupplementContext
+	} from '$lib/footerSupplementContext';
 	import { get } from 'svelte/store';
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { MAINTENANCE_ON, isAllowedDuringMaintenance } from '$lib/maintenance';
@@ -73,6 +77,14 @@
 	}
 
 	setOpenBugReportContext(openBugModal);
+
+	const footerSupplement = createFooterSupplementController();
+	setFooterSupplementContext(footerSupplement);
+	let footerSupplementText = $state<string | null>(null);
+	const unsubscribeFooterSupplement = footerSupplement.subscribe((text) => {
+		footerSupplementText = text;
+	});
+	onDestroy(unsubscribeFooterSupplement);
 
 	function skipToRateBottomBar(e: MouseEvent) {
 		e.preventDefault();
@@ -318,6 +330,7 @@
 	class="app-chrome"
 	class:app-chrome--landing={page.url.pathname === '/'}
 	class:app-chrome--shortlist={isShortlistShell}
+	class:app-chrome--author-connections={page.url.pathname === '/lab/author-connections'}
 >
 	{#if !isShortlistShell}
 		<AppHeader onOpenBugReport={openBugModal} />
@@ -342,7 +355,7 @@
 		</div>
 	</main>
 	{#if showAppFooter}
-		<AppFooter onOpenBugReport={openBugModal} />
+		<AppFooter onOpenBugReport={openBugModal} supplement={footerSupplementText} />
 	{/if}
 </div>
 <BugReportModal open={bugModalOpen} onClose={closeBugModal} />
@@ -355,6 +368,32 @@
 		width: 100%;
 		/* Matches AppHeader __inner: min-height 3.25rem + vertical padding (2× --space-3) */
 		--app-header-chrome-height: 4.75rem;
+	}
+	.app-chrome--author-connections {
+		position: relative;
+		height: 100dvh;
+		min-height: 0;
+		overflow: hidden;
+	}
+	.app-chrome--author-connections > :global(.app-header),
+	.app-chrome--author-connections > :global(.app-footer) {
+		flex: 0 0 auto;
+	}
+	.app-chrome--author-connections :global(main.main-book-grid-shell) {
+		display: flex;
+		flex: 1 1 auto;
+		flex-direction: column;
+		min-height: 0;
+		padding-bottom: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+	}
+	.app-chrome--author-connections .main-min,
+	.app-chrome--author-connections .page-enter {
+		display: flex;
+		flex: 1 1 auto;
+		flex-direction: column;
+		min-height: 0;
 	}
 	.app-chrome--landing {
 		min-height: 100dvh;

@@ -59,9 +59,22 @@
 		open = false;
 		trigger.blur();
 	}
-</script>
 
-<svelte:window onscroll={position} onresize={position} />
+	$effect(() => {
+		if (!open) return;
+
+		function closeOnScroll(): void {
+			open = false;
+		}
+
+		window.addEventListener('scroll', closeOnScroll, true);
+		window.addEventListener('resize', position);
+		return () => {
+			window.removeEventListener('scroll', closeOnScroll, true);
+			window.removeEventListener('resize', position);
+		};
+	});
+</script>
 
 <span class="metric-tooltip" class:metric-tooltip--block={block}>
 	<button

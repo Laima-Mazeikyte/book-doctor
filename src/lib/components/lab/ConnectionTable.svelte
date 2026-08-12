@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/copy';
 	import MetricTooltip from './MetricTooltip.svelte';
-	import { composeDefaultOrder, statusRank } from '$lib/lab/author-taste/client';
+	import { composeDefaultOrder } from '$lib/lab/author-taste/client';
 	import { normaliseName } from '$lib/lab/author-taste/authors';
 	import {
 		formatInterval,
@@ -12,12 +12,7 @@
 		relativeDirectionColorWeight,
 		relativeLikelihoodPercent
 	} from '$lib/lab/author-taste/format';
-	import {
-		STATUS_KEYS,
-		type Author,
-		type Connection,
-		type DirectionEstimate
-	} from '$lib/lab/author-taste/types';
+	import type { Author, Connection, DirectionEstimate } from '$lib/lab/author-taste/types';
 
 	interface Props {
 		focus: Author;
@@ -31,10 +26,20 @@
 		 * thousands, for a popular one — while the table showed two dozen.
 		 */
 		visibleRows?: Connection[];
-		onSelectAuthor: (author: Author) => void;
+		onVisibleRowsChange?: (focusId: number, rows: Connection[]) => void;
+		onCompareAuthor: (author: Author) => void;
+		onPreviewAuthor?: (author: Author | null) => void;
 	}
 
-	let { focus, connections, limit, visibleRows = $bindable([]), onSelectAuthor }: Props = $props();
+	let {
+		focus,
+		connections,
+		limit,
+		visibleRows = $bindable([]),
+		onVisibleRowsChange,
+		onCompareAuthor,
+		onPreviewAuthor
+	}: Props = $props();
 
 	/**
 	 * The keyboard- and screen-reader-equivalent view of the map. Every author drawn on the
@@ -42,16 +47,15 @@
 	 * the 1,240 authors that carry evidence without appearing on the map are only reachable
 	 * here at all.
 	 */
-	type SortKey = 'default' | 'verdict' | 'outward' | 'inward';
+	type SortKey = 'default' | 'outward' | 'inward';
 
 	let sortKey = $state<SortKey>('default');
 	let sortDescending = $state(false);
 	let authorQuery = $state('');
 	let genreQuery = $state('');
 
-	/** Rarest verdict first; biggest effect first. Whichever reads as "most interesting". */
+	/** Directional sorts open with the largest effect. */
 	const NATURAL_DESCENDING: Record<Exclude<SortKey, 'default'>, boolean> = {
-		verdict: false,
 		outward: true,
 		inward: true
 	};
@@ -67,8 +71,6 @@
 
 	function compare(a: Connection, b: Connection): number {
 		switch (sortKey) {
-			case 'verdict':
-				return statusRank(a) - statusRank(b);
 			case 'outward':
 				return compareRelative(a.record.self, b.record.self);
 			case 'inward':
@@ -137,11 +139,8 @@
 	// Nothing here reads `visibleRows`, so publishing it cannot feed back into `rows`.
 	$effect(() => {
 		visibleRows = rows;
+		onVisibleRowsChange?.(focus.id, rows);
 	});
-
-	function statusLabel(connection: Connection): string {
-		return t(`lab.authorConnections.status.${STATUS_KEYS[connection.record.status]}.short`);
-	}
 
 	function directionColor(relativePercent: number | null, selected: boolean): string {
 		const weight = relativeDirectionColorWeight(relativePercent, selected);
@@ -200,7 +199,6 @@
 		(
 			[
 				{ key: 'author', label: t('lab.authorConnections.table.author'), search: 'author' },
-				{ key: 'verdict', label: t('lab.authorConnections.table.verdict'), sort: 'verdict' },
 				{
 					key: 'outward',
 					label: t('lab.authorConnections.table.outward', { author: focus.name }),
@@ -225,15 +223,23 @@
 		if (!key || sortKey !== key) return 'none';
 		return sortDescending ? 'descending' : 'ascending';
 	}
+
+	function clearPreview(event: FocusEvent): void {
+		const row = event.currentTarget as HTMLTableRowElement;
+		if (event.relatedTarget instanceof Node && row.contains(event.relatedTarget)) return;
+		onPreviewAuthor?.(null);
+	}
 </script>
 
 <div class="connection-table">
-	<h3 class="connection-table__heading typ-h3">{t('lab.authorConnections.table.heading')}</h3>
 	<div class="connection-table__scroll">
 		<table>
-			<caption class="connection-table__caption">
-				{t('lab.authorConnections.table.caption')}
-			</caption>
+			<colgroup>
+				<col style="width: 21%" />
+				<col style="width: 26%" />
+				<col style="width: 26%" />
+				<col style="width: 27%" />
+			</colgroup>
 			<thead>
 				<tr>
 					{#each columns as column (column.key)}
@@ -294,24 +300,29 @@
 			<tbody>
 				{#each rows as connection (connection.other.id)}
 					{@const record = connection.record}
-					{@const oneSided = record.status === 2 || record.status === 3}
 					{@const outwardRelative = relativeDifference(record.self)}
 					{@const inwardRelative = relativeDifference(record.reverse)}
 					{@const outwardCappedDetail = cappedRelativeDetail(outwardRelative)}
 					{@const inwardCappedDetail = cappedRelativeDetail(inwardRelative)}
-					<tr>
+					<tr
+						onpointerenter={() => onPreviewAuthor?.(connection.other)}
+						onpointerleave={() => onPreviewAuthor?.(null)}
+						onfocusin={() => onPreviewAuthor?.(connection.other)}
+						onfocusout={clearPreview}
+					>
 						<th scope="row">
 							<button
 								type="button"
 								class="connection-table__author"
-								onclick={() => onSelectAuthor(connection.other)}
+								aria-label={t('lab.authorConnections.table.compareAuthor', {
+									focus: focus.name,
+									author: connection.other.name
+								})}
+								onclick={() => onCompareAuthor(connection.other)}
 							>
 								{connection.other.name}
 							</button>
 						</th>
-						<td class:connection-table__verdict--one-sided={oneSided}>
-							{statusLabel(connection)}
-						</td>
 						<td
 							class="connection-table__effect"
 							style:--direction-color={directionColor(outwardRelative, record.self.selected)}
@@ -413,9 +424,6 @@
 				count: rows.length,
 				total: filtered.length.toLocaleString()
 			})}
-			{#if sortKey === 'default'}
-				{t('lab.authorConnections.table.defaultNote')}
-			{/if}
 		</p>
 	{/if}
 	<p class="connection-table__footnote">{t('lab.authorConnections.table.dimNote')}</p>
@@ -428,42 +436,52 @@
 		gap: var(--space-3);
 		min-width: 0;
 	}
-	.connection-table__heading {
-		color: var(--color-text);
-	}
 	/* Wide table scrolls inside its own container; the page body never scrolls sideways. */
 	.connection-table__scroll {
 		width: 100%;
 		max-width: 100%;
-		overflow-x: auto;
+		max-height: clamp(20rem, 56dvh, 36rem);
+		overflow: auto;
+		overscroll-behavior: contain;
 	}
 	table {
 		width: 100%;
+		table-layout: fixed;
 		border-collapse: collapse;
 		font-family: var(--font-family-interactive);
 		font-size: var(--primitive-type-size-14);
 	}
-	.connection-table__caption {
-		text-align: left;
-		padding-bottom: var(--space-2);
-		color: var(--color-text-muted);
-	}
 	th,
 	td {
-		padding: var(--space-2) var(--space-3);
+		padding: var(--space-2);
 		text-align: left;
 		border-bottom: 1px solid var(--color-border);
-		white-space: nowrap;
+		min-width: 0;
+		overflow-wrap: anywhere;
+		white-space: normal;
 	}
 	thead th {
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		background: var(--color-card-bg);
 		color: var(--color-text-muted);
 		font-weight: var(--primitive-font-weight-normal);
 		vertical-align: top;
 	}
+	tbody tr {
+		transition: background-color 0.15s ease;
+	}
+	tbody tr:hover,
+	tbody tr:focus-within {
+		background: var(--color-bg-hover);
+	}
 	.connection-table__head {
 		display: flex;
-		align-items: center;
+		align-items: flex-start;
+		flex-wrap: wrap;
 		gap: var(--space-1);
+		min-width: 0;
 	}
 	tbody th {
 		font-weight: var(--primitive-font-weight-normal);
@@ -472,11 +490,15 @@
 		display: inline-flex;
 		align-items: center;
 		gap: var(--space-1);
+		min-width: 0;
 		padding: 0;
 		background: none;
 		border: none;
 		color: inherit;
 		font: inherit;
+		text-align: left;
+		white-space: normal;
+		overflow-wrap: anywhere;
 		cursor: pointer;
 	}
 	.connection-table__sort:hover {
@@ -495,7 +517,8 @@
 	/* Sits under its heading so the control and the column it filters stay adjacent. */
 	.connection-table__filter {
 		width: 100%;
-		min-width: 7rem;
+		min-width: 0;
+		max-width: 100%;
 		box-sizing: border-box;
 		margin-top: var(--space-1);
 		padding: var(--space-1) var(--space-2);
@@ -520,6 +543,8 @@
 		font-family: inherit;
 		font-size: inherit;
 		text-align: left;
+		white-space: normal;
+		overflow-wrap: anywhere;
 		cursor: pointer;
 		text-decoration: underline;
 	}
@@ -559,14 +584,19 @@
 		color: var(--direction-color);
 		font-weight: var(--primitive-font-weight-semibold);
 		font-variant-numeric: tabular-nums;
-	}
-	.connection-table__verdict--one-sided {
-		color: var(--color-viz-map-focus);
+		white-space: nowrap;
+		overflow-wrap: normal;
 	}
 	.connection-table__footnote {
 		margin: 0;
 		font-family: var(--font-family-interactive);
 		font-size: var(--primitive-type-size-14);
 		color: var(--color-text-muted);
+	}
+
+	@media (max-width: 47.99rem) {
+		table {
+			min-width: 52rem;
+		}
 	}
 </style>

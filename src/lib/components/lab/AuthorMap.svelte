@@ -13,9 +13,11 @@
 		clampPitch,
 		clampZoom,
 		fitPoints,
+		flightDuration,
 		homeState,
 		interpolate,
 		projector,
+		projectorInto,
 		type Point3D,
 		type OrbitState,
 		type Projected
@@ -33,16 +35,16 @@
 		 * Group to hold in focus while everything else recedes. A null `subcommunityId` means
 		 * the whole community.
 		 *
-		 * Subcommunities are deliberately *not* given their own permanent colour. There are 34
-		 * of them against 9 communities, well past what a categorical palette can carry, and the
-		 * two channels that could express a subordinate level are already spoken for: alpha
-		 * carries depth and radius is reserved for a perspective cue. Measured on this release
-		 * they are not reliably separated in space either — silhouette runs from 0.56 down to 0.10,
-		 * and in communities 1, 5 and 6 the gap between subgroup centroids is smaller than the
-		 * subgroups' own radii, so they sit inside one another. Focus-and-context is the only
-		 * encoding that stays honest for the interleaved cases as well as the tidy ones.
+		 * Subcommunities are not given permanent colours. There are 34 of them against 9
+		 * communities, well past what a categorical palette can carry, so a selected subgroup gets a
+		 * transient focus hue while its parent community keeps its own colour as context. That stays
+		 * legible even where subgroup centroids overlap and the map cannot separate them spatially.
 		 */
 		emphasis?: { communityId: number; subcommunityId: number | null } | null;
+		/** Temporary table preview author id; unlike focus, this never changes the selected author. */
+		previewAuthorId?: number | null;
+		/** Whether the current selection has all the points needed for its automatic camera fit. */
+		framingReady?: boolean;
 		/** The current user's mapped author ratings, keyed by release author id. */
 		personalRatings?: ReadonlyMap<number, PersonalAuthorRating>;
 		/** Whether the personal rating layer and taste center are currently visible. */
@@ -61,6 +63,8 @@
 		connections = [],
 		highlighted = [],
 		emphasis = null,
+		previewAuthorId = null,
+		framingReady = true,
 		personalRatings = new Map(),
 		showPersonalRatings = false,
 		tasteCenter = null,
@@ -80,13 +84,15 @@
 	 * is why nothing here treats presence on the map as a proxy for having evidence.
 	 */
 
-	const FLIGHT_MS = 750;
+	/** Do not turn a singleton or extremely tight group into a near-zero-radius camera. */
+	const MIN_FRAME_RADIUS_FRACTION = 0.04;
+	const REFRAME_DEBOUNCE_MS = 150;
 	const PICK_RADIUS = 12;
 	/*
 	 * Three tiers, so a selected subgroup can be seen *within* its community rather than
-	 * floating in an undifferentiated grey field. The parent keeps its community colour at
-	 * roughly half strength; the subgroup is floored above the parent's brightest possible
-	 * value, so a far-away selected point can never read as dimmer than a near parent one.
+	 * floating in an undifferentiated grey field. The parent keeps its community colour at a
+	 * restrained strength, while the subgroup receives the transient map-focus hue and a high
+	 * alpha floor.
 	 */
 	const TIER_CONTEXT = 0;
 	const TIER_PARENT = 1;
@@ -94,9 +100,9 @@
 
 	/** How far unemphasised points recede. Low enough to read as ground, not as data. */
 	const CONTEXT_ALPHA = 0.2;
-	const PARENT_ALPHA = 0.5;
-	/** Above `PARENT_ALPHA × the brightest depth`, so the tiers never cross. */
-	const FOCUS_MIN_ALPHA = 0.55;
+	const PARENT_ALPHA = 0.32;
+	/** Keep the selected subgroup unmistakably above its parent context. */
+	const FOCUS_MIN_ALPHA = 0.9;
 	/** Keep unrated authors visible as context when the personal layer is active. */
 	const PERSONAL_CONTEXT_ALPHA = 0.2;
 
@@ -109,6 +115,8 @@
 	let dragging = $state(false);
 	let hovered = $state<Author | null>(null);
 	let ready = $state(false);
+	type InfoState = 'closed' | 'hover' | 'focus' | 'open' | 'dismissed';
+	let infoState = $state<InfoState>('closed');
 
 	/**
 	 * Flat arrays over `index.mapped`. Iterating typed arrays rather than 7,911 objects keeps
@@ -123,8 +131,6 @@
 	let screenDepth = new Float32Array(0);
 	let screenSize = new Float32Array(0);
 	let drawOrder: number[] = [];
-	/** authorId → slot in the mapped arrays, or -1 when the author has no coordinates. */
-	let slotById = new Int32Array(0);
 
 	let flight: number | null = null;
 	let drag: {
@@ -151,6 +157,9 @@
 
 	const viewport = $derived({ width, height });
 	const home = $derived(homeState(index.mapped));
+	const infoVisible = $derived(
+		infoState === 'hover' || infoState === 'focus' || infoState === 'open'
+	);
 
 	/**
 	 * Which slots are in focus, or null when nothing is emphasised.
@@ -240,8 +249,6 @@
 		screenSize = new Float32Array(mapped.length);
 		drawOrder = new Array(mapped.length);
 
-		slotById = new Int32Array(index.authors.length).fill(-1);
-
 		for (let i = 0; i < mapped.length; i++) {
 			const author = mapped[i];
 			worldX[i] = author.x as number;
@@ -249,25 +256,23 @@
 			worldZ[i] = author.z as number;
 			pointColor[i] = authorColor(index, author);
 			drawOrder[i] = i;
-			slotById[author.id] = i;
 		}
 	}
 
 	/**
-	 * Reproject every mapped author and re-sort back-to-front.
+	 * Reproject and sort the full cloud for every frame. Keeping every point present avoids a
+	 * visible density/opacity flash when camera motion begins or ends.
 	 *
 	 * Point radius follows the perspective multiplier only. It is a depth cue, not a measure of
 	 * readership or any other user-derived count.
 	 */
 	function reproject(): void {
-		const project = projector(camera, viewport);
-		const mapped = index.mapped;
-		for (let i = 0; i < mapped.length; i++) {
-			const projected = project({ x: worldX[i], y: worldY[i], z: worldZ[i] });
-			screenX[i] = projected.x;
-			screenY[i] = projected.y;
-			screenDepth[i] = projected.depth;
-			screenSize[i] = Math.max(1, Math.min(6, 2.5 * projected.perspective));
+		const project = projectorInto(camera, viewport, screenX, screenY, screenDepth);
+		// Projection does not depend on depth order. Walk the source arrays contiguously, then
+		// update the separate draw order once every slot has its new depth.
+		for (let slot = 0; slot < worldX.length; slot++) {
+			const perspective = project(slot, worldX[slot], worldY[slot], worldZ[slot]);
+			screenSize[slot] = Math.max(1, Math.min(6, 2.5 * perspective));
 		}
 		drawOrder.sort((a, b) => screenDepth[a] - screenDepth[b]);
 	}
@@ -292,6 +297,7 @@
 		reproject();
 
 		const flags = emphasised;
+		const subgroupEmphasis = emphasis !== null && emphasis.subcommunityId !== null;
 
 		/*
 		 * One pass per tier, back to front, when a group is emphasised. A single depth-sorted
@@ -309,9 +315,10 @@
 				// Nearer points sit brighter; the range is narrow so the community colours stay
 				// distinguishable at every depth.
 				const depthAlpha = Math.max(0.28, Math.min(0.95, 0.58 + screenDepth[slot] * 0.12));
-				const hasPersonalRating = personalRatings.has(index.mapped[slot].id);
 				const personalAlpha =
-					showPersonalRatings && !hasPersonalRating ? PERSONAL_CONTEXT_ALPHA : 1;
+					showPersonalRatings && !personalRatings.has(index.mapped[slot].id)
+						? PERSONAL_CONTEXT_ALPHA
+						: 1;
 
 				if (wanted === TIER_CONTEXT) {
 					// A single neutral, so the emphasised community owns every hue on screen; dimming
@@ -326,7 +333,8 @@
 				} else {
 					ctx.globalAlpha =
 						(wanted === null ? depthAlpha : Math.max(FOCUS_MIN_ALPHA, depthAlpha)) * personalAlpha;
-					ctx.fillStyle = pointColor[slot];
+					ctx.fillStyle =
+						subgroupEmphasis && wanted === TIER_FOCUS ? colors.focus : pointColor[slot];
 				}
 
 				ctx.beginPath();
@@ -388,22 +396,21 @@
 		stopFlight();
 		const from = { ...camera };
 		const to = { ...target, zoom: clampZoom(target.zoom), pitch: clampPitch(target.pitch) };
+		const duration = flightDuration(from, to, viewport);
 
-		if (prefersReducedMotion()) {
+		if (prefersReducedMotion() || duration === 0) {
 			camera = to;
 			return;
 		}
 
 		const start = performance.now();
 		const step = (now: number) => {
-			const progress = Math.min(1, (now - start) / FLIGHT_MS);
+			const progress = Math.min(1, (now - start) / duration);
 			camera = interpolate(from, to, progress);
 			if (progress < 1) {
 				flight = requestAnimationFrame(step);
 			} else {
 				flight = null;
-				// One final full-detail frame once the thinning stops.
-				paint();
 			}
 		};
 		flight = requestAnimationFrame(step);
@@ -420,7 +427,17 @@
 			flyTo(home);
 			return;
 		}
-		flyTo({ ...camera, zoom: 1, panX: 0, panY: 0, ...fitPoints(points) });
+		// One point defines a centre but no scale. Keep the global scale in that case so choosing
+		// a second comparison author does not have to pull it in from far outside a deep zoom.
+		const minimumRadius =
+			points.length === 1 ? home.radius : home.radius * MIN_FRAME_RADIUS_FRACTION;
+		flyTo({
+			...camera,
+			zoom: 1,
+			panX: 0,
+			panY: 0,
+			...fitPoints(points, minimumRadius)
+		});
 	}
 
 	/** Frame the focus author together with everything currently drawn around it. */
@@ -490,6 +507,10 @@
 				: { ...camera, yaw: drag.yaw + dx * 0.008, pitch: clampPitch(drag.pitch + dy * 0.008) };
 			return;
 		}
+		if (flight !== null) {
+			hovered = null;
+			return;
+		}
 
 		hovered = pick(event.clientX - rect.left, event.clientY - rect.top);
 	}
@@ -552,6 +573,42 @@
 		stopFlight();
 	}
 
+	function handleInfoPointerEnter(): void {
+		if (infoState === 'closed' || infoState === 'dismissed') infoState = 'hover';
+	}
+
+	function handleInfoPointerLeave(): void {
+		if (infoState === 'hover' || infoState === 'dismissed') infoState = 'closed';
+	}
+
+	function handleInfoFocus(): void {
+		if (infoState !== 'open') infoState = 'focus';
+	}
+
+	function handleInfoBlur(event: FocusEvent): void {
+		if (infoState === 'open' || infoState === 'dismissed') return;
+		const wrapper = (event.currentTarget as HTMLElement).parentElement;
+		infoState = wrapper?.matches(':hover') ? 'hover' : 'closed';
+	}
+
+	function toggleInfo(event: MouseEvent): void {
+		if (infoState === 'open') {
+			const wrapper = (event.currentTarget as HTMLElement).parentElement;
+			infoState = wrapper?.matches(':hover') ? 'dismissed' : 'closed';
+			(event.currentTarget as HTMLButtonElement).blur();
+			return;
+		}
+		infoState = 'open';
+	}
+
+	function handleInfoKeydown(event: KeyboardEvent): void {
+		if (event.key !== 'Escape') return;
+		event.preventDefault();
+		const wrapper = (event.currentTarget as HTMLElement).parentElement;
+		infoState = wrapper?.matches(':hover') ? 'dismissed' : 'closed';
+		(event.currentTarget as HTMLButtonElement).blur();
+	}
+
 	function nodeRadius(): number {
 		return 7;
 	}
@@ -612,288 +669,353 @@
 		camera = home;
 	});
 
-	// Repaint whenever the camera, viewport, or drawn set changes. `dragging` is included so
-	// releasing a drag triggers one final full-detail frame.
+	// Repaint whenever the camera, viewport, or drawn set changes.
 	$effect(() => {
 		void camera;
 		void width;
 		void height;
 		void ready;
-		void dragging;
 		void emphasised;
 		void personalRatings;
 		void showPersonalRatings;
-		void tasteCenter;
 		paint();
 	});
 
-	// Fly to whatever the page has selected.
+	// Fly only once the selected author's complete drawn set is available. Viewport dimensions
+	// deliberately are not dependencies: a ResizeObserver repaint must not restart a semantic
+	// camera flight.
+	let frameRequest = 0;
+	let frameTimer: ReturnType<typeof setTimeout> | null = null;
+	let lastFramedAnchor = '';
 	$effect(() => {
-		const anchor = focus?.id ?? highlighted.map((a) => a.id).join(',');
-		if (!ready || width === 0 || anchor === '') return;
-		void connections.length;
-		void tick().then(() => frameNeighbourhood());
+		const request = ++frameRequest;
+		const anchor = focus ? String(focus.id) : highlighted.map((a) => a.id).join(',');
+		const connectionSet = connections
+			.map((connection) => connection.other.id)
+			.sort((a, b) => a - b)
+			.join(',');
+		void connectionSet;
+		if (frameTimer !== null) {
+			clearTimeout(frameTimer);
+			frameTimer = null;
+		}
+		if (!ready || !framingReady || anchor === '') return;
+
+		const frame = () => {
+			frameTimer = null;
+			void tick().then(() => {
+				if (request !== frameRequest) return;
+				frameNeighbourhood();
+				lastFramedAnchor = anchor;
+			});
+		};
+		if (anchor === lastFramedAnchor) {
+			frameTimer = setTimeout(frame, REFRAME_DEBOUNCE_MS);
+		} else {
+			frame();
+		}
+
+		return () => {
+			if (frameTimer !== null) {
+				clearTimeout(frameTimer);
+				frameTimer = null;
+			}
+		};
 	});
 </script>
 
 <div class="author-map">
-	<!--
+	<div class="author-map__frame">
+		<!--
 		`role="application"` is the accurate role for a surface that implements its own keyboard
 		model (arrows orbit, shift+arrows pan, +/- zoom, 0 resets), but svelte-check does not
 		treat it as interactive. Everything reachable here is also reachable as buttons in the
 		connection table, so no functionality is pointer-only.
 	-->
-	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-	<div
-		class="author-map__viewport"
-		class:author-map__viewport--dragging={dragging}
-		bind:this={viewportEl}
-		role="application"
-		aria-label={t('lab.authorConnections.browse.mapLabel')}
-		aria-roledescription="orbit and zoom map"
-		aria-describedby="author-map-description"
-		tabindex="0"
-		onwheel={handleWheel}
-		onpointerdown={handlePointerDown}
-		onpointermove={handlePointerMove}
-		onpointerup={handlePointerUp}
-		onpointerleave={() => (hovered = null)}
-		onkeydown={handleKeydown}
-	>
-		<canvas class="author-map__canvas" bind:this={canvasEl} aria-hidden="true"></canvas>
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+		<div
+			class="author-map__viewport"
+			class:author-map__viewport--dragging={dragging}
+			bind:this={viewportEl}
+			role="application"
+			aria-label={t('lab.authorConnections.browse.mapLabel')}
+			aria-roledescription="orbit and zoom map"
+			aria-describedby="author-map-description"
+			tabindex="0"
+			onwheel={handleWheel}
+			onpointerdown={handlePointerDown}
+			onpointermove={handlePointerMove}
+			onpointerup={handlePointerUp}
+			onpointerleave={() => (hovered = null)}
+			onkeydown={handleKeydown}
+		>
+			<canvas class="author-map__canvas" bind:this={canvasEl} aria-hidden="true"></canvas>
 
-		<svg class="author-map__overlay" {width} {height} aria-hidden="true">
-			<defs>
-				<!-- Only one-way spokes carry an arrowhead, so it matches their line colour. -->
-				<marker
-					id="author-map-arrow-one-way"
-					viewBox="0 0 8 8"
-					refX="7"
-					refY="4"
-					markerWidth="6"
-					markerHeight="6"
-					orient="auto-start-reverse"
-				>
-					<path d="M0 0 L8 4 L0 8 z" fill="var(--color-viz-map-focus)" />
-				</marker>
-			</defs>
+			<svg class="author-map__overlay" {width} {height} aria-hidden="true">
+				<defs>
+					<!-- Only one-way spokes carry an arrowhead, so it matches their line colour. -->
+					<marker
+						id="author-map-arrow-one-way"
+						viewBox="0 0 8 8"
+						refX="7"
+						refY="4"
+						markerWidth="6"
+						markerHeight="6"
+						orient="auto-start-reverse"
+					>
+						<path d="M0 0 L8 4 L0 8 z" fill="var(--color-viz-map-focus)" />
+					</marker>
+				</defs>
 
-			{#if focus && active.has(focus.id)}
-				{@const origin = active.get(focus.id)!}
-				{#each drawableConnections as connection (connection.other.id)}
-					{@const point = active.get(connection.other.id)!}
-					{@const status = connection.record.status}
-					<!--
+				{#if focus && active.has(focus.id)}
+					{@const origin = active.get(focus.id)!}
+					{#each drawableConnections as connection (connection.other.id)}
+						{@const point = active.get(connection.other.id)!}
+						{@const status = connection.record.status}
+						<!--
 						A one-sided verdict is drawn as an arrow pointing the way the evidence runs.
 						Everything else is a plain line: reciprocal relationships have no direction to
 						point, and drawing an arrowhead on an unresolved pair would assert a direction
 						the data does not support.
 					-->
-					<line
-						class="author-map__spoke {spokeClass(connection)}"
-						x1={status === 3 ? point.x : origin.x}
-						y1={status === 3 ? point.y : origin.y}
-						x2={status === 3 ? origin.x : point.x}
-						y2={status === 3 ? origin.y : point.y}
-						marker-end={status === 2 || status === 3 ? 'url(#author-map-arrow-one-way)' : undefined}
-					/>
-				{/each}
-			{/if}
-
-			{#each drawableConnections as connection (connection.other.id)}
-				{@const point = active.get(connection.other.id)!}
-				{@const positive = connection.record.self.rateDifference >= 0}
-				<g class="author-map__node" class:author-map__node--conflict={!positive}>
-					<circle cx={point.x} cy={point.y} r={nodeRadius()} />
-					<text x={point.x} y={point.y - nodeRadius() - 6}>
-						{connection.other.name}
-					</text>
-				</g>
-			{/each}
-
-			{#each highlighted as author (author.id)}
-				{#if active.has(author.id)}
-					{@const point = active.get(author.id)!}
-					<g class="author-map__selected">
-						<circle
-							class="author-map__selected-ring"
-							cx={point.x}
-							cy={point.y}
-							r={nodeRadius() + 6}
+						<line
+							class="author-map__spoke {spokeClass(connection)}"
+							class:author-map__spoke--preview={connection.other.id === previewAuthorId}
+							x1={status === 3 ? point.x : origin.x}
+							y1={status === 3 ? point.y : origin.y}
+							x2={status === 3 ? origin.x : point.x}
+							y2={status === 3 ? origin.y : point.y}
+							marker-end={status === 2 || status === 3
+								? 'url(#author-map-arrow-one-way)'
+								: undefined}
 						/>
+					{/each}
+				{/if}
+
+				{#each drawableConnections as connection (connection.other.id)}
+					{@const point = active.get(connection.other.id)!}
+					{@const positive = connection.record.self.rateDifference >= 0}
+					<g
+						class="author-map__node"
+						class:author-map__node--conflict={!positive}
+						class:author-map__node--preview={connection.other.id === previewAuthorId}
+					>
 						<circle cx={point.x} cy={point.y} r={nodeRadius()} />
-						<text x={point.x} y={point.y - nodeRadius() - 8}>{author.name}</text>
+						<text x={point.x} y={point.y - nodeRadius() - 6}>
+							{connection.other.name}
+						</text>
+					</g>
+				{/each}
+
+				{#each highlighted as author (author.id)}
+					{#if active.has(author.id)}
+						{@const point = active.get(author.id)!}
+						<g class="author-map__selected">
+							<circle
+								class="author-map__selected-ring"
+								cx={point.x}
+								cy={point.y}
+								r={nodeRadius() + 6}
+							/>
+							<circle cx={point.x} cy={point.y} r={nodeRadius()} />
+							<text x={point.x} y={point.y - nodeRadius() - 8}>{author.name}</text>
+						</g>
+					{/if}
+				{/each}
+
+				{#if focus && active.has(focus.id)}
+					{@const point = active.get(focus.id)!}
+					<g class="author-map__focus">
+						<circle class="author-map__focus-ring" cx={point.x} cy={point.y} r={nodeRadius() + 7} />
+						<circle cx={point.x} cy={point.y} r={nodeRadius() + 1} />
+						<text x={point.x} y={point.y - nodeRadius() - 10}>{focus.name}</text>
 					</g>
 				{/if}
-			{/each}
 
-			{#if focus && active.has(focus.id)}
-				{@const point = active.get(focus.id)!}
-				<g class="author-map__focus">
-					<circle class="author-map__focus-ring" cx={point.x} cy={point.y} r={nodeRadius() + 7} />
-					<circle cx={point.x} cy={point.y} r={nodeRadius() + 1} />
-					<text x={point.x} y={point.y - nodeRadius() - 10}>{focus.name}</text>
-				</g>
-			{/if}
-
-			{#if tasteCenterPoint}
-				<g class="author-map__taste-center">
-					<circle
-						class="author-map__taste-center-halo"
-						cx={tasteCenterPoint.x}
-						cy={tasteCenterPoint.y}
-						r="15"
-					/>
-					<circle
-						class="author-map__taste-center-ring"
-						cx={tasteCenterPoint.x}
-						cy={tasteCenterPoint.y}
-						r="6"
-					/>
-					<circle
-						class="author-map__taste-center-core"
-						cx={tasteCenterPoint.x}
-						cy={tasteCenterPoint.y}
-						r="2.5"
-					/>
-					<text x={tasteCenterPoint.x} y={tasteCenterPoint.y + 29}>
-						{t('lab.authorConnections.browse.personal.tasteCenter')}
-					</text>
-				</g>
-			{/if}
-		</svg>
-
-		{#if hovered && hoveredPoint}
-			<div
-				class="author-map__hover"
-				style="left:{hoveredPoint.x + 12}px; top:{hoveredPoint.y + 12}px"
-			>
-				<strong>{hovered.name}</strong>
-				<span>{index.communityById.get(hovered.communityId)?.label ?? hovered.genre}</span>
-				{#if hoveredPersonalRating}
-					<span>
-						{t('lab.authorConnections.browse.personal.averageRating', {
-							average: hoveredPersonalRating.average.toFixed(1),
-							category: t(`lab.authorConnections.browse.personal.${hoveredPersonalRating.category}`)
-						})}
-					</span>
+				{#if tasteCenterPoint}
+					<g class="author-map__taste-center">
+						<circle
+							class="author-map__taste-center-halo"
+							cx={tasteCenterPoint.x}
+							cy={tasteCenterPoint.y}
+							r="15"
+						/>
+						<circle
+							class="author-map__taste-center-ring"
+							cx={tasteCenterPoint.x}
+							cy={tasteCenterPoint.y}
+							r="6"
+						/>
+						<circle
+							class="author-map__taste-center-core"
+							cx={tasteCenterPoint.x}
+							cy={tasteCenterPoint.y}
+							r="2.5"
+						/>
+						<text x={tasteCenterPoint.x} y={tasteCenterPoint.y + 29}>
+							{t('lab.authorConnections.browse.personal.tasteCenter')}
+						</text>
+					</g>
 				{/if}
-			</div>
-		{/if}
+			</svg>
 
-		{#if focus && !isMapped(focus)}
-			<p class="author-map__notice">
-				{t('lab.authorConnections.browse.focusUnmapped', { author: focus.name })}
-			</p>
-		{/if}
-	</div>
+			{#if hovered && hoveredPoint}
+				<div
+					class="author-map__hover"
+					style="left:{hoveredPoint.x + 12}px; top:{hoveredPoint.y + 12}px"
+				>
+					<strong>{hovered.name}</strong>
+					<span>{index.communityById.get(hovered.communityId)?.label ?? hovered.genre}</span>
+					{#if hoveredPersonalRating}
+						<span>
+							{t('lab.authorConnections.browse.personal.averageRating', {
+								average: hoveredPersonalRating.average.toFixed(1),
+								category: t(
+									`lab.authorConnections.browse.personal.${hoveredPersonalRating.category}`
+								)
+							})}
+						</span>
+					{/if}
+				</div>
+			{/if}
 
-	<!--
+			{#if focus && !isMapped(focus)}
+				<p class="author-map__notice">
+					{t('lab.authorConnections.browse.focusUnmapped', { author: focus.name })}
+				</p>
+			{/if}
+		</div>
+
+		<div class="author-map__chrome">
+			{#if (focus && drawableConnections.length > 0) || showPersonalRatings}
+				<div class="author-map__legend-stack">
+					<!--
 		The spokes already encode the directionality class in colour and arrowhead, but nothing
 		said so — the distinction is invisible without a key, which makes it worse than no
 		encoding at all. Only shown when there are spokes on screen to explain.
 	-->
-	{#if focus && drawableConnections.length > 0}
-		<ul class="author-map__legend">
-			<li class="author-map__legend-item author-map__legend-item--one-way">
-				{t('lab.authorConnections.browse.legend.oneWay')}
-			</li>
-			<li class="author-map__legend-item author-map__legend-item--both">
-				{t('lab.authorConnections.browse.legend.both')}
-			</li>
-			<li class="author-map__legend-item author-map__legend-item--opposing">
-				{t('lab.authorConnections.browse.legend.opposing')}
-			</li>
-			<li class="author-map__legend-item author-map__legend-item--unclear">
-				{t('lab.authorConnections.browse.legend.unclear')}
-			</li>
-		</ul>
-	{/if}
+					{#if focus && drawableConnections.length > 0}
+						<ul class="author-map__legend">
+							<li class="author-map__legend-item author-map__legend-item--one-way">
+								{t('lab.authorConnections.browse.legend.oneWay')}
+							</li>
+							<li class="author-map__legend-item author-map__legend-item--both">
+								{t('lab.authorConnections.browse.legend.both')}
+							</li>
+							<li class="author-map__legend-item author-map__legend-item--opposing">
+								{t('lab.authorConnections.browse.legend.opposing')}
+							</li>
+							<li class="author-map__legend-item author-map__legend-item--unclear">
+								{t('lab.authorConnections.browse.legend.unclear')}
+							</li>
+						</ul>
+					{/if}
 
-	{#if showPersonalRatings}
-		<ul class="author-map__personal-legend">
-			<li>
-				<span
-					class="author-map__personal-swatch author-map__personal-swatch--loved"
-					aria-hidden="true"
-				></span>
-				{t('lab.authorConnections.browse.personal.loved')}
-			</li>
-			<li>
-				<span
-					class="author-map__personal-swatch author-map__personal-swatch--hated"
-					aria-hidden="true"
-				></span>
-				{t('lab.authorConnections.browse.personal.hated')}
-			</li>
-			<li>
-				<span
-					class="author-map__personal-swatch author-map__personal-swatch--neutral"
-					aria-hidden="true"
-				></span>
-				{t('lab.authorConnections.browse.personal.neutral')}
-			</li>
-			{#if tasteCenter}
-				<li>
-					<span class="author-map__personal-center-swatch" aria-hidden="true"></span>
-					{t('lab.authorConnections.browse.personal.tasteCenter')}
-				</li>
+					{#if showPersonalRatings}
+						<ul class="author-map__personal-legend">
+							<li>
+								<span
+									class="author-map__personal-swatch author-map__personal-swatch--loved"
+									aria-hidden="true"
+								></span>
+								{t('lab.authorConnections.browse.personal.loved')}
+							</li>
+							<li>
+								<span
+									class="author-map__personal-swatch author-map__personal-swatch--hated"
+									aria-hidden="true"
+								></span>
+								{t('lab.authorConnections.browse.personal.hated')}
+							</li>
+							<li>
+								<span
+									class="author-map__personal-swatch author-map__personal-swatch--neutral"
+									aria-hidden="true"
+								></span>
+								{t('lab.authorConnections.browse.personal.neutral')}
+							</li>
+							{#if tasteCenter}
+								<li>
+									<span class="author-map__personal-center-swatch" aria-hidden="true"></span>
+									{t('lab.authorConnections.browse.personal.tasteCenter')}
+								</li>
+							{/if}
+						</ul>
+					{/if}
+				</div>
 			{/if}
-		</ul>
-	{/if}
-
-	<div class="author-map__controls">
-		{#if onTogglePersonalRatings}
-			<button
-				type="button"
-				class="btn btn--compact"
-				class:btn--primary={showPersonalRatings}
-				class:btn--secondary={!showPersonalRatings}
-				class:btn--disabled={personalRatings.size === 0}
-				aria-pressed={showPersonalRatings}
-				disabled={personalRatings.size === 0}
-				title={personalRatings.size === 0
-					? t('lab.authorConnections.browse.personal.noMappedRatings')
-					: undefined}
-				onclick={onTogglePersonalRatings}
-			>
-				{t(
-					showPersonalRatings
-						? 'lab.authorConnections.browse.personal.hide'
-						: 'lab.authorConnections.browse.personal.show'
-				)}
-			</button>
-		{/if}
-		<button
-			type="button"
-			class="btn btn--secondary btn--compact"
-			onclick={() => zoomBy(1.5)}
-			aria-label={t('lab.authorConnections.browse.zoomIn')}>+</button
-		>
-		<button
-			type="button"
-			class="btn btn--secondary btn--compact"
-			onclick={() => zoomBy(1 / 1.5)}
-			aria-label={t('lab.authorConnections.browse.zoomOut')}>−</button
-		>
-		<button type="button" class="btn btn--tertiary btn--compact" onclick={resetView}>
-			{t('lab.authorConnections.browse.resetView')}
-		</button>
-		<!--
-			How to read the map matters, but not enough to spend a paragraph on above the fold.
-			`title` covers pointers; the same sentence is repeated for screen readers, which
-			announce `title` inconsistently.
-		-->
-		<span
-			class="author-map__info"
-			title={t('lab.authorConnections.browse.mapNote')}
-			aria-hidden="true">i</span
-		>
-		<p class="author-map__sr-only">
-			{t('lab.authorConnections.browse.mapNoteLabel')}: {t('lab.authorConnections.browse.mapNote')}
-		</p>
-		<p class="author-map__hint">{t('lab.authorConnections.browse.orbitHint')}</p>
+			<div class="author-map__controls">
+				{#if onTogglePersonalRatings}
+					<button
+						type="button"
+						class="btn btn--compact"
+						class:btn--primary={showPersonalRatings}
+						class:btn--secondary={!showPersonalRatings}
+						class:btn--disabled={personalRatings.size === 0}
+						aria-pressed={showPersonalRatings}
+						disabled={personalRatings.size === 0}
+						title={personalRatings.size === 0
+							? t('lab.authorConnections.browse.personal.noMappedRatings')
+							: undefined}
+						onclick={onTogglePersonalRatings}
+					>
+						{t(
+							showPersonalRatings
+								? 'lab.authorConnections.browse.personal.hide'
+								: 'lab.authorConnections.browse.personal.show'
+						)}
+					</button>
+				{/if}
+				<button
+					type="button"
+					class="btn btn--secondary btn--compact"
+					onclick={() => zoomBy(1.5)}
+					aria-label={t('lab.authorConnections.browse.zoomIn')}>+</button
+				>
+				<button
+					type="button"
+					class="btn btn--secondary btn--compact"
+					onclick={() => zoomBy(1 / 1.5)}
+					aria-label={t('lab.authorConnections.browse.zoomOut')}>−</button
+				>
+				<button type="button" class="btn btn--tertiary btn--compact" onclick={resetView}>
+					{t('lab.authorConnections.browse.resetView')}
+				</button>
+				<p class="author-map__hint">{t('lab.authorConnections.browse.orbitHint')}</p>
+				<span
+					class="author-map__info-wrap"
+					role="presentation"
+					onpointerenter={handleInfoPointerEnter}
+					onpointerleave={handleInfoPointerLeave}
+				>
+					<button
+						type="button"
+						class="author-map__info"
+						aria-label={t('lab.authorConnections.browse.mapNoteLabel')}
+						aria-expanded={infoVisible}
+						aria-controls="author-map-info"
+						aria-describedby="author-map-info"
+						onclick={toggleInfo}
+						onfocus={handleInfoFocus}
+						onblur={handleInfoBlur}
+						onkeydown={handleInfoKeydown}>i</button
+					>
+					<div
+						id="author-map-info"
+						class="author-map__info-popover"
+						class:author-map__info-popover--visible={infoVisible}
+						role="tooltip"
+						aria-hidden={!infoVisible}
+					>
+						<strong>{t('lab.authorConnections.about.heading')}</strong>
+						<p><strong>Space:</strong> {t('lab.authorConnections.about.space')}</p>
+						<p><strong>Direction:</strong> {t('lab.authorConnections.about.direction')}</p>
+						<p><strong>Communities:</strong> {t('lab.authorConnections.about.communities')}</p>
+					</div>
+				</span>
+			</div>
+		</div>
 	</div>
 
 	<p id="author-map-description" class="author-map__sr-only">
@@ -903,15 +1025,11 @@
 
 <style>
 	.author-map {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-2);
 		min-width: 0;
 	}
 	.author-map__viewport {
 		position: relative;
 		width: 100%;
-		height: clamp(320px, 56vh, 660px);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius);
 		background: var(--color-viz-map-bg);
@@ -1157,16 +1275,70 @@
 		height: 1.25rem;
 		border: 1px solid var(--color-border);
 		border-radius: 50%;
+		padding: 0;
+		background: transparent;
 		color: var(--color-text-muted);
+		font: inherit;
 		font-family: var(--font-family-interactive);
 		font-size: var(--primitive-type-size-14);
 		font-style: italic;
 		line-height: 1;
-		cursor: help;
+		cursor: pointer;
 	}
 	.author-map__info:focus-visible {
 		outline: 2px solid var(--color-focus);
 		outline-offset: 2px;
+	}
+	.author-map__info-wrap {
+		position: relative;
+		display: inline-flex;
+	}
+	.author-map__info-popover {
+		position: absolute;
+		top: calc(100% + var(--space-2));
+		right: 0;
+		z-index: 4;
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		width: min(28rem, calc(100vw - 2rem));
+		padding: var(--space-3) var(--space-4);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		background: var(--color-card-bg);
+		box-shadow: var(--shadow-card-hover);
+		color: var(--color-text-muted);
+		font-family: var(--font-family-interactive);
+		font-size: var(--primitive-type-size-14);
+		line-height: 1.5;
+		text-align: left;
+		opacity: 0;
+		visibility: hidden;
+		transform: translateY(-0.25rem);
+		pointer-events: none;
+		transition:
+			opacity 140ms ease,
+			transform 140ms ease,
+			visibility 140ms ease;
+	}
+	.author-map__info-popover--visible {
+		opacity: 1;
+		visibility: visible;
+		transform: none;
+		pointer-events: auto;
+	}
+	.author-map__info-popover > strong {
+		color: var(--color-text);
+		font-family: var(--font-family-interactive);
+		font-size: var(--primitive-type-size-16);
+		font-weight: 600;
+		line-height: 1.25;
+	}
+	.author-map__info-popover p {
+		margin: 0;
+	}
+	.author-map__info-popover p strong {
+		color: var(--color-text);
 	}
 	.author-map__hint {
 		margin: 0;
@@ -1185,5 +1357,107 @@
 		clip: rect(0 0 0 0);
 		white-space: nowrap;
 		border: 0;
+	}
+
+	.author-map__frame {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		min-width: 0;
+	}
+	.author-map__viewport {
+		height: clamp(20rem, 56vh, 30rem);
+	}
+	.author-map__chrome {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		min-width: 0;
+	}
+	.author-map__legend-stack {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		min-width: 0;
+	}
+	.author-map__legend,
+	.author-map__personal-legend {
+		min-width: 0;
+	}
+	.author-map__spoke--preview {
+		stroke: var(--color-viz-map-focus) !important;
+		stroke-width: 3.2 !important;
+		opacity: 1 !important;
+	}
+	.author-map__node--preview circle {
+		stroke: var(--color-viz-map-focus);
+		stroke-width: 3;
+	}
+
+	@media (min-width: 48rem) and (max-width: 69.99rem) {
+		.author-map__viewport {
+			height: clamp(20rem, 56vh, 36rem);
+		}
+	}
+
+	@container author-connections (min-width: 70rem) {
+		.author-map {
+			height: 100%;
+		}
+		.author-map__frame {
+			position: relative;
+			height: 100%;
+			gap: 0;
+			overflow: hidden;
+		}
+		.author-map__viewport {
+			height: 100%;
+		}
+		.author-map__chrome {
+			position: absolute;
+			inset: 0;
+			display: block;
+			pointer-events: none;
+		}
+		.author-map__legend-stack {
+			position: absolute;
+			top: var(--space-3);
+			left: var(--space-3);
+			max-width: min(80%, 30rem);
+			padding: var(--space-3);
+			border: 1px solid var(--color-border);
+			border-radius: var(--radius-sm);
+			background: var(--color-card-bg);
+		}
+		.author-map__controls {
+			position: absolute;
+			right: var(--space-3);
+			bottom: var(--space-3);
+			left: var(--space-3);
+			padding: var(--space-2) var(--space-3);
+			border: 1px solid var(--color-border);
+			border-radius: var(--radius-sm);
+			background: var(--color-card-bg);
+			pointer-events: none;
+		}
+		.author-map__controls .btn,
+		.author-map__controls .author-map__info,
+		.author-map__controls .author-map__info-wrap {
+			pointer-events: auto;
+		}
+		.author-map__info-popover {
+			top: auto;
+			bottom: calc(100% + var(--space-2));
+			transform: translateY(0.25rem);
+		}
+		.author-map__info-wrap {
+			margin-left: auto;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.author-map__info-popover {
+			transition: none;
+		}
 	}
 </style>

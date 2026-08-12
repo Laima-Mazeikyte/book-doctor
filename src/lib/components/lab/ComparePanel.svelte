@@ -108,6 +108,7 @@
 		flex-direction: column;
 		gap: var(--space-4);
 		min-width: 0;
+		container-type: inline-size;
 	}
 	.compare-panel__empty {
 		margin: 0;
@@ -191,14 +192,14 @@
 		line-height: 1.5;
 		color: var(--color-text-muted);
 	}
-	/* One card per direction, side by side once there is room for two readable columns. */
+	/* One card per direction, side by side once the comparison area itself has room. */
 	.compare-panel__directions {
 		display: grid;
 		gap: var(--space-4);
 		align-items: start;
 	}
-	/* Two cards need roughly 380px each to stay readable; below that they stack. */
-	@media (min-width: 52rem) {
+	/* The inspector can be narrow on a wide screen, so use the container rather than the viewport. */
+	@container (min-width: 52rem) {
 		.compare-panel__directions {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}

@@ -201,7 +201,6 @@ en:
         firstAuthor: 'First author'
         secondAuthor: 'Second author'
         placeholder: 'Start typing an author…'
-        swap: 'Swap'
         clear: 'Clear'
         help: 'Choose two authors to see the evidence in both directions.'
         emptyBoth: 'Pick two authors to compare.'
@@ -271,27 +270,24 @@ en:
         overCap: 'More than 100% more likely'
         sameLikelihood: 'No relative difference'
       table:
-        heading: 'Relationships as a table'
-        caption: 'Select an author to center the map on them. Authors with no position on the map appear here only.'
+        heading: 'Significant relationships'
         author: 'Author'
-        verdict: 'Relationship'
-        outward: "Author's Appeal to {{author}} Readers"
-        inward: "{{author}}'s Appeal to Author's Readers"
+        outward: 'Liked by {{author}} readers'
+        inward: '{{author}} liked by their readers'
         genre: 'Mostly writes'
         about:
           author: 'The other author in this relationship. Select a name to center the map on them.'
-          verdict: 'Which way the relationship runs. Both ways means readers of each tend to enjoy the other; one way means the trail runs in a single direction only; opposing means they pull against each other.'
           outward: "How much more or less likely this author is to be liked by the selected author's readers than by other readers."
           inward: "How much more or less likely the selected author is to be liked by this author's readers than by other readers."
           genre: 'The genre this author publishes in most often.'
         dimNote: 'Grayed figures did not pass the release checks and are shown for context.'
         showing: 'Showing {{count}} of {{total}}.'
-        defaultNote: 'Strongest first, with any one-way or opposing results added at the end.'
         noMatches: 'No relationships match that search.'
         searchAuthor: 'Search authors'
         filterGenre: 'Filter by genre'
         allGenres: 'All genres'
         sortBy: 'Sort by {{column}}'
+        compareAuthor: 'Compare {{focus}} and {{author}}'
       technical:
         summary: 'Technical details'
         rateDifference: 'Difference in like rate (percentage points)'

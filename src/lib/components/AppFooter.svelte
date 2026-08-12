@@ -4,9 +4,10 @@
 
 	interface Props {
 		onOpenBugReport: () => void;
+		supplement?: string | null;
 	}
 
-	let { onOpenBugReport }: Props = $props();
+	let { onOpenBugReport, supplement = null }: Props = $props();
 </script>
 
 <footer class="app-footer" aria-label={t('shared.footer.ariaLabel')}>
@@ -24,6 +25,9 @@
 				</button>
 			</li>
 		</ul>
+		{#if supplement}
+			<p class="app-footer__supplement">{supplement}</p>
+		{/if}
 	</div>
 </footer>
 
@@ -32,6 +36,10 @@
 		background: var(--color-bg);
 	}
 	.app-footer__inner {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-4);
 		width: 100%;
 		box-sizing: border-box;
 		padding: var(--space-5) var(--space-4);
@@ -44,6 +52,18 @@
 		flex-wrap: wrap;
 		align-items: center;
 		gap: var(--space-4);
+	}
+	.app-footer__supplement {
+		min-width: 0;
+		margin: 0 0 0 auto;
+		color: var(--color-text-muted);
+		font-family: var(--font-family-interactive);
+		font-size: var(--primitive-type-size-12, 0.75rem);
+		line-height: 1.35;
+		font-variant-numeric: tabular-nums;
+		text-align: right;
+		overflow-wrap: anywhere;
+		opacity: 0.65;
 	}
 	.app-footer__link {
 		display: inline-flex;
@@ -75,5 +95,12 @@
 		border: none;
 		cursor: pointer;
 		justify-content: flex-start;
+	}
+	@media (max-width: 47.99rem) {
+		.app-footer__supplement {
+			flex-basis: 100%;
+			margin-left: 0;
+			text-align: left;
+		}
 	}
 </style>

@@ -11,7 +11,7 @@
 		onSelectSubcommunity: (subcommunity: Subcommunity | null) => void;
 		/**
 		 * Jump to one of a subgroup's representative authors. The profiles cite them by name,
-		 * so resolving the name to an author is the page's job — the legend has no index.
+		 * so resolving the name to an author is the page's job -- the legend has no index.
 		 */
 		onSelectAuthorNamed?: (name: string) => void;
 	}
@@ -28,7 +28,7 @@
 
 	/*
 	 * The communities are the best entry point the release offers. Each arrives with a curated
-	 * label, its component genres and its own representative authors — a far more useful way in
+	 * label, its component genres and its own representative authors -- a far more useful way in
 	 * than a list of the most-rated names.
 	 *
 	 * Expanding one reveals its nested groups. Those are only identified by the
@@ -36,12 +36,6 @@
 	 * in most communities and would be meaningless on its own.
 	 */
 	const ordered = $derived([...communities].sort((a, b) => b.size - a.size));
-	const children = $derived(
-		selectedCommunityId === null ? [] : (subcommunitiesByCommunity.get(selectedCommunityId) ?? [])
-	);
-	const selectedCommunity = $derived(
-		ordered.find((community) => community.id === selectedCommunityId) ?? null
-	);
 </script>
 
 <div class="community-legend">
@@ -61,13 +55,17 @@
 	</div>
 	<ul class="community-legend__list">
 		{#each ordered as community (community.id)}
+			{@const isSelected = community.id === selectedCommunityId}
+			{@const communityChildren = isSelected
+				? (subcommunitiesByCommunity.get(community.id) ?? [])
+				: []}
 			<li>
 				<button
 					type="button"
 					class="community-legend__item"
-					class:community-legend__item--active={community.id === selectedCommunityId}
-					aria-pressed={community.id === selectedCommunityId}
-					onclick={() => onSelectCommunity(community.id === selectedCommunityId ? null : community)}
+					class:community-legend__item--active={isSelected}
+					aria-pressed={isSelected}
+					onclick={() => onSelectCommunity(isSelected ? null : community)}
 				>
 					<span
 						class="community-legend__swatch"
@@ -82,67 +80,67 @@
 							})}
 						</span>
 						<span class="community-legend__names">
-							{community.representativeAuthors.slice(0, 3).join(' · ')}
+							{community.representativeAuthors.slice(0, 3).join(' \u00b7 ')}
 						</span>
 					</span>
 				</button>
+
+				{#if isSelected && communityChildren.length > 0}
+					<div class="community-legend__children">
+						<h4 class="community-legend__children-heading">
+							{t('lab.authorConnections.communities.within', { community: community.label })}
+						</h4>
+						<ul class="community-legend__chips">
+							{#each communityChildren as child (child.id)}
+								<li>
+									<button
+										type="button"
+										class="community-legend__chip"
+										class:community-legend__chip--active={child.id === selectedSubcommunityId}
+										aria-pressed={child.id === selectedSubcommunityId}
+										onclick={() =>
+											onSelectSubcommunity(child.id === selectedSubcommunityId ? null : child)}
+									>
+										<span class="community-legend__chip-label">{child.label}</span>
+										<span class="community-legend__chip-meta">
+											{t('lab.authorConnections.communities.size', {
+												count: child.size.toLocaleString()
+											})}
+										</span>
+									</button>
+								</li>
+							{/each}
+						</ul>
+						{#if selectedSubcommunityId !== null}
+							{@const child = communityChildren.find((c) => c.id === selectedSubcommunityId)}
+							{#if child}
+								<!-- Named examples are the most concrete thing here, so make them a way in. -->
+								<ul class="community-legend__names-list">
+									{#each child.representativeAuthors.slice(0, 5) as name (name)}
+										<li>
+											<button
+												type="button"
+												class="community-legend__name"
+												onclick={() => onSelectAuthorNamed?.(name)}
+											>
+												{name}
+											</button>
+										</li>
+									{/each}
+								</ul>
+								<p class="community-legend__child-genres">
+									{child.genreComposition
+										.slice(0, 3)
+										.map((share) => `${share.genre} ${Math.round(share.fraction * 100)}%`)
+										.join(' \u00b7 ')}
+								</p>
+							{/if}
+						{/if}
+					</div>
+				{/if}
 			</li>
 		{/each}
 	</ul>
-
-	{#if selectedCommunity && children.length > 0}
-		<div class="community-legend__children">
-			<h4 class="community-legend__children-heading">
-				{t('lab.authorConnections.communities.within', { community: selectedCommunity.label })}
-			</h4>
-			<ul class="community-legend__chips">
-				{#each children as child (child.id)}
-					<li>
-						<button
-							type="button"
-							class="community-legend__chip"
-							class:community-legend__chip--active={child.id === selectedSubcommunityId}
-							aria-pressed={child.id === selectedSubcommunityId}
-							onclick={() =>
-								onSelectSubcommunity(child.id === selectedSubcommunityId ? null : child)}
-						>
-							<span class="community-legend__chip-label">{child.label}</span>
-							<span class="community-legend__chip-meta">
-								{t('lab.authorConnections.communities.size', {
-									count: child.size.toLocaleString()
-								})}
-							</span>
-						</button>
-					</li>
-				{/each}
-			</ul>
-			{#if selectedSubcommunityId !== null}
-				{@const child = children.find((c) => c.id === selectedSubcommunityId)}
-				{#if child}
-					<!-- Named examples are the most concrete thing here, so make them a way in. -->
-					<ul class="community-legend__names-list">
-						{#each child.representativeAuthors.slice(0, 5) as name (name)}
-							<li>
-								<button
-									type="button"
-									class="community-legend__name"
-									onclick={() => onSelectAuthorNamed?.(name)}
-								>
-									{name}
-								</button>
-							</li>
-						{/each}
-					</ul>
-					<p class="community-legend__child-genres">
-						{child.genreComposition
-							.slice(0, 3)
-							.map((share) => `${share.genre} ${Math.round(share.fraction * 100)}%`)
-							.join(' · ')}
-					</p>
-				{/if}
-			{/if}
-		</div>
-	{/if}
 </div>
 
 <style>
@@ -151,6 +149,8 @@
 		flex-direction: column;
 		gap: var(--space-2);
 		min-width: 0;
+		padding-top: var(--space-4);
+		border-top: 1px solid var(--color-border);
 	}
 	.community-legend__head {
 		display: flex;
@@ -167,23 +167,26 @@
 		margin: 0;
 		padding: 0;
 		display: grid;
-		gap: var(--space-2);
-		grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+		grid-template-columns: 1fr;
+	}
+	.community-legend__list > li {
+		min-width: 0;
 	}
 	.community-legend__item {
 		display: flex;
 		align-items: flex-start;
 		gap: var(--space-3);
 		width: 100%;
-		height: 100%;
 		padding: var(--space-3);
 		text-align: left;
-		background: var(--color-card-bg);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-sm);
+		background: transparent;
+		border: none;
+		border-bottom: 1px solid var(--color-border);
+		border-radius: 0;
 		color: var(--color-text);
 		cursor: pointer;
 		font-family: var(--font-family-interactive);
+		transition: background-color 0.15s ease;
 	}
 	.community-legend__item:hover {
 		border-color: var(--color-border-hover);
@@ -194,7 +197,7 @@
 		outline-offset: 2px;
 	}
 	.community-legend__item--active {
-		border-color: var(--color-accent);
+		background: var(--color-accent-bg);
 	}
 	.community-legend__swatch {
 		flex: none;
@@ -225,10 +228,8 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-2);
-		padding: var(--space-3);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-sm);
-		background: var(--color-card-bg);
+		padding: var(--space-3) var(--space-3) var(--space-4);
+		border-top: 1px solid var(--color-border);
 	}
 	.community-legend__children-heading {
 		margin: 0;
@@ -305,5 +306,26 @@
 		font-size: var(--primitive-type-size-14);
 		color: var(--color-text-muted);
 		overflow-wrap: anywhere;
+	}
+
+	@media (min-width: 48rem) and (max-width: 69.99rem) {
+		.community-legend__list {
+			gap: var(--space-2);
+			grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+		}
+		.community-legend__item {
+			background: var(--color-card-bg);
+			border: 1px solid var(--color-border);
+			border-radius: var(--radius-sm);
+		}
+		.community-legend__item--active {
+			border-color: var(--color-accent);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.community-legend__item {
+			transition: none;
+		}
 	}
 </style>
