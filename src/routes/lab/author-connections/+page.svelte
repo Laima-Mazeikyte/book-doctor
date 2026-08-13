@@ -607,18 +607,6 @@
 											{t('lab.authorConnections.compare.clear')}
 										</button>
 									</div>
-
-									{#if neighbourhood && neighbourhoodFocusId === focus.id && !browsing && !browseError && hasConnections(focus)}
-										<div class="ac-page__tallies">
-											<p>
-												{t('lab.authorConnections.browse.tally', {
-													total: neighbourhood.total.toLocaleString(),
-													oneSided: neighbourhood.oneSidedTotal.toLocaleString(),
-													opposing: neighbourhood.opposingTotal.toLocaleString()
-												})}
-											</p>
-										</div>
-									{/if}
 								</div>
 
 								<div class="ac-page__relationship-region">
@@ -721,16 +709,6 @@
 									selected={second}
 									onSelect={(author) => (second = author)}
 								/>
-								<div class="ac-page__buttons">
-									<button
-										type="button"
-										class="btn btn--tertiary btn--compact"
-										onclick={clearPair}
-										disabled={!first && !second}
-									>
-										{t('lab.authorConnections.compare.clear')}
-									</button>
-								</div>
 							</div>
 						</div>
 
@@ -792,13 +770,8 @@
 	}
 	@media (min-width: 48rem) {
 		.ac-page__pickers {
-			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
-	}
-	.ac-page__buttons {
-		display: flex;
-		gap: var(--space-2);
-		flex-wrap: wrap;
 	}
 	.ac-page__help {
 		margin: 0;
@@ -871,17 +844,6 @@
 	}
 	.ac-page__dot {
 		padding: 0 var(--space-1);
-	}
-	.ac-page__tallies {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-1);
-	}
-	.ac-page__tallies p {
-		margin: 0;
-		font-family: var(--font-family-interactive);
-		font-size: var(--primitive-type-size-14);
-		color: var(--color-text-muted);
 	}
 	.ac-page__loading {
 		display: flex;
@@ -1034,10 +996,6 @@
 			position: sticky;
 			top: 0;
 			z-index: 2;
-		}
-		.ac-page__pickers {
-			grid-template-columns: minmax(0, 1fr);
-			align-items: stretch;
 		}
 		.ac-page__workbench--selected .ac-page__inspector.ac-page__inspector--selected {
 			overflow: hidden;

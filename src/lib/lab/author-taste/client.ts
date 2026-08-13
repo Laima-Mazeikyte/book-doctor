@@ -168,10 +168,6 @@ export interface Neighbourhood {
 	/** Every retained pair incident to the focus author, strongest first. Not truncated — the
 	 * table sorts, filters and slices, and it cannot do that over a pre-cut list. */
 	connections: Connection[];
-	total: number;
-	/** How many of those carry an authoritative one-sided verdict. */
-	oneSidedTotal: number;
-	opposingTotal: number;
 }
 
 /**
@@ -189,12 +185,8 @@ export async function loadNeighbourhood(
 	const records = await store.records(focus);
 
 	const connections: Connection[] = [];
-	let oneSidedTotal = 0;
-	let opposingTotal = 0;
 
 	for (const record of records) {
-		if (isOneSided(record)) oneSidedTotal++;
-		if (record.status === 4) opposingTotal++;
 		const other = index.byId.get(record.otherId);
 		// A record naming an author outside the index would be a broken release, but dropping
 		// it costs one row rather than the whole panel.
@@ -205,10 +197,7 @@ export async function loadNeighbourhood(
 	connections.sort((a, b) => connectionStrength(b.record) - connectionStrength(a.record));
 
 	return {
-		connections,
-		total: records.length,
-		oneSidedTotal,
-		opposingTotal
+		connections
 	};
 }
 

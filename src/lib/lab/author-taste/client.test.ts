@@ -230,9 +230,6 @@ describe('loadNeighbourhood', () => {
 		return loadNeighbourhood(store, indexOf([focus, ...others]), focus).then((result) => {
 			// Sorting and filtering happen in the table, which needs the whole list to do either.
 			expect(result.connections.map((c) => c.other.id)).toEqual([5, 2, 4, 3]);
-			expect(result.total).toBe(4);
-			expect(result.oneSidedTotal).toBe(1);
-			expect(result.opposingTotal).toBe(1);
 		});
 	});
 
@@ -245,8 +242,6 @@ describe('loadNeighbourhood', () => {
 
 		return loadNeighbourhood(store, indexOf([focus, known]), focus).then((result) => {
 			expect(result.connections.map((c) => c.other.id)).toEqual([2]);
-			// The tally still reflects what the release actually holds.
-			expect(result.total).toBe(2);
 		});
 	});
 });

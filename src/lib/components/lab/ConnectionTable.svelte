@@ -255,15 +255,19 @@
 										onclick={() => toggleSort(key)}
 									>
 										{column.label}
+										<span class="connection-table__info" title={column.about} aria-hidden="true"
+											>i</span
+										>
 										<span class="connection-table__arrow" aria-hidden="true">
 											{sortKey === column.sort ? (sortDescending ? '↓' : '↑') : '↕'}
 										</span>
 									</button>
 								{:else}
 									{column.label}
+									<span class="connection-table__info" title={column.about} aria-hidden="true"
+										>i</span
+									>
 								{/if}
-								<span class="connection-table__info" title={column.about} aria-hidden="true">i</span
-								>
 								<span class="connection-table__sr-only">{column.about}</span>
 							</span>
 							{#if column.search === 'author'}
@@ -422,11 +426,10 @@
 		<p class="connection-table__footnote">
 			{t('lab.authorConnections.table.showing', {
 				count: rows.length,
-				total: filtered.length.toLocaleString()
+				total: connections.length.toLocaleString()
 			})}
 		</p>
 	{/if}
-	<p class="connection-table__footnote">{t('lab.authorConnections.table.dimNote')}</p>
 </div>
 
 <style>
@@ -477,19 +480,14 @@
 		background: var(--color-bg-hover);
 	}
 	.connection-table__head {
-		display: flex;
-		align-items: flex-start;
-		flex-wrap: wrap;
-		gap: var(--space-1);
+		display: block;
 		min-width: 0;
 	}
 	tbody th {
 		font-weight: var(--primitive-font-weight-normal);
 	}
 	.connection-table__sort {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-1);
+		display: inline;
 		min-width: 0;
 		padding: 0;
 		background: none;
@@ -512,6 +510,8 @@
 		color: var(--color-text);
 	}
 	.connection-table__arrow {
+		display: inline-block;
+		margin-inline-start: var(--space-1);
 		font-size: var(--primitive-type-size-12, 0.75rem);
 	}
 	/* Sits under its heading so the control and the column it filters stay adjacent. */
@@ -564,9 +564,11 @@
 		flex: none;
 		border: 1px solid var(--color-border);
 		border-radius: 50%;
+		margin-inline-start: var(--space-1);
 		font-size: var(--primitive-type-size-12, 0.75rem);
 		font-style: italic;
 		line-height: 1;
+		vertical-align: middle;
 		cursor: help;
 	}
 	.connection-table__sr-only {

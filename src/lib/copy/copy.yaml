@@ -172,7 +172,6 @@ en:
         landmarks: 'Authors with the most connections'
         noConnections: 'Nothing held up for {{author}} — too few readers here have rated them alongside anyone else.'
         noConnectionsAction: 'Try one of these instead.'
-        tally: '{{total}} relationships · {{oneSided}} one-way · {{opposing}} opposing'
         focusUnmapped: '{{author}} has no position on the map. Their relationships are listed below.'
         orbitHint: 'Drag to orbit · shift-drag to pan · scroll to zoom · Esc to deselect'
         mapNote: 'Authors sit close together when they share readers. Color shows their reading community.'
@@ -277,11 +276,10 @@ en:
         genre: 'Mostly writes'
         about:
           author: 'The other author in this relationship. Select a name to center the map on them.'
-          outward: "How much more or less likely this author is to be liked by the selected author's readers than by other readers."
-          inward: "How much more or less likely the selected author is to be liked by this author's readers than by other readers."
+          outward: "How much more or less likely this author is to be liked by the selected author's readers than by all other readers."
+          inward: "How much more or less likely the selected author is to be liked by this author's readers than by all other readers."
           genre: 'The genre this author publishes in most often.'
-        dimNote: 'Grayed figures did not pass the release checks and are shown for context.'
-        showing: 'Showing {{count}} of {{total}}.'
+        showing: 'Showing {{count}} of {{total}} significant relationships.'
         noMatches: 'No relationships match that search.'
         searchAuthor: 'Search authors'
         filterGenre: 'Filter by genre'
