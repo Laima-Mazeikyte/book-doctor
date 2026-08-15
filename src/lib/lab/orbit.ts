@@ -22,6 +22,18 @@ export interface Viewport {
 	height: number;
 }
 
+export interface ScreenPoint {
+	x: number;
+	y: number;
+}
+
+export interface ScreenRect {
+	left: number;
+	top: number;
+	right: number;
+	bottom: number;
+}
+
 export interface OrbitState {
 	/** Rotation about the vertical axis, radians. */
 	yaw: number;
@@ -80,6 +92,33 @@ export function clampZoom(zoom: number): number {
 
 export function clampPitch(pitch: number): number {
 	return Math.min(MAX_PITCH, Math.max(-MAX_PITCH, pitch));
+}
+
+/**
+ * Change zoom while keeping the projected location under `anchor` fixed.
+ *
+ * The projection's world-dependent part is multiplied by zoom around the camera origin, so
+ * the required pan correction is affine even though the projection itself has a weak
+ * perspective term. Clamping happens before the ratio is derived; at either limit this returns
+ * the original state without moving the camera under the cursor.
+ */
+export function zoomAtScreenPoint(
+	state: OrbitState,
+	viewport: Viewport,
+	anchor: ScreenPoint,
+	requestedZoom: number
+): OrbitState {
+	const zoom = clampZoom(requestedZoom);
+	if (zoom === state.zoom) return state;
+	const ratio = zoom / state.zoom;
+	const originX = viewport.width / 2 + state.panX;
+	const originY = viewport.height / 2 + state.panY;
+	return {
+		...state,
+		zoom,
+		panX: state.panX + (1 - ratio) * (anchor.x - originX),
+		panY: state.panY + (1 - ratio) * (anchor.y - originY)
+	};
 }
 
 function median(values: number[]): number {
@@ -298,6 +337,123 @@ export function interpolate(from: OrbitState, to: OrbitState, t: number): OrbitS
 		panY: lerp(from.panY, to.panY),
 		centre,
 		radius
+	};
+}
+
+/**
+ * Interpolate a zoom-only flight while preserving a screen-space anchor on every frame.
+ * Button and keyboard zooms use this instead of ordinary pan interpolation: geometric zoom
+ * easing and linear pan easing do not describe the same anchored world point between endpoints.
+ */
+export function interpolateAtScreenPoint(
+	from: OrbitState,
+	to: OrbitState,
+	t: number,
+	viewport: Viewport,
+	anchor: ScreenPoint
+): OrbitState {
+	const current = interpolate(from, to, t);
+	const anchored = zoomAtScreenPoint(
+		{ ...from, panX: from.panX, panY: from.panY },
+		viewport,
+		anchor,
+		current.zoom
+	);
+	return { ...current, panX: anchored.panX, panY: anchored.panY };
+}
+
+export interface ProjectedBounds {
+	minX: number;
+	minY: number;
+	maxX: number;
+	maxY: number;
+}
+
+/** Calculate the actual two-dimensional projected bounds of a set of points. */
+export function projectedBounds(
+	state: OrbitState,
+	viewport: Viewport,
+	points: Point3D[]
+): ProjectedBounds | null {
+	if (points.length === 0) return null;
+	const project = projector(state, viewport);
+	let minX = Infinity;
+	let minY = Infinity;
+	let maxX = -Infinity;
+	let maxY = -Infinity;
+	for (const point of points) {
+		const projected = project(point);
+		if (projected.x < minX) minX = projected.x;
+		if (projected.y < minY) minY = projected.y;
+		if (projected.x > maxX) maxX = projected.x;
+		if (projected.y > maxY) maxY = projected.y;
+	}
+	return { minX, minY, maxX, maxY };
+}
+
+export interface ProjectedFitOptions {
+	minimumRadius?: number;
+	padding?: number;
+	paddingX?: number;
+	paddingY?: number;
+	maxZoom?: number;
+}
+
+/**
+ * Fit points by their real projected rectangle, preserving the camera's yaw and pitch.
+ *
+ * The initial projection is made at neutral zoom and zero pan. Since zoom scales that whole
+ * projection around the viewport origin, the rectangle can then be fitted into an arbitrary
+ * safe rectangle, such as one that leaves room for the desktop legend and controls.
+ */
+export function fitProjectedPoints(
+	points: Point3D[],
+	state: OrbitState,
+	viewport: Viewport,
+	safeRect: ScreenRect,
+	options: ProjectedFitOptions = {}
+): OrbitState {
+	if (points.length === 0) return state;
+	const {
+		minimumRadius = 1e-6,
+		padding = 0,
+		paddingX = padding,
+		paddingY = padding,
+		maxZoom = MAX_ZOOM
+	} = options;
+	const fit = fitPoints(points, minimumRadius);
+	const neutral: OrbitState = {
+		...state,
+		zoom: 1,
+		panX: 0,
+		panY: 0,
+		...fit
+	};
+	const bounds = projectedBounds(neutral, viewport, points);
+	if (!bounds) return neutral;
+
+	const availableWidth = Math.max(1, safeRect.right - safeRect.left - paddingX * 2);
+	const availableHeight = Math.max(1, safeRect.bottom - safeRect.top - paddingY * 2);
+	const boundsWidth = Math.max(1, bounds.maxX - bounds.minX);
+	const boundsHeight = Math.max(1, bounds.maxY - bounds.minY);
+	const fittedZoom = Math.min(availableWidth / boundsWidth, availableHeight / boundsHeight);
+	const cappedMaxZoom = clampZoom(maxZoom);
+	const zoom =
+		points.length === 1
+			? Math.min(clampZoom(state.zoom), cappedMaxZoom)
+			: Math.min(cappedMaxZoom, Math.max(MIN_ZOOM, fittedZoom));
+	const boundsCenterX = (bounds.minX + bounds.maxX) / 2;
+	const boundsCenterY = (bounds.minY + bounds.maxY) / 2;
+	const safeCenterX = (safeRect.left + safeRect.right) / 2;
+	const safeCenterY = (safeRect.top + safeRect.bottom) / 2;
+	const neutralOriginX = viewport.width / 2;
+	const neutralOriginY = viewport.height / 2;
+
+	return {
+		...neutral,
+		zoom,
+		panX: safeCenterX - (neutralOriginX + (boundsCenterX - neutralOriginX) * zoom),
+		panY: safeCenterY - (neutralOriginY + (boundsCenterY - neutralOriginY) * zoom)
 	};
 }
 

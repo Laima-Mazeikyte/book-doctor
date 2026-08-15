@@ -8,6 +8,7 @@
 		aggregatePersonalAuthorRatings,
 		buildPersonalMapNeighborhood,
 		personalTasteCenter,
+		type PersonalAuthorRating,
 		type RatedBook
 	} from '$lib/lab/author-taste/personal';
 	import NavStyleTabList from '$lib/components/NavStyleTabList.svelte';
@@ -16,7 +17,9 @@
 	import AuthorPicker from '$lib/components/lab/AuthorPicker.svelte';
 	import ComparePanel from '$lib/components/lab/ComparePanel.svelte';
 	import CommunityLegend from '$lib/components/lab/CommunityLegend.svelte';
-	import ConnectionTable from '$lib/components/lab/ConnectionTable.svelte';
+	import ConnectionTable, {
+		type ConnectionTableSnapshot
+	} from '$lib/components/lab/ConnectionTable.svelte';
 	import {
 		availability,
 		communityMembers,
@@ -43,11 +46,11 @@
 		subcommunityKey,
 		type Author,
 		type Community,
-		type Connection,
 		type Subcommunity
 	} from '$lib/lab/author-taste/types';
 
 	type Mode = 'browse' | 'compare';
+	const EMPTY_PERSONAL_RATINGS: ReadonlyMap<number, PersonalAuthorRating> = new Map();
 
 	let release = $state<Release | null>(null);
 	let store: ConnectionStore | null = null;
@@ -84,7 +87,10 @@
 	let compareRequestId = 0;
 
 	/** Fewer rows on a phone — legibility, not capability, is the constraint. */
-	let connectionLimit = $state(24);
+	const MIN_CONNECTION_LIMIT = 5;
+	const MAX_CONNECTION_LIMIT = 50;
+	/** Shared table/map aperture; a fresh route starts with a focused ten-row view. */
+	let connectionLimit = $state(10);
 
 	let map = $state<ReturnType<typeof AuthorMap> | null>(null);
 	let modeTabs = $state<HTMLDivElement | null>(null);
@@ -95,7 +101,7 @@
 	const landmarks = $derived(release ? landmarkAuthors(release.index, 8) : []);
 	const oneSidedSeeds = $derived(release ? oneSidedAuthors(release.index, 8) : []);
 	const personalRatings = $derived.by(() =>
-		release ? aggregatePersonalAuthorRatings(release.index, ratedBooks) : new Map()
+		release ? aggregatePersonalAuthorRatings(release.index, ratedBooks) : EMPTY_PERSONAL_RATINGS
 	);
 	const canShowPersonalRatings = $derived(!$isAnonymousOrSignedOut);
 	const personalLayerVisible = $derived(showPersonalRatings && canShowPersonalRatings);
@@ -115,9 +121,11 @@
 	 * spokes would bury the map, so the map follows what the table has narrowed to, and the
 	 * table's sort and filter controls steer both.
 	 */
-	let tableRows = $state<Connection[]>([]);
-	/** The table has published its initial visible set for this focus, including an empty set. */
-	let tableRowsFocusId = $state<number | null>(null);
+	let tableSnapshot = $state<ConnectionTableSnapshot | null>(null);
+	const connectionSnapshotReady = $derived.by(() => {
+		if (mode !== 'browse' || !focus || !tableSnapshot) return false;
+		return tableSnapshot.focusId === focus.id && tableSnapshot.totalCount > 0;
+	});
 	const connections = $derived(
 		mode === 'browse' &&
 			focus &&
@@ -125,7 +133,9 @@
 			neighbourhood &&
 			!browsing &&
 			!browseError
-			? tableRows
+			? tableSnapshot?.focusId === focus.id
+				? tableSnapshot.rows
+				: []
 			: []
 	);
 	const mapFramingReady = $derived(
@@ -133,7 +143,7 @@
 			focus === null ||
 			!hasConnections(focus) ||
 			browseError !== null ||
-			tableRowsFocusId === focus.id
+			tableSnapshot?.focusId === focus.id
 	);
 
 	/**
@@ -170,8 +180,7 @@
 		const requestId = ++browseRequestId;
 		neighbourhood = null;
 		neighbourhoodFocusId = null;
-		tableRows = [];
-		tableRowsFocusId = null;
+		tableSnapshot = null;
 		browseError = null;
 		browsing = false;
 		if (!store || !release || !focus) {
@@ -193,10 +202,16 @@
 		}
 	}
 
-	function publishTableRows(focusId: number, rows: Connection[]): void {
-		if (focus?.id !== focusId) return;
-		tableRows = rows;
-		tableRowsFocusId = focusId;
+	function setConnectionLimit(value: number): void {
+		connectionLimit = Math.max(
+			MIN_CONNECTION_LIMIT,
+			Math.min(MAX_CONNECTION_LIMIT, Math.round(value))
+		);
+	}
+
+	function publishTableSnapshot(snapshot: ConnectionTableSnapshot): void {
+		if (focus?.id !== snapshot.focusId) return;
+		tableSnapshot = snapshot;
 	}
 
 	async function runComparison(): Promise<void> {
@@ -229,12 +244,16 @@
 
 	function selectFromMap(author: Author): void {
 		if (mode === 'browse') {
-			focus = author;
+			if (focus?.id === author.id) clearFocus();
+			else focus = author;
 			return;
 		}
-		// Compare mode: fill the empty slot, otherwise replace the second author.
-		if (!first) first = author;
-		else if (author.id !== first.id) second = author;
+		// Compare mode: clicking either selected author toggles that slot; otherwise fill the first
+		// empty slot, then replace the second author.
+		if (first?.id === author.id) first = null;
+		else if (second?.id === author.id) second = null;
+		else if (!first) first = author;
+		else second = author;
 	}
 
 	function compareFromTable(author: Author): void {
@@ -359,11 +378,6 @@
 		const unsubscribeRatings = ratingsStore.ratedBooks.subscribe((entries) => {
 			ratedBooks = entries;
 		});
-		const media = window.matchMedia('(min-width: 768px)');
-		const applyLimit = () => (connectionLimit = media.matches ? 24 : 10);
-		applyLimit();
-		media.addEventListener('change', applyLimit);
-
 		// Escape clears the selection from anywhere on the page, not only when the map happens
 		// to hold focus — after clicking a point, focus is on the map, but after picking from
 		// the search box or a community chip it is not, and the key should still work.
@@ -379,7 +393,6 @@
 
 		return () => {
 			unsubscribeRatings();
-			media.removeEventListener('change', applyLimit);
 			window.removeEventListener('keydown', onKeydown);
 		};
 	});
@@ -502,9 +515,13 @@
 					{connections}
 					{highlighted}
 					{emphasis}
+					{connectionLimit}
+					connectionTotalCount={tableSnapshot?.totalCount ?? 0}
+					{connectionSnapshotReady}
+					onConnectionLimitChange={setConnectionLimit}
 					previewAuthorId={tablePreviewAuthorId}
 					framingReady={mapFramingReady}
-					personalRatings={canShowPersonalRatings ? personalRatings : new Map()}
+					personalRatings={canShowPersonalRatings ? personalRatings : EMPTY_PERSONAL_RATINGS}
 					showPersonalRatings={personalLayerVisible}
 					tasteCenter={canShowPersonalRatings ? tasteCenter : null}
 					onTogglePersonalRatings={canShowPersonalRatings ? togglePersonalRatings : undefined}
@@ -658,7 +675,7 @@
 												{focus}
 												connections={neighbourhood.connections}
 												limit={connectionLimit}
-												onVisibleRowsChange={publishTableRows}
+												onVisibleRowsChange={publishTableSnapshot}
 												onCompareAuthor={compareFromTable}
 												onPreviewAuthor={(author) => (tablePreviewAuthorId = author?.id ?? null)}
 											/>

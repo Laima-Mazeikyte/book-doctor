@@ -1,27 +1,45 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
-	import { SvelteMap } from 'svelte/reactivity';
+	import { draw, fade } from 'svelte/transition';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { t } from '$lib/copy';
+	import ConnectionAperture from './ConnectionAperture.svelte';
 	import { prefersReducedMotion } from '$lib/navigation/mainNavTransition';
-	import { authorColor, type AuthorIndex } from '$lib/lab/author-taste/authors';
-	import type {
-		PersonalAuthorRating,
-		PersonalRatingCategory
-	} from '$lib/lab/author-taste/personal';
+	import type { AuthorIndex } from '$lib/lab/author-taste/authors';
+	import type { PersonalAuthorRating } from '$lib/lab/author-taste/personal';
 	import { isMapped, type Author, type Connection } from '$lib/lab/author-taste/types';
 	import {
-		clampPitch,
-		clampZoom,
-		fitPoints,
-		flightDuration,
+		CanvasPointRenderer,
+		POINT_TIER_FOCUS,
+		POINT_TIER_PARENT,
+		type CanvasRendererColors
+	} from '$lib/lab/canvasPointRenderer';
+	import {
+		fitProjectedPoints,
 		homeState,
-		interpolate,
+		MAX_ZOOM,
+		MIN_ZOOM,
 		projector,
-		projectorInto,
+		type ScreenPoint,
+		type ScreenRect,
 		type Point3D,
 		type OrbitState,
 		type Projected
 	} from '$lib/lab/orbit';
+	import {
+		NavigationController,
+		type NavigationPhase,
+		type NavigationPointerType
+	} from '$lib/lab/navigation';
+	import {
+		placeLabels,
+		type LabelLayout,
+		type LabelMeasurement,
+		type LabelObstacle,
+		type LabelPlacement,
+		type LabelPoint,
+		type LabelRect
+	} from '$lib/lab/labelPlacement';
 
 	interface Props {
 		index: AuthorIndex;
@@ -43,6 +61,12 @@
 		emphasis?: { communityId: number; subcommunityId: number | null } | null;
 		/** Temporary table preview author id; unlike focus, this never changes the selected author. */
 		previewAuthorId?: number | null;
+		/** Table aperture controls; only supplied in browse mode. */
+		connectionLimit?: number;
+		connectionTotalCount?: number;
+		/** Whether the table snapshot belongs to the current focus and has relationships. */
+		connectionSnapshotReady?: boolean;
+		onConnectionLimitChange?: (value: number) => void;
 		/** Whether the current selection has all the points needed for its automatic camera fit. */
 		framingReady?: boolean;
 		/** The current user's mapped author ratings, keyed by release author id. */
@@ -64,6 +88,10 @@
 		highlighted = [],
 		emphasis = null,
 		previewAuthorId = null,
+		connectionLimit = 10,
+		connectionTotalCount = 0,
+		connectionSnapshotReady = false,
+		onConnectionLimitChange,
 		framingReady = true,
 		personalRatings = new Map(),
 		showPersonalRatings = false,
@@ -86,25 +114,11 @@
 
 	/** Do not turn a singleton or extremely tight group into a near-zero-radius camera. */
 	const MIN_FRAME_RADIUS_FRACTION = 0.04;
+	const MAX_FRAME_ZOOM = 4;
+	const FRAME_PADDING = 28;
+	const MAX_LABEL_SIDE_PADDING = 360;
+	const SPOKE_BLOOM_DURATION = 180;
 	const REFRAME_DEBOUNCE_MS = 150;
-	const PICK_RADIUS = 12;
-	/*
-	 * Three tiers, so a selected subgroup can be seen *within* its community rather than
-	 * floating in an undifferentiated grey field. The parent keeps its community colour at a
-	 * restrained strength, while the subgroup receives the transient map-focus hue and a high
-	 * alpha floor.
-	 */
-	const TIER_CONTEXT = 0;
-	const TIER_PARENT = 1;
-	const TIER_FOCUS = 2;
-
-	/** How far unemphasised points recede. Low enough to read as ground, not as data. */
-	const CONTEXT_ALPHA = 0.2;
-	const PARENT_ALPHA = 0.32;
-	/** Keep the selected subgroup unmistakably above its parent context. */
-	const FOCUS_MIN_ALPHA = 0.9;
-	/** Keep unrated authors visible as context when the personal layer is active. */
-	const PERSONAL_CONTEXT_ALPHA = 0.2;
 
 	let viewportEl: HTMLDivElement | null = $state(null);
 	let canvasEl: HTMLCanvasElement | null = $state(null);
@@ -112,40 +126,30 @@
 	let height = $state(0);
 
 	let camera = $state<OrbitState>(homeState([]));
-	let dragging = $state(false);
 	let hovered = $state<Author | null>(null);
 	let ready = $state(false);
+	let navigationPhase = $state<NavigationPhase>('idle');
+	let lastPointerType = $state<NavigationPointerType>('mouse');
 	type InfoState = 'closed' | 'hover' | 'focus' | 'open' | 'dismissed';
 	let infoState = $state<InfoState>('closed');
+	let renderer: CanvasPointRenderer | null = null;
+	let canvasUnavailable = $state(false);
+	let lastPointer: ScreenPoint | null = null;
+	let legendEl: HTMLDivElement | null = $state(null);
+	let controlsEl: HTMLDivElement | null = $state(null);
+	let chromeEl: HTMLDivElement | null = $state(null);
+	let labelMeasureEl: SVGTextElement | null = $state(null);
+	let tasteCenterLabelEl: SVGTextElement | null = $state(null);
+	let labelLayout = $state<LabelLayout>({ labels: [], leaders: [], hiddenIds: [] });
+	let labelLayoutSignal = $state(0);
+	let labelStyleVersion = $state(0);
+	let labelLayoutFrame: number | null = null;
+	const labelMeasurementCache = new SvelteMap<string, LabelMeasurement>();
+	const labelRevealFrames = new SvelteMap<number, number>();
+	let previousLabelPlacements = new SvelteMap<number, LabelPlacement>();
 
-	/**
-	 * Flat arrays over `index.mapped`. Iterating typed arrays rather than 7,911 objects keeps
-	 * a full reprojection inside a frame budget during an orbit.
-	 */
-	let worldX = new Float32Array(0);
-	let worldY = new Float32Array(0);
-	let worldZ = new Float32Array(0);
-	let pointColor: string[] = [];
-	let screenX = new Float32Array(0);
-	let screenY = new Float32Array(0);
-	let screenDepth = new Float32Array(0);
-	let screenSize = new Float32Array(0);
-	let drawOrder: number[] = [];
-
-	let flight: number | null = null;
-	let drag: {
-		x: number;
-		y: number;
-		startX: number;
-		startY: number;
-		yaw: number;
-		pitch: number;
-		panX: number;
-		panY: number;
-		panning: boolean;
-	} | null = null;
-
-	let colors = {
+	let colors = $state<CanvasRendererColors & { label: string; labelHalo: string }>({
+		background: '#ffffff',
 		focus: '#f0c674',
 		loved: '#6fcf97',
 		hated: '#d96b5f',
@@ -153,10 +157,57 @@
 		label: '#101010',
 		labelHalo: '#fafafa',
 		context: '#455454'
-	};
+	});
 
 	const viewport = $derived({ width, height });
 	const home = $derived(homeState(index.mapped));
+	const mapIsDragging = $derived(
+		navigationPhase === 'orbit-drag' ||
+			navigationPhase === 'pan-drag' ||
+			navigationPhase === 'two-finger-transform'
+	);
+	const mapIsPanning = $derived(
+		navigationPhase === 'pan-drag' ||
+			navigationPhase === 'horizontal-wheel-pan' ||
+			navigationPhase === 'two-finger-transform'
+	);
+	const interactionHint = $derived(
+		lastPointerType === 'touch'
+			? t('lab.authorConnections.browse.touchHint')
+			: t('lab.authorConnections.browse.orbitHint')
+	);
+	const canZoomIn = $derived(camera.zoom < MAX_ZOOM - 1e-9);
+	const canZoomOut = $derived(camera.zoom > MIN_ZOOM + 1e-9);
+	const navigation = new NavigationController(
+		homeState([]),
+		{
+			onCommit: (next, kind) => {
+				camera = next;
+				if (kind !== 'data') hovered = null;
+			},
+			onRender: (next, kind, moving) => {
+				const currentRenderer = renderer;
+				currentRenderer?.render(next, kind, moving);
+				if (currentRenderer?.isAvailable === false) canvasUnavailable = true;
+			},
+			onPhaseChange: (phase) => {
+				navigationPhase = phase;
+				if (phase !== 'idle') hovered = null;
+			},
+			onTap: (point, pointerType) => {
+				const author = pick(point.x, point.y, pointerType === 'touch');
+				if (author) onSelectAuthor?.(author);
+				else onClearSelection?.();
+			},
+			onSettled: () => {
+				renderer?.settle(navigation.currentCamera);
+				void tick().then(refreshHover);
+			},
+			recover: (current) => recoverLostMap(current),
+			reducedMotion: () => prefersReducedMotion()
+		},
+		{ viewport: { width: 0, height: 0 } }
+	);
 	const infoVisible = $derived(
 		infoState === 'hover' || infoState === 'focus' || infoState === 'open'
 	);
@@ -175,7 +226,7 @@
 			if (author.communityId !== emphasis.communityId) continue;
 			const inSubgroup =
 				emphasis.subcommunityId === null || author.subcommunityId === emphasis.subcommunityId;
-			flags[i] = inSubgroup ? TIER_FOCUS : TIER_PARENT;
+			flags[i] = inSubgroup ? POINT_TIER_FOCUS : POINT_TIER_PARENT;
 		}
 		return flags;
 	});
@@ -195,10 +246,76 @@
 		return found;
 	});
 
+	type RankedConnection = { connection: Connection; rank: number };
+	const rankedConnections = $derived(
+		connections.map((connection, index): RankedConnection => ({ connection, rank: index + 1 }))
+	);
+
 	/** Connections whose partner is positioned, so a spoke can actually be drawn. */
 	const drawableConnections = $derived(
-		connections.filter((connection) => active.has(connection.other.id))
+		rankedConnections.filter((item) => active.has(item.connection.other.id))
 	);
+	const mappedConnectionCount = $derived(
+		connections.filter((connection) => isMapped(connection.other)).length
+	);
+	const isolationId = $derived.by(() => {
+		if (
+			previewAuthorId !== null &&
+			connections.some(
+				(connection) => connection.other.id === previewAuthorId && isMapped(connection.other)
+			)
+		) {
+			return previewAuthorId;
+		}
+		const hoveredAuthor = hovered;
+		if (
+			hoveredAuthor &&
+			connections.some(
+				(connection) => connection.other.id === hoveredAuthor.id && isMapped(connection.other)
+			)
+		) {
+			return hoveredAuthor.id;
+		}
+		return null;
+	});
+
+	type LabelPointSeed = Omit<LabelPoint, 'measurement'>;
+	const labelPointSeeds = $derived.by(() => {
+		const seeds: LabelPointSeed[] = [];
+		const seen = new SvelteSet<number>();
+		const add = (
+			author: Author | null | undefined,
+			kind: LabelPoint['kind'],
+			mandatory: boolean,
+			emphasis: boolean
+		) => {
+			if (!author || !isMapped(author) || seen.has(author.id)) return;
+			const projected = active.get(author.id);
+			if (!projected) return;
+			seen.add(author.id);
+			seeds.push({
+				id: author.id,
+				text: author.name,
+				x: projected.x,
+				y: projected.y,
+				priority: seeds.length,
+				kind,
+				mandatory,
+				emphasis
+			});
+		};
+
+		add(focus, 'focus', true, true);
+		add(hovered, 'interaction', true, true);
+		const previewAuthor =
+			highlighted.find((author) => author.id === previewAuthorId) ??
+			connections.find((connection) => connection.other.id === previewAuthorId)?.other ??
+			null;
+		add(previewAuthor, 'interaction', true, true);
+		for (const author of highlighted) add(author, 'highlight', true, true);
+		for (const item of rankedConnections) add(item.connection.other, 'connection', false, false);
+		return seeds;
+	});
 
 	/**
 	 * The hovered author's screen position, projected on demand.
@@ -227,6 +344,7 @@
 		const read = (name: string, fallback: string) =>
 			style.getPropertyValue(name).trim() || fallback;
 		colors = {
+			background: read('--color-viz-map-bg', colors.background),
 			focus: read('--color-viz-map-focus', colors.focus),
 			loved: read('--color-viz-affinity', colors.loved),
 			hated: read('--color-viz-conflict', colors.hated),
@@ -237,340 +355,236 @@
 		};
 	}
 
-	function buildPointArrays(): void {
-		const mapped = index.mapped;
-		worldX = new Float32Array(mapped.length);
-		worldY = new Float32Array(mapped.length);
-		worldZ = new Float32Array(mapped.length);
-		pointColor = new Array(mapped.length);
-		screenX = new Float32Array(mapped.length);
-		screenY = new Float32Array(mapped.length);
-		screenDepth = new Float32Array(mapped.length);
-		screenSize = new Float32Array(mapped.length);
-		drawOrder = new Array(mapped.length);
+	// The point cloud, projection cache, picking grid, and canvas paint are owned by CanvasPointRenderer.
 
-		for (let i = 0; i < mapped.length; i++) {
-			const author = mapped[i];
-			worldX[i] = author.x as number;
-			worldY[i] = author.y as number;
-			worldZ[i] = author.z as number;
-			pointColor[i] = authorColor(index, author);
-			drawOrder[i] = i;
-		}
-	}
-
-	/**
-	 * Reproject and sort the full cloud for every frame. Keeping every point present avoids a
-	 * visible density/opacity flash when camera motion begins or ends.
-	 *
-	 * Point radius follows the perspective multiplier only. It is a depth cue, not a measure of
-	 * readership or any other user-derived count.
-	 */
-	function reproject(): void {
-		const project = projectorInto(camera, viewport, screenX, screenY, screenDepth);
-		// Projection does not depend on depth order. Walk the source arrays contiguously, then
-		// update the separate draw order once every slot has its new depth.
-		for (let slot = 0; slot < worldX.length; slot++) {
-			const perspective = project(slot, worldX[slot], worldY[slot], worldZ[slot]);
-			screenSize[slot] = Math.max(1, Math.min(6, 2.5 * perspective));
-		}
-		drawOrder.sort((a, b) => screenDepth[a] - screenDepth[b]);
-	}
-
-	function paint(): void {
-		const canvas = canvasEl;
-		if (!canvas || width === 0 || height === 0 || !ready) return;
-		const ctx = canvas.getContext('2d');
-		if (!ctx) return;
-
-		const dpr = Math.min(window.devicePixelRatio || 1, 2);
-		const pixelW = Math.round(width * dpr);
-		const pixelH = Math.round(height * dpr);
-		if (canvas.width !== pixelW || canvas.height !== pixelH) {
-			canvas.width = pixelW;
-			canvas.height = pixelH;
-		}
-
-		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-		ctx.clearRect(0, 0, width, height);
-
-		reproject();
-
-		const flags = emphasised;
-		const subgroupEmphasis = emphasis !== null && emphasis.subcommunityId !== null;
-
-		/*
-		 * One pass per tier, back to front, when a group is emphasised. A single depth-sorted
-		 * pass would let unrelated points in front occlude the very group the reader just asked
-		 * to see — and in the interleaved communities that is most of them. With nothing
-		 * emphasised there is one pass and the depth order is untouched.
-		 */
-		const drawPoints = (wanted: 0 | 1 | 2 | null) => {
-			for (const slot of drawOrder) {
-				if (wanted !== null && flags![slot] !== wanted) continue;
-				const x = screenX[slot];
-				const y = screenY[slot];
-				const size = screenSize[slot];
-				if (x < -size || x > width + size || y < -size || y > height + size) continue;
-				// Nearer points sit brighter; the range is narrow so the community colours stay
-				// distinguishable at every depth.
-				const depthAlpha = Math.max(0.28, Math.min(0.95, 0.58 + screenDepth[slot] * 0.12));
-				const personalAlpha =
-					showPersonalRatings && !personalRatings.has(index.mapped[slot].id)
-						? PERSONAL_CONTEXT_ALPHA
-						: 1;
-
-				if (wanted === TIER_CONTEXT) {
-					// A single neutral, so the emphasised community owns every hue on screen; dimming
-					// the colour alone still reads as "a paler version of that community".
-					ctx.globalAlpha = depthAlpha * CONTEXT_ALPHA * personalAlpha;
-					ctx.fillStyle = colors.context;
-				} else if (wanted === TIER_PARENT) {
-					// The rest of the parent community: its own colour, held back far enough to sit
-					// behind the subgroup but bright enough to show where the community reaches.
-					ctx.globalAlpha = depthAlpha * PARENT_ALPHA * personalAlpha;
-					ctx.fillStyle = pointColor[slot];
-				} else {
-					ctx.globalAlpha =
-						(wanted === null ? depthAlpha : Math.max(FOCUS_MIN_ALPHA, depthAlpha)) * personalAlpha;
-					ctx.fillStyle =
-						subgroupEmphasis && wanted === TIER_FOCUS ? colors.focus : pointColor[slot];
-				}
-
-				ctx.beginPath();
-				ctx.arc(x, y, size, 0, Math.PI * 2);
-				ctx.fill();
-			}
-		};
-
-		if (flags) {
-			drawPoints(TIER_CONTEXT);
-			drawPoints(TIER_PARENT);
-			drawPoints(TIER_FOCUS);
-		} else {
-			drawPoints(null);
-		}
-
-		if (showPersonalRatings) {
-			for (const slot of drawOrder) {
-				const rating = personalRatings.get(index.mapped[slot].id);
-				if (!rating) continue;
-				const x = screenX[slot];
-				const y = screenY[slot];
-				const size = screenSize[slot];
-				if (x < -size - 5 || x > width + size + 5 || y < -size - 5 || y > height + size + 5) {
-					continue;
-				}
-				ctx.globalAlpha = 0.95;
-				ctx.strokeStyle = personalColor(rating.category);
-				ctx.setLineDash(personalDash(rating.category));
-				ctx.lineWidth = Math.max(1.25, Math.min(2.5, size * 0.55));
-				ctx.beginPath();
-				ctx.arc(x, y, Math.max(4, size + 3), 0, Math.PI * 2);
-				ctx.stroke();
-			}
-			ctx.setLineDash([]);
-		}
-		ctx.globalAlpha = 1;
-	}
-
-	function personalColor(category: PersonalRatingCategory): string {
-		return colors[category];
-	}
-
-	function personalDash(category: PersonalRatingCategory): number[] {
-		if (category === 'hated') return [4, 2];
-		if (category === 'neutral') return [1.5, 2.5];
-		return [];
-	}
-
-	function stopFlight(): void {
-		if (flight !== null) {
-			cancelAnimationFrame(flight);
-			flight = null;
-		}
-	}
-
-	/** Ease the camera to `target`, or cut straight to it under reduced motion. */
-	function flyTo(target: OrbitState): void {
-		stopFlight();
-		const from = { ...camera };
-		const to = { ...target, zoom: clampZoom(target.zoom), pitch: clampPitch(target.pitch) };
-		const duration = flightDuration(from, to, viewport);
-
-		if (prefersReducedMotion() || duration === 0) {
-			camera = to;
-			return;
-		}
-
-		const start = performance.now();
-		const step = (now: number) => {
-			const progress = Math.min(1, (now - start) / duration);
-			camera = interpolate(from, to, progress);
-			if (progress < 1) {
-				flight = requestAnimationFrame(step);
-			} else {
-				flight = null;
-			}
-		};
-		flight = requestAnimationFrame(step);
-	}
+	/* Full-cloud projection, sorting, picking, and paint live in CanvasPointRenderer. */
 
 	export function resetView(): void {
-		flyTo(home);
+		onClearSelection?.();
+		navigation.resetTo(home);
+	}
+
+	function safeFrameRect(): ScreenRect {
+		const padding = 16;
+		const rect: ScreenRect = {
+			left: padding,
+			top: padding,
+			right: Math.max(padding + 1, width - padding),
+			bottom: Math.max(padding + 1, height - padding)
+		};
+		if (!viewportEl) return rect;
+		const viewportRect = viewportEl.getBoundingClientRect();
+		const visible = (element: HTMLElement | null) => {
+			if (!element) return null;
+			const elementRect = element.getBoundingClientRect();
+			if (elementRect.bottom <= viewportRect.top || elementRect.top >= viewportRect.bottom)
+				return null;
+			return {
+				top: elementRect.top - viewportRect.top,
+				bottom: elementRect.bottom - viewportRect.top
+			};
+		};
+		const legend = visible(legendEl);
+		const controls = visible(controlsEl);
+		if (legend) rect.top = Math.max(rect.top, legend.bottom + padding);
+		if (controls) rect.bottom = Math.min(rect.bottom, controls.top - padding);
+		if (rect.bottom <= rect.top) {
+			rect.top = padding;
+			rect.bottom = Math.max(padding + 1, height - padding);
+		}
+		return rect;
+	}
+
+	type MappedAuthor = Author & Point3D;
+
+	function uniqueMappedAuthors(authors: (Author | null | undefined)[]): MappedAuthor[] {
+		const seen = new SvelteSet<number>();
+		const unique: MappedAuthor[] = [];
+		for (const author of authors) {
+			if (!author || !isMapped(author) || seen.has(author.id)) continue;
+			seen.add(author.id);
+			unique.push(author as MappedAuthor);
+		}
+		return unique;
+	}
+
+	/** Labels are centred on their markers, so reserve a conservative half-width on each side. */
+	function labelSidePadding(authors: MappedAuthor[]): number {
+		const longestName = authors.reduce(
+			(longest, author) => Math.max(longest, author.name.length),
+			0
+		);
+		return Math.min(MAX_LABEL_SIDE_PADDING, Math.max(FRAME_PADDING, 20 + longestName * 5));
+	}
+
+	function activeLabeledAuthors(): MappedAuthor[] {
+		const persistentConnections = rankedConnections.map((item) => item.connection.other);
+		return uniqueMappedAuthors([focus, ...persistentConnections, ...highlighted]);
 	}
 
 	/** Frame a subset without changing the viewing angle — used by the community legend. */
 	export function frameAuthors(authors: Author[]): void {
-		const points = authors.filter(isMapped);
+		const points = uniqueMappedAuthors(authors);
+		const labels = activeLabeledAuthors();
 		if (points.length === 0) {
-			flyTo(home);
+			navigation.resetTo(home);
 			return;
 		}
-		// One point defines a centre but no scale. Keep the global scale in that case so choosing
-		// a second comparison author does not have to pull it in from far outside a deep zoom.
 		const minimumRadius =
 			points.length === 1 ? home.radius : home.radius * MIN_FRAME_RADIUS_FRACTION;
-		flyTo({
-			...camera,
-			zoom: 1,
-			panX: 0,
-			panY: 0,
-			...fitPoints(points, minimumRadius)
-		});
+		navigation.flyTo(
+			fitProjectedPoints(points, navigation.currentCamera, viewport, safeFrameRect(), {
+				minimumRadius,
+				padding: FRAME_PADDING,
+				paddingX: labelSidePadding(labels),
+				maxZoom: MAX_FRAME_ZOOM
+			})
+		);
 	}
 
 	/** Frame the focus author together with everything currently drawn around it. */
 	export function frameNeighbourhood(): void {
 		if (width === 0 || height === 0) return;
-		const points: Author[] = [];
-		if (focus) points.push(focus);
-		for (const connection of drawableConnections) points.push(connection.other);
-		for (const author of highlighted) points.push(author);
+		const points = activeLabeledAuthors();
 		frameAuthors(points);
 	}
 
 	function zoomBy(factor: number): void {
-		flyTo({ ...camera, zoom: clampZoom(camera.zoom * factor) });
+		navigation.zoomBy(factor, false, true);
+	}
+
+	function recoverLostMap(current: OrbitState): OrbitState | null {
+		return renderer?.recoverLostMap(current) ?? null;
 	}
 
 	function handleWheel(event: WheelEvent): void {
 		event.preventDefault();
-		stopFlight();
-		camera = { ...camera, zoom: clampZoom(camera.zoom * Math.exp(-event.deltaY * 0.001)) };
+		const point = localPoint(event.clientX, event.clientY);
+		if (!point) return;
+		lastPointer = point;
+		navigation.handleWheel({
+			deltaX: event.deltaX,
+			deltaY: event.deltaY,
+			deltaMode: event.deltaMode,
+			ctrlKey: event.ctrlKey,
+			shiftKey: event.shiftKey,
+			x: point.x,
+			y: point.y,
+			time: performance.now()
+		});
 	}
 
 	function handlePointerDown(event: PointerEvent): void {
-		if (event.button !== 0) return;
-		stopFlight();
-		dragging = true;
-		drag = {
-			x: event.clientX,
-			y: event.clientY,
-			startX: event.clientX,
-			startY: event.clientY,
-			yaw: camera.yaw,
-			pitch: camera.pitch,
-			panX: camera.panX,
-			panY: camera.panY,
-			// Shift pans instead of orbiting, matching the reference viewer's model.
-			panning: event.shiftKey
-		};
+		observePointerType(event);
+		const point = localPoint(event.clientX, event.clientY);
+		if (!point) return;
+		lastPointer = point;
+		if (event.button === 1) event.preventDefault();
+		const started = navigation.beginPointer({
+			id: event.pointerId,
+			x: point.x,
+			y: point.y,
+			pointerType: lastPointerType,
+			button: event.button,
+			shiftKey: event.shiftKey
+		});
+		if (!started) return;
+		if (event.button === 0) viewportEl?.focus({ preventScroll: true });
 		viewportEl?.setPointerCapture(event.pointerId);
 	}
 
-	/** Nearest drawn author to a viewport point, in screen space after projection. */
-	function pick(px: number, py: number): Author | null {
-		let best: Author | null = null;
-		let bestDistance = PICK_RADIUS;
-		// Front to back, so an occluding point wins ties against one behind it.
-		for (let i = drawOrder.length - 1; i >= 0; i--) {
-			const slot = drawOrder[i];
-			const distance = Math.hypot(screenX[slot] - px, screenY[slot] - py);
-			if (distance < bestDistance) {
-				bestDistance = distance;
-				best = index.mapped[slot];
-			}
-		}
-		return best;
+	function handleMouseDown(event: MouseEvent): void {
+		if (event.button === 1) event.preventDefault();
+	}
+
+	function localPoint(clientX: number, clientY: number): ScreenPoint | null {
+		const rect = viewportEl?.getBoundingClientRect();
+		if (!rect) return null;
+		return { x: clientX - rect.left, y: clientY - rect.top };
+	}
+
+	function pointerType(event: PointerEvent): NavigationPointerType {
+		return event.pointerType === 'touch' ? 'touch' : event.pointerType === 'pen' ? 'pen' : 'mouse';
+	}
+
+	function observePointerType(event: PointerEvent): void {
+		const next = pointerType(event);
+		if (next !== lastPointerType) lastPointerType = next;
+	}
+
+	/** Nearest author in the cursor's local screen-space buckets. */
+	function pick(px: number, py: number, touch = false): Author | null {
+		const slot = renderer?.pick(px, py, touch);
+		return slot === null || slot === undefined ? null : (renderer?.authorAt(slot) ?? null);
+	}
+
+	function refreshHover(): void {
+		if (navigation.isMoving || !lastPointer) return;
+		hovered = pick(lastPointer.x, lastPointer.y, lastPointerType === 'touch');
 	}
 
 	function handlePointerMove(event: PointerEvent): void {
-		const rect = viewportEl?.getBoundingClientRect();
-		if (!rect) return;
-
-		if (dragging && drag) {
-			const dx = event.clientX - drag.x;
-			const dy = event.clientY - drag.y;
-			camera = drag.panning
-				? { ...camera, panX: drag.panX + dx, panY: drag.panY + dy }
-				: { ...camera, yaw: drag.yaw + dx * 0.008, pitch: clampPitch(drag.pitch + dy * 0.008) };
-			return;
-		}
-		if (flight !== null) {
+		observePointerType(event);
+		const point = localPoint(event.clientX, event.clientY);
+		if (!point) return;
+		lastPointer = point;
+		navigation.movePointer({
+			id: event.pointerId,
+			x: point.x,
+			y: point.y,
+			pointerType: lastPointerType,
+			button: event.button,
+			shiftKey: event.shiftKey
+		});
+		if (navigation.isMoving) {
 			hovered = null;
 			return;
 		}
-
-		hovered = pick(event.clientX - rect.left, event.clientY - rect.top);
+		hovered = pick(point.x, point.y, lastPointerType === 'touch');
 	}
 
 	function handlePointerUp(event: PointerEvent): void {
-		if (!dragging) return;
-		dragging = false;
-		viewportEl?.releasePointerCapture(event.pointerId);
-		const moved = drag && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 4;
-		drag = null;
-		if (moved) return;
-		// A click that did not orbit selects the point under it, or clears the selection when
-		// it landed on empty space — otherwise there is no way back out by pointer alone.
-		if (hovered) onSelectAuthor?.(hovered);
-		else onClearSelection?.();
+		observePointerType(event);
+		const point = localPoint(event.clientX, event.clientY) ?? lastPointer ?? { x: 0, y: 0 };
+		lastPointer = point;
+		navigation.endPointer(
+			{
+				id: event.pointerId,
+				x: point.x,
+				y: point.y,
+				pointerType: lastPointerType,
+				button: event.button
+			},
+			false
+		);
+		if (viewportEl?.hasPointerCapture(event.pointerId))
+			viewportEl.releasePointerCapture(event.pointerId);
+	}
+
+	function handlePointerCancel(event: PointerEvent): void {
+		observePointerType(event);
+		navigation.cancelPointer(event.pointerId, lastPointerType);
+		if (viewportEl?.hasPointerCapture(event.pointerId))
+			viewportEl.releasePointerCapture(event.pointerId);
+	}
+
+	function handleContextMenu(event: MouseEvent): void {
+		if (navigation.consumeContextMenuSuppression()) event.preventDefault();
 	}
 
 	function handleKeydown(event: KeyboardEvent): void {
-		const orbitStep = 0.12;
-		const panStep = 40;
-		switch (event.key) {
-			case 'ArrowLeft':
-				camera = event.shiftKey
-					? { ...camera, panX: camera.panX + panStep }
-					: { ...camera, yaw: camera.yaw - orbitStep };
-				break;
-			case 'ArrowRight':
-				camera = event.shiftKey
-					? { ...camera, panX: camera.panX - panStep }
-					: { ...camera, yaw: camera.yaw + orbitStep };
-				break;
-			case 'ArrowUp':
-				camera = event.shiftKey
-					? { ...camera, panY: camera.panY + panStep }
-					: { ...camera, pitch: clampPitch(camera.pitch - orbitStep) };
-				break;
-			case 'ArrowDown':
-				camera = event.shiftKey
-					? { ...camera, panY: camera.panY - panStep }
-					: { ...camera, pitch: clampPitch(camera.pitch + orbitStep) };
-				break;
-			case '+':
-			case '=':
-				zoomBy(1.4);
-				break;
-			case '-':
-			case '_':
-				zoomBy(1 / 1.4);
-				break;
-			case '0':
-				resetView();
-				break;
-			case 'Escape':
-				onClearSelection?.();
-				break;
-			default:
-				return;
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			onClearSelection?.();
+			return;
 		}
+		if (event.key === '0') {
+			event.preventDefault();
+			resetView();
+			return;
+		}
+		if (!navigation.handleKey(event.key, event.shiftKey, event.repeat)) return;
 		event.preventDefault();
-		stopFlight();
 	}
 
 	function handleInfoPointerEnter(): void {
@@ -635,15 +649,180 @@
 		}
 	}
 
+	/** Draw a new spoke in, then fade the temporary emphasis so semantic styling remains. */
+	function fadeBloom(node: SVGPathElement): { destroy: () => void } {
+		if (prefersReducedMotion()) {
+			node.classList.add('author-map__spoke-bloom--fading');
+			return { destroy: () => undefined };
+		}
+
+		const timeout = window.setTimeout(() => {
+			node.classList.add('author-map__spoke-bloom--fading');
+		}, SPOKE_BLOOM_DURATION);
+		return { destroy: () => window.clearTimeout(timeout) };
+	}
+
+	function cssPixels(value: string, fallback: number): number {
+		const parsed = Number.parseFloat(value);
+		return Number.isFinite(parsed) ? parsed : fallback;
+	}
+
+	function measureLabel(seed: LabelPointSeed): LabelMeasurement {
+		const fallback: LabelMeasurement = {
+			width: Math.max(8, seed.text.length * 7),
+			height: 15,
+			fontSize: 12
+		};
+		if (!labelMeasureEl) return fallback;
+
+		labelMeasureEl.style.fontWeight = seed.emphasis ? '600' : '400';
+		// The hidden probe must be updated imperatively so SVG measures the actual loaded font.
+		// eslint-disable-next-line svelte/no-dom-manipulating
+		labelMeasureEl.textContent = seed.text;
+		const style = getComputedStyle(labelMeasureEl);
+		const fontSize = cssPixels(style.fontSize, fallback.fontSize);
+		const lineHeight = cssPixels(style.lineHeight, fontSize * 1.2);
+		const key = [
+			seed.text,
+			style.fontFamily,
+			style.fontSize,
+			style.fontWeight,
+			style.letterSpacing,
+			style.lineHeight
+		].join('|');
+		const cached = labelMeasurementCache.get(key);
+		if (cached) return cached;
+
+		const measuredWidth =
+			typeof labelMeasureEl.getComputedTextLength === 'function'
+				? labelMeasureEl.getComputedTextLength()
+				: 0;
+		const measurement = {
+			width: Math.max(1, measuredWidth || fallback.width),
+			height: Math.max(fontSize, lineHeight),
+			fontSize
+		};
+		labelMeasurementCache.set(key, measurement);
+		return measurement;
+	}
+
+	function elementRectInViewport(element: Element | null): LabelRect | null {
+		if (!element || !viewportEl) return null;
+		const viewportRect = viewportEl.getBoundingClientRect();
+		const elementRect = element.getBoundingClientRect();
+		if (elementRect.width <= 0 || elementRect.height <= 0) return null;
+		return {
+			left: elementRect.left - viewportRect.left,
+			top: elementRect.top - viewportRect.top,
+			right: elementRect.right - viewportRect.left,
+			bottom: elementRect.bottom - viewportRect.top
+		};
+	}
+
+	function labelObstacles(): LabelObstacle[] {
+		const obstacles: LabelObstacle[] = [];
+		for (const element of [legendEl, controlsEl]) {
+			const rect = elementRectInViewport(element);
+			if (rect) obstacles.push({ type: 'rect', rect });
+		}
+		const mapRoot = viewportEl?.closest<HTMLElement>('.author-map');
+		mapRoot
+			?.querySelectorAll<HTMLElement>(
+				'.author-map__hover, .author-map__info-popover--visible, .connection-aperture__popover'
+			)
+			.forEach((element) => {
+				const rect = elementRectInViewport(element);
+				if (rect) obstacles.push({ type: 'rect', rect });
+			});
+		if (tasteCenterPoint) {
+			obstacles.push({
+				type: 'circle',
+				x: tasteCenterPoint.x,
+				y: tasteCenterPoint.y,
+				radius: 24
+			});
+		}
+		const tasteLabelRect = elementRectInViewport(tasteCenterLabelEl);
+		if (tasteLabelRect) obstacles.push({ type: 'rect', rect: tasteLabelRect });
+		return obstacles;
+	}
+
+	function runLabelLayout(): void {
+		labelLayoutFrame = null;
+		if (!labelMeasureEl || width === 0 || height === 0) return;
+		const points: LabelPoint[] = labelPointSeeds.map((seed) => ({
+			...seed,
+			measurement: measureLabel(seed)
+		}));
+		const activeIds = new SvelteSet(points.map((point) => point.id));
+		for (const id of labelRevealFrames.keys()) {
+			if (!activeIds.has(id)) labelRevealFrames.delete(id);
+		}
+		const probe = placeLabels({
+			points,
+			nodePoints: points,
+			viewport: { left: 0, top: 0, right: width, bottom: height },
+			obstacles: labelObstacles(),
+			previous: previousLabelPlacements
+		});
+		const collisionFreeIds = new SvelteSet(probe.labels.map((label) => label.id));
+		let delayedReveal = false;
+		const eligiblePoints = points.filter((point) => {
+			if (point.mandatory || previousLabelPlacements.has(point.id)) {
+				labelRevealFrames.delete(point.id);
+				return true;
+			}
+			if (!collisionFreeIds.has(point.id)) {
+				labelRevealFrames.delete(point.id);
+				return false;
+			}
+			const frames = (labelRevealFrames.get(point.id) ?? 0) + 1;
+			labelRevealFrames.set(point.id, frames);
+			if (frames < 2) {
+				delayedReveal = true;
+				return false;
+			}
+			return true;
+		});
+		const next = placeLabels({
+			points: eligiblePoints,
+			nodePoints: points,
+			viewport: { left: 0, top: 0, right: width, bottom: height },
+			obstacles: labelObstacles(),
+			previous: previousLabelPlacements
+		});
+		const visibleIds = new SvelteSet(next.labels.map((label) => label.id));
+		for (const id of previousLabelPlacements.keys()) {
+			if (!activeIds.has(id) || !visibleIds.has(id)) previousLabelPlacements.delete(id);
+		}
+		for (const placement of next.labels) previousLabelPlacements.set(placement.id, placement);
+		labelLayout = next;
+		if (delayedReveal) scheduleLabelLayout();
+	}
+
+	function scheduleLabelLayout(): void {
+		if (labelLayoutFrame !== null) return;
+		labelLayoutFrame = requestAnimationFrame(runLabelLayout);
+	}
+
 	function measure(): void {
 		if (!viewportEl) return;
-		width = viewportEl.clientWidth;
-		height = viewportEl.clientHeight;
+		const nextWidth = viewportEl.clientWidth;
+		const nextHeight = viewportEl.clientHeight;
+		const dimensionsChanged = width !== nextWidth || height !== nextHeight;
+		width = nextWidth;
+		height = nextHeight;
+		navigation.setViewport({ width: nextWidth, height: nextHeight });
+		if (renderer?.resize(nextWidth, nextHeight)) navigation.requestRender('data');
+		else if (dimensionsChanged) navigation.requestRender('data');
 	}
 
 	onMount(() => {
 		readTokens();
-		buildPointArrays();
+		if (canvasEl) {
+			renderer = new CanvasPointRenderer(canvasEl, index, colors);
+			canvasUnavailable = false;
+		}
 		ready = true;
 
 		// Measure synchronously so the first paint never waits on an async observer callback;
@@ -653,11 +832,42 @@
 		const observer = new ResizeObserver(() => measure());
 		if (viewportEl) observer.observe(viewportEl);
 		window.addEventListener('resize', measure);
+		const themeObserver = new MutationObserver(() => {
+			readTokens();
+			navigation.requestRender('data');
+		});
+		themeObserver.observe(document.documentElement, {
+			attributes: true,
+			attributeFilter: ['class', 'data-theme']
+		});
+		const chromeObserver = new MutationObserver(() => {
+			labelLayoutSignal += 1;
+		});
+		if (chromeEl) {
+			chromeObserver.observe(chromeEl, {
+				childList: true,
+				subtree: true,
+				attributes: true,
+				attributeFilter: ['class', 'style', 'aria-expanded']
+			});
+		}
+		const fonts = document.fonts;
+		const handleFontsDone = () => {
+			labelMeasurementCache.clear();
+			labelStyleVersion += 1;
+		};
+		fonts.addEventListener('loadingdone', handleFontsDone);
+		void fonts.ready.then(handleFontsDone);
 
 		return () => {
 			observer.disconnect();
+			themeObserver.disconnect();
+			chromeObserver.disconnect();
+			fonts.removeEventListener('loadingdone', handleFontsDone);
 			window.removeEventListener('resize', measure);
-			stopFlight();
+			navigation.dispose();
+			renderer?.dispose();
+			renderer = null;
 		};
 	});
 
@@ -666,54 +876,95 @@
 	$effect(() => {
 		if (!ready || width === 0 || height === 0 || framedOnce) return;
 		framedOnce = true;
-		camera = home;
+		navigation.replaceCamera(home);
 	});
 
-	// Repaint whenever the camera, viewport, or drawn set changes.
+	// Labels use the latest projected points and screen-space obstacles, but never run more than
+	// once per animation frame while the camera or table state is changing.
 	$effect(() => {
-		void camera;
+		void labelPointSeeds;
+		void labelLayoutSignal;
+		void labelStyleVersion;
+		void ready;
 		void width;
 		void height;
-		void ready;
-		void emphasised;
-		void personalRatings;
-		void showPersonalRatings;
-		paint();
+		if (!ready || !labelMeasureEl || width === 0 || height === 0) return;
+		scheduleLabelLayout();
+		return () => {
+			if (labelLayoutFrame !== null) {
+				cancelAnimationFrame(labelLayoutFrame);
+				labelLayoutFrame = null;
+			}
+		};
 	});
 
-	// Fly only once the selected author's complete drawn set is available. Viewport dimensions
-	// deliberately are not dependencies: a ResizeObserver repaint must not restart a semantic
-	// camera flight.
+	// Visual data changes request one render on the navigation frame clock; camera renders are
+	// delivered directly by NavigationController's onRender callback.
+	$effect(() => {
+		void ready;
+		const currentRenderer = renderer;
+		if (!currentRenderer || !ready) return;
+		const colorsChanged = currentRenderer.setColors(colors);
+		const emphasisChanged = currentRenderer.setEmphasis(
+			emphasised,
+			emphasis !== null && emphasis.subcommunityId !== null
+		);
+		const ratingsChanged = currentRenderer.setPersonalRatings(personalRatings);
+		const ratingsVisibilityChanged =
+			currentRenderer.setPersonalRatingsVisibility(showPersonalRatings);
+		const changed = colorsChanged || emphasisChanged || ratingsChanged || ratingsVisibilityChanged;
+		if (changed) navigation.requestRender('data');
+	});
+
+	// Anchor changes (focus or compare selection) frame after the DOM tick. Content changes under
+	// an existing browse anchor use the short debounce so table filtering cannot pull the camera
+	// around on every published row update. Compare has no content set, so its first and second
+	// selections take the immediate path.
 	let frameRequest = 0;
 	let frameTimer: ReturnType<typeof setTimeout> | null = null;
-	let lastFramedAnchor = '';
+	let lastFramedAnchorKey = '';
+	let lastFramedContentKey = '';
 	$effect(() => {
 		const request = ++frameRequest;
-		const anchor = focus ? String(focus.id) : highlighted.map((a) => a.id).join(',');
-		const connectionSet = connections
-			.map((connection) => connection.other.id)
-			.sort((a, b) => a - b)
-			.join(',');
-		void connectionSet;
 		if (frameTimer !== null) {
 			clearTimeout(frameTimer);
 			frameTimer = null;
 		}
-		if (!ready || !framingReady || anchor === '') return;
+		const focusKey = focus ? String(focus.id) : '';
+		const highlightedKey = highlighted
+			.map((author) => author.id)
+			.filter((id, index, ids) => ids.indexOf(id) === index)
+			.sort((a, b) => a - b)
+			.join(',');
+		const connectionSet = connections
+			.map((connection) => connection.other.id)
+			.filter((id, index, ids) => ids.indexOf(id) === index)
+			.sort((a, b) => a - b)
+			.join(',');
+		const anchorKey = `${focusKey}|${highlightedKey}`;
+		const contentKey = connectionSet;
+		const hasAnchor = focusKey !== '' || highlightedKey !== '';
+		if (!hasAnchor) {
+			lastFramedAnchorKey = '';
+			lastFramedContentKey = '';
+			return;
+		}
+		if (!ready || !framingReady) return;
+		const anchorChanged = anchorKey !== lastFramedAnchorKey;
+		const contentChanged = contentKey !== lastFramedContentKey;
+		if (!anchorChanged && !contentChanged) return;
 
 		const frame = () => {
 			frameTimer = null;
 			void tick().then(() => {
 				if (request !== frameRequest) return;
 				frameNeighbourhood();
-				lastFramedAnchor = anchor;
+				lastFramedAnchorKey = anchorKey;
+				lastFramedContentKey = contentKey;
 			});
 		};
-		if (anchor === lastFramedAnchor) {
-			frameTimer = setTimeout(frame, REFRAME_DEBOUNCE_MS);
-		} else {
-			frame();
-		}
+		if (anchorChanged) void frame();
+		else frameTimer = setTimeout(frame, REFRAME_DEBOUNCE_MS);
 
 		return () => {
 			if (frameTimer !== null) {
@@ -736,7 +987,8 @@
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 		<div
 			class="author-map__viewport"
-			class:author-map__viewport--dragging={dragging}
+			class:author-map__viewport--dragging={mapIsDragging}
+			class:author-map__viewport--panning={mapIsPanning}
 			bind:this={viewportEl}
 			role="application"
 			aria-label={t('lab.authorConnections.browse.mapLabel')}
@@ -744,13 +996,26 @@
 			aria-describedby="author-map-description"
 			tabindex="0"
 			onwheel={handleWheel}
+			onmousedown={handleMouseDown}
 			onpointerdown={handlePointerDown}
 			onpointermove={handlePointerMove}
 			onpointerup={handlePointerUp}
-			onpointerleave={() => (hovered = null)}
+			onpointercancel={handlePointerCancel}
+			onlostpointercapture={handlePointerCancel}
+			onpointerleave={() => {
+				lastPointer = null;
+				if (!navigation.isMoving) hovered = null;
+			}}
+			oncontextmenu={handleContextMenu}
 			onkeydown={handleKeydown}
 		>
 			<canvas class="author-map__canvas" bind:this={canvasEl} aria-hidden="true"></canvas>
+
+			{#if canvasUnavailable}
+				<p class="author-map__notice" role="alert">
+					{t('lab.authorConnections.browse.mapUnavailable')}
+				</p>
+			{/if}
 
 			<svg class="author-map__overlay" {width} {height} aria-hidden="true">
 				<defs>
@@ -770,7 +1035,9 @@
 
 				{#if focus && active.has(focus.id)}
 					{@const origin = active.get(focus.id)!}
-					{#each drawableConnections as connection (connection.other.id)}
+					{#each drawableConnections as item (item.connection.other.id)}
+						{@const connection = item.connection}
+						{@const rank = item.rank}
 						{@const point = active.get(connection.other.id)!}
 						{@const status = connection.record.status}
 						<!--
@@ -779,9 +1046,32 @@
 						point, and drawing an arrowhead on an unresolved pair would assert a direction
 						the data does not support.
 					-->
+						<!-- The bloom always starts at the selected author, even when the semantic arrow points back. -->
+						<path
+							use:fadeBloom
+							in:draw={{ duration: prefersReducedMotion() ? 0 : SPOKE_BLOOM_DURATION }}
+							out:fade={{ duration: prefersReducedMotion() ? 0 : SPOKE_BLOOM_DURATION }}
+							class="author-map__spoke-bloom {spokeClass(connection)}"
+							class:author-map__spoke--preview={connection.other.id === previewAuthorId}
+							class:author-map__spoke--rank-mid={rank > 10 && rank <= 30}
+							class:author-map__spoke--rank-low={rank > 30}
+							class:author-map__spoke--isolated={isolationId === connection.other.id}
+							class:author-map__spoke--isolation-dim={isolationId !== null &&
+								isolationId !== connection.other.id}
+							d={`M ${origin.x} ${origin.y} L ${point.x} ${point.y}`}
+							fill="none"
+							aria-hidden="true"
+						/>
 						<line
+							in:fade={{ duration: prefersReducedMotion() ? 0 : 180 }}
+							out:fade={{ duration: prefersReducedMotion() ? 0 : 180 }}
 							class="author-map__spoke {spokeClass(connection)}"
 							class:author-map__spoke--preview={connection.other.id === previewAuthorId}
+							class:author-map__spoke--rank-mid={rank > 10 && rank <= 30}
+							class:author-map__spoke--rank-low={rank > 30}
+							class:author-map__spoke--isolated={isolationId === connection.other.id}
+							class:author-map__spoke--isolation-dim={isolationId !== null &&
+								isolationId !== connection.other.id}
 							x1={status === 3 ? point.x : origin.x}
 							y1={status === 3 ? point.y : origin.y}
 							x2={status === 3 ? origin.x : point.x}
@@ -793,18 +1083,24 @@
 					{/each}
 				{/if}
 
-				{#each drawableConnections as connection (connection.other.id)}
+				{#each drawableConnections as item (item.connection.other.id)}
+					{@const connection = item.connection}
+					{@const rank = item.rank}
 					{@const point = active.get(connection.other.id)!}
 					{@const positive = connection.record.self.rateDifference >= 0}
 					<g
+						in:fade={{ duration: prefersReducedMotion() ? 0 : 180 }}
+						out:fade={{ duration: prefersReducedMotion() ? 0 : 180 }}
 						class="author-map__node"
 						class:author-map__node--conflict={!positive}
 						class:author-map__node--preview={connection.other.id === previewAuthorId}
+						class:author-map__node--rank-mid={rank > 10 && rank <= 30}
+						class:author-map__node--rank-low={rank > 30}
+						class:author-map__node--isolated={isolationId === connection.other.id}
+						class:author-map__node--isolation-dim={isolationId !== null &&
+							isolationId !== connection.other.id}
 					>
 						<circle cx={point.x} cy={point.y} r={nodeRadius()} />
-						<text x={point.x} y={point.y - nodeRadius() - 6}>
-							{connection.other.name}
-						</text>
 					</g>
 				{/each}
 
@@ -819,7 +1115,6 @@
 								r={nodeRadius() + 6}
 							/>
 							<circle cx={point.x} cy={point.y} r={nodeRadius()} />
-							<text x={point.x} y={point.y - nodeRadius() - 8}>{author.name}</text>
 						</g>
 					{/if}
 				{/each}
@@ -829,7 +1124,6 @@
 					<g class="author-map__focus">
 						<circle class="author-map__focus-ring" cx={point.x} cy={point.y} r={nodeRadius() + 7} />
 						<circle cx={point.x} cy={point.y} r={nodeRadius() + 1} />
-						<text x={point.x} y={point.y - nodeRadius() - 10}>{focus.name}</text>
 					</g>
 				{/if}
 
@@ -853,11 +1147,55 @@
 							cy={tasteCenterPoint.y}
 							r="2.5"
 						/>
-						<text x={tasteCenterPoint.x} y={tasteCenterPoint.y + 29}>
+						<text
+							bind:this={tasteCenterLabelEl}
+							class="author-map__taste-center-label"
+							x={tasteCenterPoint.x}
+							y={tasteCenterPoint.y + 29}
+						>
 							{t('lab.authorConnections.browse.personal.tasteCenter')}
 						</text>
 					</g>
 				{/if}
+
+				<g class="author-map__label-leaders" aria-hidden="true">
+					{#each labelLayout.leaders as leader (leader.key)}
+						<line
+							in:fade={{ duration: prefersReducedMotion() ? 0 : 140 }}
+							out:fade={{ duration: prefersReducedMotion() ? 0 : 140 }}
+							class="author-map__label-leader"
+							x1={leader.x1}
+							y1={leader.y1}
+							x2={leader.x2}
+							y2={leader.y2}
+						/>
+					{/each}
+				</g>
+				<g class="author-map__labels" aria-hidden="true">
+					{#each labelLayout.labels as label (label.key)}
+						<text
+							in:fade={{ duration: prefersReducedMotion() ? 0 : 140 }}
+							out:fade={{ duration: prefersReducedMotion() ? 0 : 140 }}
+							class="author-map__label"
+							class:author-map__label--emphasis={label.emphasis}
+							class:author-map__label--focus={label.kind === 'focus'}
+							x={label.x}
+							y={label.y}
+							text-anchor={label.anchor}
+						>
+							{label.text}
+						</text>
+					{/each}
+					<text
+						bind:this={labelMeasureEl}
+						class="author-map__label author-map__label--measure"
+						x="-1000"
+						y="-1000"
+						aria-hidden="true"
+					>
+						M
+					</text>
+				</g>
 			</svg>
 
 			{#if hovered && hoveredPoint}
@@ -887,9 +1225,9 @@
 			{/if}
 		</div>
 
-		<div class="author-map__chrome">
+		<div class="author-map__chrome" bind:this={chromeEl}>
 			{#if (focus && drawableConnections.length > 0) || showPersonalRatings}
-				<div class="author-map__legend-stack">
+				<div class="author-map__legend-stack" bind:this={legendEl}>
 					<!--
 		The spokes already encode the directionality class in colour and arrowhead, but nothing
 		said so — the distinction is invisible without a key, which makes it worse than no
@@ -945,7 +1283,15 @@
 					{/if}
 				</div>
 			{/if}
-			<div class="author-map__controls">
+			<div class="author-map__controls" bind:this={controlsEl}>
+				{#if focus && connectionSnapshotReady && connectionTotalCount > 0 && onConnectionLimitChange}
+					<ConnectionAperture
+						value={connectionLimit}
+						visibleCount={connections.length}
+						mappedCount={mappedConnectionCount}
+						onChange={onConnectionLimitChange}
+					/>
+				{/if}
 				{#if onTogglePersonalRatings}
 					<button
 						type="button"
@@ -970,19 +1316,21 @@
 				<button
 					type="button"
 					class="btn btn--secondary btn--compact"
+					disabled={!canZoomIn}
 					onclick={() => zoomBy(1.5)}
 					aria-label={t('lab.authorConnections.browse.zoomIn')}>+</button
 				>
 				<button
 					type="button"
 					class="btn btn--secondary btn--compact"
+					disabled={!canZoomOut}
 					onclick={() => zoomBy(1 / 1.5)}
 					aria-label={t('lab.authorConnections.browse.zoomOut')}>−</button
 				>
 				<button type="button" class="btn btn--tertiary btn--compact" onclick={resetView}>
 					{t('lab.authorConnections.browse.resetView')}
 				</button>
-				<p class="author-map__hint">{t('lab.authorConnections.browse.orbitHint')}</p>
+				<p class="author-map__hint">{interactionHint}</p>
 				<span
 					class="author-map__info-wrap"
 					role="presentation"
@@ -1010,7 +1358,6 @@
 					>
 						<strong>{t('lab.authorConnections.about.heading')}</strong>
 						<p><strong>Space:</strong> {t('lab.authorConnections.about.space')}</p>
-						<p><strong>Direction:</strong> {t('lab.authorConnections.about.direction')}</p>
 						<p><strong>Communities:</strong> {t('lab.authorConnections.about.communities')}</p>
 					</div>
 				</span>
@@ -1040,6 +1387,9 @@
 	.author-map__viewport--dragging {
 		cursor: grabbing;
 	}
+	.author-map__viewport--panning {
+		cursor: move;
+	}
 	.author-map__viewport:focus-visible {
 		outline: 2px solid var(--color-focus);
 		outline-offset: 2px;
@@ -1065,6 +1415,9 @@
 	.author-map__spoke {
 		stroke-width: 1.6;
 		opacity: 0.8;
+		transition:
+			opacity 180ms ease,
+			stroke-width 180ms ease;
 	}
 	.author-map__spoke--out,
 	.author-map__spoke--in {
@@ -1088,27 +1441,84 @@
 		stroke-dasharray: 2 5;
 		opacity: 0.65;
 	}
+	.author-map__spoke--rank-mid {
+		stroke-width: 1.35;
+		opacity: 0.55;
+	}
+	.author-map__spoke--rank-low {
+		stroke-width: 1;
+		opacity: 0.32;
+	}
+	.author-map__spoke-bloom {
+		stroke-width: 3;
+		opacity: 0.9;
+		pointer-events: none;
+		transition: opacity 180ms ease;
+	}
+	.author-map__spoke-bloom.author-map__spoke--out,
+	.author-map__spoke-bloom.author-map__spoke--in {
+		stroke-width: 3.4;
+		opacity: 0.95;
+	}
+	.author-map__spoke-bloom.author-map__spoke--unresolved {
+		stroke-width: 2.2;
+		opacity: 0.7;
+	}
+	.author-map__spoke-bloom.author-map__spoke--rank-mid {
+		stroke-width: 2.2;
+		opacity: 0.6;
+	}
+	.author-map__spoke-bloom.author-map__spoke--rank-low {
+		stroke-width: 1.8;
+		opacity: 0.4;
+	}
 
 	.author-map__node circle {
 		fill: var(--color-viz-affinity);
 		stroke: var(--color-viz-map-bg);
 		stroke-width: 1.5;
 	}
+	.author-map__node {
+		transition: opacity 180ms ease;
+	}
+	.author-map__node--rank-mid {
+		opacity: 0.62;
+	}
+	.author-map__node--rank-low {
+		opacity: 0.38;
+	}
 	.author-map__node--conflict circle {
 		fill: var(--color-viz-conflict);
 	}
-	.author-map__node text,
-	.author-map__focus text,
-	.author-map__selected text,
+	.author-map__label,
 	.author-map__taste-center text {
 		font-family: var(--font-family-interactive);
 		font-size: 12px;
-		text-anchor: middle;
+		font-weight: 400;
 		fill: var(--color-viz-map-label);
 		paint-order: stroke;
 		stroke: var(--color-viz-map-label-halo);
 		stroke-width: 3px;
 		stroke-linejoin: round;
+	}
+	.author-map__label {
+		pointer-events: none;
+		transition: opacity 140ms ease;
+	}
+	.author-map__label--emphasis {
+		font-weight: 600;
+	}
+	.author-map__label--measure {
+		visibility: hidden;
+	}
+	.author-map__label-leader {
+		stroke: var(--color-viz-map-label);
+		stroke-width: 0.75;
+		opacity: 0.28;
+		pointer-events: none;
+	}
+	.author-map__taste-center text {
+		text-anchor: middle;
 	}
 
 	.author-map__focus circle {
@@ -1393,6 +1803,22 @@
 		stroke: var(--color-viz-map-focus);
 		stroke-width: 3;
 	}
+	.author-map__spoke--isolation-dim {
+		opacity: 0.12 !important;
+	}
+	.author-map__spoke--isolated {
+		stroke-width: 3.2 !important;
+		opacity: 1 !important;
+	}
+	.author-map__node--isolation-dim {
+		opacity: 0.14 !important;
+	}
+	.author-map__node--isolated {
+		opacity: 1 !important;
+	}
+	.author-map__spoke-bloom--fading {
+		opacity: 0 !important;
+	}
 
 	@media (min-width: 48rem) and (max-width: 69.99rem) {
 		.author-map__viewport {
@@ -1456,6 +1882,13 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
+		.author-map__spoke,
+		.author-map__spoke-bloom,
+		.author-map__node,
+		.author-map__label,
+		.author-map__label-leader {
+			transition: none;
+		}
 		.author-map__info-popover {
 			transition: none;
 		}

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/copy';
 	import MetricTooltip from './MetricTooltip.svelte';
-	import { composeDefaultOrder } from '$lib/lab/author-taste/client';
+	import { composeDefaultOrder } from '$lib/lab/author-taste/order';
 	import { normaliseName } from '$lib/lab/author-taste/authors';
 	import {
 		formatInterval,
@@ -14,6 +14,14 @@
 	} from '$lib/lab/author-taste/format';
 	import type { Author, Connection, DirectionEstimate } from '$lib/lab/author-taste/types';
 
+	export interface ConnectionTableSnapshot {
+		focusId: number;
+		rows: Connection[];
+		filteredCount: number;
+		totalCount: number;
+		hasFilters: boolean;
+	}
+
 	interface Props {
 		focus: Author;
 		/** Every relationship for the focus author. Sorting across a pre-cut list would be a lie. */
@@ -25,21 +33,13 @@
 		 * set. Without it the map would draw a spoke for every relationship the author has —
 		 * thousands, for a popular one — while the table showed two dozen.
 		 */
-		visibleRows?: Connection[];
-		onVisibleRowsChange?: (focusId: number, rows: Connection[]) => void;
+		onVisibleRowsChange?: (snapshot: ConnectionTableSnapshot) => void;
 		onCompareAuthor: (author: Author) => void;
 		onPreviewAuthor?: (author: Author | null) => void;
 	}
 
-	let {
-		focus,
-		connections,
-		limit,
-		visibleRows = $bindable([]),
-		onVisibleRowsChange,
-		onCompareAuthor,
-		onPreviewAuthor
-	}: Props = $props();
+	let { focus, connections, limit, onVisibleRowsChange, onCompareAuthor, onPreviewAuthor }: Props =
+		$props();
 
 	/**
 	 * The keyboard- and screen-reader-equivalent view of the map. Every author drawn on the
@@ -129,17 +129,25 @@
 	);
 	const suggestionsId = $derived(`connection-table-authors-${focus.id}`);
 
-	const rows = $derived.by(() => {
-		if (sortKey === 'default') return composeDefaultOrder(filtered, limit);
+	/** The complete order is independent of the aperture; only the final slice reads `limit`. */
+	const ordered = $derived.by(() => {
+		if (sortKey === 'default') return composeDefaultOrder(filtered);
 		const sorted = [...filtered].sort(compare);
 		if (sortDescending) sorted.reverse();
-		return sorted.slice(0, limit);
+		return sorted;
+	});
+	const rows = $derived(ordered.slice(0, Math.max(0, Math.floor(limit))));
+	const hasFilters = $derived(authorQuery.trim().length > 0 || genreQuery.length > 0);
+	const snapshot = $derived<ConnectionTableSnapshot>({
+		focusId: focus.id,
+		rows,
+		filteredCount: filtered.length,
+		totalCount: connections.length,
+		hasFilters
 	});
 
-	// Nothing here reads `visibleRows`, so publishing it cannot feed back into `rows`.
 	$effect(() => {
-		visibleRows = rows;
-		onVisibleRowsChange?.(focus.id, rows);
+		onVisibleRowsChange?.(snapshot);
 	});
 
 	function directionColor(relativePercent: number | null, selected: boolean): string {
@@ -422,6 +430,22 @@
 
 	{#if rows.length === 0}
 		<p class="connection-table__footnote">{t('lab.authorConnections.table.noMatches')}</p>
+	{:else if hasFilters && rows.length === filtered.length}
+		<p class="connection-table__footnote">
+			{t('lab.authorConnections.table.filterMatches', { count: filtered.length })}
+		</p>
+	{:else if hasFilters}
+		<p class="connection-table__footnote">
+			{t('lab.authorConnections.table.showingFiltered', {
+				count: rows.length,
+				filtered: filtered.length,
+				total: connections.length.toLocaleString()
+			})}
+		</p>
+	{:else if rows.length === connections.length}
+		<p class="connection-table__footnote">
+			{t('lab.authorConnections.table.showingAll', { count: rows.length })}
+		</p>
 	{:else}
 		<p class="connection-table__footnote">
 			{t('lab.authorConnections.table.showing', {

@@ -4,13 +4,12 @@ import type { AuthorIndex } from './authors';
 import {
 	hasConnections,
 	isMapped,
-	STATUS_ONE_SIDED_OTHER_TO_SELF,
-	STATUS_ONE_SIDED_SELF_TO_OTHER,
-	STATUS_OPPOSING,
 	type Author,
 	type Connection,
 	type ConnectionRecord
 } from './types';
+
+export { composeDefaultOrder, DEFAULT_CONNECTION_LIMIT, isOneSided, statusRank } from './order';
 
 /**
  * Connection access with in-memory caching.
@@ -157,13 +156,6 @@ export function connectionStrength(record: ConnectionRecord): number {
 	return Math.max(record.self.evidenceScore, record.reverse.evidenceScore);
 }
 
-export function isOneSided(record: ConnectionRecord): boolean {
-	return (
-		record.status === STATUS_ONE_SIDED_SELF_TO_OTHER ||
-		record.status === STATUS_ONE_SIDED_OTHER_TO_SELF
-	);
-}
-
 export interface Neighbourhood {
 	/** Every retained pair incident to the focus author, strongest first. Not truncated — the
 	 * table sorts, filters and slices, and it cannot do that over a pre-cut list. */
@@ -201,17 +193,6 @@ export async function loadNeighbourhood(
 	};
 }
 
-/** Rarest first: a one-way verdict, then opposing, then reciprocal, then unsettled. */
-export function statusRank(connection: Connection): number {
-	if (isOneSided(connection.record)) return 0;
-	if (connection.record.status === STATUS_OPPOSING) return 1;
-	if (connection.record.status === 1) return 2;
-	return 3;
-}
-
-/** At most this many notable rows are held back for the tail of the default view. */
-const NOTABLE_TAIL = 4;
-
 /**
  * The opening view: the strongest relationships, with a few notable ones added at the end.
  *
@@ -220,21 +201,10 @@ const NOTABLE_TAIL = 4;
  * and buries the associations that actually characterise the author. Ranking purely by
  * strength has the opposite failure: with thousands of reciprocal pairs, a handful of one-way
  * verdicts never surface at all. So most rows come from the top of the strength ranking, and
- * up to `NOTABLE_TAIL` notable results that missed that cut are appended below it.
+ * up to `NOTABLE_TAIL` notable results that missed that cut are appended below it. The opening
+ * view is deliberately fixed at ten rows: the table can reveal more of this same order without
+ * replacing a row that was already visible.
  */
-export function composeDefaultOrder(connections: Connection[], limit: number): Connection[] {
-	const notable = connections.filter((connection) => statusRank(connection) <= 1);
-	if (notable.length === 0) return connections.slice(0, limit);
-
-	// Never give away more than a third of the view, and never crowd out a short list.
-	const reserve = Math.min(NOTABLE_TAIL, notable.length, Math.floor(limit / 3));
-	const head = connections.slice(0, Math.max(0, limit - reserve));
-	const shown = new Set(head.map((connection) => connection.other.id));
-	const tail = notable.filter((connection) => !shown.has(connection.other.id)).slice(0, reserve);
-
-	return [...head, ...tail];
-}
-
 /**
  * Surprise heuristic: a strong affinity between authors who sit far apart on the map.
  * Proximity means shared readers, so a long affinity edge is a genuine crossover rather

@@ -180,10 +180,12 @@
 	}
 	.author-picker__input {
 		width: 100%;
+		height: var(--min-tap);
 		box-sizing: border-box;
-		padding: var(--space-3);
+		padding: var(--space-1) var(--space-3);
 		font-family: var(--font-family-interactive);
 		font-size: var(--primitive-type-size-16);
+		line-height: var(--primitive-line-height-interactive);
 		color: var(--color-text);
 		background: var(--color-card-bg);
 		border: 1px solid var(--color-border);
@@ -246,19 +248,35 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-3);
-		flex-wrap: wrap;
-		padding: var(--space-3);
+		height: var(--min-tap);
+		box-sizing: border-box;
+		min-width: 0;
+		flex-wrap: nowrap;
+		overflow: hidden;
+		padding: var(--space-1) var(--space-3);
 		background: var(--color-card-bg);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-sm);
 	}
 	.author-picker__selected-name {
+		min-width: 0;
+		flex: 1 1 auto;
 		font-family: var(--font-family-interactive);
 		font-size: var(--primitive-type-size-16);
 		color: var(--color-text);
-		overflow-wrap: anywhere;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.author-picker__selected-meta {
+		min-width: 0;
+		flex: 0 1 auto;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.author-picker__selected button {
 		margin-left: auto;
+		flex: 0 0 auto;
 	}
 </style>

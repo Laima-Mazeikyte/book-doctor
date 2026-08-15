@@ -55,50 +55,48 @@
 				</button>
 			{/if}
 		</div>
-	{:else if !first && !second}
-		<p class="compare-panel__empty">{t('lab.authorConnections.compare.emptyBoth')}</p>
-	{:else if !first || !second}
-		<p class="compare-panel__empty">{t('lab.authorConnections.compare.emptyOne')}</p>
-	{:else if first.id === second.id}
-		<p class="compare-panel__empty">{t('lab.authorConnections.compare.sameAuthor')}</p>
-	{:else if loading}
-		<p class="compare-panel__empty">{t('lab.authorConnections.compare.loading')}</p>
-	{:else if !record || noUsableData}
-		<!--
-			Not "no relationship". Either nothing came back, or the two authors have no readers in
-			common with a clear opinion on both — there is simply nothing to compute from.
-		-->
-		<div class="compare-panel__unretained">
-			<p class="compare-panel__headline compare-panel__headline--quiet">
-				{t('lab.authorConnections.states.notEnoughData')}
-			</p>
-			<p class="compare-panel__note">{t('lab.authorConnections.wording.notEnoughDataNote')}</p>
-		</div>
-	{:else}
-		<header class="compare-panel__header">
-			<p class="compare-panel__pair">
-				<span>{first.name}</span>
-				<span class="compare-panel__arrow" aria-hidden="true">↕</span>
-				<span>{second.name}</span>
-			</p>
-			{#if releaseComparison && statusCopy}
-				<p
-					class="compare-panel__headline"
-					class:compare-panel__headline--strong={record.status === 2 || record.status === 3}
-				>
-					{t(`lab.authorConnections.status.${statusCopy}.headline`, statusParams)}
+	{:else if first && second}
+		{#if first.id === second.id}
+			<p class="compare-panel__empty">{t('lab.authorConnections.compare.sameAuthor')}</p>
+		{:else if loading}
+			<p class="compare-panel__empty">{t('lab.authorConnections.compare.loading')}</p>
+		{:else if !record || noUsableData}
+			<!--
+				Not "no relationship". Either nothing came back, or the two authors have no readers in
+				common with a clear opinion on both — there is simply nothing to compute from.
+			-->
+			<div class="compare-panel__unretained">
+				<p class="compare-panel__headline compare-panel__headline--quiet">
+					{t('lab.authorConnections.states.notEnoughData')}
 				</p>
-				<p class="compare-panel__note">
-					{t(`lab.authorConnections.status.${statusCopy}.note`, statusParams)}
+				<p class="compare-panel__note">{t('lab.authorConnections.wording.notEnoughDataNote')}</p>
+			</div>
+		{:else}
+			<header class="compare-panel__header">
+				<p class="compare-panel__pair">
+					<span>{first.name}</span>
+					<span class="compare-panel__arrow" aria-hidden="true">↕</span>
+					<span>{second.name}</span>
 				</p>
-			{/if}
-		</header>
+				{#if releaseComparison && statusCopy}
+					<p
+						class="compare-panel__headline"
+						class:compare-panel__headline--strong={record.status === 2 || record.status === 3}
+					>
+						{t(`lab.authorConnections.status.${statusCopy}.headline`, statusParams)}
+					</p>
+					<p class="compare-panel__note">
+						{t(`lab.authorConnections.status.${statusCopy}.note`, statusParams)}
+					</p>
+				{/if}
+			</header>
 
-		<!-- The two directions are a matched pair, so they sit side by side rather than stacked. -->
-		<div class="compare-panel__directions">
-			<DirectionCard estimate={record.self} source={first} target={second} />
-			<DirectionCard estimate={record.reverse} source={second} target={first} />
-		</div>
+			<!-- The two directions are a matched pair, so they sit side by side rather than stacked. -->
+			<div class="compare-panel__directions">
+				<DirectionCard estimate={record.self} source={first} target={second} />
+				<DirectionCard estimate={record.reverse} source={second} target={first} />
+			</div>
+		{/if}
 	{/if}
 </div>
 

@@ -258,9 +258,9 @@ describe('composeDefaultOrder', () => {
 		Array.from({ length: count }, (_, i) => connectionOf(100 + i, status, 1 - i / 1000));
 
 	it('fills the view from the strength ranking when nothing is notable', () => {
-		const rows = composeDefaultOrder(strongest(30), 10);
-		expect(rows).toHaveLength(10);
-		expect(rows.map((r) => r.other.id)).toEqual(strongest(10).map((r) => r.other.id));
+		const rows = composeDefaultOrder(strongest(30));
+		expect(rows).toHaveLength(30);
+		expect(rows.slice(0, 10).map((r) => r.other.id)).toEqual(strongest(10).map((r) => r.other.id));
 	});
 
 	/*
@@ -270,32 +270,53 @@ describe('composeDefaultOrder', () => {
 	it('keeps the strongest at the top and appends notable results below them', () => {
 		const weakOneWay = connectionOf(1, 2, 0.01);
 		const weakOpposing = connectionOf(2, 4, 0.005);
-		const rows = composeDefaultOrder([...strongest(30), weakOneWay, weakOpposing], 12);
+		const rows = composeDefaultOrder([...strongest(30), weakOneWay, weakOpposing]);
 
-		expect(rows).toHaveLength(12);
-		// The first ten are still the strongest, in strength order.
-		expect(rows.slice(0, 10).map((r) => r.other.id)).toEqual(strongest(10).map((r) => r.other.id));
-		// The two notable ones follow, despite being the weakest in the set.
-		expect(rows.slice(10).map((r) => r.other.id)).toEqual([1, 2]);
+		expect(rows).toHaveLength(32);
+		// The fixed opening view preserves the old ten-row blend.
+		expect(rows.slice(0, 8).map((r) => r.other.id)).toEqual(strongest(8).map((r) => r.other.id));
+		expect(rows.slice(8, 10).map((r) => r.other.id)).toEqual([1, 2]);
+		// Both larger apertures are prefixes of this same order.
+		expect(rows.slice(0, 10).map((r) => r.other.id)).toEqual(
+			rows
+				.slice(0, 20)
+				.slice(0, 10)
+				.map((r) => r.other.id)
+		);
+	});
+
+	it('reveals a stable prefix when the aperture grows', () => {
+		const rows = composeDefaultOrder([
+			...strongest(40),
+			connectionOf(1, 2, 0.01),
+			connectionOf(2, 4, 0.009),
+			connectionOf(3, 2, 0.008)
+		]);
+		const firstTen = rows.slice(0, 10).map((row) => row.other.id);
+		const firstEleven = rows.slice(0, 11).map((row) => row.other.id);
+
+		expect(firstEleven.slice(0, 10)).toEqual(firstTen);
+		expect(firstEleven).toHaveLength(11);
+		expect(new Set(rows.map((row) => row.other.id)).size).toBe(rows.length);
 	});
 
 	it('does not repeat a notable result that already made the strength cut', () => {
 		const strongOneWay = connectionOf(1, 2, 5);
-		const rows = composeDefaultOrder([strongOneWay, ...strongest(30)], 12);
+		const rows = composeDefaultOrder([strongOneWay, ...strongest(30)]);
 		expect(rows.filter((r) => r.other.id === 1)).toHaveLength(1);
 		expect(rows[0].other.id).toBe(1);
 	});
 
 	it('never gives more than a third of a small view to the tail', () => {
 		const notable = [1, 2, 3, 4, 5, 6].map((id) => connectionOf(id, 2, 0.01));
-		const rows = composeDefaultOrder([...strongest(20), ...notable], 6);
-		expect(rows).toHaveLength(6);
-		// 6 / 3 = 2 reserved, so four strength rows survive.
-		expect(rows.slice(0, 4).map((r) => r.other.id)).toEqual(strongest(4).map((r) => r.other.id));
-		expect(rows.slice(4)).toHaveLength(2);
+		const rows = composeDefaultOrder([...strongest(20), ...notable]);
+		expect(rows).toHaveLength(26);
+		// The opening ten reserves three positions for notable relationships.
+		expect(rows.slice(0, 7).map((r) => r.other.id)).toEqual(strongest(7).map((r) => r.other.id));
+		expect(rows.slice(7, 10).map((r) => r.other.id)).toEqual([1, 2, 3]);
 	});
 
 	it('returns everything when there is less than a full view', () => {
-		expect(composeDefaultOrder(strongest(3), 24)).toHaveLength(3);
+		expect(composeDefaultOrder(strongest(3))).toHaveLength(3);
 	});
 });
