@@ -1,5 +1,6 @@
 import {
 	ProminenceFormatError,
+	ProminenceScoringError,
 	type Badge,
 	type Contributions,
 	type Population,
@@ -34,6 +35,12 @@ export function buildPopulation(
 	payload: { columns: string[]; rows: unknown[][] },
 	manifest: ProminenceManifest
 ): Population {
+	if (!payload || !Array.isArray(payload.columns) || !Array.isArray(payload.rows))
+		throw new ProminenceFormatError('authors.json must contain columns and rows arrays.');
+	if (payload.columns.some((name) => typeof name !== 'string' || !name.trim()))
+		throw new ProminenceFormatError('authors.json contains an empty column name.');
+	if (new Set(payload.columns).size !== payload.columns.length)
+		throw new ProminenceFormatError('authors.json contains duplicate column names.');
 	const index = new Map(payload.columns.map((name, i) => [name, i]));
 
 	const required = ['author', 'has_recognition', ...manifest.model.features.map(zColumn)];
@@ -58,8 +65,10 @@ export function buildPopulation(
 	const bestTierCol = at('best_tier');
 	const nAwardsCol = at('n_awards');
 	const concentrationCol = at('concentration');
+	const authorIdCol = at('author_id');
 
 	const names: string[] = new Array(count);
+	const authorIds: string[] | null = authorIdCol >= 0 ? new Array(count) : null;
 	const z = zCols.map(() => new Float64Array(count));
 	const hasRecognition = new Uint8Array(count);
 	const nBooks = new Int32Array(count);
@@ -67,14 +76,36 @@ export function buildPopulation(
 	const bestTier = new Int8Array(count);
 	const nAwards = new Int32Array(count);
 	const concentration = new Float64Array(count);
+	const seenNames = new Set<string>();
+	const seenIds = new Set<string>();
 
-	/** Optional columns read as 0; a null `concentration` reads as NaN and is hidden. */
-	const numberAt = (row: unknown[], col: number): number =>
-		col < 0 || row[col] == null ? 0 : Number(row[col]);
+	/** Optional columns read as 0; supplied values still have to be finite. */
+	const numberAt = (row: unknown[], col: number, label: string): number => {
+		if (col < 0 || row[col] == null) return 0;
+		const value = Number(row[col]);
+		if (!Number.isFinite(value))
+			throw new ProminenceFormatError(`authors.json contains a non-finite ${label}.`);
+		return value;
+	};
 
 	for (let i = 0; i < count; i++) {
 		const row = rows[i];
-		names[i] = String(row[authorCol]);
+		if (!Array.isArray(row))
+			throw new ProminenceFormatError(`authors.json row ${i} is not an array.`);
+		const name = String(row[authorCol] ?? '').trim();
+		if (!name) throw new ProminenceFormatError(`authors.json row ${i} has an empty author name.`);
+		if (!authorIds && seenNames.has(name))
+			throw new ProminenceFormatError(`authors.json contains duplicate author name "${name}".`);
+		names[i] = name;
+		seenNames.add(name);
+		if (authorIds) {
+			const id = String(row[authorIdCol] ?? '').trim();
+			if (!id) throw new ProminenceFormatError(`authors.json row ${i} has an empty author_id.`);
+			if (seenIds.has(id))
+				throw new ProminenceFormatError(`authors.json contains duplicate author_id "${id}".`);
+			authorIds[i] = id;
+			seenIds.add(id);
+		}
 
 		for (let f = 0; f < zCols.length; f++) {
 			const value = Number(row[zCols[f]]);
@@ -86,21 +117,22 @@ export function buildPopulation(
 			z[f][i] = value;
 		}
 
-		hasRecognition[i] = numberAt(row, hasRecognitionCol) ? 1 : 0;
-		nBooks[i] = numberAt(row, nBooksCol);
-		nReaders[i] = numberAt(row, nReadersCol);
+		hasRecognition[i] = numberAt(row, hasRecognitionCol, 'has_recognition') ? 1 : 0;
+		nBooks[i] = numberAt(row, nBooksCol, 'n_books');
+		nReaders[i] = numberAt(row, nReadersCol, 'n_readers');
 		// `best_tier` is null for the ~45% of authors with no recorded award; 0 stands in.
-		bestTier[i] = numberAt(row, bestTierCol);
-		nAwards[i] = numberAt(row, nAwardsCol);
+		bestTier[i] = numberAt(row, bestTierCol, 'best_tier');
+		nAwards[i] = numberAt(row, nAwardsCol, 'n_awards');
 		concentration[i] =
 			concentrationCol < 0 || row[concentrationCol] == null
 				? Number.NaN
-				: Number(row[concentrationCol]);
+				: numberAt(row, concentrationCol, 'concentration');
 	}
 
 	return {
 		count,
 		names,
+		authorIds,
 		z,
 		hasRecognition,
 		nBooks,
@@ -133,6 +165,95 @@ export function handlePositions(weights: number[]): number[] {
 	return weights.map((weight) => Math.round((Math.max(weight, 0) / largest) * 100));
 }
 
+/** Minimum raw variance accepted for a normalized feature combination. */
+export const MIN_RAW_VARIANCE = 1e-12;
+/** Entry tolerance for generated correlation matrices. */
+export const MATRIX_ENTRY_TOLERANCE = 1e-8;
+/** Relative tolerance used for symmetry checks. */
+export const MATRIX_SYMMETRY_TOLERANCE = 1e-10;
+/** Relative pivot tolerance used by the positive-definite check. */
+export const MATRIX_PD_TOLERANCE = 1e-14;
+
+/** The raw quadratic variance wᵀΣw. It never substitutes a fallback value. */
+export function rawVariance(weights: number[], sigmaZ: number[][]): number {
+	let total = 0;
+	for (let i = 0; i < weights.length; i++) {
+		for (let j = 0; j < weights.length; j++) {
+			total += weights[i] * sigmaZ[i]?.[j] * weights[j];
+		}
+	}
+	return total;
+}
+
+/** Validate sigma_z as a finite, symmetric, positive-definite correlation matrix. */
+export function validateCorrelationMatrix(sigmaZ: unknown, expectedSize: number): void {
+	if (!Array.isArray(sigmaZ) || sigmaZ.length !== expectedSize) {
+		throw new ProminenceFormatError(
+			`sigma_z must be ${expectedSize}×${expectedSize} for the scored features.`
+		);
+	}
+	for (let rowIndex = 0; rowIndex < expectedSize; rowIndex++) {
+		const row = sigmaZ[rowIndex];
+		if (!Array.isArray(row) || row.length !== expectedSize || !row.every(Number.isFinite)) {
+			throw new ProminenceFormatError(
+				`sigma_z row ${rowIndex} must be finite and ${expectedSize} cells wide.`
+			);
+		}
+	}
+
+	let norm = 1;
+	for (const row of sigmaZ as number[][]) {
+		norm = Math.max(
+			norm,
+			row.reduce((sum, value) => sum + Math.abs(value), 0)
+		);
+	}
+	const symmetryTolerance = MATRIX_SYMMETRY_TOLERANCE * norm;
+	for (let rowIndex = 0; rowIndex < expectedSize; rowIndex++) {
+		const row = (sigmaZ as number[][])[rowIndex];
+		if (Math.abs(row[rowIndex] - 1) > MATRIX_ENTRY_TOLERANCE) {
+			throw new ProminenceFormatError(
+				'sigma_z must have diagonal values approximately equal to 1.'
+			);
+		}
+		for (let column = rowIndex + 1; column < expectedSize; column++) {
+			const value = row[column];
+			if (Math.abs(value - (sigmaZ as number[][])[column][rowIndex]) > symmetryTolerance) {
+				throw new ProminenceFormatError('sigma_z must be symmetric within numerical tolerance.');
+			}
+			if (value < -1 - MATRIX_ENTRY_TOLERANCE || value > 1 + MATRIX_ENTRY_TOLERANCE) {
+				throw new ProminenceFormatError(
+					'sigma_z off-diagonal correlations must be within [-1, 1].'
+				);
+			}
+		}
+	}
+
+	// Cholesky rejects singular and indefinite matrices. The pivot tolerance scales with
+	// the matrix norm so generated releases are not judged against an absolute magnitude.
+	const matrix = sigmaZ as number[][];
+	const lower = Array.from({ length: expectedSize }, () => new Array(expectedSize).fill(0));
+	const pivotTolerance = MATRIX_PD_TOLERANCE * norm;
+	for (let row = 0; row < expectedSize; row++) {
+		for (let column = 0; column <= row; column++) {
+			let pivot = matrix[row][column];
+			for (let previous = 0; previous < column; previous++) {
+				pivot -= lower[row][previous] * lower[column][previous];
+			}
+			if (row === column) {
+				if (!(pivot > pivotTolerance) || !Number.isFinite(pivot)) {
+					throw new ProminenceFormatError(
+						'sigma_z must be positive-definite, not singular or indefinite.'
+					);
+				}
+				lower[row][column] = Math.sqrt(pivot);
+			} else {
+				lower[row][column] = pivot / lower[column][column];
+			}
+		}
+	}
+}
+
 /**
  * sqrt(wᵀ · sigma_z · w).
  *
@@ -141,14 +262,13 @@ export function handlePositions(weights: number[]): number[] {
  * features, and a user moving sliders reads that as the whole field getting worse.
  */
 export function denominator(weights: number[], sigmaZ: number[][]): number {
-	let total = 0;
-	for (let i = 0; i < weights.length; i++) {
-		for (let j = 0; j < weights.length; j++) {
-			total += weights[i] * sigmaZ[i][j] * weights[j];
-		}
+	const variance = rawVariance(weights, sigmaZ);
+	if (!Number.isFinite(variance) || variance <= MIN_RAW_VARIANCE) {
+		throw new ProminenceScoringError(
+			`The scoring variance must be finite and greater than ${MIN_RAW_VARIANCE}.`
+		);
 	}
-	// Guarded because a degenerate matrix would otherwise produce Infinity scores.
-	return total > 0 ? Math.sqrt(total) : 1;
+	return Math.sqrt(variance);
 }
 
 /**
@@ -175,7 +295,9 @@ export function rank(population: Population, weights: number[], sigmaZ: number[]
 	const order = new Int32Array(count);
 	for (let i = 0; i < count; i++) order[i] = i;
 	// Int32Array.prototype.sort is numeric by default, so the comparator is required.
-	order.sort((a, b) => scores[b] - scores[a] || (names[a] < names[b] ? -1 : 1));
+	order.sort(
+		(a, b) => scores[b] - scores[a] || (names[a] < names[b] ? -1 : names[a] > names[b] ? 1 : a - b)
+	);
 
 	return { order, scores, denominator: denom };
 }

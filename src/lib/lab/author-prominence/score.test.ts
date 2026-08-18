@@ -10,9 +10,10 @@ import {
 	handlePositions,
 	normaliseWeights,
 	placeOf,
-	rank
+	rank,
+	rawVariance
 } from './score';
-import { ProminenceFormatError, type ProminenceManifest } from './types';
+import { ProminenceFormatError, ProminenceScoringError, type ProminenceManifest } from './types';
 
 /**
  * Fixture values are lifted verbatim from the v1 release: the correlation matrix, the
@@ -162,6 +163,36 @@ describe('denominator', () => {
 		const spread = rank(population, settled, SIGMA_Z);
 		const top = (r: typeof spread) => r.scores[r.order[0]];
 		expect(top(spread)).toBeGreaterThan(top(concentrated) * 0.5);
+	});
+
+	it('exposes raw variance and rejects non-positive scoring variance', () => {
+		expect(
+			rawVariance(
+				[0.5, 0.5],
+				[
+					[1, -1],
+					[-1, 1]
+				]
+			)
+		).toBe(0);
+		expect(() =>
+			denominator(
+				[0.5, 0.5],
+				[
+					[1, -1],
+					[-1, 1]
+				]
+			)
+		).toThrow(ProminenceScoringError);
+		expect(() =>
+			denominator(
+				[1, 0],
+				[
+					[Number.NaN, 0],
+					[0, 1]
+				]
+			)
+		).toThrow(ProminenceScoringError);
 	});
 });
 

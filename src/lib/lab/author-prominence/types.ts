@@ -8,6 +8,14 @@ export class ProminenceFormatError extends Error {
 	}
 }
 
+/** Thrown when a mathematically invalid scoring input reaches the ranking engine. */
+export class ProminenceScoringError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = 'ProminenceScoringError';
+	}
+}
+
 export interface AuditEntry<Rule> {
 	badge: string;
 	explain: string;
@@ -35,6 +43,12 @@ export interface Preset {
 	/** Exactly one preset is the tested default and the correct initial selection. */
 	settled: boolean;
 	note: string;
+}
+
+export interface AuthorIdentity {
+	/** Optional durable identifier introduced by a future release schema. */
+	id: string;
+	name: string;
 }
 
 export interface ProminenceManifest {
@@ -94,6 +108,8 @@ export interface ProminenceManifest {
 export interface Population {
 	count: number;
 	names: string[];
+	/** Stable artifact IDs when supplied; schema 1 intentionally falls back to names. */
+	authorIds: string[] | null;
 	/** Feature z-scores, one array per manifest feature, in `features` order. */
 	z: Float64Array[];
 	hasRecognition: Uint8Array;

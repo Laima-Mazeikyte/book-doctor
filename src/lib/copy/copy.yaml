@@ -370,7 +370,10 @@ en:
         concentrationNote: 'Audience concentration is shown for information only and is never part of the score.'
         composition: 'Where the score comes from'
       about:
-        heading: 'About this ranking'
+        heading: 'How to read this'
+        axes: 'Position relative to an average author.'
+        lens: 'Weighted feature importance toward the composite score.'
+        release: 'Release {{version}}'
         provenance: 'Ranked here: {{eligible}} of {{source}} authors in the catalogue. The rest have fewer than {{books}} books or too few clear ratings to score.'
       errors:
         load: 'Could not load the ranking data.'

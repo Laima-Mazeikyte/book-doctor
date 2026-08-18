@@ -331,6 +331,7 @@
 	class:app-chrome--landing={page.url.pathname === '/'}
 	class:app-chrome--shortlist={isShortlistShell}
 	class:app-chrome--author-connections={page.url.pathname === '/lab/author-connections'}
+	class:app-chrome--author-prominence={page.url.pathname === '/lab/author-prominence'}
 >
 	{#if !isShortlistShell}
 		<AppHeader onOpenBugReport={openBugModal} />
@@ -369,14 +370,17 @@
 		/* Matches AppHeader __inner: min-height 3.25rem + vertical padding (2× --space-3) */
 		--app-header-chrome-height: 4.75rem;
 	}
-	.app-chrome--author-connections {
+	.app-chrome--author-connections,
+	.app-chrome--author-prominence {
 		position: relative;
 		height: 100dvh;
 		min-height: 0;
 		overflow: hidden;
 	}
 	.app-chrome--author-connections > :global(.app-header),
-	.app-chrome--author-connections > :global(.app-footer) {
+	.app-chrome--author-connections > :global(.app-footer),
+	.app-chrome--author-prominence > :global(.app-header),
+	.app-chrome--author-prominence > :global(.app-footer) {
 		flex: 0 0 auto;
 	}
 	.app-chrome--author-connections :global(main.main-book-grid-shell) {
@@ -388,8 +392,19 @@
 		overflow-y: auto;
 		overscroll-behavior: contain;
 	}
+	.app-chrome--author-prominence :global(main.main-book-grid-shell) {
+		display: flex;
+		flex: 1 1 auto;
+		flex-direction: column;
+		min-height: 0;
+		padding-bottom: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+	}
 	.app-chrome--author-connections .main-min,
-	.app-chrome--author-connections .page-enter {
+	.app-chrome--author-connections .page-enter,
+	.app-chrome--author-prominence .main-min,
+	.app-chrome--author-prominence .page-enter {
 		display: flex;
 		flex: 1 1 auto;
 		flex-direction: column;
