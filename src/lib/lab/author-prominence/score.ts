@@ -25,11 +25,25 @@ function zColumn(feature: string): string {
 	return `${feature}_z`;
 }
 
+const REQUIRED_V2_COLUMNS = [
+	'author',
+	'regard_z',
+	'reach_z',
+	'recognition_z',
+	'n_books',
+	'best_tier',
+	'n_awards',
+	'concentration',
+	'has_recognition'
+] as const;
+const OPTIONAL_V2_COLUMNS = ['author_id'] as const;
+
 /**
  * Decode `authors.json` into column arrays.
  *
  * Columns are read by name via the payload's own `columns` array — never by position —
- * because the release contract allows new columns to be appended without a schema bump.
+ * while the v2 allowlist and exact row widths prevent an accidental v1 or future sensitive
+ * field from entering the browser contract.
  */
 export function buildPopulation(
 	payload: { columns: string[]; rows: unknown[][] },
@@ -37,18 +51,33 @@ export function buildPopulation(
 ): Population {
 	if (!payload || !Array.isArray(payload.columns) || !Array.isArray(payload.rows))
 		throw new ProminenceFormatError('authors.json must contain columns and rows arrays.');
+	if (manifest.schema_version !== 2)
+		throw new ProminenceFormatError(
+			'authors.json requires an author-prominence schema_version 2 manifest.'
+		);
 	if (payload.columns.some((name) => typeof name !== 'string' || !name.trim()))
 		throw new ProminenceFormatError('authors.json contains an empty column name.');
 	if (new Set(payload.columns).size !== payload.columns.length)
 		throw new ProminenceFormatError('authors.json contains duplicate column names.');
+	const allowed = new Set<string>([...REQUIRED_V2_COLUMNS, ...OPTIONAL_V2_COLUMNS]);
+	const unexpected = payload.columns.filter((name) => !allowed.has(name));
+	if (unexpected.length)
+		throw new ProminenceFormatError(
+			`schema_version 2 authors.json contains unsupported columns: ${unexpected.join(', ')}.`
+		);
+	const missing = REQUIRED_V2_COLUMNS.filter((name) => !payload.columns.includes(name));
+	if (missing.length)
+		throw new ProminenceFormatError(
+			`schema_version 2 authors.json is missing required columns: ${missing.join(', ')}.`
+		);
+	if (
+		payload.columns.length !== REQUIRED_V2_COLUMNS.length &&
+		payload.columns.length !== REQUIRED_V2_COLUMNS.length + OPTIONAL_V2_COLUMNS.length
+	)
+		throw new ProminenceFormatError(
+			`schema_version 2 authors.json must contain ${REQUIRED_V2_COLUMNS.length} columns, plus optional author_id.`
+		);
 	const index = new Map(payload.columns.map((name, i) => [name, i]));
-
-	const required = ['author', 'has_recognition', ...manifest.model.features.map(zColumn)];
-	for (const name of required) {
-		if (!index.has(name)) {
-			throw new ProminenceFormatError(`authors.json is missing the "${name}" column.`);
-		}
-	}
 
 	const rows = payload.rows;
 	const count = rows.length;
@@ -61,7 +90,6 @@ export function buildPopulation(
 	const zCols = manifest.model.features.map((feature) => at(zColumn(feature)));
 	const hasRecognitionCol = at('has_recognition');
 	const nBooksCol = at('n_books');
-	const nReadersCol = at('n_readers');
 	const bestTierCol = at('best_tier');
 	const nAwardsCol = at('n_awards');
 	const concentrationCol = at('concentration');
@@ -72,19 +100,36 @@ export function buildPopulation(
 	const z = zCols.map(() => new Float64Array(count));
 	const hasRecognition = new Uint8Array(count);
 	const nBooks = new Int32Array(count);
-	const nReaders = new Int32Array(count);
 	const bestTier = new Int8Array(count);
 	const nAwards = new Int32Array(count);
 	const concentration = new Float64Array(count);
 	const seenNames = new Set<string>();
 	const seenIds = new Set<string>();
 
-	/** Optional columns read as 0; supplied values still have to be finite. */
-	const numberAt = (row: unknown[], col: number, label: string): number => {
-		if (col < 0 || row[col] == null) return 0;
-		const value = Number(row[col]);
-		if (!Number.isFinite(value))
-			throw new ProminenceFormatError(`authors.json contains a non-finite ${label}.`);
+	const numberAt = (
+		row: unknown[],
+		col: number,
+		label: string,
+		nullable = false
+	): number | null => {
+		const raw = row[col];
+		if (raw === null && nullable) return null;
+		if (typeof raw !== 'number' || !Number.isFinite(raw))
+			throw new ProminenceFormatError(`authors.json contains an invalid ${label}.`);
+		return raw;
+	};
+	const integerAt = (
+		row: unknown[],
+		col: number,
+		label: string,
+		minimum: number,
+		maximum?: number,
+		nullable = false
+	): number | null => {
+		const value = numberAt(row, col, label, nullable);
+		if (value === null) return null;
+		if (!Number.isInteger(value) || value < minimum || (maximum !== undefined && value > maximum))
+			throw new ProminenceFormatError(`authors.json contains an invalid ${label}.`);
 		return value;
 	};
 
@@ -92,14 +137,18 @@ export function buildPopulation(
 		const row = rows[i];
 		if (!Array.isArray(row))
 			throw new ProminenceFormatError(`authors.json row ${i} is not an array.`);
-		const name = String(row[authorCol] ?? '').trim();
+		if (row.length !== payload.columns.length)
+			throw new ProminenceFormatError(
+				`authors.json row ${i} has ${row.length} fields, expected ${payload.columns.length}.`
+			);
+		const name = typeof row[authorCol] === 'string' ? row[authorCol].trim() : '';
 		if (!name) throw new ProminenceFormatError(`authors.json row ${i} has an empty author name.`);
 		if (!authorIds && seenNames.has(name))
 			throw new ProminenceFormatError(`authors.json contains duplicate author name "${name}".`);
 		names[i] = name;
 		seenNames.add(name);
 		if (authorIds) {
-			const id = String(row[authorIdCol] ?? '').trim();
+			const id = typeof row[authorIdCol] === 'string' ? row[authorIdCol].trim() : '';
 			if (!id) throw new ProminenceFormatError(`authors.json row ${i} has an empty author_id.`);
 			if (seenIds.has(id))
 				throw new ProminenceFormatError(`authors.json contains duplicate author_id "${id}".`);
@@ -108,25 +157,32 @@ export function buildPopulation(
 		}
 
 		for (let f = 0; f < zCols.length; f++) {
-			const value = Number(row[zCols[f]]);
-			if (!Number.isFinite(value)) {
+			const value = numberAt(row, zCols[f], `${manifest.model.features[f]} score`);
+			if (value === null)
 				throw new ProminenceFormatError(
-					`authors.json row ${i} has a non-finite ${manifest.model.features[f]} score.`
+					`authors.json row ${i} has a null ${manifest.model.features[f]} score.`
 				);
-			}
 			z[f][i] = value;
 		}
 
-		hasRecognition[i] = numberAt(row, hasRecognitionCol, 'has_recognition') ? 1 : 0;
-		nBooks[i] = numberAt(row, nBooksCol, 'n_books');
-		nReaders[i] = numberAt(row, nReadersCol, 'n_readers');
+		const recognition = integerAt(row, hasRecognitionCol, 'has_recognition', 0, 1);
+		if (recognition === null)
+			throw new ProminenceFormatError(`authors.json row ${i} has a null has_recognition value.`);
+		hasRecognition[i] = recognition;
+		const books = integerAt(row, nBooksCol, 'n_books', 0);
+		if (books === null)
+			throw new ProminenceFormatError(`authors.json row ${i} has a null n_books value.`);
+		nBooks[i] = books;
 		// `best_tier` is null for the ~45% of authors with no recorded award; 0 stands in.
-		bestTier[i] = numberAt(row, bestTierCol, 'best_tier');
-		nAwards[i] = numberAt(row, nAwardsCol, 'n_awards');
-		concentration[i] =
-			concentrationCol < 0 || row[concentrationCol] == null
-				? Number.NaN
-				: numberAt(row, concentrationCol, 'concentration');
+		bestTier[i] = integerAt(row, bestTierCol, 'best_tier', 0, 5, true) ?? 0;
+		const awards = integerAt(row, nAwardsCol, 'n_awards', 0);
+		if (awards === null)
+			throw new ProminenceFormatError(`authors.json row ${i} has a null n_awards value.`);
+		nAwards[i] = awards;
+		const concentrationValue = numberAt(row, concentrationCol, 'concentration', true);
+		if (concentrationValue !== null && (concentrationValue < 0 || concentrationValue > 1))
+			throw new ProminenceFormatError(`authors.json row ${i} has an invalid concentration.`);
+		concentration[i] = concentrationValue ?? Number.NaN;
 	}
 
 	return {
@@ -136,33 +192,10 @@ export function buildPopulation(
 		z,
 		hasRecognition,
 		nBooks,
-		nReaders,
 		bestTier,
 		nAwards,
 		concentration
 	};
-}
-
-/** Weights normalised to sum to 1, falling back to the settled default if they sum to 0. */
-export function normaliseWeights(raw: number[], fallback: number[]): number[] {
-	const total = raw.reduce((sum, value) => sum + Math.max(value, 0), 0);
-	if (total <= 0) return fallback.slice();
-	return raw.map((value) => Math.max(value, 0) / total);
-}
-
-/**
- * Slider positions that represent a weight vector, scaled so the largest sits at the top of
- * its track.
- *
- * Only the ratio between the handles matters, so a preset can be drawn anywhere along the
- * track. Drawing `[0.35, 0.35, 0.30]` at 35/35/30 puts every handle near the bottom, which
- * reads as "none of this matters to me" — the opposite of what the settled default means.
- * Scaling to 100/100/86 says the same thing and looks like it.
- */
-export function handlePositions(weights: number[]): number[] {
-	const largest = Math.max(...weights);
-	if (!(largest > 0)) return weights.map(() => 0);
-	return weights.map((weight) => Math.round((Math.max(weight, 0) / largest) * 100));
 }
 
 /** Minimum raw variance accepted for a normalized feature combination. */
@@ -259,7 +292,7 @@ export function validateCorrelationMatrix(sigmaZ: unknown, expectedSize: number)
  *
  * Dividing the score by this is **not optional**: it holds the score's spread constant as
  * the weights move. Without it the score compresses whenever weight is spread across
- * features, and a user moving sliders reads that as the whole field getting worse.
+ * features, and a user moving the lens reads that as the whole field getting worse.
  */
 export function denominator(weights: number[], sigmaZ: number[][]): number {
 	const variance = rawVariance(weights, sigmaZ);
@@ -388,24 +421,4 @@ export function formatScore(manifest: ProminenceManifest, score: number): string
 /** Signed contribution value for a bar label. */
 export function formatContribution(value: number): string {
 	return `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
-}
-
-/**
- * Half-width scale for the diverging contribution bars: the largest absolute contribution
- * anywhere in the displayed set, so bars are comparable across authors on screen.
- */
-export function barScale(
-	population: Population,
-	authorIndices: ArrayLike<number>,
-	weights: number[],
-	denom: number
-): number {
-	let largest = 0;
-	for (let i = 0; i < authorIndices.length; i++) {
-		for (const value of contributions(population, authorIndices[i], weights, denom)) {
-			const magnitude = Math.abs(value);
-			if (magnitude > largest) largest = magnitude;
-		}
-	}
-	return largest > 0 ? largest : 1;
 }

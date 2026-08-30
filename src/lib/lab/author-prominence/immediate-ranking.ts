@@ -17,8 +17,6 @@ export interface ImmediateRankingMetrics {
 	/** Metrics for the small set of authors currently visible in the UI. */
 	byIndex: Map<number, ImmediateAuthorMetrics>;
 	selected: ImmediateSelectedMetrics | null;
-	/** Shared contribution scale for the visible rows and selected author. */
-	barScale: number;
 }
 
 export interface ImmediateSelectedRanking {
@@ -135,17 +133,10 @@ export function calculateImmediateVisibleRanking({
 		add(visibleIndices[position]);
 	if (selected) byIndex.set(selected.index, selected);
 
-	let largestContribution = 0;
-	for (const metric of byIndex.values()) {
-		for (const value of metric.values)
-			largestContribution = Math.max(largestContribution, Math.abs(value));
-	}
-
 	return {
 		denominator: denominatorValue,
 		byIndex,
-		selected,
-		barScale: largestContribution > 0 ? largestContribution : 1
+		selected
 	};
 }
 

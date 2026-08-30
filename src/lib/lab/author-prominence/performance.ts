@@ -1,17 +1,3 @@
-export interface PerformanceBudget {
-	interactiveFrameMs: number;
-	finalRankingMs: number;
-	pickMs: number;
-	settleMs: number;
-}
-
-export const PROMINENCE_PERFORMANCE_BUDGET: PerformanceBudget = {
-	interactiveFrameMs: 16.7,
-	finalRankingMs: 100,
-	pickMs: 50,
-	settleMs: 100
-};
-
 export type ProminenceTimingName =
 	| 'pointer'
 	| 'lens-derivation'
@@ -65,63 +51,5 @@ export function withProminenceTiming<T>(name: ProminenceTimingName, work: () => 
 		return work();
 	} finally {
 		prominenceTimingMeasure(name, start);
-	}
-}
-
-export interface PerformanceSample {
-	kind: 'camera' | 'ranking' | 'selection' | 'dimensions' | 'population' | 'pick';
-	duration: number;
-	longTask: boolean;
-}
-
-export interface PerformanceSummary {
-	count: number;
-	p50: number;
-	p95: number;
-	maximum: number;
-	longTasks: number;
-}
-
-function percentile(values: number[], fraction: number): number {
-	if (values.length === 0) return 0;
-	const sorted = values.slice().sort((a, b) => a - b);
-	const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * fraction) - 1));
-	return sorted[index] ?? 0;
-}
-
-/** Summarise the same samples used by the release performance harness. */
-export function performanceSummary(samples: PerformanceSample[]): PerformanceSummary {
-	const durations = samples.map((sample) => sample.duration);
-	return {
-		count: samples.length,
-		p50: percentile(durations, 0.5),
-		p95: percentile(durations, 0.95),
-		maximum: durations.length ? Math.max(...durations) : 0,
-		longTasks: samples.filter((sample) => sample.longTask).length
-	};
-}
-
-/** Small, allocation-light recorder used in development and automated budget tests. */
-export class ProminencePerformanceRecorder {
-	private readonly samples: PerformanceSample[] = [];
-	private maxSamples = 240;
-
-	record(kind: PerformanceSample['kind'], start: number, end: number): void {
-		const duration = Math.max(0, end - start);
-		this.samples.push({ kind, duration, longTask: duration > 50 });
-		if (this.samples.length > this.maxSamples) this.samples.shift();
-	}
-
-	snapshot(): PerformanceSample[] {
-		return this.samples.map((sample) => ({ ...sample }));
-	}
-
-	violations(budget = PROMINENCE_PERFORMANCE_BUDGET): PerformanceSample[] {
-		return this.samples.filter((sample) => {
-			if (sample.longTask) return true;
-			if (sample.kind === 'pick') return sample.duration > budget.pickMs;
-			if (sample.kind === 'ranking') return sample.duration > budget.finalRankingMs;
-			return sample.duration > budget.interactiveFrameMs;
-		});
 	}
 }

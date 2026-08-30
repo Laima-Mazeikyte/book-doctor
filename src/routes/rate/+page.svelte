@@ -34,7 +34,13 @@
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { notInterestedStore } from '$lib/stores/notInterested';
 	import { planToReadStore } from '$lib/stores/planToRead';
-	import { rateBookSummaryHistory } from '$lib/stores/rateBookSummaryHistory';
+	import { bookSummarySheetHistory } from '$lib/stores/bookSummarySheetHistory';
+	import {
+		removeBookRating,
+		setBookRating,
+		toggleBookmarked,
+		toggleNotInterested
+	} from '$lib/stores/libraryActions';
 	import {
 		clearRateAuthorSearch,
 		clearRateSearchExternalEntry,
@@ -305,17 +311,17 @@
 		if (!browser || !locationIsRatePage()) return;
 		const st = get(page).state as App.PageState;
 
-		if (!get(rateBookSummaryHistory) && st.rateBookSummaryLayer === true) {
+		if (!get(bookSummarySheetHistory) && st.bookSummarySheet) {
 			const next = { ...st };
-			delete next.rateBookSummaryLayer;
+			delete next.bookSummarySheet;
 			replaceShallowPageState(next);
 			return;
 		}
 
-		const bookH = get(rateBookSummaryHistory);
-		if (bookH && st.rateBookSummaryLayer !== true) {
+		const bookH = get(bookSummarySheetHistory);
+		if (bookH && !st.bookSummarySheet) {
 			bookH.applyClose();
-			rateBookSummaryHistory.set(null);
+			if (get(bookSummarySheetHistory) === bookH) bookSummarySheetHistory.set(null);
 			return;
 		}
 
@@ -335,10 +341,10 @@
 	}
 
 	function closeBookSummaryFromBrowserBack(): boolean {
-		const bookH = get(rateBookSummaryHistory);
+		const bookH = get(bookSummarySheetHistory);
 		if (!bookH) return false;
 		bookH.applyClose();
-		rateBookSummaryHistory.set(null);
+		if (get(bookSummarySheetHistory) === bookH) bookSummarySheetHistory.set(null);
 		return true;
 	}
 
@@ -515,10 +521,7 @@
 	 * nudge them to rate a book instead.
 	 */
 	const belowThresholdListEnd = $derived(
-		popularBooks.length > 0 &&
-			!startedFromLatestFeed &&
-			!canRequestPersonalizedFeed &&
-			!hasMore
+		popularBooks.length > 0 && !startedFromLatestFeed && !canRequestPersonalizedFeed && !hasMore
 	);
 
 	const showFeedUnlockHint = $derived(belowThresholdListEnd && !loadingInitial && !loadingMore);
@@ -1168,12 +1171,8 @@
 		void ensureAnonymousSessionIfNeeded();
 	}
 
-	function handleRateBookmark(book: Book, id: string) {
-		const wasBookmarked = planToReadStore.has(book.id);
-		planToReadStore.toggle(id, book.book_id);
-		if (!wasBookmarked) {
-			notInterestedStore.remove(book.book_id);
-		}
+	function handleRateBookmark(book: Book) {
+		toggleBookmarked(book);
 		if (searchOverlayOpen) {
 			void runSearchSessionFeedRefreshAfterLibraryMutation();
 		} else {
@@ -1182,17 +1181,16 @@
 		}
 	}
 
+	function handleRateBookRating(book: Book, value: RatingValue): void {
+		setBookRating(book, value);
+	}
+
+	function handleRateBookRemoveRating(book: Book): void {
+		removeBookRating(book);
+	}
+
 	function handleMainListNotInterested(book: Book) {
-		const bid = book.book_id;
-		const now = notInterestedStore.toggle(bid);
-		if (now) {
-			if (planToReadStore.has(book.id)) {
-				planToReadStore.toggle(book.id, book.book_id);
-			}
-			if (get(ratingsStore).has(book.id)) {
-				ratingsStore.removeRating(book.id, book.book_id);
-			}
-		}
+		toggleNotInterested(book);
 		onLibraryMutationForFeed();
 		void ensureAnonymousSessionIfNeeded();
 		if (searchOverlayOpen) {
@@ -1206,16 +1204,7 @@
 	}
 
 	function handleSearchNotInterested(book: Book) {
-		const bid = book.book_id;
-		const now = notInterestedStore.toggle(bid);
-		if (now) {
-			if (planToReadStore.has(book.id)) {
-				planToReadStore.toggle(book.id, book.book_id);
-			}
-			if (get(ratingsStore).has(book.id)) {
-				ratingsStore.removeRating(book.id, book.book_id);
-			}
-		}
+		toggleNotInterested(book);
 		onLibraryMutationForFeed();
 		void runSearchSessionFeedRefreshAfterLibraryMutation();
 	}
@@ -1797,7 +1786,9 @@
 									coverPriority={coverPriorityFor(i, feedGridColumns)}
 									onSearchAuthor={handleSearchAuthor}
 									bookmarked={$planToReadStore.has(book.id)}
-									onBookmark={(id) => handleRateBookmark(book, id)}
+									onBookmark={() => handleRateBookmark(book)}
+									onRate={(_, value) => handleRateBookRating(book, value)}
+									onRemoveRating={() => handleRateBookRemoveRating(book)}
 									notInterested={$notInterestedStore.has(book.book_id)}
 									onNotInterested={() => handleMainListNotInterested(book)}
 									onAfterRate={handleMainListAfterRate}
@@ -1847,7 +1838,7 @@
 				resolveBookByBookId={findBookByBookId}
 				summaryHooks={{
 					onSearchAuthor: handleSearchAuthor,
-					onBookmark: (book) => handleRateBookmark(book, book.id),
+					onBookmark: (book) => handleRateBookmark(book),
 					onNotInterested: (book) =>
 						searchOverlayOpen ? handleSearchNotInterested(book) : handleMainListNotInterested(book),
 					onAfterRate: () =>
@@ -1997,7 +1988,9 @@
 											coverPriority={coverPriorityFor(i, searchGridColumns)}
 											onSearchAuthor={handleSearchAuthor}
 											bookmarked={$planToReadStore.has(book.id)}
-											onBookmark={(id) => handleRateBookmark(book, id)}
+											onBookmark={() => handleRateBookmark(book)}
+											onRate={(_, value) => handleRateBookRating(book, value)}
+											onRemoveRating={() => handleRateBookRemoveRating(book)}
 											notInterested={$notInterestedStore.has(book.book_id)}
 											onNotInterested={() => handleSearchNotInterested(book)}
 											onAfterRate={() => handleSearchAfterRate()}

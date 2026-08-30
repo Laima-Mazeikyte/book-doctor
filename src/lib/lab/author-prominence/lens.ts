@@ -2,6 +2,8 @@ import type { Preset, ProminenceManifest } from './types';
 
 export type LensSource = 'preset' | 'custom';
 
+export const LENS_WEIGHT_TOLERANCE = 0.000001;
+
 export interface LensSnapshot {
 	weights: number[];
 	displayShares: number[];
@@ -23,6 +25,8 @@ export interface LensOptions {
 	comparisonBaselineName?: string | null;
 	settled?: boolean;
 	presetId?: string | null;
+	/** Keep a release-derived result such as a peak mix explicitly custom. */
+	forceCustom?: boolean;
 }
 
 function clampShare(value: number): number {
@@ -89,14 +93,46 @@ export function changeOneShare(
 	return next;
 }
 
+/** Apply the triangle's four arrow directions while keeping the weights on the simplex. */
+export interface LensFeatureIndices {
+	regard: number;
+	reach: number;
+	recognition: number;
+}
+
+export function adjustLensForArrow(weights: number[], key: string, step = 1): number[] | null {
+	return adjustLensForArrowAt(weights, key, step, { regard: 0, reach: 1, recognition: 2 });
+}
+
+export function adjustLensForArrowAt(
+	weights: number[],
+	key: string,
+	step: number,
+	featureIndices: LensFeatureIndices
+): number[] | null {
+	let index: number | null = null;
+	let direction = 1;
+	if (key === 'ArrowUp') index = featureIndices.regard;
+	else if (key === 'ArrowDown') {
+		index = featureIndices.regard;
+		direction = -1;
+	} else if (key === 'ArrowLeft') index = featureIndices.reach;
+	else if (key === 'ArrowRight') index = featureIndices.recognition;
+	if (index === null || index < 0 || index >= weights.length || !Number.isFinite(step) || step <= 0)
+		return null;
+	const currentPercent = (weights[index] ?? 0) * 100;
+	return changeOneShare(weights, index, currentPercent + direction * step);
+}
+
 export function presetForWeights(
 	weights: number[],
 	presets: Preset[],
-	tolerance = 0.000001
+	tolerance = LENS_WEIGHT_TOLERANCE
 ): Preset | null {
 	return (
 		presets.find(
 			(preset) =>
+				preset.settled &&
 				preset.weights.length === weights.length &&
 				preset.weights.every((weight, index) => Math.abs(weight - weights[index]) <= tolerance)
 		) ?? null
@@ -118,12 +154,17 @@ export function lensState(
 ): LensState {
 	const exact = weights.slice();
 	const namedPreset = options.presetId
-		? (options.presets.find((candidate) => candidate.name === options.presetId) ?? null)
+		? (options.presets.find(
+				(candidate) => candidate.settled && candidate.name === options.presetId
+			) ?? null)
 		: null;
-	const preset =
-		namedPreset &&
-		namedPreset.weights.length === exact.length &&
-		namedPreset.weights.every((weight, index) => Math.abs(weight - exact[index]) <= 0.000001)
+	const preset = options.forceCustom
+		? null
+		: namedPreset &&
+			  namedPreset.weights.length === exact.length &&
+			  namedPreset.weights.every(
+					(weight, index) => Math.abs(weight - exact[index]) <= LENS_WEIGHT_TOLERANCE
+			  )
 			? namedPreset
 			: presetForWeights(exact, options.presets);
 	const source = preset ? 'preset' : 'custom';
@@ -132,7 +173,7 @@ export function lensState(
 		displayShares: largestRemainderShares(exact, options.preferredIndex),
 		source,
 		presetId: preset?.name ?? null,
-		displayName: preset?.name ?? 'Custom lens',
+		displayName: preset?.name ?? 'Custom',
 		manifestNote: preset?.note ?? '',
 		comparisonBaselineName: options.comparisonBaselineName ?? null,
 		settled: options.settled ?? true

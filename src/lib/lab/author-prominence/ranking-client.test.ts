@@ -10,12 +10,12 @@ const population: Population = {
 	z: [Float64Array.from([1, -1]), Float64Array.from([0, 1]), Float64Array.from([0, 0])],
 	hasRecognition: Uint8Array.from([1, 1]),
 	nBooks: new Int32Array(2),
-	nReaders: new Int32Array(2),
 	bestTier: new Int8Array(2),
 	nAwards: new Int32Array(2),
 	concentration: new Float64Array(2)
 };
 const presets: Preset[] = [{ name: 'Balanced', weights: [0.5, 0.5, 0], settled: true, note: '' }];
+const settledPreset = presets[0];
 
 class FakeWorker {
 	static last: FakeWorker;
@@ -65,7 +65,7 @@ describe('ranking client request coalescing', () => {
 				[0, 1, 0],
 				[0, 0, 1]
 			],
-			presets,
+			settledPreset,
 			2
 		);
 		await new Promise((resolve) => setTimeout(resolve, 0));
@@ -80,7 +80,7 @@ describe('ranking client request coalescing', () => {
 				[0, 1, 0],
 				[0, 0, 1]
 			],
-			presets,
+			settledPreset,
 			topN: 2,
 			weights: [1, 0, 0],
 			selectedIndex: null,
@@ -98,7 +98,7 @@ describe('ranking client request coalescing', () => {
 				[0, 1, 0],
 				[0, 0, 1]
 			],
-			presets,
+			settledPreset,
 			topN: 2,
 			weights: [0, 0, 1],
 			selectedIndex: null,
@@ -121,7 +121,7 @@ describe('ranking client request coalescing', () => {
 				[0, 1, 0],
 				[0, 0, 1]
 			],
-			presets,
+			settledPreset,
 			2
 		);
 		const revision = client.request([1, 0, 0], null);
@@ -146,7 +146,7 @@ describe('ranking client request coalescing', () => {
 				[0, 1, 0],
 				[0, 0, 1]
 			],
-			presets,
+			settledPreset,
 			2
 		);
 		const revision = client.request([1, 0, 0], null, (allocated) =>
@@ -168,7 +168,7 @@ describe('ranking client request coalescing', () => {
 				[0, 1, 0],
 				[0, 0, 1]
 			],
-			presets,
+			settledPreset,
 			2
 		);
 		await new Promise((resolve) => setTimeout(resolve, 0));
@@ -191,7 +191,7 @@ describe('ranking client request coalescing', () => {
 				[0, 1, 0],
 				[0, 0, 1]
 			],
-			presets,
+			settledPreset,
 			2
 		);
 		await new Promise((resolve) => setTimeout(resolve, 0));
@@ -205,7 +205,7 @@ describe('ranking client request coalescing', () => {
 					[0, 1, 0],
 					[0, 0, 1]
 				],
-				presets,
+				settledPreset,
 				topN: 2,
 				weights: [1, 0, 0],
 				selectedIndex: null,
@@ -228,7 +228,7 @@ describe('ranking client request coalescing', () => {
 				[0, 1, 0],
 				[0, 0, 1]
 			],
-			presets,
+			settledPreset,
 			2
 		);
 		const revision = client.request([0, 1, 0], null);
@@ -252,7 +252,7 @@ describe('ranking client request coalescing', () => {
 				[0, 1, 0],
 				[0, 0, 1]
 			],
-			presets,
+			settledPreset,
 			2
 		);
 		await Promise.resolve();
@@ -277,7 +277,7 @@ describe('ranking client request coalescing', () => {
 				[0, 1, 0],
 				[0, 0, 1]
 			],
-			presets,
+			settledPreset,
 			2
 		);
 		await new Promise((resolve) => setTimeout(resolve, 0));
@@ -303,7 +303,7 @@ describe('ranking client request coalescing', () => {
 				[0, 1, 0],
 				[0, 0, 1]
 			],
-			presets,
+			settledPreset,
 			2
 		);
 		const first = FakeWorker.last;
@@ -314,7 +314,7 @@ describe('ranking client request coalescing', () => {
 				[0, 1, 0],
 				[0, 0, 1]
 			],
-			presets,
+			settledPreset,
 			2
 		);
 		const second = FakeWorker.last;
@@ -340,7 +340,7 @@ describe('ranking client request coalescing', () => {
 				[0, 0, 0],
 				[0, 0, 0]
 			],
-			presets,
+			settledPreset,
 			2
 		);
 		client.request([1, 0, 0], null);
@@ -362,7 +362,7 @@ describe('ranking client request coalescing', () => {
 				[0, 1, 0],
 				[0, 0, 1]
 			],
-			presets,
+			settledPreset,
 			2
 		);
 		const revision = client.request([1, 0, 0], null);

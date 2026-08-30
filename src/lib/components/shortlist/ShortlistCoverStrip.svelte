@@ -16,8 +16,10 @@
 	let scrollEl = $state<HTMLElement | null>(null);
 	let coverImageFailed = $state<Record<string, true>>({});
 	let hoveredIndex = $state<number | null>(null);
+	let focusedIndex = $state<number | null>(null);
 
 	const setSize = $derived(books.length);
+	const emphasizedIndex = $derived(hoveredIndex ?? focusedIndex);
 	const reducedMotion = $derived(browser && prefersReducedMotion());
 
 	const COVER_BASE_SCALE = 0.926;
@@ -80,15 +82,15 @@
 	function coverScale(index: number, isActive: boolean): number {
 		if (reducedMotion) return baseCoverScale(isActive);
 
-		if (hoveredIndex === null) {
+		if (emphasizedIndex === null) {
 			return baseCoverScale(isActive);
 		}
 
-		const distance = Math.abs(index - hoveredIndex);
+		const distance = Math.abs(index - emphasizedIndex);
 		const falloff = lensFalloff(distance);
 		let scale = COVER_BASE_SCALE + (COVER_ACTIVE_SCALE - COVER_BASE_SCALE) * falloff;
 
-		if (index === hoveredIndex) {
+		if (index === emphasizedIndex) {
 			scale += COVER_HOVER_EMPHASIS;
 		}
 
@@ -100,16 +102,16 @@
 	}
 
 	function coverTranslateX(index: number): number {
-		if (hoveredIndex === null || reducedMotion) return 0;
+		if (emphasizedIndex === null || reducedMotion) return 0;
 
-		const signedDistance = index - hoveredIndex;
+		const signedDistance = index - emphasizedIndex;
 		if (signedDistance === 0) return 0;
 
 		return Math.sign(signedDistance) * COVER_PUSH_STRENGTH * lensFalloff(Math.abs(signedDistance));
 	}
 
 	function coverVisualScale(index: number, isActive: boolean): number {
-		if (hoveredIndex === null || reducedMotion) return 1;
+		if (emphasizedIndex === null || reducedMotion) return 1;
 
 		const slotScale = layoutSlotScale(isActive);
 		return coverScale(index, isActive) / slotScale;
@@ -129,12 +131,12 @@
 	function coverZIndex(index: number): number | undefined {
 		if (reducedMotion) return undefined;
 
-		if (hoveredIndex === index) return 3;
-		if (hoveredIndex === null) {
+		if (emphasizedIndex === index) return 3;
+		if (emphasizedIndex === null) {
 			return index === activeIndex ? 2 : undefined;
 		}
 
-		const distance = Math.abs(index - hoveredIndex);
+		const distance = Math.abs(index - emphasizedIndex);
 		if (distance < 1) return 2;
 		if (distance < 2) return 1;
 		return undefined;
@@ -143,14 +145,54 @@
 	function clearHover() {
 		hoveredIndex = null;
 	}
+
+	function handleNavFocusOut(event: FocusEvent) {
+		const nav = event.currentTarget;
+		if (
+			!(nav instanceof HTMLElement) ||
+			!(event.relatedTarget instanceof Node) ||
+			!nav.contains(event.relatedTarget)
+		) {
+			focusedIndex = null;
+		}
+	}
+
+	function focusCover(index: number) {
+		scrollEl?.querySelector<HTMLButtonElement>(`[data-cover-index="${index}"]`)?.focus();
+	}
+
+	function handleCoverKeydown(event: KeyboardEvent, index: number) {
+		if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || setSize === 0) return;
+
+		let nextIndex: number | null = null;
+		if (event.key === 'ArrowLeft') {
+			nextIndex = (index - 1 + setSize) % setSize;
+		} else if (event.key === 'ArrowRight') {
+			nextIndex = (index + 1) % setSize;
+		} else if (event.key === 'Home') {
+			nextIndex = 0;
+		} else if (event.key === 'End') {
+			nextIndex = setSize - 1;
+		}
+
+		if (nextIndex === null) return;
+
+		event.preventDefault();
+		onSelect(nextIndex);
+		focusCover(nextIndex);
+	}
 </script>
 
-<nav class="shortlist-cover-strip" aria-label={t('recommendations.shortlist.coverNavAriaLabel')}>
+<nav
+	class="shortlist-cover-strip"
+	aria-label={t('recommendations.shortlist.coverNavAriaLabel')}
+	onpointerleave={clearHover}
+	onfocusout={handleNavFocusOut}
+>
 	<div
 		class="shortlist-cover-strip__scroll"
 		class:shortlist-cover-strip__scroll--reduced-motion={reducedMotion}
 		bind:this={scrollEl}
-		onmouseleave={clearHover}
 	>
 		{#each books as book, index (book.id)}
 			{@const isActive = index === activeIndex}
@@ -160,13 +202,15 @@
 				class="shortlist-cover-strip__item"
 				class:shortlist-cover-strip__item--active={isActive}
 				class:shortlist-cover-strip__item--not-interested={notInterested}
-				class:shortlist-cover-strip__item--hovered={hoveredIndex === index}
+				class:shortlist-cover-strip__item--hovered={emphasizedIndex === index}
 				style:--slot-scale={layoutSlotScale(isActive)}
 				style:z-index={coverZIndex(index) ?? undefined}
 				data-cover-index={index}
 				aria-current={isActive ? 'true' : undefined}
 				aria-label={coverAriaLabel(book, index)}
-				onmouseenter={() => (hoveredIndex = index)}
+				onpointerenter={() => (hoveredIndex = index)}
+				onfocus={() => (focusedIndex = index)}
+				onkeydown={(event) => handleCoverKeydown(event, index)}
 				onclick={() => onSelect(index)}
 			>
 				<span

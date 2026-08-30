@@ -1,4 +1,4 @@
-/** Types for the author-prominence artifact release (manifest schema_version 1). */
+/** Types for the author-prominence artifact release (manifest schema_version 2). */
 
 /** Thrown when a release is structurally unusable — wrong schema, missing columns. */
 export class ProminenceFormatError extends Error {
@@ -51,6 +51,83 @@ export interface AuthorIdentity {
 	name: string;
 }
 
+/** The detail-shard contract nested inside the main manifest. */
+export interface ProminenceDetailManifest {
+	schema_version: number;
+	author_count: number;
+	shard_size: number;
+	shard_count: number;
+	index_base: number;
+	path_pattern: string;
+	book_limit: number;
+	recognition_record_limit: number;
+	peak_method: string;
+	peak_weight_quantum: number;
+	generated_utc: string;
+	provenance?: Record<string, string>;
+}
+
+/** Raw positional values are confined to the detail-data module. */
+export type ProminenceDetailBookTuple = [bookId: string, title: string];
+export type ProminenceRecognitionReceiptTuple = [
+	workTitle: string,
+	awardName: string,
+	year: number | null,
+	status: string
+];
+export type ProminenceRecognitionTierTuple = [
+	tier: number,
+	receipts: ProminenceRecognitionReceiptTuple[]
+];
+export type ProminenceDetailRow = [
+	peakRank: number,
+	peakWeights: number[],
+	catalogueYears: [number, number] | null,
+	genres: string[],
+	books: ProminenceDetailBookTuple[],
+	recognition: ProminenceRecognitionTierTuple[]
+];
+
+/** The wire shape of one detail shard. Rows are normalized before they reach components. */
+export interface ProminenceDetailShard {
+	schema_version: number;
+	start: number;
+	columns: string[];
+	rows: unknown[][];
+}
+
+export interface AuthorBook {
+	bookUlid: string;
+	title: string;
+}
+
+export type RecognitionStatus = 'win' | 'shortlist' | 'longlist' | 'nominee' | 'honor';
+
+export interface RecognitionReceipt {
+	workTitle: string;
+	awardName: string;
+	year: number | null;
+	status: string;
+	tier: number;
+}
+
+/** Positional detail rows become this stable, named view model at the data boundary. */
+export interface NormalizedAuthorDetail {
+	populationIndex: number;
+	peakRank: number;
+	peakWeights: number[];
+	catalogueYears: [number, number] | null;
+	genres: string[];
+	books: AuthorBook[];
+	recognition: RecognitionReceipt[];
+}
+
+export interface NormalizedDetailShard {
+	schema_version: number;
+	start: number;
+	rows: NormalizedAuthorDetail[];
+}
+
 export interface ProminenceManifest {
 	schema_version: number;
 	generated_utc: string;
@@ -74,12 +151,14 @@ export interface ProminenceManifest {
 		 */
 		index_is_calibrated_elo: boolean;
 		mode: string;
-		tier_weights: number[];
-		gate: {
-			min_books: number;
-			min_clean_likes: number;
+		/** Optional provenance; the scored recognition values are already materialized. */
+		tier_weights?: number[];
+		/** Optional eligibility provenance; the release disclosure remains authoritative copy. */
+		gate?: {
+			min_books?: number;
 		};
 	};
+	details: ProminenceDetailManifest;
 	presets: Preset[];
 	audit: {
 		regard_only: AuditEntry<RegardOnlyRule>;
@@ -93,7 +172,8 @@ export interface ProminenceManifest {
 	quality: {
 		eligible_authors: number;
 		authors_in_source: number;
-		folds: number;
+		/** Optional model-validation provenance. */
+		folds?: number;
 		weights_settled_by: string;
 	};
 }
@@ -108,13 +188,12 @@ export interface ProminenceManifest {
 export interface Population {
 	count: number;
 	names: string[];
-	/** Stable artifact IDs when supplied; schema 1 intentionally falls back to names. */
+	/** Stable artifact IDs when supplied; v2 intentionally falls back to names when absent. */
 	authorIds: string[] | null;
 	/** Feature z-scores, one array per manifest feature, in `features` order. */
 	z: Float64Array[];
 	hasRecognition: Uint8Array;
 	nBooks: Int32Array;
-	nReaders: Int32Array;
 	/** Best effective award tier, 1 (most selective) to 5. `0` stands for "none recorded". */
 	bestTier: Int8Array;
 	/** Total awards across all tiers — not the count at `bestTier`. */

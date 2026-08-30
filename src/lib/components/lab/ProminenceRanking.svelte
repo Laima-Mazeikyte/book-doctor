@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { flip } from 'svelte/animate';
-	import type { DisplayModel } from '$lib/lab/author-prominence/display';
+	import ProminenceAuditObservation from '$lib/components/lab/ProminenceAuditObservation.svelte';
 	import {
 		prominenceTimingMeasure,
 		prominenceTimingMark
@@ -8,9 +8,8 @@
 	import type { RankingEntry } from '$lib/lab/author-prominence/presentation';
 
 	interface Props {
-		display: DisplayModel;
 		entries: RankingEntry[];
-		barScale: number;
+		hoveredIndex: number | null;
 		updating: boolean;
 		showUpdating?: boolean;
 		reducedMotion?: boolean;
@@ -19,12 +18,12 @@
 		motionRevision?: number;
 		animateRows?: boolean;
 		onSelect: (index: number) => void;
+		onHover: (index: number | null) => void;
 	}
 
 	let {
-		display,
 		entries,
-		barScale,
+		hoveredIndex,
 		updating,
 		showUpdating = false,
 		reducedMotion = false,
@@ -32,7 +31,8 @@
 		motionIntent = 'none',
 		motionRevision = 0,
 		animateRows = false,
-		onSelect
+		onSelect,
+		onHover
 	}: Props = $props();
 	let rankingList: HTMLOListElement | null = $state(null);
 
@@ -59,16 +59,28 @@
 		}
 	});
 
-	function valueLabel(value: number): string {
-		return `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
+	function rowLabel(entry: RankingEntry): string {
+		return `${entry.name}, rank ${entry.place}, score ${entry.score}, ${entry.books.toLocaleString()} books, ${entry.recognitions.toLocaleString()} recorded recognitions`;
 	}
 
-	function rowLabel(entry: RankingEntry): string {
-		const features = display.features
-			.map((feature, index) => `${feature.label} ${valueLabel(entry.values[index] ?? 0)}`)
-			.join(', ');
-		const evidence = `${entry.readers.toLocaleString()} readers, ${entry.books.toLocaleString()} books, ${entry.tier ? `${entry.awards.toLocaleString()} awards` : 'no recorded recognition'}`;
-		return `${entry.name}, rank ${entry.place}, ${entry.score}. ${features}. ${evidence}.${entry.observation ? ` ${entry.observation}` : ''}`;
+	function handleRowPointerUp(event: PointerEvent, index: number): void {
+		if (event.button !== 0) return;
+		if (
+			event.target instanceof Element &&
+			event.target.closest('.ranking-row__select, .prominence-audit')
+		)
+			return;
+		onSelect(index);
+	}
+
+	function handleFocusIn(entry: RankingEntry, event: FocusEvent): void {
+		if (event.target instanceof Element && event.target.matches('.ranking-row__select'))
+			onHover(entry.index);
+	}
+
+	function handleFocusOut(event: FocusEvent): void {
+		const row = event.currentTarget as HTMLElement;
+		if (!(event.relatedTarget instanceof Node && row.contains(event.relatedTarget))) onHover(null);
 	}
 </script>
 
@@ -87,55 +99,52 @@
 	<ol
 		bind:this={rankingList}
 		class="prominence-ranking__list"
-		aria-label={`Current top ${display.topN} authors`}
+		aria-label={`Current top ${entries.length} authors`}
 	>
-		{#snippet rowContents(entry: RankingEntry)}
-			<button
-				type="button"
-				class="ranking-row"
-				data-testid="prominence-ranking-row"
-				title={entry.badges[0]?.badge}
-				aria-label={rowLabel(entry)}
-				onclick={() => onSelect(entry.index)}
-			>
-				<span class="ranking-row__place">{String(entry.place).padStart(2, '0')}</span>
-				<span class="ranking-row__main">
-					<span class="ranking-row__topline">
-						<strong>{entry.name}</strong>
-						{#if entry.badges.length}<span
-								class="audit-marker"
-								title={entry.badges[0].badge}
-								aria-label={`Observation: ${entry.badges[0].badge}`}>!</span
-							>{/if}
-						<b>{entry.score}</b>
-					</span>
-					<span class="ranking-row__meta"
-						>{entry.readers.toLocaleString()} readers · {entry.books.toLocaleString()} books · {entry.tier
-							? `${entry.awards.toLocaleString()} awards`
-							: 'no recorded recognition'}</span
-					>
-					<span
-						class="ranking-row__contributions"
-						aria-label={display.features
-							.map((feature, index) => `${feature.label} ${valueLabel(entry.values[index] ?? 0)}`)
-							.join(', ')}
-					>
-						{#each entry.values as value, index (display.features[index]?.key ?? index)}
-							<span class="contribution-lane" aria-hidden="true"
-								><i
-									class:negative={value < 0}
-									style:--bar-colour={display.features[index]?.colour}
-									style:width={`${Math.min(Math.abs(value) / barScale, 1) * 50}%`}
-								></i></span
-							>
-						{/each}
-					</span>
-				</span>
-			</button>
-		{/snippet}
 		{#each entries as entry (entry.index)}
-			<li animate:flip={{ duration: rowAnimationDuration }} data-author-index={entry.index}>
-				{@render rowContents(entry)}
+			<li
+				animate:flip={{ duration: rowAnimationDuration }}
+				class:ranking-row--highlight={hoveredIndex === entry.index}
+				data-author-index={entry.index}
+				onpointerenter={() => onHover(entry.index)}
+				onpointerleave={() => onHover(null)}
+				onfocusin={(event) => handleFocusIn(entry, event)}
+				onfocusout={handleFocusOut}
+			>
+				<div
+					class="ranking-row"
+					role="presentation"
+					onpointerup={(event) => handleRowPointerUp(event, entry.index)}
+				>
+					<span class="ranking-row__place">{String(entry.place).padStart(2, '0')}</span>
+					<div class="ranking-row__main">
+						<div class="ranking-row__topline">
+							<button
+								type="button"
+								class="ranking-row__select"
+								data-testid="prominence-ranking-row"
+								data-author-index={entry.index}
+								aria-label={rowLabel(entry)}
+								onclick={() => onSelect(entry.index)}
+							>
+								<strong>{entry.name}</strong>
+							</button>
+							{#if entry.badges.length > 0}
+								<ProminenceAuditObservation
+									id={`ranking-${entry.index}`}
+									badges={entry.badges}
+									compact
+								/>
+							{/if}
+							<b class="ranking-row__score"
+								><span class="screen-reader-only">Score </span>{entry.score}</b
+							>
+						</div>
+						<span class="ranking-row__meta"
+							>{entry.books.toLocaleString()} books · {entry.recognitions.toLocaleString()} recognitions</span
+						>
+					</div>
+				</div>
 			</li>
 		{/each}
 	</ol>
@@ -143,19 +152,24 @@
 
 <style>
 	.prominence-ranking {
-		padding-bottom: 16px;
+		padding-bottom: 12px;
 	}
 	.prominence-ranking__updating {
-		margin: -2px 0 8px;
+		margin: -2px 0 6px;
 		color: #f3c964;
 		font: 11px var(--font-family-interactive);
 	}
 	.prominence-ranking__list {
-		display: grid;
-		gap: 4px;
 		margin: 0;
 		padding: 0;
 		list-style: none;
+	}
+	.prominence-ranking__list > li {
+		position: relative;
+		border-bottom: 1px solid rgba(164, 204, 206, 0.12);
+	}
+	.prominence-ranking__list > li:first-child {
+		border-top: 1px solid rgba(164, 204, 206, 0.12);
 	}
 	.ranking-row {
 		display: grid;
@@ -163,24 +177,15 @@
 		align-items: center;
 		gap: 8px;
 		width: 100%;
-		min-height: 58px;
-		padding: 5px 8px;
-		border: 1px solid transparent;
-		border-radius: 7px;
-		background: rgba(15, 29, 29, 0.54);
+		min-height: 46px;
+		padding: 4px 6px;
+		box-sizing: border-box;
+		background: transparent;
 		color: #cfe7e8;
-		text-align: left;
 		cursor: pointer;
 	}
-	.ranking-row:hover,
-	.ranking-row:focus-visible {
-		border-color: rgba(164, 204, 206, 0.25);
-		background: rgba(32, 56, 54, 0.62);
-	}
-	.ranking-row__place {
-		color: rgba(207, 231, 232, 0.5);
-		font: 12px var(--font-family-interactive);
-		font-variant-numeric: tabular-nums;
+	.ranking-row--highlight .ranking-row {
+		background: rgba(32, 56, 54, 0.48);
 	}
 	.ranking-row__main {
 		min-width: 0;
@@ -188,75 +193,62 @@
 	.ranking-row__topline {
 		display: flex;
 		align-items: center;
+		min-width: 0;
 		gap: 6px;
 	}
-	.ranking-row__topline strong {
+	.ranking-row__place {
+		color: rgba(207, 231, 232, 0.5);
+		font: 12px var(--font-family-interactive);
+		font-variant-numeric: tabular-nums;
+	}
+	.ranking-row__select {
 		min-width: 0;
-		overflow: hidden;
+		max-width: 100%;
+		padding: 0;
+		border: 0;
+		background: transparent;
 		color: #efffff;
-		font: 600 13px/1.1 var(--font-family-interactive);
+		text-align: left;
+		cursor: pointer;
+	}
+	.ranking-row__select strong {
+		display: block;
+		max-width: 100%;
+		overflow: hidden;
+		font: 600 13px/1.15 var(--font-family-interactive);
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	.ranking-row__topline b {
+	.ranking-row__select:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 3px;
+		border-radius: 3px;
+	}
+	.ranking-row__score {
 		margin-left: auto;
 		color: #bce8d8;
 		font: 600 12px/1.1 var(--font-family-interactive);
 		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
 	}
 	.ranking-row__meta {
 		display: block;
-		margin-top: 3px;
-		overflow: hidden;
+		margin-top: 2px;
 		color: rgba(207, 231, 232, 0.54);
 		font: 11px/1.15 var(--font-family-interactive);
-		text-overflow: ellipsis;
+		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
 	}
-	.audit-marker {
-		display: inline-grid;
-		width: 18px;
-		height: 18px;
-		place-items: center;
-		border: 1px solid rgba(243, 201, 100, 0.5);
-		border-radius: 50%;
-		color: #f3c964;
-		font: 700 10px var(--font-family-interactive);
-	}
-	.ranking-row__contributions {
-		display: grid;
-		grid-template-columns: repeat(3, minmax(20px, 1fr));
-		gap: 3px;
-		margin-top: 5px;
-	}
-	.contribution-lane {
-		position: relative;
-		display: block;
-		height: 7px;
-		overflow: hidden;
-		border-radius: 3px;
-		background: linear-gradient(
-			90deg,
-			rgba(207, 231, 232, 0.12) 49%,
-			rgba(207, 231, 232, 0.34) 50%,
-			rgba(207, 231, 232, 0.12) 51%
-		);
-	}
-	.contribution-lane i {
+	.screen-reader-only {
 		position: absolute;
-		top: 1px;
-		left: 50%;
-		display: block;
-		height: 5px;
-		border-radius: 3px;
-		background: var(--bar-colour);
-	}
-	.contribution-lane i.negative {
-		right: 50%;
-		left: auto;
-	}
-	.negative {
-		color: #efaa94;
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		padding: 0;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.ranking-row {

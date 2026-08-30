@@ -2,7 +2,7 @@ import { cloneLens, lensState, type LensState } from './lens';
 import { cloneRankingResult, type RankingResult } from './ranking-engine';
 import type { ProminenceManifest } from './types';
 
-export type GestureSource = 'triangle' | 'slider';
+export type GestureSource = 'triangle' | 'keyboard';
 export type GestureStatus = 'active' | 'committed' | 'cancelled';
 
 export interface LensGesture {

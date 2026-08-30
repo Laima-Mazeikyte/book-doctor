@@ -8,7 +8,6 @@ export default defineConfig({
 	plugins: [
 		sveltekit(),
 		ViteYaml(),
-		localLabArtifacts({ prefix: '/author-prominence-local', root: 'temp/author_prominence' }),
 		localLabArtifacts({ prefix: '/best-book-search-local', root: 'temp/best_book_search/handoff' })
 	],
 	server: {
@@ -17,6 +16,9 @@ export default defineConfig({
 		host: true,
 		// Vite 7+ rejects unknown Host headers unless listed here.
 		allowedHosts: ['book-doctor.test']
+	},
+	optimizeDeps: {
+		include: ['lucide-svelte']
 	},
 	test: {
 		expect: { requireAssertions: true },

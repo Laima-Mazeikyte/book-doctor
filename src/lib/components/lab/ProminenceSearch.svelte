@@ -239,4 +239,9 @@
 		color: rgba(207, 231, 232, 0.62);
 		font: 12px var(--font-family-interactive);
 	}
+	@media (min-width: 901px) {
+		.prominence-search {
+			margin-top: 0;
+		}
+	}
 </style>

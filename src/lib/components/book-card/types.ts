@@ -21,7 +21,7 @@ export type BookCardListProps = {
 	 * Summary sheet: search by author. When omitted, navigates to `/rate?q=…`.
 	 * Pass this on the rate page to fill search in-page (avoids URL round-trip; preserves scroll helpers).
 	 */
-	onSearchAuthor?: (author: string) => void;
+	onSearchAuthor?: (author: string) => void | Promise<void>;
 	bookmarked?: boolean;
 	onBookmark?: (bookId: string) => void;
 	currentRating?: RatingValue | null;

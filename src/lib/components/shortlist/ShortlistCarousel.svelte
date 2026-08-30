@@ -160,35 +160,6 @@
 		scrollToSlot(activeScrollSlot + 1);
 	}
 
-	function handleTrackKeydown(e: KeyboardEvent) {
-		const target = e.target;
-		if (
-			target instanceof HTMLElement &&
-			target.closest('input, textarea, select, [contenteditable="true"]')
-		) {
-			return;
-		}
-
-		const page = trackEl?.closest('.shortlist-page');
-		const active = document.activeElement;
-		if (
-			!page ||
-			(active instanceof HTMLElement && active !== document.body && !page.contains(active))
-		) {
-			return;
-		}
-
-		if (e.key === 'ArrowLeft' || e.key === 'Home') {
-			e.preventDefault();
-			if (e.key === 'Home') scrollToIndex(0);
-			else goPrev();
-		} else if (e.key === 'ArrowRight' || e.key === 'End') {
-			e.preventDefault();
-			if (e.key === 'End') scrollToIndex(setSize - 1);
-			else goNext();
-		}
-	}
-
 	function overlayForBook(book: Book): NotInterestedOverlay {
 		if (!getNotInterested(book.book_id)) return null;
 		return getNotInterestedOverlay(book.book_id);
@@ -240,8 +211,6 @@
 	});
 </script>
 
-<svelte:window onkeydown={handleTrackKeydown} />
-
 <div class="shortlist-carousel">
 	<section
 		id={carouselId}
@@ -251,7 +220,6 @@
 		bind:this={trackEl}
 		aria-roledescription="carousel"
 		aria-label={t('recommendations.shortlist.carouselAriaLabel')}
-		tabindex="0"
 		onscroll={syncFromScroll}
 		onscrollend={handleScrollEnd}
 	>

@@ -1,4 +1,4 @@
-import { buildPresetRankCache, computeRanking, type RankingResult } from './ranking-engine';
+import { computeRanking, type RankingResult } from './ranking-engine';
 import { prominenceTimingMeasure, prominenceTimingMark, withProminenceTiming } from './performance';
 import type { Population, Preset } from './types';
 
@@ -39,9 +39,8 @@ export class RankingClient {
 	private worker: Worker | null = null;
 	private population: Population | null = null;
 	private sigmaZ: number[][] = [];
-	private presets: Preset[] = [];
-	private topN = 10;
-	private presetCache: ReturnType<typeof buildPresetRankCache> | undefined;
+	private settledPreset: Preset | null = null;
+	private topN = 15;
 	private status: RankingClientStatus = 'destroyed';
 	private active: PendingRequest | null = null;
 	private pending: PendingRequest | null = null;
@@ -60,14 +59,13 @@ export class RankingClient {
 		return this.status;
 	}
 
-	start(population: Population, sigmaZ: number[][], presets: Preset[], topN: number): void {
+	start(population: Population, sigmaZ: number[][], settledPreset: Preset, topN: number): void {
 		const generation = ++this.generation;
 		this.resetTransport();
 		this.population = population;
 		this.sigmaZ = sigmaZ.map((row) => row.slice());
-		this.presets = presets.map((preset) => ({ ...preset, weights: preset.weights.slice() }));
+		this.settledPreset = { ...settledPreset, weights: settledPreset.weights.slice() };
 		this.topN = topN;
-		this.presetCache = undefined;
 		this.revision = 0;
 		this.diagnosticSent = false;
 		this.setStatus('starting');
@@ -82,7 +80,7 @@ export class RankingClient {
 				authorIds: population.authorIds ? population.authorIds.slice() : null,
 				z: population.z.map((column) => column.slice()),
 				sigmaZ: this.sigmaZ,
-				presets: this.presets,
+				settledPreset: this.settledPreset!,
 				topN
 			};
 			this.worker.postMessage(
@@ -116,8 +114,7 @@ export class RankingClient {
 		this.resetTransport();
 		this.population = null;
 		this.sigmaZ = [];
-		this.presets = [];
-		this.presetCache = undefined;
+		this.settledPreset = null;
 		this.active = null;
 		this.pending = null;
 		this.setStatus('destroyed');
@@ -274,25 +271,17 @@ export class RankingClient {
 			return;
 		}
 		try {
-			this.presetCache ??= buildPresetRankCache(
-				this.population.names,
-				this.population.z,
-				this.sigmaZ,
-				this.presets
-			);
+			if (!this.settledPreset) throw new Error('Ranking fallback has no settled preset.');
 			const result = withProminenceTiming('worker-rank', () =>
-				computeRanking(
-					{
-						population: this.population!,
-						sigmaZ: this.sigmaZ,
-						presets: this.presets,
-						topN: this.topN,
-						weights: request.weights.slice(),
-						selectedIndex: request.selectedIndex,
-						revision: request.revision
-					},
-					this.presetCache
-				)
+				computeRanking({
+					population: this.population!,
+					sigmaZ: this.sigmaZ,
+					settledPreset: this.settledPreset!,
+					topN: this.topN,
+					weights: request.weights.slice(),
+					selectedIndex: request.selectedIndex,
+					revision: request.revision
+				})
 			);
 			this.active = null;
 			if (result.revision === this.revision)

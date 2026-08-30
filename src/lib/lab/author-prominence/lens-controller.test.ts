@@ -16,7 +16,7 @@ const manifest = {
 describe('central lens gesture lifecycle', () => {
 	it('begins, updates and commits one shared gesture', () => {
 		const starting = defaultLens(manifest);
-		const active = beginLensGesture(1, 'slider', starting, null);
+		const active = beginLensGesture(1, 'keyboard', starting, null);
 		const updated = updateLensGesture(active, manifest, [0.7, 0.161538461538, 0.138461538462], 0);
 		const committed = commitLensGesture(updated, manifest);
 		expect(committed.gesture.status).toBe('committed');
@@ -40,8 +40,8 @@ describe('central lens gesture lifecycle', () => {
 
 	it('the next interaction gets a new gesture ID', () => {
 		const starting = defaultLens(manifest);
-		expect(beginLensGesture(3, 'slider', starting, null).id).not.toBe(
-			beginLensGesture(4, 'slider', starting, null).id
+		expect(beginLensGesture(3, 'keyboard', starting, null).id).not.toBe(
+			beginLensGesture(4, 'keyboard', starting, null).id
 		);
 	});
 });

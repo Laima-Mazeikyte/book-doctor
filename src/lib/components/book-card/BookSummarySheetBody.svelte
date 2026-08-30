@@ -15,7 +15,7 @@
 		showAuthorInSheetMeta: boolean;
 		/** When true, author is a search pill if `onAuthorPillClick` is set; otherwise plain text. */
 		showSearchAuthorInOverlay: boolean;
-		onAuthorPillClick?: (e: MouseEvent) => void;
+		onAuthorPillClick?: (e: MouseEvent) => void | Promise<void>;
 		notInterested: boolean;
 		ratingGroupAriaLabel: string;
 		displayRating: number;
@@ -96,7 +96,9 @@
 	}: Props = $props();
 
 	const showSummaryRemoveSlot = $derived(canRemoveRatingInSheet || reserveSummaryRemoveLayoutSlot);
-	const summaryRemoveLayoutOnly = $derived(reserveSummaryRemoveLayoutSlot && !canRemoveRatingInSheet);
+	const summaryRemoveLayoutOnly = $derived(
+		reserveSummaryRemoveLayoutSlot && !canRemoveRatingInSheet
+	);
 	const labeledActionCount = $derived(
 		[showBookmarkAction, showNotInterestedAction, showReadItAction].filter(Boolean).length
 	);
@@ -196,7 +198,7 @@
 				aria-label={ratingGroupAriaLabel}
 				onmouseleave={onRatingGroupMouseLeave}
 			>
-				{#each RATING_OPTIONS as value}
+				{#each RATING_OPTIONS as value (value)}
 					<button
 						type="button"
 						class="book-card__star"
@@ -312,7 +314,9 @@
 				>
 					<ThumbsDown size={14} aria-hidden="true" />
 					{#if !iconOnly || notInterested}
-						<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span>
+						<span class="book-card__action-label"
+							>{t('shared.recommendationCard.notInterested')}</span
+						>
 					{/if}
 				</button>
 			{/if}

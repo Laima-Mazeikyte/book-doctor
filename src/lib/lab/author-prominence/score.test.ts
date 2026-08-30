@@ -1,14 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
 	auditBadges,
-	barScale,
 	buildPopulation,
 	contributions,
 	denominator,
 	formatContribution,
 	formatScore,
-	handlePositions,
-	normaliseWeights,
 	placeOf,
 	rank,
 	rawVariance
@@ -16,7 +13,7 @@ import {
 import { ProminenceFormatError, ProminenceScoringError, type ProminenceManifest } from './types';
 
 /**
- * Fixture values are lifted verbatim from the v1 release: the correlation matrix, the
+ * Fixture values are lifted from the v3 release: the correlation matrix, the
  * settled weights, the audit thresholds, and the rows for the authors the build's own
  * `run_manifest.verified_top` names in positions 1–5.
  */
@@ -27,7 +24,6 @@ const COLUMNS = [
 	'reach_z',
 	'recognition_z',
 	'n_books',
-	'n_readers',
 	'best_tier',
 	'n_awards',
 	'concentration',
@@ -35,11 +31,11 @@ const COLUMNS = [
 ];
 
 const ROWS: unknown[][] = [
-	['J.K. Rowling', 1.937895, 3.66119, 1.66801, 8, 79340, 2, 34, 0.0649, 1],
-	['Percival Everett', 2.36579, 2.171751, 2.822178, 9, 20009, 1, 39, 0.1184, 1],
-	['Margaret Atwood', 0.506791, 3.266758, 3.66119, 35, 67574, 1, 51, 0.0506, 1],
-	['Angie Thomas', 2.668677, 2.296039, 2.24108, 3, 23779, 1, 38, 0.0956, 1],
-	['Fredrik Backman', 1.888225, 3.076844, 2.131422, 10, 51231, 1, 16, 0.0689, 1]
+	['J.K. Rowling', 1.937895, 3.66119, 1.66801, 8, 2, 34, 0.0649, 1],
+	['Percival Everett', 2.36579, 2.171751, 2.822178, 9, 1, 39, 0.1184, 1],
+	['Margaret Atwood', 0.506791, 3.266758, 3.66119, 35, 1, 51, 0.0506, 1],
+	['Angie Thomas', 2.668677, 2.296039, 2.24108, 3, 1, 38, 0.0956, 1],
+	['Fredrik Backman', 1.888225, 3.076844, 2.131422, 10, 1, 16, 0.0689, 1]
 ];
 
 const SIGMA_Z = [
@@ -50,9 +46,9 @@ const SIGMA_Z = [
 
 function manifest(overrides: Partial<ProminenceManifest> = {}): ProminenceManifest {
 	return {
-		schema_version: 1,
+		schema_version: 2,
 		generated_utc: '2026-07-27T17:50:10Z',
-		version: 'v1',
+		version: 'v3',
 		display: { top_n: 10 },
 		model: {
 			features: ['regard', 'reach', 'recognition'],
@@ -69,8 +65,21 @@ function manifest(overrides: Partial<ProminenceManifest> = {}): ProminenceManife
 			index_is_calibrated_elo: false,
 			mode: 'prominence',
 			tier_weights: [100, 40, 15, 6, 2],
-			gate: { min_books: 2, min_clean_likes: 94 },
+			gate: { min_books: 2 },
 			...overrides.model
+		},
+		details: {
+			schema_version: 1,
+			author_count: 11950,
+			shard_size: 128,
+			shard_count: 94,
+			index_base: 0,
+			path_pattern: 'details/{shard}.json',
+			book_limit: 4,
+			recognition_record_limit: 5,
+			peak_method: 'grid_1pct',
+			peak_weight_quantum: 0.01,
+			generated_utc: '2026-07-27T17:50:10Z'
 		},
 		presets: [{ name: 'Balanced', weights: [0.35, 0.35, 0.3], settled: true, note: '' }],
 		audit: {
@@ -107,13 +116,27 @@ describe('buildPopulation', () => {
 		expect(population.names[0]).toBe('J.K. Rowling');
 		expect(population.z[0][0]).toBeCloseTo(1.937895, 6);
 		expect(population.z[1][0]).toBeCloseTo(3.66119, 6);
-		expect(population.nReaders[0]).toBe(79340);
 		expect(population.bestTier[0]).toBe(2);
+		expect(population.concentration[0]).toBeCloseTo(0.0649, 4);
+	});
+
+	it('accepts the optional stable author_id column', () => {
+		const withIds = {
+			columns: ['author_id', ...COLUMNS],
+			rows: ROWS.map((row, index) => [`author-${index}`, ...row])
+		};
+		const population = buildPopulation(withIds, manifest());
+		expect(population.authorIds).toEqual([
+			'author-0',
+			'author-1',
+			'author-2',
+			'author-3',
+			'author-4'
+		]);
 	});
 
 	/**
-	 * The contract allows new columns to be appended without a schema bump, so position is
-	 * never load-bearing. Reversing the column order must change nothing.
+	 * Position is never load-bearing. Reversing the column order must change nothing.
 	 */
 	it('reads columns by name, not position', () => {
 		const order = [...COLUMNS].reverse();
@@ -124,7 +147,7 @@ describe('buildPopulation', () => {
 		const population = buildPopulation(reversed, manifest());
 		expect(population.names[0]).toBe('J.K. Rowling');
 		expect(population.z[0][0]).toBeCloseTo(1.937895, 6);
-		expect(population.nReaders[0]).toBe(79340);
+		expect(population.concentration[0]).toBeCloseTo(0.0649, 4);
 	});
 
 	it('rejects a payload missing a scored column', () => {
@@ -136,11 +159,22 @@ describe('buildPopulation', () => {
 		expect(() => buildPopulation(broken, manifest())).toThrow(ProminenceFormatError);
 	});
 
+	it('rejects forbidden or unknown columns and short rows', () => {
+		const forbidden = {
+			columns: [...COLUMNS.slice(0, 4), 'n_readers', ...COLUMNS.slice(4)],
+			rows: ROWS.map((row) => [...row.slice(0, 4), 123, ...row.slice(4)])
+		};
+		expect(() => buildPopulation(forbidden, manifest())).toThrow(/unsupported columns/);
+
+		const short = { columns: COLUMNS, rows: [ROWS[0].slice(0, -1)] };
+		expect(() => buildPopulation(short, manifest())).toThrow(/fields, expected/);
+	});
+
 	// `best_tier` is null for every author with no recorded award; 0 stands in for it.
 	it('represents a null best_tier as zero', () => {
 		const withNull = {
 			columns: COLUMNS,
-			rows: [['Nobody', 0.1, 0.1, 0.1, 2, 100, null, 0, null, 0]]
+			rows: [['Nobody', 0.1, 0.1, 0.1, 2, null, 0, null, 0]]
 		};
 		const population = buildPopulation(withNull, manifest());
 		expect(population.bestTier[0]).toBe(0);
@@ -155,7 +189,7 @@ describe('denominator', () => {
 
 	/**
 	 * The point of dividing by it: spreading weight across correlated features must not
-	 * shrink the scores, or a user moving sliders reads it as the field getting worse.
+	 * shrink the scores, or a user moving the lens reads it as the field getting worse.
 	 */
 	it('holds the score spread roughly constant as weight spreads', () => {
 		const population = buildPopulation(payload, manifest());
@@ -224,8 +258,8 @@ describe('rank', () => {
 		const tied = {
 			columns: COLUMNS,
 			rows: [
-				['Zoe Author', 1, 1, 1, 2, 100, null, 0, 0.1, 0],
-				['Alice Author', 1, 1, 1, 2, 100, null, 0, 0.1, 0]
+				['Zoe Author', 1, 1, 1, 2, null, 0, 0.1, 0],
+				['Alice Author', 1, 1, 1, 2, null, 0, 0.1, 0]
 			]
 		};
 		const population = buildPopulation(tied, manifest());
@@ -250,63 +284,12 @@ describe('rank', () => {
 	});
 });
 
-describe('normaliseWeights', () => {
-	it('scales a raw slider vector to sum to one', () => {
-		expect(normaliseWeights([50, 25, 25], settled)).toEqual([0.5, 0.25, 0.25]);
-	});
-
-	it('falls back to the default when every slider is at zero', () => {
-		expect(normaliseWeights([0, 0, 0], settled)).toEqual(settled);
-	});
-
-	// Three handles at the top is an even split — the property the control is built on.
-	it('treats every slider at maximum as an even split', () => {
-		expect(normaliseWeights([100, 100, 100], settled)).toEqual([1 / 3, 1 / 3, 1 / 3]);
-	});
-
-	it('depends only on the ratio between the sliders', () => {
-		expect(normaliseWeights([70, 15, 15], settled)).toEqual(normaliseWeights([14, 3, 3], settled));
-	});
-});
-
-describe('handlePositions', () => {
-	it('scales the largest weight to the top of its track', () => {
-		expect(handlePositions([0.35, 0.35, 0.3])).toEqual([100, 100, 86]);
-		expect(handlePositions([0.7, 0.15, 0.15])).toEqual([100, 21, 21]);
-	});
-
-	/**
-	 * Handle positions are rounded integers, so reading the weights back out of them is
-	 * lossy — the settled preset drifts by about 0.0007. That is far too small to see in a
-	 * ranking but it is not nothing, and the settled vector is the one the release was
-	 * audited at, so the page scores from the preset's own weights and uses these positions
-	 * only to draw the handles. This bounds how far the drawing can lie.
-	 */
-	it('draws handles within half a percentage point of the weights they represent', () => {
-		for (const weights of [
-			[0.35, 0.35, 0.3],
-			[0.7, 0.15, 0.15],
-			[0.2, 0.6, 0.2],
-			[0.2, 0.2, 0.6]
-		]) {
-			const redrawn = normaliseWeights(handlePositions(weights), settled);
-			for (let i = 0; i < weights.length; i++) {
-				expect(Math.abs(redrawn[i] - weights[i])).toBeLessThan(0.005);
-			}
-		}
-	});
-
-	it('survives a degenerate weight vector', () => {
-		expect(handlePositions([0, 0, 0])).toEqual([0, 0, 0]);
-	});
-});
-
 describe('auditBadges', () => {
 	const base = manifest();
 
 	// Thresholds come from the manifest that the audit approved — never from this file.
 	it('flags reader enthusiasm with no corroborating awards', () => {
-		const rows = [['Devoted Following', 2.5, -0.5, -0.5, 3, 500, null, 0, 0.4, 0]];
+		const rows = [['Devoted Following', 2.5, -0.5, -0.5, 3, null, 0, 0.4, 0]];
 		const population = buildPopulation({ columns: COLUMNS, rows }, base);
 		const ranking = rank(population, settled, SIGMA_Z);
 		const parts = contributions(population, 0, settled, ranking.denominator);
@@ -316,7 +299,7 @@ describe('auditBadges', () => {
 	});
 
 	it('does not flag an author whose regard is below the rule', () => {
-		const rows = [['Modest', 1.0, -0.5, -0.5, 3, 500, null, 0, 0.4, 0]];
+		const rows = [['Modest', 1.0, -0.5, -0.5, 3, null, 0, 0.4, 0]];
 		const population = buildPopulation({ columns: COLUMNS, rows }, base);
 		const ranking = rank(population, settled, SIGMA_Z);
 		const parts = contributions(population, 0, settled, ranking.denominator);
@@ -324,7 +307,7 @@ describe('auditBadges', () => {
 	});
 
 	it('flags an author carried by readership alone', () => {
-		const rows = [['Widely Read', -1.0, 2.5, -1.0, 12, 90000, null, 0, 0.2, 0]];
+		const rows = [['Widely Read', -1.0, 2.5, -1.0, 12, null, 0, 0.2, 0]];
 		const population = buildPopulation({ columns: COLUMNS, rows }, base);
 		const ranking = rank(population, settled, SIGMA_Z);
 		const parts = contributions(population, 0, settled, ranking.denominator);
@@ -375,18 +358,5 @@ describe('formatScore', () => {
 	it('signs contribution labels', () => {
 		expect(formatContribution(0.8)).toBe('+0.80');
 		expect(formatContribution(-0.8)).toBe('-0.80');
-	});
-});
-
-describe('barScale', () => {
-	it('returns the largest absolute contribution on screen', () => {
-		const population = buildPopulation(payload, manifest());
-		const ranking = rank(population, settled, SIGMA_Z);
-		const scale = barScale(population, ranking.order, settled, ranking.denominator);
-		for (let i = 0; i < population.count; i++) {
-			for (const value of contributions(population, i, settled, ranking.denominator)) {
-				expect(Math.abs(value)).toBeLessThanOrEqual(scale);
-			}
-		}
 	});
 });

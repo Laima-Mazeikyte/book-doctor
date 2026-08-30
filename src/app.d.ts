@@ -8,8 +8,8 @@ declare global {
 		interface PageState {
 			/** Shallow history layer: rate page book search overlay opened from toolbar. */
 			rateSearchLayer?: boolean;
-			/** Shallow layer: book summary sheet (grid or search) on /rate. */
-			rateBookSummaryLayer?: boolean;
+			/** Shallow layer: the currently open book summary, shared by feed and lab pages. */
+			bookSummarySheet?: { ownerId: string; bookUlid: string };
 			/** Shallow layer: bookshelf / ratings drawer from bottom bar. */
 			rateRatingsDrawer?: boolean;
 			/** Shallow layer: book detail inside the ratings drawer. */

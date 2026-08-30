@@ -9,17 +9,25 @@
 		markRateAuthorSearch,
 		markRateSearchOpenedFromOtherRoute
 	} from '$lib/rateSearchExternalNav';
-	import { fly } from 'svelte/transition';
-	import { BookOpenText, X, Bookmark, Star, ThumbsDown } from 'lucide-svelte';
+	import { BookOpenText, Bookmark, ThumbsDown } from 'lucide-svelte';
 	import { ratingsStore } from '$lib/stores/ratings';
-	import { rateBookSummaryHistory } from '$lib/stores/rateBookSummaryHistory';
+	import {
+		bookSummarySheetHistory,
+		clearBookSummarySheetHistory,
+		consumeBookSummaryHistoryEntry,
+		createBookSummarySheetOwnerId,
+		ownsBookSummarySheet
+	} from '$lib/stores/bookSummarySheetHistory';
 	import { ratedSummarySheetKeepAlive } from '$lib/stores/ratedSummarySheetKeepAlive';
 	import { t } from '$lib/copy';
-	import type { RatingValue } from '$lib/types/book';
+	import type { Book, RatingValue } from '$lib/types/book';
 	import type { BookCardListProps } from './book-card/types';
 	import BookRatingStarsRow from './book-card/BookRatingStarsRow.svelte';
-	import BookSummarySheetBody from './book-card/BookSummarySheetBody.svelte';
-	import { getBookDisplaySummary } from './book-card/summaryStub';
+	import BookSummarySheet from './book-card/BookSummarySheet.svelte';
+	import type {
+		BookSummarySheetCloseOptions,
+		BookSummarySheetState
+	} from './book-card/bookSummarySheet';
 
 	let {
 		book,
@@ -39,11 +47,12 @@
 	const isRateContext = $derived(context === 'rate');
 
 	let coverImageFailed = $state(false);
-	let summaryOpen = $state(false);
-	let summaryBtnRef: HTMLButtonElement | undefined = $state();
-	let closeBtnRef: HTMLButtonElement | undefined = $state();
+	let summaryState = $state<BookSummarySheetState>({ kind: 'closed' });
+	const bookSummaryOwnerId = createBookSummarySheetOwnerId();
+	let summaryRestoreFocus = $state(true);
 	let hoverRating = $state<number>(0);
 
+	const summaryOpen = $derived(summaryState.kind !== 'closed');
 	const ratingFromStore = $derived($ratingsStore.get(book.id));
 	const currentRating = $derived(
 		isRateContext ? (ratingFromStore ?? null) : (currentRatingProp ?? null)
@@ -52,25 +61,12 @@
 	const starRowAriaGroupLabel = $derived(
 		isRateContext ? t('shared.bookCard.rateThisBook') : t('shared.recommendationCard.rateThisBook')
 	);
-
 	const displayRating = $derived(
 		hoverRating > 0 ? hoverRating : isRateContext ? (ratingFromStore ?? 0) : (currentRating ?? 0)
 	);
-
 	const showCoverImage = $derived(Boolean(book.coverUrl) && !coverImageFailed);
-	const displaySummary = $derived(getBookDisplaySummary(book));
-	const showSearchAuthorInOverlay = $derived(Boolean(book.author?.trim()));
-	const showAuthorInSheetMeta = $derived(Boolean(book.author?.trim()));
-	const canRemoveRatingInSheet = $derived(
-		isRateContext ? ratingFromStore != null : currentRating != null
-	);
-	const showSummaryBookmarkAction = $derived(Boolean(onBookmark));
-	const showSummaryNotInterestedAction = $derived(Boolean(onNotInterested));
-
-	const summaryPanelId = $derived(`book-summary-panel-${book.id}`);
-	const summaryTitleId = $derived(`book-summary-title-${book.id}`);
-	/** Pin the card in the parent list while the summary is open (see `ratedSummarySheetKeepAlive`). */
 	const summarySheetKeepAlive = $derived(context === 'rated' || context === 'recommendations');
+	const summaryPanelId = $derived(`book-summary-panel-${book.book_id}`);
 
 	const bookIdentityAriaLabel = $derived(
 		book.author?.trim()
@@ -80,7 +76,6 @@
 				})
 			: t('shared.recommendationCard.bookCardIdentityAriaLabelTitleOnly', { title: book.title })
 	);
-
 	const coverOpenSummaryAriaLabel = $derived(
 		book.author?.trim()
 			? t('shared.recommendationCard.seeSummaryCoverAriaLabelWithAuthor', {
@@ -90,334 +85,151 @@
 			: t('shared.recommendationCard.seeSummaryCoverAriaLabelTitleOnly', { title: book.title })
 	);
 
-	const SUMMARY_DRAWER_DESKTOP_PX = 400;
-	/** Cap fly distance on very tall viewports (full-screen mobile slide). */
-	const SUMMARY_SHEET_SLIDE_MAX_PX = 900;
-	const SUMMARY_SHEET_DISMISS_DRAG_PX = 100;
-	const SUMMARY_SHEET_DISMISS_VELOCITY = 0.35;
-	const SUMMARY_SHEET_DRAG_AXIS_LOCK_PX = 12;
-
-	let flySlideX = $state(0);
-	let flySlideY = $state(0);
-	let summarySheetContentEl = $state<HTMLElement | undefined>(undefined);
-	let summaryDialogPanelEl = $state<HTMLElement | undefined>(undefined);
-	let summarySheetDragY = $state(0);
-	let summarySheetDragging = $state(false);
-	let summarySheetSkipFlyOut = $state(false);
-	type SummarySheetDragTrack = {
-		pointerId: number;
-		startY: number;
-		startX: number;
-		lastY: number;
-		lastT: number;
-	};
-	let summarySheetDragTrack = $state<SummarySheetDragTrack | null>(null);
-
-	function portal(node: HTMLElement, target: HTMLElement = document.body) {
-		target.appendChild(node);
-		return {
-			destroy() {
-				node.parentNode?.removeChild(node);
-			}
-		};
+	function currentPageUrl(): string {
+		if (browser) return `${window.location.pathname}${window.location.search}`;
+		const current = get(page).url;
+		return `${current.pathname}${current.search}`;
 	}
 
-	function setSummaryFlyDistance() {
-		if (typeof window === 'undefined') {
-			flySlideX = -SUMMARY_DRAWER_DESKTOP_PX;
-			flySlideY = 0;
-			return;
-		}
-		if (window.matchMedia('(min-width: 768px)').matches) {
-			flySlideX = -SUMMARY_DRAWER_DESKTOP_PX;
-			flySlideY = 0;
-		} else {
-			flySlideX = 0;
-			flySlideY = Math.min(window.innerHeight, SUMMARY_SHEET_SLIDE_MAX_PX);
-		}
-	}
-
-	$effect(() => {
-		if (!summaryOpen) return;
-		const prev = document.body.style.overflow;
-		document.body.style.overflow = 'hidden';
-		return () => {
-			document.body.style.overflow = prev;
-		};
-	});
-
-	$effect(() => {
-		if (!summaryOpen) {
-			summarySheetDetachDragListeners();
-			summarySheetDragTrack = null;
-			summarySheetDragging = false;
-			summarySheetDragY = 0;
-		}
-	});
-
-	function summarySheetIsMobileViewport(): boolean {
-		if (!browser) return false;
-		return !window.matchMedia('(min-width: 768px)').matches;
-	}
-
-	function summarySheetDetachDragListeners() {
-		window.removeEventListener('pointermove', onSummarySheetDragMove);
-		window.removeEventListener('pointerup', onSummarySheetDragEnd);
-		window.removeEventListener('pointercancel', onSummarySheetDragEnd);
-	}
-
-	function handleSummarySheetPointerDown(e: PointerEvent) {
-		if (!summarySheetIsMobileViewport()) return;
-		const content = summarySheetContentEl;
-		if (!content) return;
-		if (content.scrollTop > 0) return;
-		const el = e.target as HTMLElement;
-		if (el.closest('button, a[href], input, textarea, select, label')) return;
-		if (e.pointerType === 'mouse' && e.button !== 0) return;
-
-		summarySheetDragTrack = {
-			pointerId: e.pointerId,
-			startY: e.clientY,
-			startX: e.clientX,
-			lastY: e.clientY,
-			lastT: e.timeStamp
-		};
-		window.addEventListener('pointermove', onSummarySheetDragMove);
-		window.addEventListener('pointerup', onSummarySheetDragEnd);
-		window.addEventListener('pointercancel', onSummarySheetDragEnd);
-	}
-
-	function onSummarySheetDragMove(e: PointerEvent) {
-		const tr = summarySheetDragTrack;
-		if (!tr || e.pointerId !== tr.pointerId) return;
-		const dy = e.clientY - tr.startY;
-		const dx = e.clientX - tr.startX;
-
-		if (!summarySheetDragging) {
-			if (dy <= SUMMARY_SHEET_DRAG_AXIS_LOCK_PX) return;
-			if (Math.abs(dx) > dy) return;
-			summarySheetDragging = true;
-			summarySheetContentEl?.setPointerCapture(e.pointerId);
-		}
-
-		if (summarySheetDragging && (e.pointerType === 'touch' || e.pointerType === 'pen')) {
-			e.preventDefault();
-		}
-
-		const y = Math.max(0, dy);
-		summarySheetDragY = y;
-		tr.lastY = e.clientY;
-		tr.lastT = e.timeStamp;
-	}
-
-	function onSummarySheetDragEnd(e: PointerEvent) {
-		const tr = summarySheetDragTrack;
-		if (!tr || e.pointerId !== tr.pointerId) return;
-		summarySheetDetachDragListeners();
-		try {
-			summarySheetContentEl?.releasePointerCapture(e.pointerId);
-		} catch {
-			/* not captured */
-		}
-
-		const wasDragging = summarySheetDragging;
-		summarySheetDragTrack = null;
-		if (!wasDragging) return;
-
-		summarySheetDragging = false;
-		const velocity = (e.clientY - tr.lastY) / Math.max(1, e.timeStamp - tr.lastT);
-		const passed =
-			summarySheetDragY > SUMMARY_SHEET_DISMISS_DRAG_PX ||
-			velocity > SUMMARY_SHEET_DISMISS_VELOCITY;
-
-		if (passed) {
-			void completeSummarySheetDragDismiss();
-		} else {
-			summarySheetDragY = 0;
-		}
-	}
-
-	async function completeSummarySheetDragDismiss() {
-		const el = summaryDialogPanelEl;
-		const start = summarySheetDragY;
-		summarySheetDragY = 0;
-
-		if (!browser || !el || !summarySheetIsMobileViewport()) {
-			await handleCloseSummary({ skipFlyOut: true });
-			return;
-		}
-		if (start <= 0 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-			await handleCloseSummary({ skipFlyOut: true });
-			return;
-		}
-
-		try {
-			await el.animate(
-				[
-					{ transform: `translateY(${start}px)` },
-					{ transform: `translateY(${window.innerHeight}px)` }
-				],
-				{
-					duration: 220,
-					easing: 'cubic-bezier(0.32, 0.72, 0, 1)',
-					fill: 'forwards'
-				}
-			).finished;
-		} catch {
-			/* aborted */
-		}
-		await handleCloseSummary({ skipFlyOut: true });
-	}
-
-	function handleSummaryWindowKeydown(e: KeyboardEvent) {
-		if (!summaryOpen) return;
-		if (e.key === 'Escape') {
-			e.preventDefault();
-			handleCloseSummary();
-		}
-	}
-
-	function handleSummaryOverlayClick(e: MouseEvent) {
-		if (e.target === e.currentTarget) handleCloseSummary();
-	}
-
-	function handleSummaryOverlayKeydown(e: KeyboardEvent) {
-		if (e.target !== e.currentTarget) return;
-		if (e.key === 'Enter' || e.key === ' ') {
-			e.preventDefault();
-			handleCloseSummary();
-		}
-	}
-
-	async function handleOpenSummary() {
+	function handleOpenSummary(event: MouseEvent): void {
 		if (summaryOpen) return;
-		setSummaryFlyDistance();
-		if (isRateContext && browser) {
-			const st = get(page).state as App.PageState;
-			let baseState = st;
-			if (st.rateBookSummaryLayer === true) {
-				baseState = { ...st };
-				delete baseState.rateBookSummaryLayer;
-				// eslint-disable-next-line svelte/no-navigation-without-resolve -- preserve search in shallow routing
-				replaceState(`${resolve('/rate')}${get(page).url.search}`, baseState);
-			}
-			// eslint-disable-next-line svelte/no-navigation-without-resolve -- preserve search in shallow routing
-			pushState(`${resolve('/rate')}${get(page).url.search}`, {
-				...baseState,
-				rateBookSummaryLayer: true
+		const trigger = event.currentTarget;
+		if (!(trigger instanceof HTMLButtonElement)) return;
+		summaryRestoreFocus = true;
+
+		if (browser && isRateContext) {
+			// eslint-disable-next-line svelte/no-navigation-without-resolve -- retain the current route and query for a shallow sheet entry
+			pushState(currentPageUrl(), {
+				...(get(page).state as App.PageState),
+				bookSummarySheet: { ownerId: bookSummaryOwnerId, bookUlid: book.book_id }
 			});
-			rateBookSummaryHistory.set({
-				bookId: book.id,
+			bookSummarySheetHistory.set({
+				ownerId: bookSummaryOwnerId,
+				bookUlid: book.book_id,
 				applyClose: () => {
 					void handleCloseSummary({ skipFlyOut: true, fromHistoryApply: true });
 				}
 			});
 		}
-		summaryOpen = true;
-		if (summarySheetKeepAlive) {
-			ratedSummarySheetKeepAlive.set({ bookId: book.id, book });
-		}
-		await tick();
-		closeBtnRef?.focus({ preventScroll: true });
+
+		summaryState = { kind: 'ready', book, trigger };
+		if (summarySheetKeepAlive) ratedSummarySheetKeepAlive.set({ bookId: book.id, book });
 	}
 
-	async function handleCloseSummary(opts?: { skipFlyOut?: boolean; fromHistoryApply?: boolean }) {
-		if (
-			!opts?.fromHistoryApply &&
-			isRateContext &&
-			browser &&
-			(get(page).state as App.PageState).rateBookSummaryLayer === true
-		) {
-			const next = { ...(get(page).state as App.PageState) };
-			delete next.rateBookSummaryLayer;
-			// eslint-disable-next-line svelte/no-navigation-without-resolve -- preserve search in shallow routing
-			replaceState(`${resolve('/rate')}${get(page).url.search}`, next);
+	async function handleCloseSummary(options?: BookSummarySheetCloseOptions): Promise<void> {
+		if (!summaryOpen) return;
+		const currentSheet = browser ? (get(page).state as App.PageState).bookSummarySheet : undefined;
+		const ownsHistoryMarker =
+			isRateContext && ownsBookSummarySheet(currentSheet, bookSummaryOwnerId);
+		const ownsHistoryEntry =
+			ownsHistoryMarker && ownsBookSummarySheet(get(bookSummarySheetHistory), bookSummaryOwnerId);
+
+		summaryState = { kind: 'closed' };
+		if (summarySheetKeepAlive) ratedSummarySheetKeepAlive.set(null);
+
+		if (options?.fromHistoryApply || !ownsHistoryEntry) {
+			if (!options?.fromHistoryApply && ownsHistoryMarker && !ownsHistoryEntry) {
+				stripOwnedSummaryMarker();
+			}
+			clearBookSummarySheetHistory(bookSummaryOwnerId);
+		} else if (browser) {
+			// The shallow sheet entry is consumed by Back; its popstate handler closes the sheet without navigating again.
+			await consumeBookSummaryHistoryEntry(bookSummaryOwnerId);
 		}
-		if (isRateContext) {
-			const h = get(rateBookSummaryHistory);
-			if (h?.bookId === book.id) rateBookSummaryHistory.set(null);
+	}
+
+	function handleBrowserPopstate(): void {
+		if (!summaryOpen || !browser || !isRateContext) return;
+		const currentSheet = (get(page).state as App.PageState).bookSummarySheet;
+		if (!ownsBookSummarySheet(currentSheet, bookSummaryOwnerId)) {
+			void handleCloseSummary({ skipFlyOut: true, fromHistoryApply: true });
 		}
-		if (opts?.skipFlyOut) {
-			summarySheetSkipFlyOut = true;
-		}
-		summaryOpen = false;
-		if (summarySheetKeepAlive) {
-			ratedSummarySheetKeepAlive.set(null);
-		}
-		await tick();
-		summarySheetSkipFlyOut = false;
-		summaryBtnRef?.focus({ preventScroll: true });
+	}
+
+	$effect(() => {
+		if (!summaryOpen || !browser || !isRateContext) return;
+		window.addEventListener('popstate', handleBrowserPopstate);
+		return () => window.removeEventListener('popstate', handleBrowserPopstate);
+	});
+
+	function stripOwnedSummaryMarker(): void {
+		if (!browser || !isRateContext) return;
+		const currentState = get(page).state as App.PageState;
+		if (!ownsBookSummarySheet(currentState.bookSummarySheet, bookSummaryOwnerId)) return;
+		const nextState = { ...currentState };
+		delete nextState.bookSummarySheet;
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- remove this card's marker during teardown
+		replaceState(currentPageUrl(), nextState);
 	}
 
 	onDestroy(() => {
-		const h = get(rateBookSummaryHistory);
-		if (h?.bookId === book.id) rateBookSummaryHistory.set(null);
-		const k = get(ratedSummarySheetKeepAlive);
-		if (k?.bookId === book.id) ratedSummarySheetKeepAlive.set(null);
+		stripOwnedSummaryMarker();
+		clearBookSummarySheetHistory(bookSummaryOwnerId);
+		const keepAlive = get(ratedSummarySheetKeepAlive);
+		if (keepAlive?.bookId === book.id) ratedSummarySheetKeepAlive.set(null);
 	});
 
-	function handleBookmarkClick(e: MouseEvent) {
-		e.stopPropagation();
+	function handleBookmarkClick(event: MouseEvent): void {
+		event.stopPropagation();
 		onBookmark?.(book.id);
 	}
 
-	function handleNotInterestedClick(e: MouseEvent) {
-		e.stopPropagation();
+	function handleNotInterestedClick(event: MouseEvent): void {
+		event.stopPropagation();
 		onNotInterested?.(book.id);
 	}
 
-	function handleSummaryAuthorPillClick(e: MouseEvent) {
-		e.preventDefault();
-		e.stopPropagation();
-		const author = book.author.trim();
-		if (onSearchAuthor) {
-			onSearchAuthor(book.author);
-		} else {
-			if (browser) {
-				markRateSearchOpenedFromOtherRoute();
-				markRateAuthorSearch(author);
-			}
-			void goto(resolve(`/rate?q=${encodeURIComponent(author)}`));
-		}
-		handleCloseSummary();
+	function handleSummaryBookmark(summaryBook: Book): void {
+		onBookmark?.(summaryBook.id);
 	}
 
-	function handleSheetRemoveRating(e: MouseEvent) {
-		e.stopPropagation();
-		hoverRating = 0;
-		if (isRateContext) {
-			ratingsStore.removeRating(book.id, book.book_id);
-			onAfterRate?.(book);
-		} else {
-			onRemoveRating?.(book.id);
+	function handleSummaryRate(summaryBook: Book, value: RatingValue): void {
+		onRate?.(summaryBook.id, value);
+	}
+
+	function handleSummaryRemoveRating(summaryBook: Book): void {
+		onRemoveRating?.(summaryBook.id);
+	}
+
+	function handleSummaryNotInterested(summaryBook: Book): void {
+		onNotInterested?.(summaryBook.id);
+	}
+
+	async function handleSummaryAuthorPillClick(author: string): Promise<void> {
+		summaryRestoreFocus = false;
+		try {
+			await handleCloseSummary();
+			await tick();
+			if (onSearchAuthor) {
+				await onSearchAuthor(author);
+			} else {
+				if (browser) {
+					markRateSearchOpenedFromOtherRoute();
+					markRateAuthorSearch(author.trim());
+				}
+				await goto(resolve(`/rate?q=${encodeURIComponent(author.trim())}`));
+			}
+		} finally {
+			summaryRestoreFocus = true;
 		}
 	}
 
 	function starHoverPreviewSupported(): boolean {
-		if (typeof window === 'undefined') return false;
-		return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+		return (
+			typeof window !== 'undefined' &&
+			window.matchMedia('(hover: hover) and (pointer: fine)').matches
+		);
 	}
 
-	function handleStarMouseEnter(value: RatingValue) {
+	function handleStarMouseEnter(value: RatingValue): void {
 		if (starHoverPreviewSupported()) hoverRating = value;
 	}
 
-	function handleStarClick(value: RatingValue) {
-		if (isRateContext) {
-			hoverRating = 0;
-			if (ratingFromStore === value) {
-				ratingsStore.removeRating(book.id, book.book_id);
-			} else {
-				ratingsStore.setRating(book.id, value, book.book_id, book);
-			}
-			onAfterRate?.(book);
-			return;
-		}
-		if (currentRating === value) {
-			onRemoveRating?.(book.id);
-		} else {
-			onRate?.(book.id, value);
-		}
+	function handleStarClick(value: RatingValue): void {
+		hoverRating = 0;
+		if (currentRating === value) onRemoveRating?.(book.id);
+		else onRate?.(book.id, value);
+		if (isRateContext) onAfterRate?.(book);
 	}
 
 	function starAriaLabel(value: RatingValue): string {
@@ -432,9 +244,6 @@
 	}
 
 	function starAriaPressed(value: RatingValue): boolean {
-		if (isRateContext) {
-			return ratingFromStore === value;
-		}
 		return currentRating === value;
 	}
 </script>
@@ -457,7 +266,7 @@
 					aria-label={coverOpenSummaryAriaLabel}
 					aria-expanded={summaryOpen}
 					aria-controls={summaryOpen ? summaryPanelId : undefined}
-					onclick={() => void handleOpenSummary()}
+					onclick={handleOpenSummary}
 				>
 					<img
 						src={book.coverUrl}
@@ -476,7 +285,7 @@
 					aria-label={coverOpenSummaryAriaLabel}
 					aria-expanded={summaryOpen}
 					aria-controls={summaryOpen ? summaryPanelId : undefined}
-					onclick={() => void handleOpenSummary()}
+					onclick={handleOpenSummary}
 				>
 					<span class="book-card__placeholder-title book-card__summary-sheet-title typ-h3"
 						>{book.title}</span
@@ -548,7 +357,6 @@
 			{/if}
 			<div class="book-card__cover-actions book-card__cover-actions--tr">
 				<button
-					bind:this={summaryBtnRef}
 					type="button"
 					tabindex={-1}
 					class="book-card__action book-card__action--reco-hoverable"
@@ -586,75 +394,22 @@
 	</div>
 </article>
 
-<svelte:window onkeydown={handleSummaryWindowKeydown} />
-
-{#if summaryOpen}
-	<div
-		use:portal
-		class="book-card__summary-dialog-overlay"
-		role="dialog"
-		aria-modal="true"
-		aria-labelledby={summaryTitleId}
-		tabindex="-1"
-		onclick={handleSummaryOverlayClick}
-		onkeydown={handleSummaryOverlayKeydown}
-	>
-		<div
-			bind:this={summaryDialogPanelEl}
-			id={summaryPanelId}
-			class="book-card__summary-dialog-panel"
-			class:book-card__summary-dialog-panel--dragging={summarySheetDragging}
-			style:transform={summarySheetDragY > 0 ? `translateY(${summarySheetDragY}px)` : undefined}
-			in:fly={{ x: flySlideX, y: flySlideY, duration: 200 }}
-			out:fly={summarySheetSkipFlyOut
-				? { duration: 0, x: 0, y: 0 }
-				: { x: flySlideX, y: flySlideY, duration: 150 }}
-		>
-			<button
-				bind:this={closeBtnRef}
-				type="button"
-				class="book-card__summary-close"
-				aria-label={t('shared.recommendationCard.closeSummary')}
-				onclick={() => void handleCloseSummary()}
-			>
-				<X size={18} aria-hidden="true" />
-			</button>
-			<BookSummarySheetBody
-				bind:summaryContentEl={summarySheetContentEl}
-				onSummaryPointerDown={handleSummarySheetPointerDown}
-				{book}
-				{summaryTitleId}
-				{displaySummary}
-				{showCoverImage}
-				onCoverImageError={() => (coverImageFailed = true)}
-				{showAuthorInSheetMeta}
-				{showSearchAuthorInOverlay}
-				onAuthorPillClick={showSearchAuthorInOverlay ? handleSummaryAuthorPillClick : undefined}
-				{notInterested}
-				ratingGroupAriaLabel={isRateContext
-					? t('shared.bookCard.rateThisBook')
-					: t('shared.recommendationCard.rateThisBook')}
-				{displayRating}
-				{starAriaLabel}
-				{starAriaPressed}
-				onStarMouseEnter={handleStarMouseEnter}
-				onStarClick={(value) => {
-					hoverRating = 0;
-					handleStarClick(value);
-				}}
-				onRatingGroupMouseLeave={() => (hoverRating = 0)}
-				{canRemoveRatingInSheet}
-				reserveSummaryRemoveLayoutSlot={isRateContext}
-				onRemoveRatingClick={handleSheetRemoveRating}
-				showBookmarkAction={showSummaryBookmarkAction}
-				showNotInterestedAction={showSummaryNotInterestedAction}
-				{bookmarked}
-				onBookmarkClick={handleBookmarkClick}
-				onNotInterestedClick={handleNotInterestedClick}
-			/>
-		</div>
-	</div>
-{/if}
+<BookSummarySheet
+	state={summaryState}
+	restoreFocus={summaryRestoreFocus}
+	{currentRating}
+	{bookmarked}
+	{notInterested}
+	onBookmark={onBookmark ? handleSummaryBookmark : undefined}
+	onRate={onRate ? handleSummaryRate : undefined}
+	onRemoveRating={onRemoveRating ? handleSummaryRemoveRating : undefined}
+	onNotInterested={onNotInterested ? handleSummaryNotInterested : undefined}
+	onAfterRate={isRateContext ? onAfterRate : undefined}
+	onSearchAuthor={handleSummaryAuthorPillClick}
+	onClose={handleCloseSummary}
+	ratingContext={isRateContext ? 'rate' : 'recommendation'}
+	reserveSummaryRemoveLayoutSlot={isRateContext}
+/>
 
 <style>
 	/* Shell + media: tokens in app.css (--book-card-*) */
@@ -985,85 +740,6 @@
 		border-color: var(--color-book-card-chip-on-border);
 	}
 
-	.book-card__summary-dialog-overlay {
-		position: fixed;
-		inset: 0;
-		z-index: 200;
-		/* Mobile: full-screen panel covers viewport; desktop: scrim beside drawer */
-		background: transparent;
-	}
-	.book-card__summary-dialog-panel {
-		position: absolute;
-		inset: 0;
-		z-index: 1;
-		box-sizing: border-box;
-		width: 100%;
-		height: 100%;
-		min-height: 100dvh;
-		max-width: none;
-		max-height: none;
-		background: var(--color-card-bg);
-		box-shadow: none;
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-		border-radius: 0;
-		padding-bottom: env(safe-area-inset-bottom, 0px);
-		transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
-	}
-	.book-card__summary-dialog-panel--dragging {
-		transition: none;
-	}
-	@media (min-width: 768px) {
-		.book-card__summary-dialog-overlay {
-			display: flex;
-			align-items: stretch;
-			justify-content: flex-start;
-			background: var(--color-overlay-scrim-soft);
-		}
-		.book-card__summary-dialog-panel {
-			position: relative;
-			inset: auto;
-			width: min(400px, 85vw);
-			min-width: 320px;
-			max-width: 400px;
-			height: auto;
-			align-self: stretch;
-			min-height: 0;
-			max-height: none;
-			box-shadow: var(--shadow-drawer);
-			padding-bottom: 0;
-			transition: none;
-		}
-		.book-card__summary-dialog-panel--dragging {
-			transition: none;
-		}
-	}
-	.book-card__summary-close {
-		position: absolute;
-		top: calc(var(--space-2) + env(safe-area-inset-top, 0px));
-		right: calc(var(--space-2) + env(safe-area-inset-right, 0px));
-		z-index: 11;
-		width: var(--min-tap);
-		height: var(--min-tap);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 0;
-		border: none;
-		background: transparent;
-		border-radius: var(--radius-pill);
-		cursor: pointer;
-		color: var(--color-text);
-		transition: background var(--duration-fast) var(--ease-default);
-	}
-	.book-card__summary-close:hover {
-		background: var(--color-floating-control-bg-hover);
-	}
-	.book-card__summary-close:focus-visible {
-		outline: 2px solid var(--color-focus);
-		outline-offset: 2px;
-	}
 	/* Cover + card row: inactive action pills use elevated surface (summary sheet body uses book-summary-sheet-body.css) */
 	.book-card__media-inner
 		.book-card__action:not(.book-card__action--saved):not(

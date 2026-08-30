@@ -1,22 +1,73 @@
 <script lang="ts">
-	import { formatContribution } from '$lib/lab/author-prominence/score';
-	import { formatRelativePosition, type DisplayModel } from '$lib/lab/author-prominence/display';
-	import type { PresetProfile } from '$lib/lab/author-prominence/ranking-engine';
+	import { t } from '$lib/copy';
+	import ProminenceAuthorCovers from '$lib/components/lab/ProminenceAuthorCovers.svelte';
+	import ProminenceAuditObservation from '$lib/components/lab/ProminenceAuditObservation.svelte';
+	import ProminenceContributionBar from '$lib/components/lab/ProminenceContributionBar.svelte';
+	import ProminenceDimensionStandings from '$lib/components/lab/ProminenceDimensionStandings.svelte';
+	import ProminencePeakRank from '$lib/components/lab/ProminencePeakRank.svelte';
+	import ProminenceRecognitionReceipts from '$lib/components/lab/ProminenceRecognitionReceipts.svelte';
+	import ProminenceSimilarProfiles, {
+		type SimilarProfileRow
+	} from '$lib/components/lab/ProminenceSimilarProfiles.svelte';
+	import type { DisplayFeature } from '$lib/lab/author-prominence/display';
+	import type { DimensionStandings } from '$lib/lab/author-prominence/standings';
 	import type {
-		ContributionRow,
+		AuthorBook,
+		NormalizedAuthorDetail,
+		ProminenceManifest
+	} from '$lib/lab/author-prominence/types';
+	import type {
+		ContributionSegment,
 		SelectedAuthorSnapshot
 	} from '$lib/lab/author-prominence/presentation';
 
+	const COVER_SKELETONS = [0, 1, 2, 3] as const;
+
+	type DetailStatus = 'loading' | 'ready' | 'error';
+
 	interface Props {
-		display: DisplayModel;
 		selected: SelectedAuthorSnapshot | null;
-		rows: ContributionRow[];
-		profiles: PresetProfile[];
-		currentPresetId: string | null;
+		segments: ContributionSegment[];
+		manifest: ProminenceManifest;
+		features: DisplayFeature[];
+		currentWeights: ArrayLike<number>;
+		detail: NormalizedAuthorDetail | null;
+		detailStatus: DetailStatus;
+		standings: DimensionStandings | null;
+		similarProfiles: SimilarProfileRow[];
 		onClear: () => void;
+		onRetry: () => void;
+		onUseBestMix: () => void;
+		onSelectSimilar: (index: number) => void;
+		onHoverSimilar: (index: number | null) => void;
+		onOpenBook: (book: AuthorBook, trigger: HTMLButtonElement) => void;
 	}
 
-	let { display, selected, rows, profiles, currentPresetId, onClear }: Props = $props();
+	let {
+		selected,
+		segments,
+		manifest,
+		features,
+		currentWeights,
+		detail,
+		detailStatus,
+		standings,
+		similarProfiles,
+		onClear,
+		onRetry,
+		onUseBestMix,
+		onSelectSimilar,
+		onHoverSimilar,
+		onOpenBook
+	}: Props = $props();
+
+	function catalogueYears(years: [number, number] | null): string {
+		if (!years) return '';
+		const present = t('lab.authorProminence.detail.present');
+		const minimum = years[0] >= 2025 ? present : String(years[0]);
+		const maximum = years[1] >= 2025 ? present : String(years[1]);
+		return minimum === maximum ? minimum : `${minimum}–${maximum}`;
+	}
 </script>
 
 {#if selected}
@@ -24,277 +75,242 @@
 		class="prominence-inspector"
 		aria-labelledby="inspector-heading"
 		data-testid="prominence-inspector"
-		data-selected-score={selected
-			? String(selected.values.reduce((sum, value) => sum + value, 0))
-			: undefined}
-		data-display-shares={selected ? rows.map((row) => row.displayShare).join('/') : undefined}
 	>
-		<div class="prominence-inspector__header">
-			<div>
-				<h2 id="inspector-heading" tabindex="-1">{selected.name}</h2>
-			</div>
-			<button type="button" class="clear-button" onclick={onClear}
-				>Clear <span aria-hidden="true">×</span></button
-			>
+		<button type="button" class="prominence-inspector__back" onclick={onClear}>← Ranking</button>
+		<div class="prominence-inspector__title">
+			<h2 id="inspector-heading" tabindex="-1">{selected.name}</h2>
+			<ProminenceAuditObservation id={`inspector-${selected.index}`} badges={selected.badges} />
 		</div>
-		<div class="prominence-inspector__rankline">
-			<strong>#{selected.place.toLocaleString()}</strong><span
-				>of {display.count.toLocaleString()}</span
-			>
-		</div>
-		<div class="inspector-block">
-			<div class="inspector-block__heading">
-				<h3>Current composition</h3>
-				<strong>{selected.score}</strong>
+
+		<div class="prominence-inspector__current" aria-label="Current prominence">
+			<div class="prominence-inspector__metric">
+				<span>Current rank</span>
+				<strong aria-label={`Current rank ${selected.place}`}
+					>#{selected.place.toLocaleString()}</strong
+				>
 			</div>
-			<div class="contribution-detail">
-				{#each rows as row (row.feature)}
-					<div class="contribution-detail__row">
-						<div class="contribution-detail__top">
-							<span><i style:background={row.colour}></i>{row.label}</span><strong
-								>{formatContribution(row.value)}</strong
-							>
-						</div>
-						<div class="contribution-detail__track">
-							<span class="contribution-detail__zero"></span><span
-								class:negative={row.value < 0}
-								class="contribution-detail__fill"
-								style:--contribution-width={`${row.width}%`}
-								style:background={row.colour}
-							></span>
-						</div>
-						<p>
-							{formatRelativePosition(row.z)} · weighted at {row.displayShare}% · contributes {formatContribution(
-								row.value
-							)}
-						</p>
-					</div>
-				{/each}
+			<span class="prominence-inspector__separator" aria-hidden="true">&middot;</span>
+			<div class="prominence-inspector__metric prominence-inspector__metric--score">
+				<span>Current score</span>
+				<ProminenceContributionBar
+					{segments}
+					score={selected.score}
+					scoreAriaLabel={`Current score ${selected.score}`}
+				/>
 			</div>
 		</div>
-		<div class="inspector-block">
-			<div class="inspector-block__heading">
-				<h3>Evidence</h3>
-			</div>
-			<dl class="evidence-grid">
-				<div>
-					<dt>Distinct readers</dt>
-					<dd>{selected.readers.toLocaleString()}</dd>
+		{#if detailStatus === 'ready' && detail && (detail.catalogueYears || detail.genres.length > 0)}
+			<section class="prominence-catalogue" data-testid="prominence-catalogue">
+				{#if detail.catalogueYears}
+					<span>{catalogueYears(detail.catalogueYears)}</span>
+				{/if}
+				{#each detail.genres as genre (genre)}<span class="prominence-catalogue__genre"
+						>{genre}</span
+					>{/each}
+			</section>
+		{/if}
+		<div
+			class="prominence-inspector__enrichment"
+			aria-busy={detailStatus === 'loading'}
+			data-testid="prominence-enrichment"
+		>
+			{#if detailStatus === 'loading'}
+				<span class="prominence-sr-only" role="status" aria-live="polite"
+					>Loading author details</span
+				>
+				<div class="prominence-skeleton__covers" aria-hidden="true">
+					{#each COVER_SKELETONS as slot (slot)}
+						<span></span>
+					{/each}
 				</div>
-				<div>
-					<dt>Eligible books</dt>
-					<dd>{selected.books.toLocaleString()}</dd>
+				<div class="prominence-skeleton__facts" aria-hidden="true">
+					<span></span><span></span><span></span>
 				</div>
-				<div>
-					<dt>Recorded awards</dt>
-					<dd>{selected.tier ? selected.awards.toLocaleString() : 'None recorded'}</dd>
+			{:else if detailStatus === 'error'}
+				<div class="prominence-inspector__error" role="status">
+					<span>{t('lab.authorProminence.detail.unavailable')}</span>
+					<button type="button" onclick={onRetry}>{t('lab.authorProminence.detail.retry')}</button>
 				</div>
-				<div>
-					<dt>Best award tier</dt>
-					<dd>{selected.tier ? `Tier ${selected.tier}` : 'None recorded'}</dd>
-				</div>
-				{#if Number.isFinite(selected.concentration)}<div>
-						<dt>Audience concentration</dt>
-						<dd>{selected.concentration.toFixed(2)}</dd>
-					</div>{/if}
-			</dl>
+			{:else if detail}
+				<ProminenceAuthorCovers books={detail.books} {onOpenBook} />
+				<ProminenceDimensionStandings
+					{features}
+					{standings}
+					authorIndex={selected.index}
+					populationCount={manifest.details.author_count}
+				/>
+				<ProminencePeakRank {detail} {features} {currentWeights} {onUseBestMix} />
+				<ProminenceRecognitionReceipts receipts={detail.recognition} />
+				<ProminenceSimilarProfiles
+					profiles={similarProfiles}
+					onSelect={onSelectSimilar}
+					onHover={onHoverSimilar}
+				/>
+			{/if}
 		</div>
-		<div class="inspector-block">
-			<div class="inspector-block__heading">
-				<h3>Across the four lenses</h3>
-			</div>
-			<div class="lens-profile">
-				{#each profiles as profile (profile.name)}<div
-						class:active={profile.name === currentPresetId}
-						class="lens-profile__item"
-					>
-						<span>{profile.name}</span><strong>#{profile.place.toLocaleString()}</strong>
-					</div>{/each}
-			</div>
-		</div>
-		{#if selected.badges.length > 0}<div class="observations">
-				<h3>Evidence observations</h3>
-				{#each selected.badges as badge (badge.badge)}<div class="observation">
-						<span>{badge.badge}</span>
-						<p>{badge.explain}</p>
-					</div>{/each}
-			</div>{/if}
 	</section>
 {/if}
 
 <style>
 	.prominence-inspector {
-		padding-bottom: 16px;
+		padding: 4px 0 20px;
 	}
-	.prominence-inspector__header {
-		display: flex;
-		align-items: start;
-		justify-content: space-between;
-		gap: 12px;
-	}
-	.prominence-inspector h2 {
-		margin: 0;
-		color: #efffff;
-		font: 500 26px var(--font-family-content);
-	}
-	.clear-button {
+	.prominence-inspector__back {
 		min-height: 44px;
-		padding: 5px 4px;
+		margin: 0 0 9px;
+		padding: 3px 0;
 		border: 0;
 		background: transparent;
-		color: rgba(207, 231, 232, 0.68);
+		color: rgba(207, 231, 232, 0.7);
+		font: 600 12px var(--font-family-interactive);
 		cursor: pointer;
-		font: 12px var(--font-family-interactive);
 	}
-	.prominence-inspector__rankline {
-		display: flex;
-		align-items: baseline;
-		gap: 8px;
-		margin-top: 13px;
-		color: rgba(207, 231, 232, 0.62);
-		font: 12px var(--font-family-interactive);
-	}
-	.prominence-inspector__rankline strong {
+	.prominence-inspector__back:hover {
 		color: #efffff;
-		font: 500 28px var(--font-family-content);
 	}
-	.inspector-block {
-		padding: 15px 0;
-		border-top: 1px solid rgba(164, 204, 206, 0.14);
+	.prominence-inspector__back:focus-visible,
+	.prominence-inspector__error button:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 3px;
+		border-radius: 3px;
 	}
-	.inspector-block__heading {
+	.prominence-inspector__title {
 		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 12px;
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
 	}
-	.inspector-block h3,
-	.observations h3 {
+	.prominence-inspector h2 {
+		min-width: 0;
 		margin: 0;
-		color: #d8eeee;
-		font: 600 13px var(--font-family-interactive);
+		overflow: hidden;
+		color: #efffff;
+		font: 500 26px/1.05 var(--font-family-content);
+		letter-spacing: -0.02em;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
-	.inspector-block__heading strong {
-		color: #bce8d8;
-		font: 600 17px var(--font-family-interactive);
-	}
-	.contribution-detail {
-		display: grid;
-		gap: 12px;
-		margin-top: 13px;
-	}
-	.contribution-detail__top {
+	.prominence-inspector__current {
 		display: flex;
-		justify-content: space-between;
-		gap: 10px;
-		color: rgba(207, 231, 232, 0.76);
-		font: 12px var(--font-family-interactive);
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 6px 10px;
+		margin: 10px 0 8px;
 	}
-	.contribution-detail__top span {
+	.prominence-inspector__current > div {
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
+		min-width: 0;
+		gap: 5px;
 	}
-	.contribution-detail__top i {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
+	.prominence-inspector__separator {
+		color: rgba(207, 231, 232, 0.4);
+		font: 14px/1 var(--font-family-interactive);
 	}
-	.contribution-detail__track {
-		position: relative;
-		height: 8px;
-		margin-top: 6px;
-		overflow: hidden;
-		border-radius: 3px;
-		background: linear-gradient(
-			90deg,
-			rgba(207, 231, 232, 0.12) 49.5%,
-			rgba(207, 231, 232, 0.4) 50%,
-			rgba(207, 231, 232, 0.12) 50.5%
-		);
+	.prominence-inspector__current > div > span:first-child {
+		color: rgba(207, 231, 232, 0.58);
+		font: 10px var(--font-family-interactive);
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
 	}
-	.contribution-detail__zero {
-		position: absolute;
-		inset-block: 0;
-		left: 50%;
-		width: 1px;
-		background: rgba(207, 231, 232, 0.5);
-	}
-	.contribution-detail__fill {
-		position: absolute;
-		top: 1px;
-		left: 50%;
-		width: var(--contribution-width);
-		height: 6px;
-		border-radius: 3px;
-	}
-	.contribution-detail__fill.negative {
-		right: 50%;
-		left: auto;
-	}
-	.contribution-detail__row p {
-		margin: 5px 0 0;
-		color: rgba(207, 231, 232, 0.62);
-		font: 12px/1.4 var(--font-family-interactive);
-	}
-	.evidence-grid {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 12px;
-		margin: 13px 0 0;
-	}
-	.evidence-grid dt {
-		color: rgba(207, 231, 232, 0.56);
-		font: 11px var(--font-family-interactive);
-	}
-	.evidence-grid dd {
-		margin: 3px 0 0;
-		color: #d8eeee;
-		font: 13px var(--font-family-interactive);
+	.prominence-inspector__current > div > strong {
+		color: #efffff;
+		font: 650 20px var(--font-family-interactive);
 		font-variant-numeric: tabular-nums;
 	}
-	.lens-profile {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 5px;
-		margin-top: 12px;
+	.prominence-inspector__metric--score > :global(.prominence-contribution) {
+		flex: 0 0 auto;
 	}
-	.lens-profile__item {
+	.prominence-inspector__enrichment {
 		display: flex;
+		min-width: 0;
+		flex-direction: column;
+		gap: 0;
+		margin-top: 15px;
+	}
+	.prominence-inspector__error {
+		display: flex;
+		align-items: center;
 		justify-content: space-between;
-		gap: 5px;
-		min-height: 38px;
-		padding: 8px;
-		border: 1px solid rgba(164, 204, 206, 0.14);
+		gap: 10px;
+		min-height: 44px;
+		padding: 8px 10px;
+		box-sizing: border-box;
+		border: 1px solid rgba(224, 165, 47, 0.3);
 		border-radius: 5px;
-		color: rgba(207, 231, 232, 0.64);
+		background: rgba(224, 165, 47, 0.07);
+		color: rgba(243, 201, 100, 0.9);
 		font: 11px var(--font-family-interactive);
 	}
-	.lens-profile__item.active {
-		border-color: rgba(57, 197, 150, 0.5);
-		color: #efffff;
-	}
-	.observations {
-		padding: 13px;
-		border: 1px solid rgba(224, 165, 47, 0.22);
-		border-radius: 7px;
-		background: rgba(64, 48, 19, 0.16);
-	}
-	.observation + .observation {
-		margin-top: 11px;
-		padding-top: 11px;
-		border-top: 1px solid rgba(224, 165, 47, 0.15);
-	}
-	.observation span {
+	.prominence-inspector__error button {
+		min-height: 36px;
+		padding: 5px 9px;
+		border: 1px solid rgba(243, 201, 100, 0.45);
+		border-radius: 4px;
+		background: transparent;
 		color: #f3c964;
-		font: 600 12px var(--font-family-interactive);
+		cursor: pointer;
+		font: 600 11px var(--font-family-interactive);
 	}
-	.observation p {
-		margin: 4px 0 0;
-		color: rgba(243, 201, 100, 0.78);
-		font: 12px/1.45 var(--font-family-interactive);
+	.prominence-catalogue {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 6px;
+		padding-top: 16px;
+		border-top: 1px solid rgba(164, 204, 206, 0.14);
+		color: rgba(207, 231, 232, 0.68);
+		font: 11px/1.25 var(--font-family-interactive);
 	}
-	.negative {
-		color: #efaa94;
+	.prominence-catalogue__genre {
+		padding: 4px 6px;
+		border: 1px solid rgba(164, 204, 206, 0.2);
+		border-radius: 999px;
+		color: rgba(207, 231, 232, 0.76);
+	}
+	.prominence-skeleton__covers {
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: 7px;
+	}
+	.prominence-skeleton__covers span {
+		display: block;
+		aspect-ratio: 2 / 3;
+		border-radius: 4px;
+		background: rgba(207, 231, 232, 0.1);
+	}
+	.prominence-skeleton__facts {
+		display: grid;
+		gap: 8px;
+		margin-top: 15px;
+	}
+	.prominence-skeleton__facts span {
+		display: block;
+		width: 62%;
+		height: 12px;
+		border-radius: 3px;
+		background: rgba(207, 231, 232, 0.1);
+	}
+	.prominence-skeleton__facts span:nth-child(2) {
+		width: 44%;
+	}
+	.prominence-skeleton__facts span:nth-child(3) {
+		width: 76%;
+	}
+	.prominence-sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		padding: 0;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
+	}
+	@media (max-width: 430px) {
+		.prominence-inspector h2 {
+			font-size: 23px;
+		}
 	}
 </style>

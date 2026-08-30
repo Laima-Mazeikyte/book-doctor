@@ -13,18 +13,17 @@ const population: Population = {
 	],
 	hasRecognition: Uint8Array.from([1, 1, 1, 1]),
 	nBooks: new Int32Array(4),
-	nReaders: new Int32Array(4),
 	bestTier: new Int8Array(4),
 	nAwards: new Int32Array(4),
 	concentration: new Float64Array(4)
 };
 const presets: Preset[] = [
-	{ name: 'Regard', weights: [1, 0, 0], settled: true, note: 'default' },
-	{ name: 'Recognition', weights: [0, 0, 1], settled: false, note: '' }
+	{ name: 'Balanced', weights: [0.5, 0.3, 0.2], settled: true, note: 'default' },
+	{ name: 'Most decorated', weights: [0, 0, 1], settled: false, note: '' }
 ];
 
 describe('exact ranking engine result contract', () => {
-	it('returns complete ranks, bounded overlays, selected contributions and cached profiles', () => {
+	it('returns complete ranks, bounded overlays and selected contributions', () => {
 		const result = computeRanking({
 			population,
 			sigmaZ: [
@@ -32,7 +31,7 @@ describe('exact ranking engine result contract', () => {
 				[0, 1, 0],
 				[0, 0, 1]
 			],
-			presets,
+			settledPreset: presets[0],
 			topN: 2,
 			weights: [0, 0, 1],
 			selectedIndex: 1,
@@ -40,7 +39,7 @@ describe('exact ranking engine result contract', () => {
 		});
 		expect(result.revision).toBe(7);
 		expect(result.weights).toEqual([0, 0, 1]);
-		expect(result.lens.displayName).toBe('Recognition');
+		expect(result.lens.displayName).toBe('Custom');
 		expect(Array.from(result.top250)).toEqual([3, 2, 1, 0]);
 		expect(Array.from(result.rankByIndex)).toEqual([4, 3, 2, 1]);
 		expect(Array.from(result.rankBuckets)).toEqual([2, 2, 3, 3]);
@@ -49,9 +48,6 @@ describe('exact ranking engine result contract', () => {
 		expect(
 			Array.from(result.selectedContributions ?? []).reduce((sum, value) => sum + value, 0)
 		).toBeCloseTo(result.scoreValues[result.scoreIndices.indexOf(1)]);
-		expect(result.presetProfiles).toEqual([
-			{ name: 'Regard', place: 2, settled: true },
-			{ name: 'Recognition', place: 3, settled: false }
-		]);
+		expect('presetProfiles' in result).toBe(false);
 	});
 });

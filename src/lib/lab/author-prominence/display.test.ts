@@ -20,7 +20,6 @@ const population = {
 	],
 	hasRecognition: Uint8Array.from([0, 0, 1]),
 	nBooks: new Int32Array(3),
-	nReaders: new Int32Array(3),
 	bestTier: new Int8Array(3),
 	nAwards: new Int32Array(3),
 	concentration: new Float64Array(3)

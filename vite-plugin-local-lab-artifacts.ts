@@ -12,9 +12,9 @@ import type { Plugin } from 'vite';
  * Storage; switching over is then a base-URL change and nothing else.
  *
  * Projects that still have local artifacts can register an instance with its own prefix and
- * root. The author-connections project is intentionally not one of them: its release is served
- * from Supabase Storage only. The plugin name is derived from the prefix because Vite warns on
- * duplicate plugin names.
+ * root. Author connections and author prominence intentionally do not: their releases are
+ * served from Supabase Storage only. The plugin name is derived from the prefix because Vite
+ * warns on duplicate plugin names.
  *
  * Not registered for `vite build` (`apply: 'serve'`), so production never depends on it.
  */

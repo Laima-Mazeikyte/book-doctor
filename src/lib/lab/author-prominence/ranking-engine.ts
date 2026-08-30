@@ -21,40 +21,28 @@ export interface RankingResult {
 	rankBuckets: Uint8Array;
 	selectedIndex: number | null;
 	selectedContributions: Float64Array | null;
-	presetProfiles: PresetProfile[];
 	topN: number;
-}
-
-export interface PresetProfile {
-	name: string;
-	place: number;
-	settled: boolean;
 }
 
 export interface RankingEngineInput {
 	population: Population;
 	sigmaZ: number[][];
-	presets: Preset[];
+	settledPreset: Preset;
 	topN: number;
 	weights: number[];
 	selectedIndex: number | null;
 	revision: number;
 }
 
-export interface PresetRankCache {
-	preset: Preset;
-	rankByIndex: Int32Array;
-}
-
-export function rankingLensSnapshot(weights: number[], presets: Preset[]): LensSnapshot {
+export function rankingLensSnapshot(weights: number[], settledPreset: Preset): LensSnapshot {
 	const exactWeights = weights.slice();
-	const preset = presetForWeights(exactWeights, presets);
+	const preset = presetForWeights(exactWeights, [settledPreset]);
 	return {
 		weights: exactWeights,
 		displayShares: largestRemainderShares(exactWeights),
 		source: preset ? 'preset' : 'custom',
 		presetId: preset?.name ?? null,
-		displayName: preset?.name ?? 'Custom lens',
+		displayName: preset?.name ?? 'Custom',
 		manifestNote: preset?.note ?? ''
 	};
 }
@@ -84,28 +72,8 @@ export function rankArrays(
 	return { order, scores, denominator: denom, rankByIndex };
 }
 
-export function buildPresetRankCache(
-	names: string[],
-	z: Float64Array[],
-	sigmaZ: number[][],
-	presets: Preset[]
-): PresetRankCache[] {
-	return presets.map((preset) => ({
-		preset: { ...preset, weights: preset.weights.slice() },
-		rankByIndex: rankArrays(names, z, sigmaZ, preset.weights).rankByIndex
-	}));
-}
-
-export function computeRanking(
-	input: RankingEngineInput,
-	presetCache: PresetRankCache[] = buildPresetRankCache(
-		input.population.names,
-		input.population.z,
-		input.sigmaZ,
-		input.presets
-	)
-): RankingResult {
-	const { population, sigmaZ, selectedIndex, revision } = input;
+export function computeRanking(input: RankingEngineInput): RankingResult {
+	const { population, sigmaZ, selectedIndex, revision, settledPreset } = input;
 	const weights = input.weights.slice();
 	const ranking = rankArrays(population.names, population.z, sigmaZ, weights);
 	const topN = Math.max(1, Math.min(input.topN, population.count));
@@ -137,7 +105,7 @@ export function computeRanking(
 			: null;
 	return {
 		revision,
-		lens: rankingLensSnapshot(weights, input.presets),
+		lens: rankingLensSnapshot(weights, settledPreset),
 		weights,
 		denominator: ranking.denominator,
 		top250,
@@ -148,14 +116,6 @@ export function computeRanking(
 		rankBuckets: bucket,
 		selectedIndex,
 		selectedContributions,
-		presetProfiles: presetCache.map(({ preset, rankByIndex }) => ({
-			name: preset.name,
-			place:
-				selectedIndex === null || selectedIndex < 0 || selectedIndex >= rankByIndex.length
-					? 0
-					: rankByIndex[selectedIndex],
-			settled: preset.settled
-		})),
 		topN
 	};
 }
@@ -189,7 +149,6 @@ export function cloneRankingResult(result: RankingResult): RankingResult {
 		rankBuckets: new Uint8Array(result.rankBuckets),
 		selectedContributions: result.selectedContributions
 			? new Float64Array(result.selectedContributions)
-			: null,
-		presetProfiles: result.presetProfiles.map((profile) => ({ ...profile }))
+			: null
 	};
 }

@@ -1,8 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
-	// The prominence release is intentionally mounted by the local-artifact Vite middleware
-	// during development; production deployments point PUBLIC_AUTHOR_PROMINENCE_BASE at storage.
+	// Author-prominence browser tests consume the same pinned public Supabase release as the app.
 	projects: [
 		{
 			name: 'chromium-webgl',

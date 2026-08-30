@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { createFloatingPopover } from '$lib/components/lab/floating-popover';
 	import type { ProminenceManifest } from '$lib/lab/author-prominence/types';
 
 	interface Props {
@@ -8,6 +9,27 @@
 	}
 
 	let { manifest, open, onToggle }: Props = $props();
+	let methodSummary: HTMLElement | null = $state(null);
+	let methodBody: HTMLDivElement | null = $state(null);
+
+	function handleKeydown(event: KeyboardEvent): void {
+		if (open && event.key === 'Escape') {
+			event.preventDefault();
+			onToggle(false);
+		}
+	}
+
+	$effect(() => {
+		if (!open) return;
+		const floating = createFloatingPopover({
+			isVisible: () => open,
+			getTrigger: () => methodSummary,
+			getPopover: () => methodBody,
+			onOutsidePointerDown: () => onToggle(false),
+			onKeydown: handleKeydown
+		});
+		return floating.destroy;
+	});
 </script>
 
 <div class="prominence-method">
@@ -16,23 +38,11 @@
 		{open}
 		ontoggle={(event) => onToggle((event.currentTarget as HTMLDetailsElement).open)}
 	>
-		<summary><span>Method and limitations</span></summary>
-		<div class="method-details__body">
+		<summary bind:this={methodSummary}><span>Method and limitations</span></summary>
+		<div bind:this={methodBody} class="method-details__body">
 			<ul>
 				{#each manifest.disclosure.items as item (item)}<li>{item}</li>{/each}
 			</ul>
-			<p>
-				<strong>Eligibility:</strong>
-				{manifest.quality.eligible_authors.toLocaleString()} of {manifest.quality.authors_in_source.toLocaleString()}
-				source authors. The release requires at least {manifest.model.gate.min_books} books and its rating-evidence
-				gate. Release {manifest.version} · generated {new Date(
-					manifest.generated_utc
-				).toLocaleDateString()}.
-			</p>
-			<p>
-				<strong>Interpretation:</strong> This score is the sum of the three visible contributions. It
-				is an index for exploring this release, not a calibrated rating and not a measure of merit.
-			</p>
 		</div>
 	</details>
 </div>
@@ -75,7 +85,7 @@
 		width: min(520px, calc(100vw - 32px));
 		max-height: min(560px, calc(100vh - 160px));
 		overflow: auto;
-		pointer-events: none;
+		pointer-events: auto;
 		box-sizing: border-box;
 		padding: 15px;
 		border: 1px solid rgba(164, 204, 206, 0.2);
@@ -88,9 +98,6 @@
 	.method-details__body ul {
 		margin: 0 0 13px;
 		padding-left: 20px;
-	}
-	.method-details__body p {
-		margin: 13px 0 0;
 	}
 	@media (max-width: 900px) {
 		.method-details__body {

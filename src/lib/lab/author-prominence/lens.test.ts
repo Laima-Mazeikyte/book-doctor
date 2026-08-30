@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { changeOneShare, largestRemainderShares, lensState } from './lens';
+import {
+	adjustLensForArrow,
+	adjustLensForArrowAt,
+	changeOneShare,
+	largestRemainderShares,
+	lensState
+} from './lens';
 import type { ProminenceManifest } from './types';
 
 describe('author prominence lens state math', () => {
@@ -23,6 +29,42 @@ describe('author prominence lens state math', () => {
 		expect(largestRemainderShares([1 / 3, 1 / 3, 1 / 3])).toEqual([34, 33, 33]);
 	});
 
+	it('maps arrow adjustments to the intended feature and preserves the simplex', () => {
+		const starting = [0.35, 0.35, 0.3];
+		const cases = [
+			['ArrowUp', 0, 0.36],
+			['ArrowDown', 0, 0.34],
+			['ArrowLeft', 1, 0.36],
+			['ArrowRight', 2, 0.31]
+		] as const;
+
+		for (const [key, changedIndex, expected] of cases) {
+			const next = adjustLensForArrow(starting, key);
+			expect(next).not.toBeNull();
+			if (!next) continue;
+			expect(next[changedIndex]).toBeCloseTo(expected);
+			expect(next.every((value) => value >= 0 && value <= 1)).toBe(true);
+			expect(next.reduce((sum, value) => sum + value, 0)).toBeCloseTo(1, 12);
+		}
+	});
+
+	it('supports five-point keyboard steps and stable boundary presses', () => {
+		const shifted = adjustLensForArrow([0.35, 0.35, 0.3], 'ArrowLeft', 5);
+		expect(shifted?.[1]).toBeCloseTo(0.4);
+		expect(adjustLensForArrow([1, 0, 0], 'ArrowUp')).toEqual([1, 0, 0]);
+		expect(adjustLensForArrow([0, 0.4, 0.6], 'ArrowDown')).toEqual([0, 0.4, 0.6]);
+		expect(adjustLensForArrow([0.35, 0.35, 0.3], 'PageDown')).toBeNull();
+	});
+
+	it('resolves keyboard directions by feature name when release order changes', () => {
+		const next = adjustLensForArrowAt([0.35, 0.35, 0.3], 'ArrowUp', 1, {
+			regard: 1,
+			reach: 2,
+			recognition: 0
+		});
+		expect(next?.[1]).toBeCloseTo(0.36);
+	});
+
 	it('does not trust a preset identity when the exact weights do not match', () => {
 		const manifest = {
 			model: { features: ['regard', 'reach', 'recognition'] },
@@ -33,6 +75,6 @@ describe('author prominence lens state math', () => {
 			presetId: 'Balanced'
 		});
 		expect(state.presetId).toBeNull();
-		expect(state.displayName).toBe('Custom lens');
+		expect(state.displayName).toBe('Custom');
 	});
 });

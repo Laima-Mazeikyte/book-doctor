@@ -1,8 +1,10 @@
-import { defaultLens, lensState, type LensState } from './lens';
+import { defaultLens, lensState, LENS_WEIGHT_TOLERANCE, type LensState } from './lens';
+import { PUBLIC_PRESET_NAME } from './contract';
 import { isUsableLensWeights } from './simplex';
 import type { Population, ProminenceManifest } from './types';
 
-const WEIGHT_TOLERANCE = 0.000001;
+const WEIGHT_TOLERANCE = LENS_WEIGHT_TOLERANCE;
+export { PUBLIC_PRESET_NAME } from './contract';
 
 export interface ProminenceUrlState {
 	lens: LensState;
@@ -52,9 +54,12 @@ export function parseProminenceUrl(
 	let lens = fallback;
 	let invalidLens = false;
 	if (named !== null) {
-		// A named preset wins intentionally when both parameters are present. An unknown preset
-		// invalidates the lens portion instead of silently applying a different custom state.
-		const preset = manifest.presets.find((candidate) => candidate.name === named);
+		// A named preset wins intentionally when both parameters are present. Balanced is the
+		// only public name; shipped non-settled profiles remain release data, not URL state.
+		const preset = manifest.presets.find(
+			(candidate) =>
+				candidate.name === PUBLIC_PRESET_NAME && candidate.settled && named === PUBLIC_PRESET_NAME
+		);
 		if (preset) {
 			lens = lensState(manifest, preset.weights, {
 				presets: manifest.presets,
@@ -90,7 +95,7 @@ export function serializeProminenceUrl(
 	url.searchParams.delete('lens');
 	url.searchParams.delete('w');
 	url.searchParams.delete('author');
-	if (state.lens.presetId) url.searchParams.set('lens', state.lens.presetId);
+	if (state.lens.presetId === PUBLIC_PRESET_NAME) url.searchParams.set('lens', PUBLIC_PRESET_NAME);
 	else url.searchParams.set('w', state.lens.weights.map((value) => value.toFixed(12)).join(','));
 	if (
 		state.selectedIndex !== null &&

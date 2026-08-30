@@ -1,4 +1,4 @@
-import { buildPresetRankCache, computeRanking, type RankingResult } from './ranking-engine';
+import { computeRanking, type RankingResult } from './ranking-engine';
 import type { Population, Preset } from './types';
 
 function workerTimingStart(): number {
@@ -28,7 +28,7 @@ interface InitMessage {
 	authorIds: string[] | null;
 	z: Float64Array[];
 	sigmaZ: number[][];
-	presets: Preset[];
+	settledPreset: Preset;
 	topN: number;
 }
 
@@ -43,9 +43,8 @@ type RankingWorkerMessage = InitMessage | RankMessage;
 
 let population: Population | null = null;
 let sigmaZ: number[][] = [];
-let presets: Preset[] = [];
-let topN = 10;
-let presetCache = [] as ReturnType<typeof buildPresetRankCache>;
+let settledPreset: Preset | null = null;
+let topN = 15;
 const workerScope = self as unknown as {
 	onmessage: ((event: MessageEvent<RankingWorkerMessage>) => void) | null;
 	postMessage: (message: unknown, transfer?: Transferable[]) => void;
@@ -67,16 +66,13 @@ workerScope.onmessage = (event: MessageEvent<RankingWorkerMessage>) => {
 				z: message.z,
 				hasRecognition: new Uint8Array(count),
 				nBooks: new Int32Array(count),
-				nReaders: new Int32Array(count),
 				bestTier: new Int8Array(count),
 				nAwards: new Int32Array(count),
 				concentration: new Float64Array(count)
 			};
 			sigmaZ = message.sigmaZ.map((row) => row.slice());
-			presets = message.presets.map((preset) => ({ ...preset, weights: preset.weights.slice() }));
+			settledPreset = { ...message.settledPreset, weights: message.settledPreset.weights.slice() };
 			topN = message.topN;
-			// The cache is built once per release and remains immutable for all requests.
-			presetCache = buildPresetRankCache(population.names, population.z, sigmaZ, presets);
 			workerScope.postMessage({ type: 'ready' });
 			return;
 		}
@@ -89,18 +85,16 @@ workerScope.onmessage = (event: MessageEvent<RankingWorkerMessage>) => {
 			return;
 		}
 		const started = workerTimingStart();
-		const result: RankingResult = computeRanking(
-			{
-				population,
-				sigmaZ,
-				presets,
-				topN,
-				weights: message.weights.slice(),
-				selectedIndex: message.selectedIndex,
-				revision: message.revision
-			},
-			presetCache
-		);
+		if (!settledPreset) throw new Error('Worker is missing the settled preset.');
+		const result: RankingResult = computeRanking({
+			population,
+			sigmaZ,
+			settledPreset,
+			topN,
+			weights: message.weights.slice(),
+			selectedIndex: message.selectedIndex,
+			revision: message.revision
+		});
 		workerTimingEnd(started);
 		const transfer: Transferable[] = [
 			result.top250.buffer,

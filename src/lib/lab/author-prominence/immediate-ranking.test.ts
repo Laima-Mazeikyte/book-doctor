@@ -30,7 +30,6 @@ function fixturePopulation(count = 7): Population {
 		],
 		hasRecognition: new Uint8Array(count),
 		nBooks: new Int32Array(count),
-		nReaders: new Int32Array(count),
 		bestTier: new Int8Array(count),
 		nAwards: new Int32Array(count),
 		concentration: new Float64Array(count)
@@ -53,7 +52,7 @@ describe('immediate selected-author ranking', () => {
 			const expected = computeRanking({
 				population,
 				sigmaZ,
-				presets,
+				settledPreset: presets[0],
 				topN: population.count,
 				weights,
 				selectedIndex,

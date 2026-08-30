@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
+	import { createFloatingPopover } from '$lib/components/lab/floating-popover';
 	import ScreenReaderOnly from '$lib/components/ScreenReaderOnly.svelte';
 	import { t } from '$lib/copy';
 	import {
@@ -11,7 +12,6 @@
 		type ProjectionTransform
 	} from '$lib/lab/author-prominence/camera';
 	import { FEATURE_COLOURS, type DisplayModel } from '$lib/lab/author-prominence/display';
-	import { ProminencePerformanceRecorder } from '$lib/lab/author-prominence/performance';
 	import {
 		prominenceTimingMeasure,
 		prominenceTimingMark
@@ -42,6 +42,7 @@
 		onSelect: (index: number | null) => void;
 		onHover: (index: number | null) => void;
 		onEscape: () => void;
+		onResetView?: () => void;
 	}
 
 	let {
@@ -58,7 +59,8 @@
 		rankingProgressVisible = false,
 		onSelect,
 		onHover,
-		onEscape
+		onEscape,
+		onResetView
 	}: Props = $props();
 
 	const DEFAULT_CAMERA: CameraState = {
@@ -129,7 +131,6 @@
 		cells: new Map()
 	};
 	const activePointers = new SvelteMap<number, { x: number; y: number }>();
-	const performanceRecorder = new ProminencePerformanceRecorder();
 	let fallbackPointsDrawn = $state(0);
 	let fallbackMode = $state<'none' | 'sample' | 'settled'>('none');
 	let fallbackMandatoryCount = $state(0);
@@ -151,6 +152,8 @@
 		camera: CameraState;
 		moved: boolean;
 	} | null = null;
+	let infoTrigger: HTMLButtonElement | null = $state(null);
+	let infoPopover: HTMLDivElement | null = $state(null);
 	type AnnotationRect = { left: number; top: number; right: number; bottom: number };
 	type InfoState = 'closed' | 'hover' | 'focus' | 'open' | 'dismissed';
 	type InfoPosition = { left: number; top: number; width: number };
@@ -173,37 +176,30 @@
 		infoState === 'hover' || infoState === 'focus' || infoState === 'open'
 	);
 
-	function scheduleInfoPosition(): void {
-		if (typeof window === 'undefined') return;
-		window.requestAnimationFrame(() => {
-			if (!infoVisible) return;
-			const trigger = document.getElementById('prominence-field-info-trigger');
-			const popover = document.getElementById('prominence-field-info');
-			if (!trigger || !popover) return;
-			const viewportWidth = Math.max(1, window.innerWidth);
-			const viewportHeight = Math.max(1, window.innerHeight);
-			const width = Math.min(INFO_MAX_WIDTH, Math.max(1, viewportWidth - INFO_VIEWPORT_MARGIN * 2));
-			const triggerRect = trigger.getBoundingClientRect();
-			const height = popover.getBoundingClientRect().height;
-			const left = Math.max(
-				INFO_VIEWPORT_MARGIN,
-				Math.min(triggerRect.right - width, viewportWidth - width - INFO_VIEWPORT_MARGIN)
-			);
-			const above = triggerRect.top - height - INFO_VIEWPORT_MARGIN;
-			const below = triggerRect.bottom + INFO_VIEWPORT_MARGIN;
-			let top = above >= INFO_VIEWPORT_MARGIN ? above : below;
-			top = Math.max(
-				INFO_VIEWPORT_MARGIN,
-				Math.min(top, viewportHeight - height - INFO_VIEWPORT_MARGIN)
-			);
-			infoPosition = { left, top, width };
-		});
+	function positionInfoPopover(): void {
+		if (!infoTrigger || !infoPopover) return;
+		const viewportWidth = Math.max(1, window.innerWidth);
+		const viewportHeight = Math.max(1, window.innerHeight);
+		const width = Math.min(INFO_MAX_WIDTH, Math.max(1, viewportWidth - INFO_VIEWPORT_MARGIN * 2));
+		const triggerRect = infoTrigger.getBoundingClientRect();
+		const height = infoPopover.getBoundingClientRect().height;
+		const left = Math.max(
+			INFO_VIEWPORT_MARGIN,
+			Math.min(triggerRect.right - width, viewportWidth - width - INFO_VIEWPORT_MARGIN)
+		);
+		const above = triggerRect.top - height - INFO_VIEWPORT_MARGIN;
+		const below = triggerRect.bottom + INFO_VIEWPORT_MARGIN;
+		let top = above >= INFO_VIEWPORT_MARGIN ? above : below;
+		top = Math.max(
+			INFO_VIEWPORT_MARGIN,
+			Math.min(top, viewportHeight - height - INFO_VIEWPORT_MARGIN)
+		);
+		infoPosition = { left, top, width };
 	}
 
 	function handleInfoPointerEnter(): void {
 		if (infoState === 'closed' || infoState === 'dismissed') {
 			infoState = 'hover';
-			scheduleInfoPosition();
 		}
 	}
 
@@ -214,7 +210,6 @@
 	function handleInfoFocus(): void {
 		if (infoState !== 'open') {
 			infoState = 'focus';
-			scheduleInfoPosition();
 		}
 	}
 
@@ -232,7 +227,6 @@
 			return;
 		}
 		infoState = 'open';
-		scheduleInfoPosition();
 	}
 
 	function handleInfoKeydown(event: KeyboardEvent): void {
@@ -253,17 +247,13 @@
 		);
 	}
 
-	function scheduleRender(
-		kind: 'camera' | 'ranking' | 'selection' | 'dimensions' | 'population' = 'camera'
-	): void {
+	function scheduleRender(): void {
 		if (typeof window === 'undefined' || renderFrame !== null) return;
 		renderFrame = window.requestAnimationFrame(() => {
 			renderFrame = null;
-			const start = performance.now();
 			const canvasMark = prominenceTimingMark('canvas');
 			drawScene();
 			prominenceTimingMeasure('canvas', canvasMark);
-			performanceRecorder.record(kind, start, performance.now());
 		});
 	}
 
@@ -292,7 +282,7 @@
 		pickGrid.cells.clear();
 		onHover(null);
 		schedulePickRebuild();
-		scheduleRender('camera');
+		scheduleRender();
 	}
 
 	function ensureFallbackSample(): void {
@@ -347,7 +337,7 @@
 		renderer?.resize(width, height, dpr);
 		cameraMoving = cameraAnimation !== null;
 		schedulePickRebuild();
-		scheduleRender('dimensions');
+		scheduleRender();
 	}
 
 	function worldLine(
@@ -959,14 +949,13 @@
 				webglRecovery = 'failed';
 				drawBackground(fallbackCtx);
 				drawFallbackPoints(fallbackCtx, transform);
-				scheduleRender('population');
+				scheduleRender();
 			}
 		}
 	}
 
 	function rebuildPickGrid(): void {
 		if (!projection || cameraMoving || drag || touchStart) return;
-		const start = performance.now();
 		const pickMark = prominenceTimingMark('pick');
 		const visibleIndices: number[] = [];
 		const nextGrid = createPickGrid(width, height, CELL_SIZE);
@@ -1008,9 +997,8 @@
 		pickReady = true;
 		hasProjectedPopulation = true;
 		cameraMoving = false;
-		performanceRecorder.record('pick', start, performance.now());
 		prominenceTimingMeasure('pick', pickMark);
-		scheduleRender('camera');
+		scheduleRender();
 	}
 
 	function pick(x: number, y: number): number | null {
@@ -1136,7 +1124,7 @@
 			if (moved || cancelled) schedulePickRebuild();
 		}
 		if (moved || cancelled) onHover(null);
-		scheduleRender('camera');
+		scheduleRender();
 		prominenceTimingMeasure('pointer', pointerMark);
 	}
 
@@ -1157,7 +1145,7 @@
 			camera = { ...target };
 			cameraMoving = false;
 			schedulePickRebuild();
-			scheduleRender('camera');
+			scheduleRender();
 			return;
 		}
 		const start = { ...camera };
@@ -1172,7 +1160,7 @@
 				panX: start.panX + (target.panX - start.panX) * eased,
 				panY: start.panY + (target.panY - start.panY) * eased
 			};
-			scheduleRender('camera');
+			scheduleRender();
 			if (progress < 1) cameraAnimation = requestAnimationFrame(tick);
 			else {
 				cameraAnimation = null;
@@ -1185,6 +1173,7 @@
 
 	function resetCamera(): void {
 		animateCamera({ ...DEFAULT_CAMERA });
+		onResetView?.();
 	}
 
 	function zoomBy(factor: number): void {
@@ -1244,7 +1233,7 @@
 			// Projection and point positions are renderer-independent. Keep a settled
 			// grid usable immediately after loss; rebuild only if it was already invalid.
 			if (!pickReady) schedulePickRebuild();
-			scheduleRender('population');
+			scheduleRender();
 		};
 		const onContextRestored = () => {
 			if (!webglCanvas) return;
@@ -1257,13 +1246,13 @@
 				renderer.resize(width, height, dpr);
 				syncRendererOverlays();
 				if (!pickReady) schedulePickRebuild();
-				scheduleRender('population');
+				scheduleRender();
 			} catch {
 				renderer = null;
 				restoringWebgl = false;
 				webglAvailable = false;
 				webglRecovery = 'failed';
-				scheduleRender('population');
+				scheduleRender();
 			}
 		};
 		if (webglCanvas) {
@@ -1298,33 +1287,33 @@
 		};
 	});
 
-	onMount(() => {
-		const reposition = () => {
-			if (infoVisible) scheduleInfoPosition();
-		};
-		window.addEventListener('resize', reposition);
-		window.addEventListener('scroll', reposition, true);
-		return () => {
-			window.removeEventListener('resize', reposition);
-			window.removeEventListener('scroll', reposition, true);
-		};
+	$effect(() => {
+		if (!infoVisible) return;
+		const floating = createFloatingPopover({
+			isVisible: () => infoVisible,
+			getTrigger: () => infoTrigger,
+			getPopover: () => infoPopover,
+			position: positionInfoPopover,
+			onOutsidePointerDown: () => (infoState = 'closed')
+		});
+		return floating.destroy;
 	});
 
 	$effect(() => {
 		void top250Indices;
 		void topIndices;
 		if (renderer) renderer.updateRankingOverlays(top250Indices, topIndices, worldSource);
-		scheduleRender('ranking');
+		scheduleRender();
 	});
 	$effect(() => {
 		void selectedIndex;
 		if (renderer) renderer.updateSelection(selectedIndex, worldSource);
-		scheduleRender('selection');
+		scheduleRender();
 	});
 	$effect(() => {
 		void hoveredIndex;
 		void hoverPoint;
-		scheduleRender('selection');
+		scheduleRender();
 	});
 	$effect(() => {
 		void population;
@@ -1339,13 +1328,13 @@
 			pickReady = false;
 			hasProjectedPopulation = false;
 			schedulePickRebuild();
-			scheduleRender('population');
+			scheduleRender();
 		}
 	});
 	$effect(() => {
 		void lens;
 		void rankingUpdating;
-		scheduleRender('camera');
+		scheduleRender();
 	});
 </script>
 
@@ -1431,6 +1420,7 @@
 				onpointerleave={handleInfoPointerLeave}
 			>
 				<button
+					bind:this={infoTrigger}
 					type="button"
 					class="prominence-field__info"
 					id="prominence-field-info-trigger"
@@ -1444,6 +1434,7 @@
 					onkeydown={handleInfoKeydown}>i</button
 				>
 				<div
+					bind:this={infoPopover}
 					id="prominence-field-info"
 					class="prominence-field__info-popover"
 					class:prominence-field__info-popover--visible={infoVisible}
