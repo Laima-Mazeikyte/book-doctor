@@ -12,6 +12,7 @@ export type RecommendationsUniqueMeta = {
 	lastRecommendedAt: Record<string, number>;
 	recommendationAppearanceCount: Record<string, number>;
 	bestRecommendationRank: Record<string, number>;
+	likedBookPrecedentsByBookId: Record<string, Book[]>;
 };
 
 function emptyUniqueMeta(): RecommendationsUniqueMeta {
@@ -19,7 +20,8 @@ function emptyUniqueMeta(): RecommendationsUniqueMeta {
 		allRecommendedBookIds: [],
 		lastRecommendedAt: {},
 		recommendationAppearanceCount: {},
-		bestRecommendationRank: {}
+		bestRecommendationRank: {},
+		likedBookPrecedentsByBookId: {}
 	};
 }
 
@@ -39,6 +41,7 @@ function createRecommendationsPageStore() {
 		...emptyUniqueMeta()
 	});
 	const runBooks = writable<Map<string, Book[]>>(new Map());
+	const runPrecedents = writable<Map<string, Record<string, Book[]>>>(new Map());
 
 	return {
 		history: {
@@ -66,10 +69,22 @@ function createRecommendationsPageStore() {
 		getRunBooks(requestId: string): Book[] | undefined {
 			return get(runBooks).get(requestId);
 		},
-		setRunBooks(requestId: string, books: Book[]) {
+		getRunPrecedents(requestId: string): Record<string, Book[]> | undefined {
+			return get(runPrecedents).get(requestId);
+		},
+		setRunBooks(
+			requestId: string,
+			books: Book[],
+			likedBookPrecedentsByBookId: Record<string, Book[]> = {}
+		) {
 			runBooks.update((state) => {
 				const next = new Map(state);
 				next.set(requestId, [...books]);
+				return next;
+			});
+			runPrecedents.update((state) => {
+				const next = new Map(state);
+				next.set(requestId, likedBookPrecedentsByBookId);
 				return next;
 			});
 		},
@@ -82,6 +97,7 @@ function createRecommendationsPageStore() {
 				...emptyUniqueMeta()
 			});
 			runBooks.set(new Map());
+			runPrecedents.set(new Map());
 		}
 	};
 }

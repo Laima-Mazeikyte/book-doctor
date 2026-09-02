@@ -24,6 +24,7 @@
 		slideId: string;
 		isClone?: boolean;
 		bookmarked: boolean;
+		likedBookPrecedents: Book[];
 		notInterested: boolean;
 		notInterestedOverlay?: NotInterestedOverlay;
 		onNotInterestedOverlayClick?: () => void;
@@ -55,6 +56,7 @@
 		onPrev,
 		onNext,
 		bookmarked,
+		likedBookPrecedents,
 		notInterested,
 		notInterestedOverlay = null,
 		onNotInterestedOverlayClick,
@@ -128,6 +130,7 @@
 >
 	<ShortlistBookDetail
 		{book}
+		{likedBookPrecedents}
 		{index}
 		{setSize}
 		{showNav}

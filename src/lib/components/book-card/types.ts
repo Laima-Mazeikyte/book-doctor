@@ -24,6 +24,8 @@ export type BookCardListProps = {
 	onSearchAuthor?: (author: string) => void | Promise<void>;
 	bookmarked?: boolean;
 	onBookmark?: (bookId: string) => void;
+	/** Resolved positive-history books that explain a recommendation, strongest first. */
+	likedBookPrecedents?: Book[];
 	currentRating?: RatingValue | null;
 	onRate?: (bookId: string, value: RatingValue) => void;
 	onRemoveRating?: (bookId: string) => void;

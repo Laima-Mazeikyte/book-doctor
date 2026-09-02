@@ -34,6 +34,7 @@
 
 	let visibleBooks = $state<Book[]>([]);
 	let reserveBooks = $state<Book[]>([]);
+	let likedBookPrecedentsByBookId = $state<Record<string, Book[]>>({});
 	let viewState = $state<ViewState>('loading');
 	let error = $state<string | null>(null);
 	let pollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -55,10 +56,14 @@
 		replaceUsedBookIds = new Set();
 	}
 
-	function applyBooksFromRun(all: Book[]) {
+	function applyBooksFromRun(
+		all: Book[],
+		precedentsByBookId: Record<string, Book[]> = {}
+	) {
 		const { visible, reserve } = splitShortlistBooks(all);
 		visibleBooks = visible;
 		reserveBooks = reserve;
+		likedBookPrecedentsByBookId = precedentsByBookId;
 		resetShortlistSession();
 	}
 
@@ -161,16 +166,17 @@
 	function startPoll(accessToken: string | null, requestId: string, loadId: number) {
 		const fromHistory = page.url.searchParams.get('from') === 'history';
 		const cached = recommendationsPageStore.getRunBooks(requestId);
+		const cachedPrecedents = recommendationsPageStore.getRunPrecedents(requestId) ?? {};
 
 		if (fromHistory && cached && cached.length > 0) {
-			applyBooksFromRun(cached);
+			applyBooksFromRun(cached, cachedPrecedents);
 			viewState = 'ready';
 			void refreshRecommendationsCountFromApi(accessToken);
 			void fetchRecommendations(accessToken, requestId)
-				.then(({ books: next }) => {
+				.then(({ books: next, likedBookPrecedentsByBookId: nextPrecedents }) => {
 					if (!isActiveLoad(loadId, requestId)) return;
-					applyBooksFromRun(next);
-					recommendationsPageStore.setRunBooks(requestId, next);
+					applyBooksFromRun(next, nextPrecedents);
+					recommendationsPageStore.setRunBooks(requestId, next, nextPrecedents);
 					viewState = next.length > 0 ? 'ready' : 'empty';
 				})
 				.catch(() => {
@@ -182,10 +188,12 @@
 		if (fromHistory && cached) {
 			visibleBooks = [];
 			reserveBooks = [];
+			likedBookPrecedentsByBookId = {};
 			viewState = 'loading';
 		} else if (!fromHistory) {
 			visibleBooks = [];
 			reserveBooks = [];
+			likedBookPrecedentsByBookId = {};
 			viewState = 'loading';
 		}
 
@@ -195,11 +203,14 @@
 			if (!isActiveLoad(loadId, requestId)) return;
 			let done = false;
 			try {
-				const { books: nextBooks } = await fetchRecommendations(accessToken, requestId);
+				const {
+					books: nextBooks,
+					likedBookPrecedentsByBookId: nextPrecedents
+				} = await fetchRecommendations(accessToken, requestId);
 				if (!isActiveLoad(loadId, requestId)) return;
 				if (nextBooks.length > 0) {
-					applyBooksFromRun(nextBooks);
-					recommendationsPageStore.setRunBooks(requestId, nextBooks);
+					applyBooksFromRun(nextBooks, nextPrecedents);
+					recommendationsPageStore.setRunBooks(requestId, nextBooks, nextPrecedents);
 					viewState = 'ready';
 					void refreshRecommendationsCountFromApi(accessToken);
 					done = true;
@@ -326,6 +337,7 @@
 				scrollToBookIndex = controller.scrollToIndex;
 			}}
 			getBookmarked={(id) => $planToReadStore.has(id)}
+			getLikedBookPrecedents={(bookId) => likedBookPrecedentsByBookId[bookId] ?? []}
 			getNotInterested={(bookId) => $notInterestedStore.has(bookId)}
 			getNotInterestedOverlay={getNotInterestedOverlay}
 			getRating={(id) => $ratingsStore.get(id) ?? null}

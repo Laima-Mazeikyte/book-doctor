@@ -6,6 +6,7 @@ export const RECOMMENDATIONS_POLL_TIMEOUT_MS = 60_000;
 export type FetchRecommendationsResult = {
 	books: Book[];
 	request_id: string | null;
+	likedBookPrecedentsByBookId: Record<string, Book[]>;
 };
 
 export async function fetchRecommendations(
@@ -21,6 +22,14 @@ export async function fetchRecommendations(
 	}
 	const res = await fetch(url, { headers });
 	if (!res.ok) throw new Error(`HTTP ${res.status}`);
-	const data: { books: Book[]; request_id: string | null } = await res.json();
-	return { books: data.books ?? [], request_id: data.request_id ?? null };
+	const data: {
+		books: Book[];
+		request_id: string | null;
+		likedBookPrecedentsByBookId?: Record<string, Book[]>;
+	} = await res.json();
+	return {
+		books: data.books ?? [],
+		request_id: data.request_id ?? null,
+		likedBookPrecedentsByBookId: data.likedBookPrecedentsByBookId ?? {}
+	};
 }

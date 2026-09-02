@@ -8,8 +8,16 @@ import {
 	parseRecommendationRank,
 	parseRecommendationTimestamp
 } from '$lib/server/recommendationFilters';
+import {
+	resolveLikedBookPrecedents,
+	type RecommendationPrecedentRow
+} from '$lib/server/recommendationPrecedents';
 import { requireAccessToken } from '$lib/server/requestAuth';
 import { createSupabaseWithAuth } from '$lib/server/supabase';
+
+type RecommendationItemRow = RecommendationPrecedentRow & {
+	request_id?: unknown;
+};
 
 export const GET: RequestHandler = async ({ request }) => {
 	const accessToken = requireAccessToken(request);
@@ -33,14 +41,15 @@ export const GET: RequestHandler = async ({ request }) => {
 			allRecommendedBookIds: [],
 			lastRecommendedAt: {},
 			recommendationAppearanceCount: {},
-			bestRecommendationRank: {}
+			bestRecommendationRank: {},
+			likedBookPrecedentsByBookId: {}
 		});
 	}
 
 	// Get all items for those runs (may contain duplicates across runs)
 	const { data: items, error: itemsError } = await supabase
 		.from('recommendation_items')
-		.select('book_id, request_id, rank')
+		.select('book_id, request_id, rank, score, liked_book_precedent_ids')
 		.in('request_id', requestIds);
 
 	if (itemsError) {
@@ -48,16 +57,17 @@ export const GET: RequestHandler = async ({ request }) => {
 		throw error(500, 'Failed to load recommendation items');
 	}
 
-	const itemsByRequestId = new Map<string, string[]>();
+	const itemsByRequestId = new Map<string, RecommendationItemRow[]>();
 	const appearanceCountByBook = new Map<string, number>();
 	const bestRankByBook = new Map<string, number>();
 
 	for (const row of items ?? []) {
 		const bid = String(row.book_id ?? '').trim();
-		if (!bid || !row.request_id) continue;
-		const list = itemsByRequestId.get(row.request_id) ?? [];
-		list.push(bid);
-		itemsByRequestId.set(row.request_id, list);
+		const requestId = typeof row.request_id === 'string' ? row.request_id : '';
+		if (!bid || !requestId) continue;
+		const list = itemsByRequestId.get(requestId) ?? [];
+		list.push(row as RecommendationItemRow);
+		itemsByRequestId.set(requestId, list);
 
 		appearanceCountByBook.set(bid, (appearanceCountByBook.get(bid) ?? 0) + 1);
 		const rank = parseRecommendationRank(row.rank);
@@ -67,7 +77,25 @@ export const GET: RequestHandler = async ({ request }) => {
 		}
 	}
 
-	let uniqueBookIds = [...new Set([...itemsByRequestId.values()].flat())];
+	for (const runItems of itemsByRequestId.values()) {
+		runItems.sort((a, b) => {
+			const rankA = parseRecommendationRank(a.rank);
+			const rankB = parseRecommendationRank(b.rank);
+			if (rankA == null && rankB == null) return 0;
+			if (rankA == null) return 1;
+			if (rankB == null) return -1;
+			return rankA - rankB;
+		});
+	}
+
+	let uniqueBookIds = [
+		...new Set(
+			[...itemsByRequestId.values()]
+				.flat()
+				.map((row) => String(row.book_id ?? '').trim())
+				.filter(Boolean)
+		)
+	];
 	const allRecommendedBookIds = [...uniqueBookIds];
 
 	// Most recent run that contained each book (logs are newest-first)
@@ -75,7 +103,9 @@ export const GET: RequestHandler = async ({ request }) => {
 	for (const log of logs ?? []) {
 		const rid = log.request_id;
 		if (!rid) continue;
-		const runBookIds = itemsByRequestId.get(rid) ?? [];
+		const runBookIds = (itemsByRequestId.get(rid) ?? [])
+			.map((row) => String(row.book_id ?? '').trim())
+			.filter(Boolean);
 		const ts = parseRecommendationTimestamp(log.created_at);
 		if (ts == null) continue;
 		for (const bid of runBookIds) {
@@ -105,12 +135,22 @@ export const GET: RequestHandler = async ({ request }) => {
 			allRecommendedBookIds,
 			lastRecommendedAt: lastRecommendedAtRecord(lastRecommendedMs),
 			recommendationAppearanceCount,
-			bestRecommendationRank
+			bestRecommendationRank,
+			likedBookPrecedentsByBookId: {}
 		});
 	}
 
 	try {
 		const books = await fetchBooksByUlids(supabase, uniqueBookIds);
+		const precedentRowsInPriorityOrder: RecommendationPrecedentRow[] = [];
+		for (const log of logs ?? []) {
+			if (!log.request_id) continue;
+			precedentRowsInPriorityOrder.push(...(itemsByRequestId.get(log.request_id) ?? []));
+		}
+		const likedBookPrecedentsByBookId = await resolveLikedBookPrecedents(
+			supabase,
+			precedentRowsInPriorityOrder
+		);
 
 		// Newest recommendation batch first; stable tie-break by title
 		books.sort((a, b) => compareBooksByLastRecommended(a, b, lastRecommendedMs));
@@ -120,7 +160,8 @@ export const GET: RequestHandler = async ({ request }) => {
 			allRecommendedBookIds,
 			lastRecommendedAt: lastRecommendedAtRecord(lastRecommendedMs),
 			recommendationAppearanceCount,
-			bestRecommendationRank
+			bestRecommendationRank,
+			likedBookPrecedentsByBookId
 		});
 	} catch (booksError) {
 		console.error(booksError);

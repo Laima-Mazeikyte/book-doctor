@@ -116,6 +116,9 @@
 	let bestRecommendationRank = $state<Record<string, number>>(
 		initialHistorySnapshot.bestRecommendationRank ?? {}
 	);
+	let likedBookPrecedentsByBookId = $state<Record<string, Book[]>>(
+		initialHistorySnapshot.likedBookPrecedentsByBookId ?? {}
+	);
 	let sortOrder = $state<RecSortId>(readRecSortFromLs());
 
 	const notInterestedIds = $derived.by(() => new Set([...$notInterestedStore]));
@@ -184,6 +187,7 @@
 		lastRecommendedAt: Record<string, number>;
 		recommendationAppearanceCount: Record<string, number>;
 		bestRecommendationRank: Record<string, number>;
+		likedBookPrecedentsByBookId: Record<string, Book[]>;
 	}> {
 		const headers: Record<string, string> = {};
 		if (accessToken) {
@@ -196,7 +200,8 @@
 				allRecommendedBookIds: [],
 				lastRecommendedAt: {},
 				recommendationAppearanceCount: {},
-				bestRecommendationRank: {}
+				bestRecommendationRank: {},
+				likedBookPrecedentsByBookId: {}
 			};
 		}
 		const data: {
@@ -205,13 +210,15 @@
 			lastRecommendedAt?: Record<string, number>;
 			recommendationAppearanceCount?: Record<string, number>;
 			bestRecommendationRank?: Record<string, number>;
+			likedBookPrecedentsByBookId?: Record<string, Book[]>;
 		} = await res.json();
 		return {
 			books: data.books ?? [],
 			allRecommendedBookIds: data.allRecommendedBookIds ?? [],
 			lastRecommendedAt: data.lastRecommendedAt ?? {},
 			recommendationAppearanceCount: data.recommendationAppearanceCount ?? {},
-			bestRecommendationRank: data.bestRecommendationRank ?? {}
+			bestRecommendationRank: data.bestRecommendationRank ?? {},
+			likedBookPrecedentsByBookId: data.likedBookPrecedentsByBookId ?? {}
 		};
 	}
 
@@ -253,6 +260,7 @@
 		lastRecommendedAt = snapshot.lastRecommendedAt ?? {};
 		recommendationAppearanceCount = snapshot.recommendationAppearanceCount ?? {};
 		bestRecommendationRank = snapshot.bestRecommendationRank ?? {};
+		likedBookPrecedentsByBookId = snapshot.likedBookPrecedentsByBookId ?? {};
 		loading = !snapshot.loaded;
 		uniqueBooksLoading = snapshot.runs.length > 0 && !snapshot.uniqueLoaded;
 		error = null;
@@ -307,11 +315,13 @@
 					lastRecommendedAt = payload.lastRecommendedAt;
 					recommendationAppearanceCount = payload.recommendationAppearanceCount;
 					bestRecommendationRank = payload.bestRecommendationRank;
+					likedBookPrecedentsByBookId = payload.likedBookPrecedentsByBookId;
 					recommendationsPageStore.setUniqueBooks(payload.books, {
 						allRecommendedBookIds: payload.allRecommendedBookIds,
 						lastRecommendedAt: payload.lastRecommendedAt,
 						recommendationAppearanceCount: payload.recommendationAppearanceCount,
-						bestRecommendationRank: payload.bestRecommendationRank
+						bestRecommendationRank: payload.bestRecommendationRank,
+						likedBookPrecedentsByBookId: payload.likedBookPrecedentsByBookId
 					});
 					recommendationsCountStore.set(payload.books.length);
 				} catch {
@@ -322,6 +332,7 @@
 						lastRecommendedAt = {};
 						recommendationAppearanceCount = {};
 						bestRecommendationRank = {};
+						likedBookPrecedentsByBookId = {};
 						recommendationsCountStore.set(0);
 					}
 				} finally {
@@ -343,6 +354,7 @@
 						lastRecommendedAt = {};
 						recommendationAppearanceCount = {};
 						bestRecommendationRank = {};
+						likedBookPrecedentsByBookId = {};
 						uniqueBooksLoading = false;
 						recommendationsPageStore.setUniqueBooks([]);
 						recommendationsCountStore.set(0);
@@ -428,6 +440,7 @@
 							<BookCard
 								context="recommendations"
 								{book}
+								likedBookPrecedents={likedBookPrecedentsByBookId[book.book_id] ?? []}
 								bookmarked={$planToReadStore.has(book.id)}
 								onBookmark={(id) => handleBookmark(book, id)}
 								currentRating={$ratingsStore.get(book.id) ?? null}

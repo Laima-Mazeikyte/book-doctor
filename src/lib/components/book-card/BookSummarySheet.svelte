@@ -30,6 +30,8 @@
 		onClose: (options?: BookSummarySheetCloseOptions) => void | Promise<void>;
 		onRetry?: () => void | Promise<void>;
 		ratingContext?: 'rate' | 'recommendation';
+		/** Hide the rating controls when the sheet is opened for a read-only related book. */
+		showRatingStars?: boolean;
 		/** Rate cards reserve the remove-rating slot before a rating exists. */
 		reserveSummaryRemoveLayoutSlot?: boolean;
 	}
@@ -49,6 +51,7 @@
 		onClose,
 		onRetry,
 		ratingContext = 'recommendation',
+		showRatingStars = true,
 		reserveSummaryRemoveLayoutSlot = false
 	}: Props = $props();
 
@@ -433,6 +436,7 @@
 					showSearchAuthorInOverlay={Boolean(sheetState.book.author?.trim())}
 					onAuthorPillClick={onSearchAuthor ? handleAuthorPillClick : undefined}
 					{notInterested}
+					{showRatingStars}
 					{ratingGroupAriaLabel}
 					{displayRating}
 					{starAriaLabel}

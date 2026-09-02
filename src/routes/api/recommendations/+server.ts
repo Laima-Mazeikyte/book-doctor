@@ -2,6 +2,11 @@ import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { fetchBooksByUlidsInOrder } from '$lib/server/catalogBooks';
 import { filterBookIdsExcludingUserLists } from '$lib/server/recommendationFilters';
+import {
+	MAX_RECOMMENDATION_RANK,
+	resolveLikedBookPrecedents,
+	type RecommendationPrecedentRow
+} from '$lib/server/recommendationPrecedents';
 import { requireAccessToken } from '$lib/server/requestAuth';
 import { createSupabaseWithAuth } from '$lib/server/supabase';
 
@@ -27,14 +32,15 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	}
 
 	if (!targetRequestId) {
-		return json({ books: [], request_id: null });
+		return json({ books: [], request_id: null, likedBookPrecedentsByBookId: {} });
 	}
 
 	const { data: items, error: itemsError } = await supabase
 		.from('recommendation_items')
-		.select('book_id, rank')
+		.select('book_id, rank, score, liked_book_precedent_ids')
 		.eq('request_id', targetRequestId)
-		.order('rank', { ascending: true });
+		.order('rank', { ascending: true })
+		.limit(MAX_RECOMMENDATION_RANK);
 
 	if (itemsError) {
 		console.error(itemsError);
@@ -42,7 +48,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	}
 
 	if (!items?.length) {
-		return json({ books: [], request_id: targetRequestId });
+		return json({ books: [], request_id: targetRequestId, likedBookPrecedentsByBookId: {} });
 	}
 
 	let bookIds = items.map((i) => String(i.book_id ?? '').trim()).filter(Boolean);
@@ -52,7 +58,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		excludeRated: true
 	});
 	if (bookIds.length === 0) {
-		return json({ books: [], request_id: targetRequestId });
+		return json({ books: [], request_id: targetRequestId, likedBookPrecedentsByBookId: {} });
 	}
 
 	try {
@@ -64,7 +70,11 @@ export const GET: RequestHandler = async ({ url, request }) => {
 				return id ? (byBookId.get(id) ?? null) : null;
 			})
 			.filter((book): book is NonNullable<typeof book> => book != null);
-		return json({ books, request_id: targetRequestId });
+		const likedBookPrecedentsByBookId = await resolveLikedBookPrecedents(
+			supabase,
+			(items ?? []) as RecommendationPrecedentRow[]
+		);
+		return json({ books, request_id: targetRequestId, likedBookPrecedentsByBookId });
 	} catch (booksError) {
 		console.error(booksError);
 		throw error(500, 'Failed to load books');
