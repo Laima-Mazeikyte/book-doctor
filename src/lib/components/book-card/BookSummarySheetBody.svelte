@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Bookmark, ThumbsDown, Search, Star } from 'lucide-svelte';
 	import Button from '$lib/components/Button.svelte';
+	import BookQualityEvidence from '$lib/components/BookQualityEvidence.svelte';
 	import RecommendationPrecedents from '$lib/components/RecommendationPrecedents.svelte';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
@@ -57,6 +58,8 @@
 		notInterestedOverlayBusy?: boolean;
 		/** Resolved positive-history books that explain this recommendation, strongest first. */
 		likedBookPrecedents?: Book[];
+		/** Top-10 shortlist only: show global catalog evidence below the personalized explanation. */
+		showQualityEvidence?: boolean;
 	}
 
 	let {
@@ -96,7 +99,8 @@
 		notInterestedOverlay = null,
 		onNotInterestedOverlayClick,
 		notInterestedOverlayBusy = false,
-		likedBookPrecedents = []
+		likedBookPrecedents = [],
+		showQualityEvidence = false
 	}: Props = $props();
 
 	const showSummaryRemoveSlot = $derived(canRemoveRatingInSheet || reserveSummaryRemoveLayoutSlot);
@@ -255,6 +259,9 @@
 
 		<p class="book-card__summary">{displaySummary}</p>
 		<RecommendationPrecedents books={likedBookPrecedents} />
+		{#if showQualityEvidence}
+			<BookQualityEvidence {book} />
+		{/if}
 	</div>
 {/snippet}
 

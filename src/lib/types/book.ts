@@ -11,6 +11,18 @@ export interface Book {
 	genres?: string[];
 	/** Catalog `books.type` when present; reserved for future UI. */
 	type?: string;
+	/** Global catalog standing, retained for future detail views; not personalized. */
+	qualityPercentile?: number | null;
+	/** Authoritative public quality band; null means no public distinction. */
+	qualityBand?: QualityBand | null;
 }
 
 export type RatingValue = 1 | 2 | 3 | 4 | 5;
+
+export type QualityBand =
+	| 'top_0_1_percent'
+	| 'top_1_percent'
+	| 'top_5_percent'
+	| 'top_10_percent'
+	| 'top_25_percent'
+	| 'below_top_25';

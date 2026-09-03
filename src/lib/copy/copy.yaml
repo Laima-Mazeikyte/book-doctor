@@ -560,6 +560,14 @@ en:
       notInterested: 'Not interested'
       notInterestedFeedback: 'Not interested'
       removeFromNotInterested: 'Remove from not interested'
+    qualityEvidence:
+      label: 'Global catalog standing'
+      bands:
+        top_0_1_percent: 'Top 0.1% of catalog'
+        top_1_percent: 'Top 1% of catalog'
+        top_5_percent: 'Top 5% of catalog'
+        top_10_percent: 'Top 10% of catalog'
+        top_25_percent: 'Top 25% of catalog'
     bookSummary:
       loading: 'Loading book details…'
       unavailable: 'Book details unavailable. Please try again.'

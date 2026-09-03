@@ -4,6 +4,7 @@ import {
 	type BookGenreSlotRow
 } from '$lib/book-catalog-fields';
 import { coverUrlForBookId } from '$lib/book-cover';
+import { normalizeQualityBand, qualityPercentileFromValue } from '$lib/qualityEvidence';
 import type { Book } from '$lib/types/book';
 
 export type BookCatalogRow = {
@@ -13,7 +14,11 @@ export type BookCatalogRow = {
 	author: string | null;
 	summary: string | null;
 	year: number | null;
-} & BookGenreSlotRow & { type?: string | null };
+} & BookGenreSlotRow & {
+		type?: string | null;
+		quality_percentile?: number | string | null;
+		quality_band?: string | null;
+	};
 
 export function mapBookRowToBook(row: BookCatalogRow): Book {
 	const type = catalogTypeFromRow(row);
@@ -26,6 +31,8 @@ export function mapBookRowToBook(row: BookCatalogRow): Book {
 		summary: row.summary ?? undefined,
 		year: row.year != null ? String(row.year) : undefined,
 		genres: genresFromGenreColumns(row),
-		...(type ? { type } : {})
+		...(type ? { type } : {}),
+		qualityPercentile: qualityPercentileFromValue(row.quality_percentile),
+		qualityBand: normalizeQualityBand(row.quality_band)
 	};
 }

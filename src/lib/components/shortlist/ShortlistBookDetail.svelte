@@ -191,6 +191,7 @@
 				onRemoveRatingClick={() => {}}
 				showBookmarkAction={true}
 				showNotInterestedAction={true}
+				showQualityEvidence={true}
 				showReadItAction={true}
 				{readItActive}
 				{likedBookPrecedents}
