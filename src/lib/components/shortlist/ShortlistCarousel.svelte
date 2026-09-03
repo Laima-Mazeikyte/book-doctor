@@ -23,6 +23,7 @@
 		activeIndex?: number;
 		getBookmarked: (bookId: string) => boolean;
 		getLikedBookPrecedents: (bookId: string) => Book[];
+		getAuthorRelationshipAuthors?: (bookId: string) => string[];
 		getNotInterested: (bookId: string) => boolean;
 		getNotInterestedOverlay: (bookId: string) => NotInterestedOverlay;
 		getRating: (bookId: string) => RatingValue | null;
@@ -46,6 +47,7 @@
 		activeIndex = $bindable(0),
 		getBookmarked,
 		getLikedBookPrecedents,
+		getAuthorRelationshipAuthors = () => [],
 		getNotInterested,
 		getNotInterestedOverlay,
 		getRating,
@@ -243,6 +245,7 @@
 				onNext={goNext}
 				bookmarked={getBookmarked(cloneStartBook.id)}
 				likedBookPrecedents={getLikedBookPrecedents(cloneStartBook.book_id)}
+				authorRelationshipAuthors={getAuthorRelationshipAuthors(cloneStartBook.book_id)}
 				notInterested={getNotInterested(cloneStartBook.book_id)}
 				notInterestedOverlay={cloneStartOverlay}
 				onNotInterestedOverlayClick={() =>
@@ -276,6 +279,7 @@
 				onNext={goNext}
 				bookmarked={getBookmarked(book.id)}
 				likedBookPrecedents={getLikedBookPrecedents(book.book_id)}
+				authorRelationshipAuthors={getAuthorRelationshipAuthors(book.book_id)}
 				notInterested={getNotInterested(book.book_id)}
 				notInterestedOverlay={bookOverlay}
 				onNotInterestedOverlayClick={() => handleOverlayClick(book, index, bookOverlay)}
@@ -310,6 +314,7 @@
 				onNext={goNext}
 				bookmarked={getBookmarked(cloneEndBook.id)}
 				likedBookPrecedents={getLikedBookPrecedents(cloneEndBook.book_id)}
+				authorRelationshipAuthors={getAuthorRelationshipAuthors(cloneEndBook.book_id)}
 				notInterested={getNotInterested(cloneEndBook.book_id)}
 				notInterestedOverlay={cloneEndOverlay}
 				onNotInterestedOverlayClick={() => handleOverlayClick(cloneEndBook, 0, cloneEndOverlay)}

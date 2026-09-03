@@ -24,6 +24,7 @@
 	import type { BookCardListProps } from './book-card/types';
 	import BookRatingStarsRow from './book-card/BookRatingStarsRow.svelte';
 	import BookSummarySheet from './book-card/BookSummarySheet.svelte';
+	import RecommendationAuthorRelationships from './RecommendationAuthorRelationships.svelte';
 	import RecommendationPrecedents from './RecommendationPrecedents.svelte';
 	import type {
 		BookSummarySheetCloseOptions,
@@ -37,6 +38,7 @@
 		bookmarked = false,
 		onBookmark,
 		likedBookPrecedents = [],
+		authorRelationshipAuthors = [],
 		currentRating: currentRatingProp = null,
 		onRate,
 		onRemoveRating,
@@ -395,6 +397,7 @@
 		/>
 		{#if context === 'recommendations'}
 			<RecommendationPrecedents books={likedBookPrecedents} />
+			<RecommendationAuthorRelationships authors={authorRelationshipAuthors} />
 		{/if}
 	</div>
 </article>

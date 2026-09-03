@@ -2,6 +2,7 @@
 	import { Bookmark, ThumbsDown, Search, Star } from 'lucide-svelte';
 	import Button from '$lib/components/Button.svelte';
 	import BookQualityEvidence from '$lib/components/BookQualityEvidence.svelte';
+	import RecommendationAuthorRelationships from '$lib/components/RecommendationAuthorRelationships.svelte';
 	import RecommendationPrecedents from '$lib/components/RecommendationPrecedents.svelte';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
@@ -58,6 +59,8 @@
 		notInterestedOverlayBusy?: boolean;
 		/** Resolved positive-history books that explain this recommendation, strongest first. */
 		likedBookPrecedents?: Book[];
+		/** Ordered author candidates that explain this recommendation after rating-based filtering. */
+		authorRelationshipAuthors?: string[];
 		/** Top-10 shortlist only: show global catalog evidence below the personalized explanation. */
 		showQualityEvidence?: boolean;
 	}
@@ -100,6 +103,7 @@
 		onNotInterestedOverlayClick,
 		notInterestedOverlayBusy = false,
 		likedBookPrecedents = [],
+		authorRelationshipAuthors = [],
 		showQualityEvidence = false
 	}: Props = $props();
 
@@ -259,6 +263,7 @@
 
 		<p class="book-card__summary">{displaySummary}</p>
 		<RecommendationPrecedents books={likedBookPrecedents} />
+		<RecommendationAuthorRelationships authors={authorRelationshipAuthors} />
 		{#if showQualityEvidence}
 			<BookQualityEvidence {book} />
 		{/if}

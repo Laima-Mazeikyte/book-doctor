@@ -15,6 +15,7 @@
 		setSize: number;
 		bookmarked: boolean;
 		likedBookPrecedents: Book[];
+		authorRelationshipAuthors?: string[];
 		notInterested: boolean;
 		notInterestedOverlay?: NotInterestedOverlay;
 		onNotInterestedOverlayClick?: () => void;
@@ -42,6 +43,7 @@
 		onNext,
 		bookmarked,
 		likedBookPrecedents,
+		authorRelationshipAuthors = [],
 		notInterested,
 		notInterestedOverlay = null,
 		onNotInterestedOverlayClick,
@@ -195,6 +197,7 @@
 				showReadItAction={true}
 				{readItActive}
 				{likedBookPrecedents}
+				{authorRelationshipAuthors}
 				onReadItClick={handleReadItClick}
 				{bookmarked}
 				onBookmarkClick={handleBookmarkClick}

@@ -1,5 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { buildAuthorRelationshipAuthorsByBookId } from '$lib/recommendations/authorRelationships';
 import { fetchBooksByUlidsInOrder } from '$lib/server/catalogBooks';
 import { filterBookIdsExcludingUserLists } from '$lib/server/recommendationFilters';
 import {
@@ -32,12 +33,17 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	}
 
 	if (!targetRequestId) {
-		return json({ books: [], request_id: null, likedBookPrecedentsByBookId: {} });
+		return json({
+			books: [],
+			request_id: null,
+			likedBookPrecedentsByBookId: {},
+			authorRelationshipAuthorsByBookId: {}
+		});
 	}
 
 	const { data: items, error: itemsError } = await supabase
 		.from('recommendation_items')
-		.select('book_id, rank, score, liked_book_precedent_ids')
+		.select('book_id, rank, score, liked_book_precedent_ids, author_relationship_evidence')
 		.eq('request_id', targetRequestId)
 		.order('rank', { ascending: true })
 		.limit(MAX_RECOMMENDATION_RANK);
@@ -48,7 +54,12 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	}
 
 	if (!items?.length) {
-		return json({ books: [], request_id: targetRequestId, likedBookPrecedentsByBookId: {} });
+		return json({
+			books: [],
+			request_id: targetRequestId,
+			likedBookPrecedentsByBookId: {},
+			authorRelationshipAuthorsByBookId: {}
+		});
 	}
 
 	let bookIds = items.map((i) => String(i.book_id ?? '').trim()).filter(Boolean);
@@ -58,7 +69,12 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		excludeRated: true
 	});
 	if (bookIds.length === 0) {
-		return json({ books: [], request_id: targetRequestId, likedBookPrecedentsByBookId: {} });
+		return json({
+			books: [],
+			request_id: targetRequestId,
+			likedBookPrecedentsByBookId: {},
+			authorRelationshipAuthorsByBookId: {}
+		});
 	}
 
 	try {
@@ -74,7 +90,13 @@ export const GET: RequestHandler = async ({ url, request }) => {
 			supabase,
 			(items ?? []) as RecommendationPrecedentRow[]
 		);
-		return json({ books, request_id: targetRequestId, likedBookPrecedentsByBookId });
+		const authorRelationshipAuthorsByBookId = buildAuthorRelationshipAuthorsByBookId(items ?? []);
+		return json({
+			books,
+			request_id: targetRequestId,
+			likedBookPrecedentsByBookId,
+			authorRelationshipAuthorsByBookId
+		});
 	} catch (booksError) {
 		console.error(booksError);
 		throw error(500, 'Failed to load books');

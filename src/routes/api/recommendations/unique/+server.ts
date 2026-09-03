@@ -1,5 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { buildAuthorRelationshipAuthorsByBookId } from '$lib/recommendations/authorRelationships';
 import { fetchBooksByUlids } from '$lib/server/catalogBooks';
 import {
 	compareBooksByLastRecommended,
@@ -42,14 +43,17 @@ export const GET: RequestHandler = async ({ request }) => {
 			lastRecommendedAt: {},
 			recommendationAppearanceCount: {},
 			bestRecommendationRank: {},
-			likedBookPrecedentsByBookId: {}
+			likedBookPrecedentsByBookId: {},
+			authorRelationshipAuthorsByBookId: {}
 		});
 	}
 
 	// Get all items for those runs (may contain duplicates across runs)
 	const { data: items, error: itemsError } = await supabase
 		.from('recommendation_items')
-		.select('book_id, request_id, rank, score, liked_book_precedent_ids')
+		.select(
+			'book_id, request_id, rank, score, liked_book_precedent_ids, author_relationship_evidence'
+		)
 		.in('request_id', requestIds);
 
 	if (itemsError) {
@@ -136,7 +140,8 @@ export const GET: RequestHandler = async ({ request }) => {
 			lastRecommendedAt: lastRecommendedAtRecord(lastRecommendedMs),
 			recommendationAppearanceCount,
 			bestRecommendationRank,
-			likedBookPrecedentsByBookId: {}
+			likedBookPrecedentsByBookId: {},
+			authorRelationshipAuthorsByBookId: {}
 		});
 	}
 
@@ -151,6 +156,9 @@ export const GET: RequestHandler = async ({ request }) => {
 			supabase,
 			precedentRowsInPriorityOrder
 		);
+		const authorRelationshipAuthorsByBookId = buildAuthorRelationshipAuthorsByBookId(
+			precedentRowsInPriorityOrder
+		);
 
 		// Newest recommendation batch first; stable tie-break by title
 		books.sort((a, b) => compareBooksByLastRecommended(a, b, lastRecommendedMs));
@@ -161,7 +169,8 @@ export const GET: RequestHandler = async ({ request }) => {
 			lastRecommendedAt: lastRecommendedAtRecord(lastRecommendedMs),
 			recommendationAppearanceCount,
 			bestRecommendationRank,
-			likedBookPrecedentsByBookId
+			likedBookPrecedentsByBookId,
+			authorRelationshipAuthorsByBookId
 		});
 	} catch (booksError) {
 		console.error(booksError);

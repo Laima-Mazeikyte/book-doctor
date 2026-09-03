@@ -1,5 +1,6 @@
 import { get, writable } from 'svelte/store';
 import type { Book } from '$lib/types/book';
+import type { AuthorRelationshipAuthorsByBookId } from '$lib/recommendations/authorRelationships';
 
 export type RecommendationRun = {
 	request_id: string;
@@ -13,6 +14,7 @@ export type RecommendationsUniqueMeta = {
 	recommendationAppearanceCount: Record<string, number>;
 	bestRecommendationRank: Record<string, number>;
 	likedBookPrecedentsByBookId: Record<string, Book[]>;
+	authorRelationshipAuthorsByBookId: AuthorRelationshipAuthorsByBookId;
 };
 
 function emptyUniqueMeta(): RecommendationsUniqueMeta {
@@ -21,7 +23,8 @@ function emptyUniqueMeta(): RecommendationsUniqueMeta {
 		lastRecommendedAt: {},
 		recommendationAppearanceCount: {},
 		bestRecommendationRank: {},
-		likedBookPrecedentsByBookId: {}
+		likedBookPrecedentsByBookId: {},
+		authorRelationshipAuthorsByBookId: {}
 	};
 }
 
@@ -42,6 +45,9 @@ function createRecommendationsPageStore() {
 	});
 	const runBooks = writable<Map<string, Book[]>>(new Map());
 	const runPrecedents = writable<Map<string, Record<string, Book[]>>>(new Map());
+	const runAuthorRelationshipAuthors = writable<Map<string, AuthorRelationshipAuthorsByBookId>>(
+		new Map()
+	);
 
 	return {
 		history: {
@@ -72,10 +78,16 @@ function createRecommendationsPageStore() {
 		getRunPrecedents(requestId: string): Record<string, Book[]> | undefined {
 			return get(runPrecedents).get(requestId);
 		},
+		getRunAuthorRelationshipAuthors(
+			requestId: string
+		): AuthorRelationshipAuthorsByBookId | undefined {
+			return get(runAuthorRelationshipAuthors).get(requestId);
+		},
 		setRunBooks(
 			requestId: string,
 			books: Book[],
-			likedBookPrecedentsByBookId: Record<string, Book[]> = {}
+			likedBookPrecedentsByBookId: Record<string, Book[]> = {},
+			authorRelationshipAuthorsByBookId: AuthorRelationshipAuthorsByBookId = {}
 		) {
 			runBooks.update((state) => {
 				const next = new Map(state);
@@ -85,6 +97,11 @@ function createRecommendationsPageStore() {
 			runPrecedents.update((state) => {
 				const next = new Map(state);
 				next.set(requestId, likedBookPrecedentsByBookId);
+				return next;
+			});
+			runAuthorRelationshipAuthors.update((state) => {
+				const next = new Map(state);
+				next.set(requestId, authorRelationshipAuthorsByBookId);
 				return next;
 			});
 		},
@@ -98,6 +115,7 @@ function createRecommendationsPageStore() {
 			});
 			runBooks.set(new Map());
 			runPrecedents.set(new Map());
+			runAuthorRelationshipAuthors.set(new Map());
 		}
 	};
 }

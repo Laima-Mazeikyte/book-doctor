@@ -103,6 +103,7 @@ en:
     emptyNotInterestedTab: 'No recommended titles marked not interested yet.'
     loadingList: 'Loading…'
     becauseYouLiked: 'Because you liked'
+    becauseYouLikedAuthors: 'Because you liked books by'
     shortlist:
       title: 'Your shortlist'
       description: "Seven books for you based on what you've rated."

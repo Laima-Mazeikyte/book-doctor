@@ -25,6 +25,7 @@
 		isClone?: boolean;
 		bookmarked: boolean;
 		likedBookPrecedents: Book[];
+		authorRelationshipAuthors?: string[];
 		notInterested: boolean;
 		notInterestedOverlay?: NotInterestedOverlay;
 		onNotInterestedOverlayClick?: () => void;
@@ -57,6 +58,7 @@
 		onNext,
 		bookmarked,
 		likedBookPrecedents,
+		authorRelationshipAuthors = [],
 		notInterested,
 		notInterestedOverlay = null,
 		onNotInterestedOverlayClick,
@@ -131,6 +133,7 @@
 	<ShortlistBookDetail
 		{book}
 		{likedBookPrecedents}
+		{authorRelationshipAuthors}
 		{index}
 		{setSize}
 		{showNav}

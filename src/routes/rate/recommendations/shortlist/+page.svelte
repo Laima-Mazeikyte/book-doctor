@@ -25,6 +25,11 @@
 	import { notInterestedStore } from '$lib/stores/notInterested';
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { ratingsStore } from '$lib/stores/ratings';
+	import {
+		buildCleanLikedAuthorSet,
+		filterAuthorRelationshipAuthors,
+		type AuthorRelationshipAuthorsByBookId
+	} from '$lib/recommendations/authorRelationships';
 	import { recommendationsPageStore } from '$lib/stores/recommendationsPage';
 	import { t } from '$lib/copy';
 	import { X } from 'lucide-svelte';
@@ -35,6 +40,7 @@
 	let visibleBooks = $state<Book[]>([]);
 	let reserveBooks = $state<Book[]>([]);
 	let likedBookPrecedentsByBookId = $state<Record<string, Book[]>>({});
+	let authorRelationshipAuthorsByBookId = $state<AuthorRelationshipAuthorsByBookId>({});
 	let viewState = $state<ViewState>('loading');
 	let error = $state<string | null>(null);
 	let pollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -48,6 +54,16 @@
 	let replaceUsedBookIds = $state<Set<string>>(new Set());
 	let scrollToBookIndex: ((index: number) => void) | undefined;
 
+	const ratedBooksStore = ratingsStore.ratedBooks;
+	const cleanLikedAuthorNames = $derived(buildCleanLikedAuthorSet($ratedBooksStore));
+	const authorRelationshipAuthorsForDisplay = $derived.by((): AuthorRelationshipAuthorsByBookId => {
+		const filtered: AuthorRelationshipAuthorsByBookId = {};
+		for (const [bookId, candidates] of Object.entries(authorRelationshipAuthorsByBookId)) {
+			filtered[bookId] = filterAuthorRelationshipAuthors(candidates, cleanLikedAuthorNames);
+		}
+		return filtered;
+	});
+
 	function resetShortlistSession() {
 		sessionNiCount = 0;
 		insertionsUsed = 0;
@@ -58,12 +74,14 @@
 
 	function applyBooksFromRun(
 		all: Book[],
-		precedentsByBookId: Record<string, Book[]> = {}
+		precedentsByBookId: Record<string, Book[]> = {},
+		authorRelationshipAuthors: AuthorRelationshipAuthorsByBookId = {}
 	) {
 		const { visible, reserve } = splitShortlistBooks(all);
 		visibleBooks = visible;
 		reserveBooks = reserve;
 		likedBookPrecedentsByBookId = precedentsByBookId;
+		authorRelationshipAuthorsByBookId = authorRelationshipAuthors;
 		resetShortlistSession();
 	}
 
@@ -167,18 +185,31 @@
 		const fromHistory = page.url.searchParams.get('from') === 'history';
 		const cached = recommendationsPageStore.getRunBooks(requestId);
 		const cachedPrecedents = recommendationsPageStore.getRunPrecedents(requestId) ?? {};
+		const cachedAuthorRelationshipAuthors =
+			recommendationsPageStore.getRunAuthorRelationshipAuthors(requestId) ?? {};
 
 		if (fromHistory && cached && cached.length > 0) {
-			applyBooksFromRun(cached, cachedPrecedents);
+			applyBooksFromRun(cached, cachedPrecedents, cachedAuthorRelationshipAuthors);
 			viewState = 'ready';
 			void refreshRecommendationsCountFromApi(accessToken);
 			void fetchRecommendations(accessToken, requestId)
-				.then(({ books: next, likedBookPrecedentsByBookId: nextPrecedents }) => {
-					if (!isActiveLoad(loadId, requestId)) return;
-					applyBooksFromRun(next, nextPrecedents);
-					recommendationsPageStore.setRunBooks(requestId, next, nextPrecedents);
-					viewState = next.length > 0 ? 'ready' : 'empty';
-				})
+				.then(
+					({
+						books: next,
+						likedBookPrecedentsByBookId: nextPrecedents,
+						authorRelationshipAuthorsByBookId: nextAuthorRelationshipAuthors
+					}) => {
+						if (!isActiveLoad(loadId, requestId)) return;
+						applyBooksFromRun(next, nextPrecedents, nextAuthorRelationshipAuthors);
+						recommendationsPageStore.setRunBooks(
+							requestId,
+							next,
+							nextPrecedents,
+							nextAuthorRelationshipAuthors
+						);
+						viewState = next.length > 0 ? 'ready' : 'empty';
+					}
+				)
 				.catch(() => {
 					/* keep cache */
 				});
@@ -189,11 +220,13 @@
 			visibleBooks = [];
 			reserveBooks = [];
 			likedBookPrecedentsByBookId = {};
+			authorRelationshipAuthorsByBookId = {};
 			viewState = 'loading';
 		} else if (!fromHistory) {
 			visibleBooks = [];
 			reserveBooks = [];
 			likedBookPrecedentsByBookId = {};
+			authorRelationshipAuthorsByBookId = {};
 			viewState = 'loading';
 		}
 
@@ -205,12 +238,18 @@
 			try {
 				const {
 					books: nextBooks,
-					likedBookPrecedentsByBookId: nextPrecedents
+					likedBookPrecedentsByBookId: nextPrecedents,
+					authorRelationshipAuthorsByBookId: nextAuthorRelationshipAuthors
 				} = await fetchRecommendations(accessToken, requestId);
 				if (!isActiveLoad(loadId, requestId)) return;
 				if (nextBooks.length > 0) {
-					applyBooksFromRun(nextBooks, nextPrecedents);
-					recommendationsPageStore.setRunBooks(requestId, nextBooks, nextPrecedents);
+					applyBooksFromRun(nextBooks, nextPrecedents, nextAuthorRelationshipAuthors);
+					recommendationsPageStore.setRunBooks(
+						requestId,
+						nextBooks,
+						nextPrecedents,
+						nextAuthorRelationshipAuthors
+					);
 					viewState = 'ready';
 					void refreshRecommendationsCountFromApi(accessToken);
 					done = true;
@@ -312,10 +351,7 @@
 			<p class="shortlist-page__description">{t('recommendations.shortlist.description')}</p>
 			{#if viewState === 'ready' && visibleBooks.length > 1}
 				<div class="shortlist-page__position">
-					<ShortlistPositionIndicator
-						position={activeIndex + 1}
-						total={visibleBooks.length}
-					/>
+					<ShortlistPositionIndicator position={activeIndex + 1} total={visibleBooks.length} />
 				</div>
 			{/if}
 		</div>
@@ -338,8 +374,9 @@
 			}}
 			getBookmarked={(id) => $planToReadStore.has(id)}
 			getLikedBookPrecedents={(bookId) => likedBookPrecedentsByBookId[bookId] ?? []}
+			getAuthorRelationshipAuthors={(bookId) => authorRelationshipAuthorsForDisplay[bookId] ?? []}
 			getNotInterested={(bookId) => $notInterestedStore.has(bookId)}
-			getNotInterestedOverlay={getNotInterestedOverlay}
+			{getNotInterestedOverlay}
 			getRating={(id) => $ratingsStore.get(id) ?? null}
 			onBookmark={handleBookmark}
 			onNotInterested={handleNotInterested}

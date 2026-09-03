@@ -1,4 +1,5 @@
 import type { Book } from '$lib/types/book';
+import type { AuthorRelationshipAuthorsByBookId } from './authorRelationships';
 
 export const RECOMMENDATIONS_POLL_INTERVAL_MS = 3000;
 export const RECOMMENDATIONS_POLL_TIMEOUT_MS = 60_000;
@@ -7,6 +8,7 @@ export type FetchRecommendationsResult = {
 	books: Book[];
 	request_id: string | null;
 	likedBookPrecedentsByBookId: Record<string, Book[]>;
+	authorRelationshipAuthorsByBookId: AuthorRelationshipAuthorsByBookId;
 };
 
 export async function fetchRecommendations(
@@ -26,10 +28,12 @@ export async function fetchRecommendations(
 		books: Book[];
 		request_id: string | null;
 		likedBookPrecedentsByBookId?: Record<string, Book[]>;
+		authorRelationshipAuthorsByBookId?: AuthorRelationshipAuthorsByBookId;
 	} = await res.json();
 	return {
 		books: data.books ?? [],
 		request_id: data.request_id ?? null,
-		likedBookPrecedentsByBookId: data.likedBookPrecedentsByBookId ?? {}
+		likedBookPrecedentsByBookId: data.likedBookPrecedentsByBookId ?? {},
+		authorRelationshipAuthorsByBookId: data.authorRelationshipAuthorsByBookId ?? {}
 	};
 }

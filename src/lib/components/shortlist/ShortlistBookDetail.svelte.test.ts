@@ -19,6 +19,7 @@ it('renders quality evidence in the top-10 shortlist detail', async () => {
 			setSize: 1,
 			bookmarked: false,
 			likedBookPrecedents: [],
+			authorRelationshipAuthors: [],
 			notInterested: false,
 			currentRating: null,
 			onBookmark: vi.fn(),

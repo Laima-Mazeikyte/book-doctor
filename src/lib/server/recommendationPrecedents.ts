@@ -9,6 +9,7 @@ export type RecommendationPrecedentRow = {
 	book_id?: unknown;
 	rank?: unknown;
 	liked_book_precedent_ids?: unknown;
+	author_relationship_evidence?: unknown;
 };
 
 export type LikedBookPrecedentsByBookId = Record<string, Book[]>;
