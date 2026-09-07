@@ -63,17 +63,3 @@ export function lastRecommendedAtRecord(
 	}
 	return record;
 }
-
-export function compareBooksByLastRecommended(
-	a: { book_id: string; title?: string },
-	b: { book_id: string; title?: string },
-	lastRecommendedMs: Map<string, number>
-): number {
-	const ta = lastRecommendedMs.get(a.book_id);
-	const tb = lastRecommendedMs.get(b.book_id);
-	if (ta == null && tb == null) return (a.title ?? '').localeCompare(b.title ?? '');
-	if (ta == null) return 1;
-	if (tb == null) return -1;
-	if (tb !== ta) return tb - ta;
-	return (a.title ?? '').localeCompare(b.title ?? '');
-}

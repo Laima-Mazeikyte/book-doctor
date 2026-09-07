@@ -4,19 +4,26 @@
 		type DimensionMatchSnapshotsByBookId
 	} from '$lib/recommendations/dimensionMatches';
 	import { browser } from '$app/environment';
+	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	import { page } from '$app/state';
 	import { get } from 'svelte/store';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import BookCard from '$lib/components/BookCard.svelte';
 	import BookCardGridSkeleton from '$lib/components/BookCardGridSkeleton.svelte';
 	import RecommendationsEmpty from '$lib/components/RecommendationsEmpty.svelte';
 	import { ChevronDown } from 'lucide-svelte';
 	import { planToReadStore } from '$lib/stores/planToRead';
-	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
 	import { notInterestedStore } from '$lib/stores/notInterested';
+	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
 	import RecommendationsLoading from '$lib/components/RecommendationsLoading.svelte';
 	import { authStore } from '$lib/stores/auth';
 	import { ratingsStore } from '$lib/stores/ratings';
+	import {
+		coverPriorityFor,
+		estimateGridColumns,
+		trackGridColumns
+	} from '$lib/components/book-card/coverPriority';
 	import {
 		buildCleanLikedAuthorSet,
 		filterAuthorRelationshipAuthors,
@@ -24,21 +31,20 @@
 	} from '$lib/recommendations/authorRelationships';
 	import { filterRatedLikedBookPrecedents } from '$lib/recommendations/likedBookPrecedents';
 	import {
+		createEmptyRecommendationsUniquePayload,
 		recommendationsPageStore,
-		type RecommendationRun
+		type RecommendationsUniquePayload
 	} from '$lib/stores/recommendationsPage';
+	import {
+		isValidRecSortId,
+		sortRecHistoryBooks,
+		type RecSortId
+	} from '$lib/recommendations/sortRecHistoryBooks';
 	import { ratedSummarySheetKeepAlive } from '$lib/stores/ratedSummarySheetKeepAlive';
 	import { t } from '$lib/copy';
 	import type { Book } from '$lib/types/book';
 
 	const LS_SORT_KEY = 'book-doctor:recommendations-sort';
-
-	const REC_SORT_IDS = ['newest', 'oldest', 'best-fit'] as const;
-	type RecSortId = (typeof REC_SORT_IDS)[number];
-
-	function isValidRecSortId(s: string | null | undefined): s is RecSortId {
-		return s != null && (REC_SORT_IDS as readonly string[]).includes(s);
-	}
 
 	function readRecSortFromLs(): RecSortId {
 		if (!browser) return 'best-fit';
@@ -51,125 +57,57 @@
 		return 'best-fit';
 	}
 
-	function isNotInterested(book: Book, notInterestedIds: Set<string>): boolean {
-		return notInterestedIds.has(book.book_id);
-	}
-
-	/**
-	 * `newest` / `oldest`: by last batch that included the book.
-	 * `best-fit`: more recommendation runs first, then best list position (rank 1 beats 10), then recency, then title.
-	 */
-	function sortRecHistoryBooks(
-		books: Book[],
-		order: RecSortId,
-		lastAt: Record<string, number>,
-		appearances: Record<string, number>,
-		bestRank: Record<string, number>
-	): Book[] {
-		const arr = [...books];
-		const key = (b: Book) => b.book_id;
-		const ms = (b: Book) => lastAt[key(b)] ?? 0;
-		const cnt = (b: Book) => appearances[key(b)] ?? 0;
-		const br = (b: Book) => bestRank[key(b)] ?? 999;
-		const titleCmp = (a: Book, b: Book) => (a.title ?? '').localeCompare(b.title ?? '');
-
-		if (order === 'newest') {
-			arr.sort((a, b) => {
-				const diff = ms(b) - ms(a);
-				if (diff !== 0) return diff;
-				return titleCmp(a, b);
-			});
-			return arr;
-		}
-		if (order === 'oldest') {
-			arr.sort((a, b) => {
-				const diff = ms(a) - ms(b);
-				if (diff !== 0) return diff;
-				return titleCmp(a, b);
-			});
-			return arr;
-		}
-		arr.sort((a, b) => {
-			const dc = cnt(b) - cnt(a);
-			if (dc !== 0) return dc;
-			const dr = br(a) - br(b);
-			if (dr !== 0) return dr;
-			const dm = ms(b) - ms(a);
-			if (dm !== 0) return dm;
-			return titleCmp(a, b);
-		});
-		return arr;
-	}
-
 	if (browser) recommendationsPageStore.ensureUser(get(authStore).user?.id ?? null);
 	let activeUserId: string | null = null;
-	const initialHistorySnapshot = recommendationsPageStore.getHistorySnapshot();
+	const initialSnapshot = recommendationsPageStore.getSnapshot();
 
-	let uniqueBooks = $state<Book[]>(initialHistorySnapshot.uniqueBooks);
-	let uniqueBooksLoading = $state(
-		initialHistorySnapshot.runs.length > 0 && !initialHistorySnapshot.uniqueLoaded
-	);
-	let loading = $state(!initialHistorySnapshot.loaded);
+	let uniquePayload = $state<RecommendationsUniquePayload>(initialSnapshot.unique);
+	let uniqueLoaded = $state(initialSnapshot.uniqueLoaded);
+	let uniqueBooksLoading = $state(!initialSnapshot.uniqueLoaded);
 	let error = $state<string | null>(null);
 	let viewMode = $state<'loading' | 'history' | 'empty' | 'error'>(
-		initialHistorySnapshot.loaded
-			? initialHistorySnapshot.runs.length === 0
-				? 'empty'
-				: 'history'
+		initialSnapshot.uniqueLoaded
+			? initialSnapshot.unique.hasRuns
+				? 'history'
+				: 'empty'
 			: 'loading'
 	);
 	let activeRouteLoadId = 0;
-
-	let allRecommendedBookIds = $state<string[]>(initialHistorySnapshot.allRecommendedBookIds ?? []);
-	let lastRecommendedAt = $state<Record<string, number>>(
-		initialHistorySnapshot.lastRecommendedAt ?? {}
-	);
-	let recommendationAppearanceCount = $state<Record<string, number>>(
-		initialHistorySnapshot.recommendationAppearanceCount ?? {}
-	);
-	let bestRecommendationRank = $state<Record<string, number>>(
-		initialHistorySnapshot.bestRecommendationRank ?? {}
-	);
-	let likedBookPrecedentsByBookId = $state<Record<string, Book[]>>(
-		initialHistorySnapshot.likedBookPrecedentsByBookId ?? {}
-	);
-	let authorRelationshipAuthorsByBookId = $state<AuthorRelationshipAuthorsByBookId>(
-		initialHistorySnapshot.authorRelationshipAuthorsByBookId ?? {}
-	);
-	let dimensionMatchSnapshotsByBookId = $state<DimensionMatchSnapshotsByBookId>(
-		initialHistorySnapshot.dimensionMatchSnapshotsByBookId ?? {}
-	);
+	let gridColumns = $state(estimateGridColumns());
 	let sortOrder = $state<RecSortId>(readRecSortFromLs());
 
-	const notInterestedIds = $derived.by(() => new Set([...$notInterestedStore]));
 	const ratedBooksStore = ratingsStore.ratedBooks;
 	const cleanLikedAuthorNames = $derived(buildCleanLikedAuthorSet($ratedBooksStore));
 	const authorRelationshipAuthorsForDisplay = $derived.by((): AuthorRelationshipAuthorsByBookId => {
 		const filtered: AuthorRelationshipAuthorsByBookId = {};
-		for (const [bookId, candidates] of Object.entries(authorRelationshipAuthorsByBookId)) {
+		for (const [bookId, candidates] of Object.entries(
+			uniquePayload.authorRelationshipAuthorsByBookId
+		)) {
 			filtered[bookId] = filterAuthorRelationshipAuthors(candidates, cleanLikedAuthorNames);
 		}
 		return filtered;
 	});
 	const likedBookPrecedentsForDisplay = $derived.by((): Record<string, Book[]> => {
 		const filtered: Record<string, Book[]> = {};
-		for (const [bookId, precedents] of Object.entries(likedBookPrecedentsByBookId)) {
+		for (const [bookId, precedents] of Object.entries(uniquePayload.likedBookPrecedentsByBookId)) {
 			filtered[bookId] = filterRatedLikedBookPrecedents(precedents, $ratingsStore);
 		}
 		return filtered;
 	});
 
 	const recommendedRawList = $derived.by(() =>
-		uniqueBooks.filter((b) => !isNotInterested(b, notInterestedIds))
+		uniquePayload.books.filter(
+			(book) => !$notInterestedStore.has(book.book_id) && !$ratingsStore.has(book.id)
+		)
 	);
 
 	const recommendedTabBooks = $derived.by(() =>
 		sortRecHistoryBooks(
 			recommendedRawList,
 			sortOrder,
-			lastRecommendedAt,
-			recommendationAppearanceCount,
-			bestRecommendationRank
+			uniquePayload.lastRecommendedAt,
+			uniquePayload.recommendationAppearanceCount,
+			uniquePayload.bestRecommendationRank
 		)
 	);
 
@@ -206,47 +144,22 @@
 		return list;
 	});
 
-	async function fetchHistory(accessToken: string | null): Promise<RecommendationRun[]> {
-		const headers: Record<string, string> = {};
-		if (accessToken) {
-			headers['Authorization'] = `Bearer ${accessToken}`;
-		}
-		const res = await fetch('/api/recommendations/history', { headers });
-		if (!res.ok) throw new Error(`HTTP ${res.status}`);
-		const data: { runs: RecommendationRun[] } = await res.json();
-		return data.runs ?? [];
-	}
+	$effect(() => {
+		if (uniqueLoaded) recommendationsCountStore.set(recommendedRawList.length);
+	});
 
-	async function fetchUniqueBooks(accessToken: string | null): Promise<{
-		books: Book[];
-		allRecommendedBookIds: string[];
-		lastRecommendedAt: Record<string, number>;
-		recommendationAppearanceCount: Record<string, number>;
-		bestRecommendationRank: Record<string, number>;
-		likedBookPrecedentsByBookId: Record<string, Book[]>;
-		authorRelationshipAuthorsByBookId: AuthorRelationshipAuthorsByBookId;
-		dimensionMatchSnapshotsByBookId: DimensionMatchSnapshotsByBookId;
-	}> {
+	async function fetchUniqueBooks(
+		accessToken: string | null
+	): Promise<RecommendationsUniquePayload> {
 		const headers: Record<string, string> = {};
 		if (accessToken) {
 			headers['Authorization'] = `Bearer ${accessToken}`;
 		}
 		const res = await fetch('/api/recommendations/unique', { headers });
-		if (!res.ok) {
-			return {
-				books: [],
-				allRecommendedBookIds: [],
-				lastRecommendedAt: {},
-				recommendationAppearanceCount: {},
-				bestRecommendationRank: {},
-				likedBookPrecedentsByBookId: {},
-				authorRelationshipAuthorsByBookId: {},
-				dimensionMatchSnapshotsByBookId: {}
-			};
-		}
+		if (!res.ok) throw new Error(`HTTP ${res.status}`);
 		const data: {
-			books: Book[];
-			allRecommendedBookIds?: string[];
+			books?: Book[];
+			hasRuns?: boolean;
 			lastRecommendedAt?: Record<string, number>;
 			recommendationAppearanceCount?: Record<string, number>;
 			bestRecommendationRank?: Record<string, number>;
@@ -254,9 +167,12 @@
 			authorRelationshipAuthorsByBookId?: AuthorRelationshipAuthorsByBookId;
 			dimensionMatchSnapshotsByBookId?: DimensionMatchSnapshotsByBookId;
 		} = await res.json();
+		if (!Array.isArray(data.books) || typeof data.hasRuns !== 'boolean') {
+			throw new Error('Invalid recommendation response');
+		}
 		return {
-			books: data.books ?? [],
-			allRecommendedBookIds: data.allRecommendedBookIds ?? [],
+			books: data.books,
+			hasRuns: data.hasRuns,
 			lastRecommendedAt: data.lastRecommendedAt ?? {},
 			recommendationAppearanceCount: data.recommendationAppearanceCount ?? {},
 			bestRecommendationRank: data.bestRecommendationRank ?? {},
@@ -280,11 +196,6 @@
 				ratingsStore.removeRating(book.id, book.book_id);
 			}
 		}
-		if (nowNotInterested) {
-			recommendationsCountStore.update((n) => Math.max(0, n - 1));
-		} else {
-			recommendationsCountStore.update((n) => n + 1);
-		}
 	}
 
 	function handleBookmark(book: Book, id: string) {
@@ -295,34 +206,39 @@
 		}
 	}
 
-	function isActiveRouteLoad(loadId: number, requestId: string | null): boolean {
+	function isActiveRouteLoad(loadId: number): boolean {
 		return (
 			loadId === activeRouteLoadId &&
 			activeUserId === (get(authStore).user?.id ?? null) &&
-			(page.url.searchParams.get('request_id')?.trim() ?? null) === requestId
+			page.url.pathname === '/rate/recommendations' &&
+			!page.url.searchParams.get('request_id')?.trim()
 		);
 	}
 
-	function applyHistorySnapshot() {
-		const snapshot = recommendationsPageStore.getHistorySnapshot();
-		uniqueBooks = snapshot.uniqueBooks;
-		allRecommendedBookIds = snapshot.allRecommendedBookIds ?? [];
-		lastRecommendedAt = snapshot.lastRecommendedAt ?? {};
-		recommendationAppearanceCount = snapshot.recommendationAppearanceCount ?? {};
-		bestRecommendationRank = snapshot.bestRecommendationRank ?? {};
-		likedBookPrecedentsByBookId = snapshot.likedBookPrecedentsByBookId ?? {};
-		authorRelationshipAuthorsByBookId = snapshot.authorRelationshipAuthorsByBookId ?? {};
-		dimensionMatchSnapshotsByBookId = snapshot.dimensionMatchSnapshotsByBookId ?? {};
-		loading = !snapshot.loaded;
-		uniqueBooksLoading = snapshot.runs.length > 0 && !snapshot.uniqueLoaded;
-		error = null;
-		viewMode = snapshot.loaded ? (snapshot.runs.length === 0 ? 'empty' : 'history') : 'loading';
-		// Only sync header count when snapshot is trustworthy. Initial store state also has
-		// `runs.length === 0` before any fetch — syncing then cleared the count and hid the main nav
-		// until history loaded (flash navigating bookshelf ↔ recommendations).
-		if (snapshot.uniqueLoaded || (snapshot.loaded && snapshot.runs.length === 0)) {
-			recommendationsCountStore.set(snapshot.uniqueBooks.length);
-		}
+	function applyUniquePayload(
+		payload: RecommendationsUniquePayload,
+		{
+			loaded = true,
+			persist = false,
+			errorMessage = null
+		}: { loaded?: boolean; persist?: boolean; errorMessage?: string | null } = {}
+	) {
+		uniquePayload = payload;
+		uniqueLoaded = loaded;
+		error = errorMessage;
+		viewMode = errorMessage
+			? 'error'
+			: loaded
+				? payload.hasRuns
+					? 'history'
+					: 'empty'
+				: 'loading';
+		if (persist) recommendationsPageStore.setUnique(payload);
+	}
+
+	function applyCachedSnapshot(snapshot = recommendationsPageStore.getSnapshot()) {
+		applyUniquePayload(snapshot.unique, { loaded: snapshot.uniqueLoaded });
+		uniqueBooksLoading = !snapshot.uniqueLoaded;
 	}
 
 	/** Legacy and external links: ?request_id= opens the shortlist route. */
@@ -332,9 +248,11 @@
 		if (url.pathname !== '/rate/recommendations') return;
 		const requestId = url.searchParams.get('request_id')?.trim();
 		if (!requestId) return;
-		const params = new URLSearchParams({ request_id: requestId });
+		const params = new SvelteURLSearchParams({ request_id: requestId });
 		if (url.searchParams.get('from') === 'history') params.set('from', 'history');
-		void goto(`/rate/recommendations/shortlist?${params.toString()}`, { replaceState: true });
+		void goto(resolve(`/rate/recommendations/shortlist?${params.toString()}`), {
+			replaceState: true
+		});
 	});
 
 	$effect(() => {
@@ -349,96 +267,36 @@
 		activeUserId = userId;
 		recommendationsPageStore.ensureUser(userId);
 
-		const cachedHistory = recommendationsPageStore.getHistorySnapshot();
-		applyHistorySnapshot();
+		const cachedSnapshot = recommendationsPageStore.getSnapshot();
+		applyCachedSnapshot(cachedSnapshot);
 
 		const refreshUniqueBooks = async (): Promise<void> => {
-			if (!cachedHistory.uniqueLoaded) {
+			if (!cachedSnapshot.uniqueLoaded) {
 				uniqueBooksLoading = true;
 			}
 
 			try {
 				const accessToken = get(authStore).session?.access_token ?? null;
 				const payload = await fetchUniqueBooks(accessToken);
-				if (!isActiveRouteLoad(loadId, null)) return;
-				uniqueBooks = payload.books;
-				allRecommendedBookIds = payload.allRecommendedBookIds;
-				lastRecommendedAt = payload.lastRecommendedAt;
-				recommendationAppearanceCount = payload.recommendationAppearanceCount;
-				bestRecommendationRank = payload.bestRecommendationRank;
-				likedBookPrecedentsByBookId = payload.likedBookPrecedentsByBookId;
-				authorRelationshipAuthorsByBookId = payload.authorRelationshipAuthorsByBookId;
-				dimensionMatchSnapshotsByBookId = payload.dimensionMatchSnapshotsByBookId;
-				recommendationsPageStore.setUniqueBooks(payload.books, {
-					allRecommendedBookIds: payload.allRecommendedBookIds,
-					lastRecommendedAt: payload.lastRecommendedAt,
-					recommendationAppearanceCount: payload.recommendationAppearanceCount,
-					bestRecommendationRank: payload.bestRecommendationRank,
-					likedBookPrecedentsByBookId: payload.likedBookPrecedentsByBookId,
-					authorRelationshipAuthorsByBookId: payload.authorRelationshipAuthorsByBookId,
-					dimensionMatchSnapshotsByBookId: payload.dimensionMatchSnapshotsByBookId
-				});
-				recommendationsCountStore.set(payload.books.length);
-			} catch {
-				if (!isActiveRouteLoad(loadId, null)) return;
-				if (!cachedHistory.uniqueLoaded) {
-					uniqueBooks = [];
-					allRecommendedBookIds = [];
-					lastRecommendedAt = {};
-					recommendationAppearanceCount = {};
-					bestRecommendationRank = {};
-					likedBookPrecedentsByBookId = {};
-					authorRelationshipAuthorsByBookId = {};
-					dimensionMatchSnapshotsByBookId = {};
-					recommendationsCountStore.set(0);
+				if (!isActiveRouteLoad(loadId)) return;
+				applyUniquePayload(payload, { persist: true });
+			} catch (e) {
+				if (!isActiveRouteLoad(loadId)) return;
+				console.error('[recommendations] Failed to load unique recommendations:', e);
+				if (!cachedSnapshot.uniqueLoaded) {
+					applyUniquePayload(createEmptyRecommendationsUniquePayload(), {
+						loaded: false,
+						errorMessage: t('recommendations.failedToLoad')
+					});
 				}
 			} finally {
-				if (isActiveRouteLoad(loadId, null)) {
+				if (isActiveRouteLoad(loadId)) {
 					uniqueBooksLoading = false;
 				}
 			}
 		};
 
-		fetchHistory(get(authStore).session?.access_token ?? null)
-			.then((historyRuns) => {
-				if (!isActiveRouteLoad(loadId, null)) return;
-				recommendationsPageStore.setRuns(historyRuns);
-				error = null;
-				viewMode = historyRuns.length === 0 ? 'empty' : 'history';
-				if (historyRuns.length === 0) {
-					uniqueBooks = [];
-					allRecommendedBookIds = [];
-					lastRecommendedAt = {};
-					recommendationAppearanceCount = {};
-					bestRecommendationRank = {};
-					likedBookPrecedentsByBookId = {};
-					authorRelationshipAuthorsByBookId = {};
-					dimensionMatchSnapshotsByBookId = {};
-					uniqueBooksLoading = false;
-					recommendationsPageStore.setUniqueBooks([]);
-					recommendationsCountStore.set(0);
-				} else {
-					void refreshUniqueBooks();
-				}
-			})
-			.catch((e) => {
-				if (!isActiveRouteLoad(loadId, null)) return;
-				if (cachedHistory.loaded) {
-					error = null;
-					viewMode = cachedHistory.runs.length === 0 ? 'empty' : 'history';
-					if (cachedHistory.runs.length > 0) {
-						void refreshUniqueBooks();
-					}
-					return;
-				}
-				error = e instanceof Error ? e.message : t('recommendations.failedToLoadHistory');
-				viewMode = 'error';
-			})
-			.finally(() => {
-				if (isActiveRouteLoad(loadId, null)) {
-					loading = false;
-				}
-			});
+		void refreshUniqueBooks();
 	});
 </script>
 
@@ -502,15 +360,18 @@
 				<ul
 					class="recommendations-page__unique-grid book-card-grid"
 					aria-label={t('recommendations.allUniqueTitles')}
+					use:trackGridColumns={(columns) => (gridColumns = columns)}
 				>
-					{#each currentHistoryBooks as book (book.id)}
+					{#each currentHistoryBooks as book, i (book.id)}
 						<li>
 							<BookCard
 								context="recommendations"
 								{book}
+								coverPriority={coverPriorityFor(i, gridColumns)}
 								likedBookPrecedents={likedBookPrecedentsForDisplay[book.book_id] ?? []}
 								authorRelationshipAuthors={authorRelationshipAuthorsForDisplay[book.book_id] ?? []}
-								dimensionMatches={dimensionMatchSnapshotsByBookId[book.book_id]?.matches ?? []}
+								dimensionMatches={uniquePayload.dimensionMatchSnapshotsByBookId[book.book_id]
+									?.matches ?? []}
 								bookmarked={$planToReadStore.has(book.id)}
 								onBookmark={(id) => handleBookmark(book, id)}
 								currentRating={$ratingsStore.get(book.id) ?? null}

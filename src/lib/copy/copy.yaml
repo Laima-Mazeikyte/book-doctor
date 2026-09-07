@@ -77,31 +77,16 @@ en:
     title: 'Recommendations'
     metaDescription: "What to read next? Your unique book recommendations on Unread, shaped by books you've rated so far."
     myRecommendations: 'What to read next?'
-    backToRating: 'Back to rating'
-    backToList: 'Back to list'
     emptyRun: 'No books in this recommendation run.'
-    timeoutMessage: 'Taking longer than expected. Please try again later.'
     noRecommendationsYet: 'No recommendations yet. Rate more books and try again.'
     failedToLoad: 'Failed to load recommendations'
-    failedToLoadHistory: 'Failed to load recommendation history'
     allUniqueTitles: 'All recommended titles'
-    recommendationBatches: 'Past recommendation runs'
-    aria:
-      pastRuns: 'Past recommendation runs'
-      recommendedBooks: 'Recommended books'
-    historyView: 'View'
-    tabs:
-      ariaLabel: 'Filter recommendations'
-      recommended: 'Recommended'
     sort:
       ariaLabel: 'Sort recommendations'
       newest: 'Newest'
       oldest: 'Oldest'
       bestFit: 'Best fit'
     emptyRecommendedTab: 'No recommendations in this list yet.'
-    emptyBookmarkedTab: 'No bookmarked recommendations yet.'
-    emptyNotInterestedTab: 'No recommended titles marked not interested yet.'
-    loadingList: 'Loading…'
     dimensionMatches:
       preference: 'Matches your interest in {{phrase}}'
       values:

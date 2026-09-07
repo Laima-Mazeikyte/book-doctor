@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-	compareBooksByLastRecommended,
-	parseRecommendationRank,
-	parseRecommendationTimestamp
-} from './recommendationFilters';
+import { parseRecommendationRank, parseRecommendationTimestamp } from './recommendationFilters';
 
 describe('parseRecommendationTimestamp', () => {
 	it('returns null for missing or invalid values', () => {
@@ -29,29 +25,5 @@ describe('parseRecommendationRank', () => {
 		expect(parseRecommendationRank(-1)).toBeNull();
 		expect(parseRecommendationRank('')).toBeNull();
 		expect(parseRecommendationRank('abc')).toBeNull();
-	});
-});
-
-describe('compareBooksByLastRecommended', () => {
-	const lastRecommendedMs = new Map<string, number>([
-		['newer', 200],
-		['older', 100]
-	]);
-
-	it('sorts known timestamps newest-first and pushes unknown timestamps last', () => {
-		expect(
-			compareBooksByLastRecommended(
-				{ book_id: 'older', title: 'B' },
-				{ book_id: 'newer', title: 'A' },
-				lastRecommendedMs
-			)
-		).toBeGreaterThan(0);
-		expect(
-			compareBooksByLastRecommended(
-				{ book_id: 'unknown', title: 'Z' },
-				{ book_id: 'older', title: 'B' },
-				lastRecommendedMs
-			)
-		).toBeGreaterThan(0);
 	});
 });

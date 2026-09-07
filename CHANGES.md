@@ -37,7 +37,7 @@ Every API `GET` switched from `getAccessToken` to `requireAccessToken`, so a mis
 Removed the speculative `data?.user?.id` fallback in favor of validating the single documented `data.id` shape, and added an explicit error log when the Supabase URL/anon key is missing. This turns a silent misconfiguration into a visible failure.
 
 ### Recommendation timestamp/rank parsing (`src/lib/server/recommendationFilters.ts`)
-Added `parseRecommendationTimestamp` and `parseRecommendationRank` that return `null` for missing/invalid values instead of collapsing to a `0` epoch or a coerced integer. The unique-recommendations route now skips books with unparseable timestamps and sorts them last via `compareBooksByLastRecommended`, rather than reporting a fake "Jan 1970" date.
+Added `parseRecommendationTimestamp` and `parseRecommendationRank` that return `null` for missing/invalid values instead of collapsing to a `0` epoch or a coerced integer. The unique-recommendations route now skips books with unparseable timestamps and exposes the normalized timestamps for client-side recommendation sorting, rather than reporting a fake "Jan 1970" date.
 
 ### Redundant session re-fetch removed (`bootstrap-auth.ts`)
 `getSessionAfterUrlTokens` now returns immediately after a single `getSession` when there is no URL token, and `return null` after the retry loop. This eliminated the always-redundant trailing `getSession()` call.

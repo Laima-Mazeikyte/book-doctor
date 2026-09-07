@@ -37,6 +37,10 @@ const fixture = vi.hoisted(() => ({
 		{ id: 'b', book_id: 'book', title: 'Book', author: 'Author' },
 		{ id: 's', book_id: 'series', title: 'Series', author: 'Author' }
 	],
+	logs: [
+		{ request_id: 'new', created_at: '2026-09-06T00:00:00Z' },
+		{ request_id: 'old', created_at: '2026-09-05T00:00:00Z' }
+	],
 	filteredBookIds: null as string[] | null
 }));
 
@@ -62,12 +66,7 @@ beforeEach(() => {
 	fixture.createWithAuth.mockImplementation(() => ({
 		from(table: string) {
 			let rows: Array<Record<string, unknown>> =
-				table === 'recommendation_log'
-					? [
-							{ request_id: 'new', created_at: '2026-09-06T00:00:00Z' },
-							{ request_id: 'old', created_at: '2026-09-05T00:00:00Z' }
-						]
-					: [...fixture.rows];
+				table === 'recommendation_log' ? [...fixture.logs] : [...fixture.rows];
 			const query = {
 				select(fields: string) {
 					fixture.selects.push(fields);
@@ -132,6 +131,7 @@ it('carries stored matches through the run API and frontend mapper without chang
 
 it('uses the latest containing request in the combined API even when database items arrive out of order', async () => {
 	const payload = await (await getUnique(event('/api/recommendations/unique'))).json();
+	expect(payload.hasRuns).toBe(true);
 	expect(payload.books.map((b: { book_id: string }) => b.book_id)).toEqual(['book', 'series']);
 	expect(payload.dimensionMatchSnapshotsByBookId.series).toEqual({
 		request_id: 'new',
@@ -144,6 +144,26 @@ it('uses the latest containing request in the combined API even when database it
 	expect(payload.recommendationAppearanceCount).toEqual({ series: 2, book: 1 });
 	expect(payload.bestRecommendationRank).toEqual({ series: 1, book: 2 });
 	expect(fixture.selects.some((s) => s.includes('dimension_matches'))).toBe(true);
+});
+
+it('reports whether recommendation runs exist even when no items survive filtering', async () => {
+	fixture.filteredBookIds = [];
+	const payload = await (await getUnique(event('/api/recommendations/unique'))).json();
+
+	expect(payload.hasRuns).toBe(true);
+	expect(payload.books).toEqual([]);
+});
+
+it('reports no runs separately from an empty eligible book list', async () => {
+	const previousLogs = fixture.logs;
+	fixture.logs = [];
+	try {
+		const payload = await (await getUnique(event('/api/recommendations/unique'))).json();
+		expect(payload.hasRuns).toBe(false);
+		expect(payload.books).toEqual([]);
+	} finally {
+		fixture.logs = previousLogs;
+	}
 });
 
 it('resolves evidence only for books that survive filtering', async () => {

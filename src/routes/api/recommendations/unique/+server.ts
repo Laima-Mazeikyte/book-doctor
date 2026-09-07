@@ -4,7 +4,6 @@ import type { RequestHandler } from './$types';
 import { buildAuthorRelationshipAuthorsByBookId } from '$lib/recommendations/authorRelationships';
 import { fetchBooksByUlids } from '$lib/server/catalogBooks';
 import {
-	compareBooksByLastRecommended,
 	filterBookIdsExcludingUserLists,
 	lastRecommendedAtRecord,
 	parseRecommendationRank,
@@ -39,8 +38,8 @@ export const GET: RequestHandler = async ({ request }) => {
 	const requestIds = (logs ?? []).map((r) => r.request_id).filter(Boolean);
 	if (requestIds.length === 0) {
 		return json({
+			hasRuns: (logs ?? []).length > 0,
 			books: [],
-			allRecommendedBookIds: [],
 			lastRecommendedAt: {},
 			recommendationAppearanceCount: {},
 			bestRecommendationRank: {},
@@ -102,8 +101,6 @@ export const GET: RequestHandler = async ({ request }) => {
 				.filter(Boolean)
 		)
 	];
-	const allRecommendedBookIds = [...uniqueBookIds];
-
 	// Most recent run that contained each book (logs are newest-first)
 	const lastRecommendedMs = new Map<string, number>();
 	for (const log of logs ?? []) {
@@ -137,8 +134,8 @@ export const GET: RequestHandler = async ({ request }) => {
 
 	if (uniqueBookIds.length === 0) {
 		return json({
+			hasRuns: (logs ?? []).length > 0,
 			books: [],
-			allRecommendedBookIds,
 			lastRecommendedAt: lastRecommendedAtRecord(lastRecommendedMs),
 			recommendationAppearanceCount,
 			bestRecommendationRank,
@@ -171,12 +168,9 @@ export const GET: RequestHandler = async ({ request }) => {
 			precedentRowsInPriorityOrder
 		);
 
-		// Newest recommendation batch first; stable tie-break by title
-		books.sort((a, b) => compareBooksByLastRecommended(a, b, lastRecommendedMs));
-
 		return json({
+			hasRuns: (logs ?? []).length > 0,
 			books,
-			allRecommendedBookIds,
 			lastRecommendedAt: lastRecommendedAtRecord(lastRecommendedMs),
 			recommendationAppearanceCount,
 			bestRecommendationRank,

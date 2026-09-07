@@ -23,8 +23,14 @@ it('isolates request snapshots, preserves cache for the same user, and clears on
 		authorRelationshipAuthorsByBookId: {},
 		dimensionMatchSnapshotsByBookId: second
 	});
-	store.setUniqueBooks([], {
-		...store.getHistorySnapshot(),
+	store.setUnique({
+		books: [],
+		hasRuns: true,
+		lastRecommendedAt: {},
+		recommendationAppearanceCount: {},
+		bestRecommendationRank: {},
+		likedBookPrecedentsByBookId: {},
+		authorRelationshipAuthorsByBookId: {},
 		dimensionMatchSnapshotsByBookId: second
 	});
 	store.ensureUser('alice');
@@ -40,11 +46,11 @@ it('isolates request snapshots, preserves cache for the same user, and clears on
 		authorRelationshipAuthorsByBookId: {},
 		dimensionMatchSnapshotsByBookId: second
 	});
-	expect(store.getHistorySnapshot().dimensionMatchSnapshotsByBookId).toEqual(second);
+	expect(store.getSnapshot().unique.dimensionMatchSnapshotsByBookId).toEqual(second);
 	store.ensureUser('bob');
 	expect(store.getRun('first')).toBeUndefined();
 	expect(store.getRun('second')).toBeUndefined();
-	expect(store.getHistorySnapshot().dimensionMatchSnapshotsByBookId).toEqual({});
+	expect(store.getSnapshot().unique.dimensionMatchSnapshotsByBookId).toEqual({});
 	store.setRun('second', {
 		books: secondBooks,
 		likedBookPrecedentsByBookId: {},
