@@ -20,6 +20,7 @@ it('renders quality evidence in the top-10 shortlist detail', async () => {
 			bookmarked: false,
 			likedBookPrecedents: [],
 			authorRelationshipAuthors: [],
+			dimensionMatches: [{ dimension_key: 'pace', candidate_raw_score: 1 }],
 			notInterested: false,
 			currentRating: null,
 			onBookmark: vi.fn(),
@@ -32,5 +33,10 @@ it('renders quality evidence in the top-10 shortlist detail', async () => {
 	await expect
 		.element(rendered.getByTestId('book-quality-evidence'))
 		.toHaveTextContent('Global catalog standing: Top 5% of catalog');
+	await expect
+		.element(
+			rendered.getByText('Matches your interest in introspective storytelling', { exact: true })
+		)
+		.toBeVisible();
 	rendered.unmount();
 });

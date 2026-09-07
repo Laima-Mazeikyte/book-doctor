@@ -1,3 +1,7 @@
+import {
+	normalizeDimensionMatchSnapshots,
+	type DimensionMatchSnapshotsByBookId
+} from '$lib/recommendations/dimensionMatches';
 import type { Book } from '$lib/types/book';
 import type { AuthorRelationshipAuthorsByBookId } from './authorRelationships';
 
@@ -9,6 +13,7 @@ export type FetchRecommendationsResult = {
 	request_id: string | null;
 	likedBookPrecedentsByBookId: Record<string, Book[]>;
 	authorRelationshipAuthorsByBookId: AuthorRelationshipAuthorsByBookId;
+	dimensionMatchSnapshotsByBookId: DimensionMatchSnapshotsByBookId;
 };
 
 export async function fetchRecommendations(
@@ -29,11 +34,15 @@ export async function fetchRecommendations(
 		request_id: string | null;
 		likedBookPrecedentsByBookId?: Record<string, Book[]>;
 		authorRelationshipAuthorsByBookId?: AuthorRelationshipAuthorsByBookId;
+		dimensionMatchSnapshotsByBookId?: DimensionMatchSnapshotsByBookId;
 	} = await res.json();
 	return {
 		books: data.books ?? [],
 		request_id: data.request_id ?? null,
 		likedBookPrecedentsByBookId: data.likedBookPrecedentsByBookId ?? {},
-		authorRelationshipAuthorsByBookId: data.authorRelationshipAuthorsByBookId ?? {}
+		authorRelationshipAuthorsByBookId: data.authorRelationshipAuthorsByBookId ?? {},
+		dimensionMatchSnapshotsByBookId: normalizeDimensionMatchSnapshots(
+			data.dimensionMatchSnapshotsByBookId
+		)
 	};
 }

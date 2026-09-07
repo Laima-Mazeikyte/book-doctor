@@ -1,4 +1,6 @@
 <script lang="ts">
+	import RecommendationDimensionMatches from '$lib/components/RecommendationDimensionMatches.svelte';
+	import type { DimensionMatch } from '$lib/recommendations/dimensionMatches';
 	import { Bookmark, ThumbsDown, Search, Star } from 'lucide-svelte';
 	import Button from '$lib/components/Button.svelte';
 	import BookQualityEvidence from '$lib/components/BookQualityEvidence.svelte';
@@ -57,10 +59,11 @@
 		notInterestedOverlay?: 'replace' | 'new-rec' | null;
 		onNotInterestedOverlayClick?: () => void;
 		notInterestedOverlayBusy?: boolean;
-		/** Resolved positive-history books that explain this recommendation, strongest first. */
+		/** Resolved rated-history books that explain this recommendation, strongest first. */
 		likedBookPrecedents?: Book[];
 		/** Ordered author candidates that explain this recommendation after rating-based filtering. */
 		authorRelationshipAuthors?: string[];
+		dimensionMatches?: DimensionMatch[];
 		/** Top-10 shortlist only: show global catalog evidence below the personalized explanation. */
 		showQualityEvidence?: boolean;
 	}
@@ -104,6 +107,7 @@
 		notInterestedOverlayBusy = false,
 		likedBookPrecedents = [],
 		authorRelationshipAuthors = [],
+		dimensionMatches = [],
 		showQualityEvidence = false
 	}: Props = $props();
 
@@ -264,6 +268,7 @@
 		<p class="book-card__summary">{displaySummary}</p>
 		<RecommendationPrecedents books={likedBookPrecedents} />
 		<RecommendationAuthorRelationships authors={authorRelationshipAuthors} />
+		<RecommendationDimensionMatches matches={dimensionMatches} />
 		{#if showQualityEvidence}
 			<BookQualityEvidence {book} />
 		{/if}

@@ -102,6 +102,48 @@ en:
     emptyBookmarkedTab: 'No bookmarked recommendations yet.'
     emptyNotInterestedTab: 'No recommended titles marked not interested yet.'
     loadingList: 'Loading…'
+    dimensionMatches:
+      preference: 'Matches your interest in {{phrase}}'
+      values:
+        spice:
+          '0': 'gentle relationships'
+          '1': 'reserved romance'
+          '2': 'light spice'
+          '3': 'on-page intimacy'
+          '4': 'explicit intimacy'
+        vocabulary:
+          '0': 'conversational prose'
+          '1': 'accessible prose'
+          '2': 'expressive prose'
+          '3': 'layered prose'
+          '4': 'scholarly prose'
+        pace:
+          '0': 'action-driven stories'
+          '1': 'plot-driven stories'
+          '2': 'balanced storytelling'
+          '3': 'character-driven stories'
+          '4': 'introspective storytelling'
+        originality:
+          '0': 'traditional storytelling'
+          '1': 'recognizable patterns'
+          '2': 'fresh storytelling'
+          '3': 'distinctive storytelling'
+          '4': 'original storytelling'
+        violence:
+          '0': 'gentler stories'
+          '1': 'tense atmosphere'
+          '2': 'intense action'
+          '3': 'graphic scenes'
+          '4': 'brutal scenes'
+        depth:
+          '0': 'straightforward storytelling'
+          '1': 'layered themes'
+          '2': 'abstract ideas'
+          '3': 'philosophical ideas'
+        discussion_potential:
+          '0': 'moral clarity'
+          '1': 'moral complexity'
+          '2': 'debatable themes'
     becauseYouLiked: 'Because you liked'
     becauseYouLikedAuthors: 'Because you liked books by'
     shortlist:

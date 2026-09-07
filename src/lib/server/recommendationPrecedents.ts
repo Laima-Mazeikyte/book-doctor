@@ -7,6 +7,8 @@ export const MAX_RECOMMENDATION_RANK = 10;
 
 export type RecommendationPrecedentRow = {
 	book_id?: unknown;
+	request_id?: unknown;
+	dimension_matches?: unknown;
 	rank?: unknown;
 	liked_book_precedent_ids?: unknown;
 	author_relationship_evidence?: unknown;

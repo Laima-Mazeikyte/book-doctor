@@ -41,6 +41,7 @@ it('opens the extracted canonical summary sheet without rate-only history', asyn
 		props: {
 			book,
 			context: 'recommendations',
+			dimensionMatches: [{ dimension_key: 'spice', candidate_raw_score: 0 }],
 			onRate: vi.fn(),
 			onRemoveRating: vi.fn()
 		}
@@ -52,6 +53,14 @@ it('opens the extracted canonical summary sheet without rate-only history', asyn
 		.click();
 	await expect.element(rendered.getByTestId('book-summary-sheet')).toBeVisible();
 	await expect.element(rendered.getByRole('heading', { name: 'A book' })).toBeVisible();
+	expect(document.querySelectorAll('.recommendation-dimension-matches')).toHaveLength(2);
+	await expect
+		.element(
+			rendered
+				.getByTestId('book-summary-sheet')
+				.getByText('Matches your interest in gentle relationships', { exact: true })
+		)
+		.toBeVisible();
 	expect(window.history.length).toBe(historyLength);
 	expect(window.history.state?.bookSummarySheet).toBeUndefined();
 	rendered.unmount();

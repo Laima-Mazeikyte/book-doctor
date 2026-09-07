@@ -1,4 +1,8 @@
 <script lang="ts">
+	import {
+		normalizeDimensionMatchSnapshots,
+		type DimensionMatchSnapshotsByBookId
+	} from '$lib/recommendations/dimensionMatches';
 	import { browser } from '$app/environment';
 	import { page } from '$app/state';
 	import { get } from 'svelte/store';
@@ -18,6 +22,7 @@
 		filterAuthorRelationshipAuthors,
 		type AuthorRelationshipAuthorsByBookId
 	} from '$lib/recommendations/authorRelationships';
+	import { filterRatedLikedBookPrecedents } from '$lib/recommendations/likedBookPrecedents';
 	import {
 		recommendationsPageStore,
 		type RecommendationRun
@@ -96,6 +101,8 @@
 		return arr;
 	}
 
+	if (browser) recommendationsPageStore.ensureUser(get(authStore).user?.id ?? null);
+	let activeUserId: string | null = null;
 	const initialHistorySnapshot = recommendationsPageStore.getHistorySnapshot();
 
 	let uniqueBooks = $state<Book[]>(initialHistorySnapshot.uniqueBooks);
@@ -129,6 +136,9 @@
 	let authorRelationshipAuthorsByBookId = $state<AuthorRelationshipAuthorsByBookId>(
 		initialHistorySnapshot.authorRelationshipAuthorsByBookId ?? {}
 	);
+	let dimensionMatchSnapshotsByBookId = $state<DimensionMatchSnapshotsByBookId>(
+		initialHistorySnapshot.dimensionMatchSnapshotsByBookId ?? {}
+	);
 	let sortOrder = $state<RecSortId>(readRecSortFromLs());
 
 	const notInterestedIds = $derived.by(() => new Set([...$notInterestedStore]));
@@ -138,6 +148,14 @@
 		const filtered: AuthorRelationshipAuthorsByBookId = {};
 		for (const [bookId, candidates] of Object.entries(authorRelationshipAuthorsByBookId)) {
 			filtered[bookId] = filterAuthorRelationshipAuthors(candidates, cleanLikedAuthorNames);
+		}
+		return filtered;
+	});
+	const ratedBookIds = $derived.by(() => new Set($ratingsStore.keys()));
+	const likedBookPrecedentsForDisplay = $derived.by((): Record<string, Book[]> => {
+		const filtered: Record<string, Book[]> = {};
+		for (const [bookId, precedents] of Object.entries(likedBookPrecedentsByBookId)) {
+			filtered[bookId] = filterRatedLikedBookPrecedents(precedents, ratedBookIds);
 		}
 		return filtered;
 	});
@@ -208,6 +226,7 @@
 		bestRecommendationRank: Record<string, number>;
 		likedBookPrecedentsByBookId: Record<string, Book[]>;
 		authorRelationshipAuthorsByBookId: AuthorRelationshipAuthorsByBookId;
+		dimensionMatchSnapshotsByBookId: DimensionMatchSnapshotsByBookId;
 	}> {
 		const headers: Record<string, string> = {};
 		if (accessToken) {
@@ -222,7 +241,8 @@
 				recommendationAppearanceCount: {},
 				bestRecommendationRank: {},
 				likedBookPrecedentsByBookId: {},
-				authorRelationshipAuthorsByBookId: {}
+				authorRelationshipAuthorsByBookId: {},
+				dimensionMatchSnapshotsByBookId: {}
 			};
 		}
 		const data: {
@@ -233,6 +253,7 @@
 			bestRecommendationRank?: Record<string, number>;
 			likedBookPrecedentsByBookId?: Record<string, Book[]>;
 			authorRelationshipAuthorsByBookId?: AuthorRelationshipAuthorsByBookId;
+			dimensionMatchSnapshotsByBookId?: DimensionMatchSnapshotsByBookId;
 		} = await res.json();
 		return {
 			books: data.books ?? [],
@@ -241,7 +262,10 @@
 			recommendationAppearanceCount: data.recommendationAppearanceCount ?? {},
 			bestRecommendationRank: data.bestRecommendationRank ?? {},
 			likedBookPrecedentsByBookId: data.likedBookPrecedentsByBookId ?? {},
-			authorRelationshipAuthorsByBookId: data.authorRelationshipAuthorsByBookId ?? {}
+			authorRelationshipAuthorsByBookId: data.authorRelationshipAuthorsByBookId ?? {},
+			dimensionMatchSnapshotsByBookId: normalizeDimensionMatchSnapshots(
+				data.dimensionMatchSnapshotsByBookId
+			)
 		};
 	}
 
@@ -275,6 +299,7 @@
 	function isActiveRouteLoad(loadId: number, requestId: string | null): boolean {
 		return (
 			loadId === activeRouteLoadId &&
+			activeUserId === (get(authStore).user?.id ?? null) &&
 			(page.url.searchParams.get('request_id')?.trim() ?? null) === requestId
 		);
 	}
@@ -288,6 +313,7 @@
 		bestRecommendationRank = snapshot.bestRecommendationRank ?? {};
 		likedBookPrecedentsByBookId = snapshot.likedBookPrecedentsByBookId ?? {};
 		authorRelationshipAuthorsByBookId = snapshot.authorRelationshipAuthorsByBookId ?? {};
+		dimensionMatchSnapshotsByBookId = snapshot.dimensionMatchSnapshotsByBookId ?? {};
 		loading = !snapshot.loaded;
 		uniqueBooksLoading = snapshot.runs.length > 0 && !snapshot.uniqueLoaded;
 		error = null;
@@ -321,6 +347,8 @@
 		// (e.g. anonymous → permanent on the same user id should keep the current list).
 		const userId = $authStore.user?.id ?? null;
 		const loadId = ++activeRouteLoadId;
+		activeUserId = userId;
+		recommendationsPageStore.ensureUser(userId);
 
 		const cachedHistory = recommendationsPageStore.getHistorySnapshot();
 		applyHistorySnapshot();
@@ -341,13 +369,15 @@
 				bestRecommendationRank = payload.bestRecommendationRank;
 				likedBookPrecedentsByBookId = payload.likedBookPrecedentsByBookId;
 				authorRelationshipAuthorsByBookId = payload.authorRelationshipAuthorsByBookId;
+				dimensionMatchSnapshotsByBookId = payload.dimensionMatchSnapshotsByBookId;
 				recommendationsPageStore.setUniqueBooks(payload.books, {
 					allRecommendedBookIds: payload.allRecommendedBookIds,
 					lastRecommendedAt: payload.lastRecommendedAt,
 					recommendationAppearanceCount: payload.recommendationAppearanceCount,
 					bestRecommendationRank: payload.bestRecommendationRank,
 					likedBookPrecedentsByBookId: payload.likedBookPrecedentsByBookId,
-					authorRelationshipAuthorsByBookId: payload.authorRelationshipAuthorsByBookId
+					authorRelationshipAuthorsByBookId: payload.authorRelationshipAuthorsByBookId,
+					dimensionMatchSnapshotsByBookId: payload.dimensionMatchSnapshotsByBookId
 				});
 				recommendationsCountStore.set(payload.books.length);
 			} catch {
@@ -360,6 +390,7 @@
 					bestRecommendationRank = {};
 					likedBookPrecedentsByBookId = {};
 					authorRelationshipAuthorsByBookId = {};
+					dimensionMatchSnapshotsByBookId = {};
 					recommendationsCountStore.set(0);
 				}
 			} finally {
@@ -383,6 +414,7 @@
 					bestRecommendationRank = {};
 					likedBookPrecedentsByBookId = {};
 					authorRelationshipAuthorsByBookId = {};
+					dimensionMatchSnapshotsByBookId = {};
 					uniqueBooksLoading = false;
 					recommendationsPageStore.setUniqueBooks([]);
 					recommendationsCountStore.set(0);
@@ -477,8 +509,9 @@
 							<BookCard
 								context="recommendations"
 								{book}
-								likedBookPrecedents={likedBookPrecedentsByBookId[book.book_id] ?? []}
+								likedBookPrecedents={likedBookPrecedentsForDisplay[book.book_id] ?? []}
 								authorRelationshipAuthors={authorRelationshipAuthorsForDisplay[book.book_id] ?? []}
+								dimensionMatches={dimensionMatchSnapshotsByBookId[book.book_id]?.matches ?? []}
 								bookmarked={$planToReadStore.has(book.id)}
 								onBookmark={(id) => handleBookmark(book, id)}
 								currentRating={$ratingsStore.get(book.id) ?? null}

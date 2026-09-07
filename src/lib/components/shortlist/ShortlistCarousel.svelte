@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { DimensionMatch } from '$lib/recommendations/dimensionMatches';
 	import type { Snippet } from 'svelte';
 	import { browser } from '$app/environment';
 	import { prefersReducedMotion } from '$lib/navigation/mainNavTransition';
@@ -23,6 +24,7 @@
 		activeIndex?: number;
 		getBookmarked: (bookId: string) => boolean;
 		getLikedBookPrecedents: (bookId: string) => Book[];
+		getDimensionMatches?: (bookId: string) => DimensionMatch[];
 		getAuthorRelationshipAuthors?: (bookId: string) => string[];
 		getNotInterested: (bookId: string) => boolean;
 		getNotInterestedOverlay: (bookId: string) => NotInterestedOverlay;
@@ -48,6 +50,7 @@
 		getBookmarked,
 		getLikedBookPrecedents,
 		getAuthorRelationshipAuthors = () => [],
+		getDimensionMatches = () => [],
 		getNotInterested,
 		getNotInterestedOverlay,
 		getRating,
@@ -246,6 +249,7 @@
 				bookmarked={getBookmarked(cloneStartBook.id)}
 				likedBookPrecedents={getLikedBookPrecedents(cloneStartBook.book_id)}
 				authorRelationshipAuthors={getAuthorRelationshipAuthors(cloneStartBook.book_id)}
+				dimensionMatches={getDimensionMatches(cloneStartBook.book_id)}
 				notInterested={getNotInterested(cloneStartBook.book_id)}
 				notInterestedOverlay={cloneStartOverlay}
 				onNotInterestedOverlayClick={() =>
@@ -280,6 +284,7 @@
 				bookmarked={getBookmarked(book.id)}
 				likedBookPrecedents={getLikedBookPrecedents(book.book_id)}
 				authorRelationshipAuthors={getAuthorRelationshipAuthors(book.book_id)}
+				dimensionMatches={getDimensionMatches(book.book_id)}
 				notInterested={getNotInterested(book.book_id)}
 				notInterestedOverlay={bookOverlay}
 				onNotInterestedOverlayClick={() => handleOverlayClick(book, index, bookOverlay)}
@@ -315,6 +320,7 @@
 				bookmarked={getBookmarked(cloneEndBook.id)}
 				likedBookPrecedents={getLikedBookPrecedents(cloneEndBook.book_id)}
 				authorRelationshipAuthors={getAuthorRelationshipAuthors(cloneEndBook.book_id)}
+				dimensionMatches={getDimensionMatches(cloneEndBook.book_id)}
 				notInterested={getNotInterested(cloneEndBook.book_id)}
 				notInterestedOverlay={cloneEndOverlay}
 				onNotInterestedOverlayClick={() => handleOverlayClick(cloneEndBook, 0, cloneEndOverlay)}

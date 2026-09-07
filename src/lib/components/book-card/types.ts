@@ -1,3 +1,4 @@
+import type { DimensionMatch } from '$lib/recommendations/dimensionMatches';
 import type { Book, RatingValue } from '$lib/types/book';
 import type { CoverPriority } from './coverPriority';
 
@@ -24,10 +25,11 @@ export type BookCardListProps = {
 	onSearchAuthor?: (author: string) => void | Promise<void>;
 	bookmarked?: boolean;
 	onBookmark?: (bookId: string) => void;
-	/** Resolved positive-history books that explain a recommendation, strongest first. */
+	/** Resolved rated-history books that explain a recommendation, strongest first. */
 	likedBookPrecedents?: Book[];
 	/** Ordered author candidates that explain a recommendation after rating-based filtering. */
 	authorRelationshipAuthors?: string[];
+	dimensionMatches?: DimensionMatch[];
 	currentRating?: RatingValue | null;
 	onRate?: (bookId: string, value: RatingValue) => void;
 	onRemoveRating?: (bookId: string) => void;

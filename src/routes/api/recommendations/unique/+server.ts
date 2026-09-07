@@ -1,3 +1,4 @@
+import { buildDimensionMatchSnapshotsByBookId } from '$lib/recommendations/dimensionMatches';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { buildAuthorRelationshipAuthorsByBookId } from '$lib/recommendations/authorRelationships';
@@ -44,7 +45,8 @@ export const GET: RequestHandler = async ({ request }) => {
 			recommendationAppearanceCount: {},
 			bestRecommendationRank: {},
 			likedBookPrecedentsByBookId: {},
-			authorRelationshipAuthorsByBookId: {}
+			authorRelationshipAuthorsByBookId: {},
+			dimensionMatchSnapshotsByBookId: {}
 		});
 	}
 
@@ -52,7 +54,7 @@ export const GET: RequestHandler = async ({ request }) => {
 	const { data: items, error: itemsError } = await supabase
 		.from('recommendation_items')
 		.select(
-			'book_id, request_id, rank, score, liked_book_precedent_ids, author_relationship_evidence'
+			'book_id, request_id, rank, score, dimension_matches, liked_book_precedent_ids, author_relationship_evidence'
 		)
 		.in('request_id', requestIds);
 
@@ -141,7 +143,8 @@ export const GET: RequestHandler = async ({ request }) => {
 			recommendationAppearanceCount,
 			bestRecommendationRank,
 			likedBookPrecedentsByBookId: {},
-			authorRelationshipAuthorsByBookId: {}
+			authorRelationshipAuthorsByBookId: {},
+			dimensionMatchSnapshotsByBookId: {}
 		});
 	}
 
@@ -154,6 +157,9 @@ export const GET: RequestHandler = async ({ request }) => {
 		}
 		const likedBookPrecedentsByBookId = await resolveLikedBookPrecedents(
 			supabase,
+			precedentRowsInPriorityOrder
+		);
+		const dimensionMatchSnapshotsByBookId = buildDimensionMatchSnapshotsByBookId(
 			precedentRowsInPriorityOrder
 		);
 		const authorRelationshipAuthorsByBookId = buildAuthorRelationshipAuthorsByBookId(
@@ -170,7 +176,8 @@ export const GET: RequestHandler = async ({ request }) => {
 			recommendationAppearanceCount,
 			bestRecommendationRank,
 			likedBookPrecedentsByBookId,
-			authorRelationshipAuthorsByBookId
+			authorRelationshipAuthorsByBookId,
+			dimensionMatchSnapshotsByBookId
 		});
 	} catch (booksError) {
 		console.error(booksError);

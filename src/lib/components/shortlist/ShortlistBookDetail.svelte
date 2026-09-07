@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { DimensionMatch } from '$lib/recommendations/dimensionMatches';
 	import type { Snippet } from 'svelte';
 	import { ChevronLeft, ChevronRight } from 'lucide-svelte';
 	import BookSummarySheetBody from '$lib/components/book-card/BookSummarySheetBody.svelte';
@@ -16,6 +17,7 @@
 		bookmarked: boolean;
 		likedBookPrecedents: Book[];
 		authorRelationshipAuthors?: string[];
+		dimensionMatches?: DimensionMatch[];
 		notInterested: boolean;
 		notInterestedOverlay?: NotInterestedOverlay;
 		onNotInterestedOverlayClick?: () => void;
@@ -44,6 +46,7 @@
 		bookmarked,
 		likedBookPrecedents,
 		authorRelationshipAuthors = [],
+		dimensionMatches = [],
 		notInterested,
 		notInterestedOverlay = null,
 		onNotInterestedOverlayClick,
@@ -198,6 +201,7 @@
 				{readItActive}
 				{likedBookPrecedents}
 				{authorRelationshipAuthors}
+				{dimensionMatches}
 				onReadItClick={handleReadItClick}
 				{bookmarked}
 				onBookmarkClick={handleBookmarkClick}

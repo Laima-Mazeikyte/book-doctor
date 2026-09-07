@@ -1,3 +1,4 @@
+import type { DimensionMatchSnapshotsByBookId } from '$lib/recommendations/dimensionMatches';
 import { get, writable } from 'svelte/store';
 import type { Book } from '$lib/types/book';
 import type { AuthorRelationshipAuthorsByBookId } from '$lib/recommendations/authorRelationships';
@@ -15,6 +16,7 @@ export type RecommendationsUniqueMeta = {
 	bestRecommendationRank: Record<string, number>;
 	likedBookPrecedentsByBookId: Record<string, Book[]>;
 	authorRelationshipAuthorsByBookId: AuthorRelationshipAuthorsByBookId;
+	dimensionMatchSnapshotsByBookId: DimensionMatchSnapshotsByBookId;
 };
 
 function emptyUniqueMeta(): RecommendationsUniqueMeta {
@@ -24,7 +26,8 @@ function emptyUniqueMeta(): RecommendationsUniqueMeta {
 		recommendationAppearanceCount: {},
 		bestRecommendationRank: {},
 		likedBookPrecedentsByBookId: {},
-		authorRelationshipAuthorsByBookId: {}
+		authorRelationshipAuthorsByBookId: {},
+		dimensionMatchSnapshotsByBookId: {}
 	};
 }
 
@@ -35,7 +38,7 @@ interface RecommendationsHistoryState extends RecommendationsUniqueMeta {
 	uniqueLoaded: boolean;
 }
 
-function createRecommendationsPageStore() {
+export function createRecommendationsPageStore() {
 	const history = writable<RecommendationsHistoryState>({
 		runs: [],
 		uniqueBooks: [],
@@ -43,6 +46,8 @@ function createRecommendationsPageStore() {
 		uniqueLoaded: false,
 		...emptyUniqueMeta()
 	});
+	let ownerUserId: string | null = null;
+	const runDimensionMatches = writable<Map<string, DimensionMatchSnapshotsByBookId>>(new Map());
 	const runBooks = writable<Map<string, Book[]>>(new Map());
 	const runPrecedents = writable<Map<string, Record<string, Book[]>>>(new Map());
 	const runAuthorRelationshipAuthors = writable<Map<string, AuthorRelationshipAuthorsByBookId>>(
@@ -50,6 +55,14 @@ function createRecommendationsPageStore() {
 	);
 
 	return {
+		ensureUser(userId: string | null) {
+			if (ownerUserId === userId) return;
+			this.reset();
+			ownerUserId = userId;
+		},
+		getRunDimensionMatches(requestId: string): DimensionMatchSnapshotsByBookId | undefined {
+			return get(runDimensionMatches).get(requestId);
+		},
 		history: {
 			subscribe: history.subscribe
 		},
@@ -87,8 +100,12 @@ function createRecommendationsPageStore() {
 			requestId: string,
 			books: Book[],
 			likedBookPrecedentsByBookId: Record<string, Book[]> = {},
-			authorRelationshipAuthorsByBookId: AuthorRelationshipAuthorsByBookId = {}
+			authorRelationshipAuthorsByBookId: AuthorRelationshipAuthorsByBookId = {},
+			dimensionMatchSnapshotsByBookId: DimensionMatchSnapshotsByBookId = {}
 		) {
+			runDimensionMatches.update((state) =>
+				new Map(state).set(requestId, dimensionMatchSnapshotsByBookId)
+			);
 			runBooks.update((state) => {
 				const next = new Map(state);
 				next.set(requestId, [...books]);
@@ -106,6 +123,7 @@ function createRecommendationsPageStore() {
 			});
 		},
 		reset() {
+			runDimensionMatches.set(new Map());
 			history.set({
 				runs: [],
 				uniqueBooks: [],

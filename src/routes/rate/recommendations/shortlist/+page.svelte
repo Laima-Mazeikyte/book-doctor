@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { DimensionMatchSnapshotsByBookId } from '$lib/recommendations/dimensionMatches';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
@@ -30,6 +31,7 @@
 		filterAuthorRelationshipAuthors,
 		type AuthorRelationshipAuthorsByBookId
 	} from '$lib/recommendations/authorRelationships';
+	import { filterRatedLikedBookPrecedents } from '$lib/recommendations/likedBookPrecedents';
 	import { recommendationsPageStore } from '$lib/stores/recommendationsPage';
 	import { t } from '$lib/copy';
 	import { X } from 'lucide-svelte';
@@ -41,6 +43,8 @@
 	let reserveBooks = $state<Book[]>([]);
 	let likedBookPrecedentsByBookId = $state<Record<string, Book[]>>({});
 	let authorRelationshipAuthorsByBookId = $state<AuthorRelationshipAuthorsByBookId>({});
+	let dimensionMatchSnapshotsByBookId = $state<DimensionMatchSnapshotsByBookId>({});
+	let activeUserId: string | null = null;
 	let viewState = $state<ViewState>('loading');
 	let error = $state<string | null>(null);
 	let pollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -63,6 +67,14 @@
 		}
 		return filtered;
 	});
+	const ratedBookIds = $derived.by(() => new Set($ratingsStore.keys()));
+	const likedBookPrecedentsForDisplay = $derived.by(() => {
+		const filtered: Record<string, Book[]> = {};
+		for (const [bookId, precedents] of Object.entries(likedBookPrecedentsByBookId)) {
+			filtered[bookId] = filterRatedLikedBookPrecedents(precedents, ratedBookIds);
+		}
+		return filtered;
+	});
 
 	function resetShortlistSession() {
 		sessionNiCount = 0;
@@ -75,19 +87,22 @@
 	function applyBooksFromRun(
 		all: Book[],
 		precedentsByBookId: Record<string, Book[]> = {},
-		authorRelationshipAuthors: AuthorRelationshipAuthorsByBookId = {}
+		authorRelationshipAuthors: AuthorRelationshipAuthorsByBookId = {},
+		dimensionSnapshots: DimensionMatchSnapshotsByBookId = {}
 	) {
 		const { visible, reserve } = splitShortlistBooks(all);
 		visibleBooks = visible;
 		reserveBooks = reserve;
 		likedBookPrecedentsByBookId = precedentsByBookId;
 		authorRelationshipAuthorsByBookId = authorRelationshipAuthors;
+		dimensionMatchSnapshotsByBookId = dimensionSnapshots;
 		resetShortlistSession();
 	}
 
 	function isActiveLoad(loadId: number, requestId: string | null): boolean {
 		return (
 			loadId === activeLoadId &&
+			activeUserId === (get(authStore).user?.id ?? null) &&
 			(page.url.searchParams.get('request_id')?.trim() ?? null) === requestId
 		);
 	}
@@ -182,6 +197,9 @@
 	}
 
 	function startPoll(accessToken: string | null, requestId: string, loadId: number) {
+		activeUserId = get(authStore).user?.id ?? null;
+		recommendationsPageStore.ensureUser(activeUserId);
+		const cachedDimensionMatches = recommendationsPageStore.getRunDimensionMatches(requestId) ?? {};
 		const fromHistory = page.url.searchParams.get('from') === 'history';
 		const cached = recommendationsPageStore.getRunBooks(requestId);
 		const cachedPrecedents = recommendationsPageStore.getRunPrecedents(requestId) ?? {};
@@ -189,7 +207,12 @@
 			recommendationsPageStore.getRunAuthorRelationshipAuthors(requestId) ?? {};
 
 		if (fromHistory && cached && cached.length > 0) {
-			applyBooksFromRun(cached, cachedPrecedents, cachedAuthorRelationshipAuthors);
+			applyBooksFromRun(
+				cached,
+				cachedPrecedents,
+				cachedAuthorRelationshipAuthors,
+				cachedDimensionMatches
+			);
 			viewState = 'ready';
 			void refreshRecommendationsCountFromApi(accessToken);
 			void fetchRecommendations(accessToken, requestId)
@@ -197,15 +220,22 @@
 					({
 						books: next,
 						likedBookPrecedentsByBookId: nextPrecedents,
-						authorRelationshipAuthorsByBookId: nextAuthorRelationshipAuthors
+						authorRelationshipAuthorsByBookId: nextAuthorRelationshipAuthors,
+						dimensionMatchSnapshotsByBookId: nextDimensionMatches
 					}) => {
 						if (!isActiveLoad(loadId, requestId)) return;
-						applyBooksFromRun(next, nextPrecedents, nextAuthorRelationshipAuthors);
+						applyBooksFromRun(
+							next,
+							nextPrecedents,
+							nextAuthorRelationshipAuthors,
+							nextDimensionMatches
+						);
 						recommendationsPageStore.setRunBooks(
 							requestId,
 							next,
 							nextPrecedents,
-							nextAuthorRelationshipAuthors
+							nextAuthorRelationshipAuthors,
+							nextDimensionMatches
 						);
 						viewState = next.length > 0 ? 'ready' : 'empty';
 					}
@@ -216,19 +246,12 @@
 			return;
 		}
 
-		if (fromHistory && cached) {
-			visibleBooks = [];
-			reserveBooks = [];
-			likedBookPrecedentsByBookId = {};
-			authorRelationshipAuthorsByBookId = {};
-			viewState = 'loading';
-		} else if (!fromHistory) {
-			visibleBooks = [];
-			reserveBooks = [];
-			likedBookPrecedentsByBookId = {};
-			authorRelationshipAuthorsByBookId = {};
-			viewState = 'loading';
-		}
+		visibleBooks = [];
+		reserveBooks = [];
+		likedBookPrecedentsByBookId = {};
+		authorRelationshipAuthorsByBookId = {};
+		dimensionMatchSnapshotsByBookId = {};
+		viewState = 'loading';
 
 		const start = Date.now();
 
@@ -239,16 +262,23 @@
 				const {
 					books: nextBooks,
 					likedBookPrecedentsByBookId: nextPrecedents,
-					authorRelationshipAuthorsByBookId: nextAuthorRelationshipAuthors
+					authorRelationshipAuthorsByBookId: nextAuthorRelationshipAuthors,
+					dimensionMatchSnapshotsByBookId: nextDimensionMatches
 				} = await fetchRecommendations(accessToken, requestId);
 				if (!isActiveLoad(loadId, requestId)) return;
 				if (nextBooks.length > 0) {
-					applyBooksFromRun(nextBooks, nextPrecedents, nextAuthorRelationshipAuthors);
+					applyBooksFromRun(
+						nextBooks,
+						nextPrecedents,
+						nextAuthorRelationshipAuthors,
+						nextDimensionMatches
+					);
 					recommendationsPageStore.setRunBooks(
 						requestId,
 						nextBooks,
 						nextPrecedents,
-						nextAuthorRelationshipAuthors
+						nextAuthorRelationshipAuthors,
+						nextDimensionMatches
 					);
 					viewState = 'ready';
 					void refreshRecommendationsCountFromApi(accessToken);
@@ -373,8 +403,9 @@
 				scrollToBookIndex = controller.scrollToIndex;
 			}}
 			getBookmarked={(id) => $planToReadStore.has(id)}
-			getLikedBookPrecedents={(bookId) => likedBookPrecedentsByBookId[bookId] ?? []}
+			getLikedBookPrecedents={(bookId) => likedBookPrecedentsForDisplay[bookId] ?? []}
 			getAuthorRelationshipAuthors={(bookId) => authorRelationshipAuthorsForDisplay[bookId] ?? []}
+			getDimensionMatches={(bookId) => dimensionMatchSnapshotsByBookId[bookId]?.matches ?? []}
 			getNotInterested={(bookId) => $notInterestedStore.has(bookId)}
 			{getNotInterestedOverlay}
 			getRating={(id) => $ratingsStore.get(id) ?? null}

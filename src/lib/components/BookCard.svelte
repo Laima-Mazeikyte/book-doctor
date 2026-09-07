@@ -1,4 +1,5 @@
 <script lang="ts">
+	import RecommendationDimensionMatches from '$lib/components/RecommendationDimensionMatches.svelte';
 	import { onDestroy, tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
@@ -39,6 +40,7 @@
 		onBookmark,
 		likedBookPrecedents = [],
 		authorRelationshipAuthors = [],
+		dimensionMatches = [],
 		currentRating: currentRatingProp = null,
 		onRate,
 		onRemoveRating,
@@ -398,11 +400,13 @@
 		{#if context === 'recommendations'}
 			<RecommendationPrecedents books={likedBookPrecedents} />
 			<RecommendationAuthorRelationships authors={authorRelationshipAuthors} />
+			<RecommendationDimensionMatches matches={dimensionMatches} />
 		{/if}
 	</div>
 </article>
 
 <BookSummarySheet
+	dimensionMatches={context === 'recommendations' ? dimensionMatches : []}
 	state={summaryState}
 	restoreFocus={summaryRestoreFocus}
 	{currentRating}

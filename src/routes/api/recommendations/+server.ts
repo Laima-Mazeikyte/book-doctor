@@ -1,3 +1,4 @@
+import { buildDimensionMatchSnapshotsByBookId } from '$lib/recommendations/dimensionMatches';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { buildAuthorRelationshipAuthorsByBookId } from '$lib/recommendations/authorRelationships';
@@ -37,13 +38,16 @@ export const GET: RequestHandler = async ({ url, request }) => {
 			books: [],
 			request_id: null,
 			likedBookPrecedentsByBookId: {},
-			authorRelationshipAuthorsByBookId: {}
+			authorRelationshipAuthorsByBookId: {},
+			dimensionMatchSnapshotsByBookId: {}
 		});
 	}
 
 	const { data: items, error: itemsError } = await supabase
 		.from('recommendation_items')
-		.select('book_id, rank, score, liked_book_precedent_ids, author_relationship_evidence')
+		.select(
+			'book_id, rank, score, dimension_matches, liked_book_precedent_ids, author_relationship_evidence'
+		)
 		.eq('request_id', targetRequestId)
 		.order('rank', { ascending: true })
 		.limit(MAX_RECOMMENDATION_RANK);
@@ -58,7 +62,8 @@ export const GET: RequestHandler = async ({ url, request }) => {
 			books: [],
 			request_id: targetRequestId,
 			likedBookPrecedentsByBookId: {},
-			authorRelationshipAuthorsByBookId: {}
+			authorRelationshipAuthorsByBookId: {},
+			dimensionMatchSnapshotsByBookId: {}
 		});
 	}
 
@@ -73,7 +78,8 @@ export const GET: RequestHandler = async ({ url, request }) => {
 			books: [],
 			request_id: targetRequestId,
 			likedBookPrecedentsByBookId: {},
-			authorRelationshipAuthorsByBookId: {}
+			authorRelationshipAuthorsByBookId: {},
+			dimensionMatchSnapshotsByBookId: {}
 		});
 	}
 
@@ -90,12 +96,16 @@ export const GET: RequestHandler = async ({ url, request }) => {
 			supabase,
 			(items ?? []) as RecommendationPrecedentRow[]
 		);
+		const dimensionMatchSnapshotsByBookId = buildDimensionMatchSnapshotsByBookId(
+			items.map((item) => ({ ...item, request_id: targetRequestId }))
+		);
 		const authorRelationshipAuthorsByBookId = buildAuthorRelationshipAuthorsByBookId(items ?? []);
 		return json({
 			books,
 			request_id: targetRequestId,
 			likedBookPrecedentsByBookId,
-			authorRelationshipAuthorsByBookId
+			authorRelationshipAuthorsByBookId,
+			dimensionMatchSnapshotsByBookId
 		});
 	} catch (booksError) {
 		console.error(booksError);

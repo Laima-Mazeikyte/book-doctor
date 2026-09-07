@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { DimensionMatch } from '$lib/recommendations/dimensionMatches';
 	import type { Snippet } from 'svelte';
 	import { MOBILE_DECK_PEEK_SCALE } from './carouselIndex';
 	import type { Book, RatingValue } from '$lib/types/book';
@@ -26,6 +27,7 @@
 		bookmarked: boolean;
 		likedBookPrecedents: Book[];
 		authorRelationshipAuthors?: string[];
+		dimensionMatches?: DimensionMatch[];
 		notInterested: boolean;
 		notInterestedOverlay?: NotInterestedOverlay;
 		onNotInterestedOverlayClick?: () => void;
@@ -59,6 +61,7 @@
 		bookmarked,
 		likedBookPrecedents,
 		authorRelationshipAuthors = [],
+		dimensionMatches = [],
 		notInterested,
 		notInterestedOverlay = null,
 		onNotInterestedOverlayClick,
@@ -134,6 +137,7 @@
 		{book}
 		{likedBookPrecedents}
 		{authorRelationshipAuthors}
+		{dimensionMatches}
 		{index}
 		{setSize}
 		{showNav}

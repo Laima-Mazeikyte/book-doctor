@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { DimensionMatch } from '$lib/recommendations/dimensionMatches';
 	import { onDestroy, tick } from 'svelte';
 	import { browser } from '$app/environment';
 	import { fly } from 'svelte/transition';
@@ -16,6 +17,7 @@
 
 	interface Props {
 		state: BookSummarySheetState;
+		dimensionMatches?: DimensionMatch[];
 		/** Restore focus to the triggering cover or feed button after closing. */
 		restoreFocus?: boolean;
 		currentRating?: RatingValue | null;
@@ -38,6 +40,7 @@
 
 	let {
 		state: sheetState,
+		dimensionMatches = [],
 		restoreFocus = true,
 		currentRating = null,
 		bookmarked = false,
@@ -425,6 +428,7 @@
 
 			{#if sheetState.kind === 'ready'}
 				<BookSummarySheetBody
+					{dimensionMatches}
 					bind:summaryContentEl
 					onSummaryPointerDown={handleSummarySheetPointerDown}
 					book={sheetState.book}
