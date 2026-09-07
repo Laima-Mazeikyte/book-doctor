@@ -8,22 +8,49 @@ it('isolates request snapshots, preserves cache for the same user, and clears on
 		book: { request_id: 'first', matches: [{ dimension_key: 'spice', candidate_raw_score: 0 }] }
 	};
 	const second = { book: { request_id: 'second', matches: [] } };
+	const firstBooks = [{ id: 'book-first', book_id: 'first', title: 'First', author: 'Author' }];
+	const secondBooks = [{ id: 'book-second', book_id: 'second', title: 'Second', author: 'Author' }];
 	store.ensureUser('alice');
-	store.setRunBooks('first', [], {}, {}, first);
-	store.setRunBooks('second', [], {}, {}, second);
+	store.setRun('first', {
+		books: firstBooks,
+		likedBookPrecedentsByBookId: {},
+		authorRelationshipAuthorsByBookId: {},
+		dimensionMatchSnapshotsByBookId: first
+	});
+	store.setRun('second', {
+		books: secondBooks,
+		likedBookPrecedentsByBookId: {},
+		authorRelationshipAuthorsByBookId: {},
+		dimensionMatchSnapshotsByBookId: second
+	});
 	store.setUniqueBooks([], {
 		...store.getHistorySnapshot(),
 		dimensionMatchSnapshotsByBookId: second
 	});
 	store.ensureUser('alice');
-	expect(store.getRunDimensionMatches('first')).toEqual(first);
-	expect(store.getRunDimensionMatches('second')).toEqual(second);
+	expect(store.getRun('first')).toEqual({
+		books: firstBooks,
+		likedBookPrecedentsByBookId: {},
+		authorRelationshipAuthorsByBookId: {},
+		dimensionMatchSnapshotsByBookId: first
+	});
+	expect(store.getRun('second')).toEqual({
+		books: secondBooks,
+		likedBookPrecedentsByBookId: {},
+		authorRelationshipAuthorsByBookId: {},
+		dimensionMatchSnapshotsByBookId: second
+	});
 	expect(store.getHistorySnapshot().dimensionMatchSnapshotsByBookId).toEqual(second);
 	store.ensureUser('bob');
-	expect(store.getRunDimensionMatches('first')).toBeUndefined();
-	expect(store.getRunDimensionMatches('second')).toBeUndefined();
+	expect(store.getRun('first')).toBeUndefined();
+	expect(store.getRun('second')).toBeUndefined();
 	expect(store.getHistorySnapshot().dimensionMatchSnapshotsByBookId).toEqual({});
-	store.setRunBooks('second', [], {}, {}, second);
+	store.setRun('second', {
+		books: secondBooks,
+		likedBookPrecedentsByBookId: {},
+		authorRelationshipAuthorsByBookId: {},
+		dimensionMatchSnapshotsByBookId: second
+	});
 	store.ensureUser(null);
-	expect(store.getRunDimensionMatches('second')).toBeUndefined();
+	expect(store.getRun('second')).toBeUndefined();
 });

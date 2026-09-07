@@ -1,13 +1,10 @@
 <script lang="ts">
 	import type { DimensionMatch } from '$lib/recommendations/dimensionMatches';
-	import type { Snippet } from 'svelte';
 	import { ChevronLeft, ChevronRight } from 'lucide-svelte';
 	import BookSummarySheetBody from '$lib/components/book-card/BookSummarySheetBody.svelte';
 	import { getBookDisplaySummary } from '$lib/components/book-card/summaryStub';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
-	import ShortlistBookMeta from './ShortlistBookMeta.svelte';
-	import type { ShortlistMetaSection } from './shortlist-meta';
 	import type { NotInterestedOverlay } from './shortlist-books';
 
 	interface Props {
@@ -27,10 +24,6 @@
 		onNotInterested: () => void;
 		onRate: (value: RatingValue) => void;
 		onRemoveRating: () => void;
-		metaSections?: ShortlistMetaSection[];
-		beforeMeta?: Snippet<[{ book: Book; index: number; setSize: number }]>;
-		afterMeta?: Snippet<[{ book: Book; index: number; setSize: number }]>;
-		footer?: Snippet<[{ book: Book; index: number; setSize: number }]>;
 		showNav?: boolean;
 		onPrev?: () => void;
 		onNext?: () => void;
@@ -55,11 +48,7 @@
 		onBookmark,
 		onNotInterested,
 		onRate,
-		onRemoveRating,
-		metaSections,
-		beforeMeta,
-		afterMeta,
-		footer
+		onRemoveRating
 	}: Props = $props();
 
 	let coverImageFailed = $state(false);
@@ -138,12 +127,6 @@
 	aria-posinset={index + 1}
 >
 	<div class="shortlist-detail__inner">
-		{#if beforeMeta}
-			<div class="shortlist-detail__slot shortlist-detail__slot--before">
-				{@render beforeMeta({ book, index, setSize })}
-			</div>
-		{/if}
-
 		<div class="shortlist-detail__sheet">
 			{#if showNav && onPrev && onNext}
 				<nav
@@ -208,22 +191,6 @@
 				onNotInterestedClick={handleNotInterestedClick}
 			/>
 		</div>
-
-		<div class="shortlist-detail__extensions">
-			<ShortlistBookMeta {book} sections={metaSections} />
-		</div>
-
-		{#if afterMeta}
-			<div class="shortlist-detail__slot shortlist-detail__slot--after">
-				{@render afterMeta({ book, index, setSize })}
-			</div>
-		{/if}
-
-		{#if footer}
-			<div class="shortlist-detail__slot shortlist-detail__slot--footer">
-				{@render footer({ book, index, setSize })}
-			</div>
-		{/if}
 	</div>
 </article>
 
@@ -296,16 +263,6 @@
 		padding-top: var(--space-4);
 		padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
 	}
-	.shortlist-detail__extensions {
-		padding: 0 var(--space-6) var(--space-4);
-	}
-	.shortlist-detail__slot {
-		padding: 0 var(--space-6);
-	}
-	.shortlist-detail__slot--footer {
-		padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
-	}
-
 	@media (max-width: 767px) {
 		.shortlist-detail__inner {
 			width: 85vw;
@@ -350,12 +307,5 @@
 			padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
 		}
 
-		.shortlist-detail__extensions {
-			padding-inline: 0;
-		}
-
-		.shortlist-detail__slot {
-			padding-inline: 0;
-		}
 	}
 </style>

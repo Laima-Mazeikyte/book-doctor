@@ -14,7 +14,7 @@
 	import ShortlistError from '$lib/components/shortlist/ShortlistError.svelte';
 	import ShortlistLoading from '$lib/components/shortlist/ShortlistLoading.svelte';
 	import ShortlistPositionIndicator from '$lib/components/shortlist/ShortlistPositionIndicator.svelte';
-	import ShortlistTimedOut from '$lib/components/shortlist/ShortlistTimedOut.svelte';
+	import ShortlistFailed from '$lib/components/shortlist/ShortlistFailed.svelte';
 	import {
 		fetchRecommendations,
 		RECOMMENDATIONS_POLL_INTERVAL_MS,
@@ -37,7 +37,7 @@
 	import { X } from 'lucide-svelte';
 	import type { Book, RatingValue } from '$lib/types/book';
 
-	type ViewState = 'loading' | 'ready' | 'timedOut' | 'error' | 'empty';
+	type ViewState = 'loading' | 'ready' | 'failed' | 'error' | 'empty';
 
 	let visibleBooks = $state<Book[]>([]);
 	let reserveBooks = $state<Book[]>([]);
@@ -56,6 +56,7 @@
 	let insertedBookIds = $state<Set<string>>(new Set());
 	let dismissalOrdinals = $state<Map<string, number>>(new Map());
 	let replaceUsedBookIds = $state<Set<string>>(new Set());
+	let shortlistLayoutChanged = $state(false);
 	let scrollToBookIndex: ((index: number) => void) | undefined;
 
 	const ratedBooksStore = ratingsStore.ratedBooks;
@@ -67,11 +68,10 @@
 		}
 		return filtered;
 	});
-	const ratedBookIds = $derived.by(() => new Set($ratingsStore.keys()));
 	const likedBookPrecedentsForDisplay = $derived.by(() => {
 		const filtered: Record<string, Book[]> = {};
 		for (const [bookId, precedents] of Object.entries(likedBookPrecedentsByBookId)) {
-			filtered[bookId] = filterRatedLikedBookPrecedents(precedents, ratedBookIds);
+			filtered[bookId] = filterRatedLikedBookPrecedents(precedents, $ratingsStore);
 		}
 		return filtered;
 	});
@@ -82,6 +82,7 @@
 		insertedBookIds = new Set();
 		dismissalOrdinals = new Map();
 		replaceUsedBookIds = new Set();
+		shortlistLayoutChanged = false;
 	}
 
 	function applyBooksFromRun(
@@ -111,6 +112,7 @@
 		const bid = book.book_id;
 		const wasNotInterested = notInterestedStore.has(bid);
 		const nowNotInterested = notInterestedStore.toggle(bid);
+		shortlistLayoutChanged = true;
 		if (nowNotInterested && !wasNotInterested) {
 			sessionNiCount += 1;
 			dismissalOrdinals = new Map(dismissalOrdinals).set(bid, sessionNiCount);
@@ -186,6 +188,7 @@
 	function handleOfferAnotherBook(book: Book, index: number) {
 		const result = insertBookAfterIndex(visibleBooks, index, reserveBooks);
 		if (!result.incoming) return;
+		shortlistLayoutChanged = true;
 		visibleBooks = result.visible;
 		reserveBooks = result.reserve;
 		insertionsUsed += 1;
@@ -199,19 +202,15 @@
 	function startPoll(accessToken: string | null, requestId: string, loadId: number) {
 		activeUserId = get(authStore).user?.id ?? null;
 		recommendationsPageStore.ensureUser(activeUserId);
-		const cachedDimensionMatches = recommendationsPageStore.getRunDimensionMatches(requestId) ?? {};
 		const fromHistory = page.url.searchParams.get('from') === 'history';
-		const cached = recommendationsPageStore.getRunBooks(requestId);
-		const cachedPrecedents = recommendationsPageStore.getRunPrecedents(requestId) ?? {};
-		const cachedAuthorRelationshipAuthors =
-			recommendationsPageStore.getRunAuthorRelationshipAuthors(requestId) ?? {};
+		const cachedRun = recommendationsPageStore.getRun(requestId);
 
-		if (fromHistory && cached && cached.length > 0) {
+		if (fromHistory && cachedRun && cachedRun.books.length > 0) {
 			applyBooksFromRun(
-				cached,
-				cachedPrecedents,
-				cachedAuthorRelationshipAuthors,
-				cachedDimensionMatches
+				cachedRun.books,
+				cachedRun.likedBookPrecedentsByBookId,
+				cachedRun.authorRelationshipAuthorsByBookId,
+				cachedRun.dimensionMatchSnapshotsByBookId
 			);
 			viewState = 'ready';
 			void refreshRecommendationsCountFromApi(accessToken);
@@ -224,20 +223,21 @@
 						dimensionMatchSnapshotsByBookId: nextDimensionMatches
 					}) => {
 						if (!isActiveLoad(loadId, requestId)) return;
-						applyBooksFromRun(
-							next,
-							nextPrecedents,
-							nextAuthorRelationshipAuthors,
-							nextDimensionMatches
-						);
-						recommendationsPageStore.setRunBooks(
-							requestId,
-							next,
-							nextPrecedents,
-							nextAuthorRelationshipAuthors,
-							nextDimensionMatches
-						);
-						viewState = next.length > 0 ? 'ready' : 'empty';
+						recommendationsPageStore.setRun(requestId, {
+							books: next,
+							likedBookPrecedentsByBookId: nextPrecedents,
+							authorRelationshipAuthorsByBookId: nextAuthorRelationshipAuthors,
+							dimensionMatchSnapshotsByBookId: nextDimensionMatches
+						});
+						if (!shortlistLayoutChanged) {
+							applyBooksFromRun(
+								next,
+								nextPrecedents,
+								nextAuthorRelationshipAuthors,
+								nextDimensionMatches
+							);
+							viewState = next.length > 0 ? 'ready' : 'empty';
+						}
 					}
 				)
 				.catch(() => {
@@ -251,6 +251,7 @@
 		likedBookPrecedentsByBookId = {};
 		authorRelationshipAuthorsByBookId = {};
 		dimensionMatchSnapshotsByBookId = {};
+		resetShortlistSession();
 		viewState = 'loading';
 
 		const start = Date.now();
@@ -273,18 +274,17 @@
 						nextAuthorRelationshipAuthors,
 						nextDimensionMatches
 					);
-					recommendationsPageStore.setRunBooks(
-						requestId,
-						nextBooks,
-						nextPrecedents,
-						nextAuthorRelationshipAuthors,
-						nextDimensionMatches
-					);
+					recommendationsPageStore.setRun(requestId, {
+						books: nextBooks,
+						likedBookPrecedentsByBookId: nextPrecedents,
+						authorRelationshipAuthorsByBookId: nextAuthorRelationshipAuthors,
+						dimensionMatchSnapshotsByBookId: nextDimensionMatches
+					});
 					viewState = 'ready';
 					void refreshRecommendationsCountFromApi(accessToken);
 					done = true;
 				} else if (Date.now() - start >= RECOMMENDATIONS_POLL_TIMEOUT_MS) {
-					viewState = 'timedOut';
+					viewState = 'failed';
 					done = true;
 				}
 			} catch (e) {
@@ -389,8 +389,8 @@
 
 	{#if viewState === 'loading'}
 		<ShortlistLoading />
-	{:else if viewState === 'timedOut'}
-		<ShortlistTimedOut onRetry={retryLoad} />
+	{:else if viewState === 'failed'}
+		<ShortlistFailed onRetry={retryLoad} />
 	{:else if viewState === 'error'}
 		<ShortlistError message={error} onRetry={retryLoad} />
 	{:else if viewState === 'empty'}

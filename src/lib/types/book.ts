@@ -11,8 +11,6 @@ export interface Book {
 	genres?: string[];
 	/** Catalog `books.type` when present; reserved for future UI. */
 	type?: string;
-	/** Global catalog standing, retained for future detail views; not personalized. */
-	qualityPercentile?: number | null;
 	/** Authoritative public quality band; null means no public distinction. */
 	qualityBand?: QualityBand | null;
 }

@@ -151,11 +151,10 @@
 		}
 		return filtered;
 	});
-	const ratedBookIds = $derived.by(() => new Set($ratingsStore.keys()));
 	const likedBookPrecedentsForDisplay = $derived.by((): Record<string, Book[]> => {
 		const filtered: Record<string, Book[]> = {};
 		for (const [bookId, precedents] of Object.entries(likedBookPrecedentsByBookId)) {
-			filtered[bookId] = filterRatedLikedBookPrecedents(precedents, ratedBookIds);
+			filtered[bookId] = filterRatedLikedBookPrecedents(precedents, $ratingsStore);
 		}
 		return filtered;
 	});

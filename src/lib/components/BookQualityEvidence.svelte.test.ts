@@ -34,7 +34,7 @@ it('renders the global catalog label for every visible band', async () => {
 it('renders no distinction for insufficient or below-top-25 evidence', async () => {
 	for (const qualityBand of [null, 'below_top_25'] as const) {
 		const rendered = render(BookQualityEvidence, {
-			props: { book: { ...book, qualityBand, qualityPercentile: 72.15 } }
+			props: { book: { ...book, qualityBand } }
 		});
 
 		expect(document.querySelector('[data-testid="book-quality-evidence"]')).toBeNull();

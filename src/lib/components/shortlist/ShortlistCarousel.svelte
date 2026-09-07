@@ -1,6 +1,5 @@
 <script lang="ts">
 	import type { DimensionMatch } from '$lib/recommendations/dimensionMatches';
-	import type { Snippet } from 'svelte';
 	import { browser } from '$app/environment';
 	import { prefersReducedMotion } from '$lib/navigation/mainNavTransition';
 	import { t } from '$lib/copy';
@@ -16,7 +15,6 @@
 	} from './carouselIndex';
 	import ShortlistCoverStrip from './ShortlistCoverStrip.svelte';
 	import ShortlistSlide from './ShortlistSlide.svelte';
-	import type { ShortlistMetaSection } from './shortlist-meta';
 	import type { NotInterestedOverlay } from './shortlist-books';
 
 	interface Props {
@@ -36,10 +34,6 @@
 		requestingRecommendations?: boolean;
 		onRate: (book: Book, value: RatingValue) => void;
 		onRemoveRating: (book: Book) => void;
-		metaSections?: ShortlistMetaSection[];
-		beforeMeta?: Snippet<[{ book: Book; index: number; setSize: number }]>;
-		afterMeta?: Snippet<[{ book: Book; index: number; setSize: number }]>;
-		footer?: Snippet<[{ book: Book; index: number; setSize: number }]>;
 		/** Called once so parents can imperatively scroll after inserting a slide. */
 		registerScrollController?: (controller: { scrollToIndex: (index: number) => void }) => void;
 	}
@@ -61,10 +55,6 @@
 		requestingRecommendations = false,
 		onRate,
 		onRemoveRating,
-		metaSections,
-		beforeMeta,
-		afterMeta,
-		footer,
 		registerScrollController
 	}: Props = $props();
 
@@ -260,10 +250,6 @@
 				onNotInterested={() => onNotInterested(cloneStartBook)}
 				onRate={(value) => onRate(cloneStartBook, value)}
 				onRemoveRating={() => onRemoveRating(cloneStartBook)}
-				{metaSections}
-				{beforeMeta}
-				{afterMeta}
-				{footer}
 			/>
 		{/if}
 
@@ -294,10 +280,6 @@
 				onNotInterested={() => onNotInterested(book)}
 				onRate={(value) => onRate(book, value)}
 				onRemoveRating={() => onRemoveRating(book)}
-				{metaSections}
-				{beforeMeta}
-				{afterMeta}
-				{footer}
 			/>
 		{/each}
 
@@ -330,10 +312,6 @@
 				onNotInterested={() => onNotInterested(cloneEndBook)}
 				onRate={(value) => onRate(cloneEndBook, value)}
 				onRemoveRating={() => onRemoveRating(cloneEndBook)}
-				{metaSections}
-				{beforeMeta}
-				{afterMeta}
-				{footer}
 			/>
 		{/if}
 	</section>

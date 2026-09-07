@@ -12,7 +12,7 @@ afterEach(() => {
 describe('fetchRecommendations constants', () => {
 	it('exports poll timing used by shortlist', () => {
 		expect(RECOMMENDATIONS_POLL_INTERVAL_MS).toBe(3000);
-		expect(RECOMMENDATIONS_POLL_TIMEOUT_MS).toBe(60_000);
+		expect(RECOMMENDATIONS_POLL_TIMEOUT_MS).toBe(20_000);
 	});
 
 	it('reads author relationship candidates from the recommendation response', async () => {

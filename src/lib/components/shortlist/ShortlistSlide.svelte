@@ -1,10 +1,8 @@
 <script lang="ts">
 	import type { DimensionMatch } from '$lib/recommendations/dimensionMatches';
-	import type { Snippet } from 'svelte';
 	import { MOBILE_DECK_PEEK_SCALE } from './carouselIndex';
 	import type { Book, RatingValue } from '$lib/types/book';
 	import ShortlistBookDetail from './ShortlistBookDetail.svelte';
-	import type { ShortlistMetaSection } from './shortlist-meta';
 	import type { NotInterestedOverlay } from './shortlist-books';
 
 	const DECK_PEEK_SCALE = MOBILE_DECK_PEEK_SCALE;
@@ -37,10 +35,6 @@
 		onNotInterested: () => void;
 		onRate: (value: RatingValue) => void;
 		onRemoveRating: () => void;
-		metaSections?: ShortlistMetaSection[];
-		beforeMeta?: Snippet<[{ book: Book; index: number; setSize: number }]>;
-		afterMeta?: Snippet<[{ book: Book; index: number; setSize: number }]>;
-		footer?: Snippet<[{ book: Book; index: number; setSize: number }]>;
 		onPrev?: () => void;
 		onNext?: () => void;
 	}
@@ -70,11 +64,7 @@
 		onBookmark,
 		onNotInterested,
 		onRate,
-		onRemoveRating,
-		metaSections,
-		beforeMeta,
-		afterMeta,
-		footer
+		onRemoveRating
 	}: Props = $props();
 
 	const isMobileDeck = $derived(deckLayout && setSize > 1);
@@ -110,7 +100,6 @@
 	const deckFooterInteractive = $derived(deckFooterOpacity > 0.5);
 	const deckSummaryVisualOpacity = $derived(deckInteractive ? 1 : deckSummaryOpacity);
 	const deckSlideOpacity = $derived(deckFooterInteractive ? 1 : deckOpacity);
-	const deckFooterVisualOpacity = $derived(deckFooterInteractive ? 1 : deckFooterOpacity);
 </script>
 
 <div
@@ -127,11 +116,9 @@
 	style:--shortlist-slide-offset={offset}
 	style:--deck-cover-scale={isMobileDeck ? deckCoverScale : undefined}
 	style:--deck-summary-opacity={isMobileDeck ? deckSummaryVisualOpacity : undefined}
-	style:--deck-footer-opacity={isMobileDeck ? deckFooterVisualOpacity : undefined}
 	style:opacity={isMobileDeck ? deckSlideOpacity : undefined}
 	style:z-index={isMobileDeck ? deckZIndex : undefined}
 	style:pointer-events={isMobileDeck ? (deckInteractive ? 'auto' : 'none') : undefined}
-	style:--deck-footer-events={isMobileDeck ? (deckFooterInteractive ? 'auto' : 'none') : undefined}
 >
 	<ShortlistBookDetail
 		{book}
@@ -153,10 +140,6 @@
 		{onNotInterested}
 		{onRate}
 		{onRemoveRating}
-		{metaSections}
-		{beforeMeta}
-		{afterMeta}
-		{footer}
 	/>
 </div>
 
@@ -221,9 +204,7 @@
 			transition: none;
 			will-change: transform;
 		}
-		.shortlist-slide--mobile-deck :global(.book-card__summary-details-column),
-		.shortlist-slide--mobile-deck :global(.shortlist-detail__extensions),
-		.shortlist-slide--mobile-deck :global(.shortlist-detail__slot) {
+		.shortlist-slide--mobile-deck :global(.book-card__summary-details-column) {
 			opacity: var(--deck-summary-opacity, 0);
 			pointer-events: none;
 			transition: none;

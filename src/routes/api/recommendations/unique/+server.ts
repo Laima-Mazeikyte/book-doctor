@@ -54,7 +54,7 @@ export const GET: RequestHandler = async ({ request }) => {
 	const { data: items, error: itemsError } = await supabase
 		.from('recommendation_items')
 		.select(
-			'book_id, request_id, rank, score, dimension_matches, liked_book_precedent_ids, author_relationship_evidence'
+			'book_id, request_id, rank, dimension_matches, liked_book_precedent_ids, author_relationship_evidence'
 		)
 		.in('request_id', requestIds);
 
@@ -150,10 +150,15 @@ export const GET: RequestHandler = async ({ request }) => {
 
 	try {
 		const books = await fetchBooksByUlids(supabase, uniqueBookIds);
+		const returnedBookIds = new Set(books.map((book) => book.book_id));
 		const precedentRowsInPriorityOrder: RecommendationPrecedentRow[] = [];
 		for (const log of logs ?? []) {
 			if (!log.request_id) continue;
-			precedentRowsInPriorityOrder.push(...(itemsByRequestId.get(log.request_id) ?? []));
+			precedentRowsInPriorityOrder.push(
+				...(itemsByRequestId.get(log.request_id) ?? []).filter((row) =>
+					returnedBookIds.has(String(row.book_id ?? '').trim())
+				)
+			);
 		}
 		const likedBookPrecedentsByBookId = await resolveLikedBookPrecedents(
 			supabase,

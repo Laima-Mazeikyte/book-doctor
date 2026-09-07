@@ -46,7 +46,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	const { data: items, error: itemsError } = await supabase
 		.from('recommendation_items')
 		.select(
-			'book_id, rank, score, dimension_matches, liked_book_precedent_ids, author_relationship_evidence'
+			'book_id, rank, dimension_matches, liked_book_precedent_ids, author_relationship_evidence'
 		)
 		.eq('request_id', targetRequestId)
 		.order('rank', { ascending: true })
@@ -84,22 +84,19 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	}
 
 	try {
-		const fetchedBooks = await fetchBooksByUlidsInOrder(supabase, bookIds);
-		const byBookId = new Map(fetchedBooks.map((book) => [book.book_id, book]));
-		const books = items
-			.map((item) => {
-				const id = String(item.book_id ?? '').trim();
-				return id ? (byBookId.get(id) ?? null) : null;
-			})
-			.filter((book): book is NonNullable<typeof book> => book != null);
+		const books = await fetchBooksByUlidsInOrder(supabase, bookIds);
+		const returnedBookIds = new Set(books.map((book) => book.book_id));
+		const returnedItems = (items ?? []).filter((item) =>
+			returnedBookIds.has(String(item.book_id ?? '').trim())
+		);
 		const likedBookPrecedentsByBookId = await resolveLikedBookPrecedents(
 			supabase,
-			(items ?? []) as RecommendationPrecedentRow[]
+			returnedItems as RecommendationPrecedentRow[]
 		);
 		const dimensionMatchSnapshotsByBookId = buildDimensionMatchSnapshotsByBookId(
-			items.map((item) => ({ ...item, request_id: targetRequestId }))
+			returnedItems.map((item) => ({ ...item, request_id: targetRequestId }))
 		);
-		const authorRelationshipAuthorsByBookId = buildAuthorRelationshipAuthorsByBookId(items ?? []);
+		const authorRelationshipAuthorsByBookId = buildAuthorRelationshipAuthorsByBookId(returnedItems);
 		return json({
 			books,
 			request_id: targetRequestId,

@@ -23,12 +23,3 @@ export function isVisibleQualityBand(
 ): value is (typeof VISIBLE_QUALITY_BANDS)[number] {
 	return value != null && (VISIBLE_QUALITY_BANDS as readonly string[]).includes(value);
 }
-
-/** Supabase normally returns numeric columns as numbers; tolerate numeric strings at the boundary. */
-export function qualityPercentileFromValue(value: unknown): number | null {
-	if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-	if (typeof value !== 'string' || value.trim() === '') return null;
-
-	const parsed = Number(value);
-	return Number.isFinite(parsed) ? parsed : null;
-}

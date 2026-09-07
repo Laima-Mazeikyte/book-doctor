@@ -6,7 +6,7 @@ import type { Book } from '$lib/types/book';
 import type { AuthorRelationshipAuthorsByBookId } from './authorRelationships';
 
 export const RECOMMENDATIONS_POLL_INTERVAL_MS = 3000;
-export const RECOMMENDATIONS_POLL_TIMEOUT_MS = 60_000;
+export const RECOMMENDATIONS_POLL_TIMEOUT_MS = 20_000;
 
 export type FetchRecommendationsResult = {
 	books: Book[];

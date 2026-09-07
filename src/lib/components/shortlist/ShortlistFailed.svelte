@@ -9,9 +9,9 @@
 	let { onRetry }: Props = $props();
 </script>
 
-<div class="shortlist-state" role="status">
-	<p class="shortlist-state__title typ-h3">{t('recommendations.shortlist.timeoutTitle')}</p>
-	<p class="shortlist-state__message typ-body">{t('recommendations.shortlist.timeoutMessage')}</p>
+<div class="shortlist-state" role="alert">
+	<p class="shortlist-state__title typ-h3">{t('recommendations.shortlist.failureTitle')}</p>
+	<p class="shortlist-state__message typ-body">{t('recommendations.shortlist.failureMessage')}</p>
 	{#if onRetry}
 		<Button variant="primary" onclick={onRetry}>{t('recommendations.shortlist.retry')}</Button>
 	{/if}

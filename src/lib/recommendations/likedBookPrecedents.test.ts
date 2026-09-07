@@ -12,17 +12,30 @@ function book(id: string): Book {
 }
 
 describe('filterRatedLikedBookPrecedents', () => {
-	it('keeps only rated books while preserving backend order', () => {
-		const precedents = [book('rated-1'), book('bookmarked-only'), book('rated-2')];
+	it('keeps only liked-rated books while preserving backend order', () => {
+		const precedents = [book('liked-1'), book('low-rated'), book('unrated'), book('liked-2')];
 
 		expect(
-			filterRatedLikedBookPrecedents(precedents, new Set(['rated-2', 'rated-1'])).map(
-				({ id }) => id
-			)
-		).toEqual(['rated-1', 'rated-2']);
+			filterRatedLikedBookPrecedents(
+				precedents,
+				new Map([
+					['liked-1', 5],
+					['low-rated', 1],
+					['liked-2', 4]
+				])
+			).map(({ id }) => id)
+		).toEqual(['liked-1', 'liked-2']);
 	});
 
-	it('returns no precedents when there are no rated books', () => {
-		expect(filterRatedLikedBookPrecedents([book('bookmarked-only')], new Set())).toEqual([]);
+	it('returns no precedents when there are no liked ratings', () => {
+		expect(
+			filterRatedLikedBookPrecedents(
+				[book('one-star'), book('three-stars'), book('unrated')],
+				new Map([
+					['one-star', 1],
+					['three-stars', 3]
+				])
+			)
+		).toEqual([]);
 	});
 });

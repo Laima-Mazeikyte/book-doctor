@@ -3,7 +3,7 @@ export const BOOK_GENRE_TYPE_SELECT =
 	'genre1, genre2, genre3, genre4, genre5, genre6, genre7, type' as const;
 
 /** PostgREST `select` fragment for public book-quality evidence (see `public.books`). */
-export const BOOK_QUALITY_SELECT = 'quality_percentile, quality_band' as const;
+export const BOOK_QUALITY_SELECT = 'quality_band' as const;
 
 export type BookGenreSlotRow = {
 	genre1?: string | null;

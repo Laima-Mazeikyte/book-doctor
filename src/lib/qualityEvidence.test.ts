@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
 	isVisibleQualityBand,
 	normalizeQualityBand,
-	qualityPercentileFromValue,
 	VISIBLE_QUALITY_BANDS
 } from './qualityEvidence';
 
@@ -17,12 +16,5 @@ describe('quality evidence', () => {
 		expect(isVisibleQualityBand('below_top_25')).toBe(false);
 		expect(normalizeQualityBand('top_2_percent')).toBeNull();
 		expect(normalizeQualityBand(null)).toBeNull();
-	});
-
-	it('normalizes finite numeric percentile values without using them for band visibility', () => {
-		expect(qualityPercentileFromValue(96.42)).toBe(96.42);
-		expect(qualityPercentileFromValue('96.42')).toBe(96.42);
-		expect(qualityPercentileFromValue(Number.NaN)).toBeNull();
-		expect(qualityPercentileFromValue('not-a-number')).toBeNull();
 	});
 });

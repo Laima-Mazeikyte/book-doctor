@@ -1,12 +1,15 @@
-import type { Book } from '$lib/types/book';
+import type { Book, RatingValue } from '$lib/types/book';
 
 /**
- * Keep only recommendation precedents that have an explicit user rating.
+ * Keep only recommendation precedents with an explicit liked rating.
  * Book.id is the catalog UUID used as the key in ratingsStore.
  */
 export function filterRatedLikedBookPrecedents(
 	precedents: readonly Book[] | null | undefined,
-	ratedBookIds: ReadonlySet<string>
+	ratingsByBookId: ReadonlyMap<string, RatingValue>
 ): Book[] {
-	return (precedents ?? []).filter((book) => ratedBookIds.has(book.id));
+	return (precedents ?? []).filter((book) => {
+		const rating = ratingsByBookId.get(book.id);
+		return rating === 4 || rating === 5;
+	});
 }

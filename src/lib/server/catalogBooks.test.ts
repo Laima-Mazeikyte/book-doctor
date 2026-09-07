@@ -12,7 +12,6 @@ describe('catalog book quality evidence selection', () => {
 				author: 'An author',
 				summary: null,
 				year: null,
-				quality_percentile: 96.42,
 				quality_band: 'top_5_percent'
 			}
 		];
@@ -24,11 +23,8 @@ describe('catalog book quality evidence selection', () => {
 		const books = await fetchBooksByUlidsInOrder(supabase, [rows[0].book_id]);
 
 		expect(selectFn).toHaveBeenCalledWith(
-			expect.stringContaining('quality_percentile, quality_band')
+			expect.stringContaining('quality_band')
 		);
-		expect(books[0]).toMatchObject({
-			qualityPercentile: 96.42,
-			qualityBand: 'top_5_percent'
-		});
+		expect(books[0]).toMatchObject({ qualityBand: 'top_5_percent' });
 	});
 });

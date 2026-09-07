@@ -8,6 +8,13 @@ export type RecommendationRun = {
 	created_at: string;
 };
 
+export type RecommendationRunData = {
+	books: Book[];
+	likedBookPrecedentsByBookId: Record<string, Book[]>;
+	authorRelationshipAuthorsByBookId: AuthorRelationshipAuthorsByBookId;
+	dimensionMatchSnapshotsByBookId: DimensionMatchSnapshotsByBookId;
+};
+
 /** Kept in sync with `/api/recommendations/unique` so best-fit sort can hydrate without a flash. */
 export type RecommendationsUniqueMeta = {
 	allRecommendedBookIds: string[];
@@ -47,21 +54,13 @@ export function createRecommendationsPageStore() {
 		...emptyUniqueMeta()
 	});
 	let ownerUserId: string | null = null;
-	const runDimensionMatches = writable<Map<string, DimensionMatchSnapshotsByBookId>>(new Map());
-	const runBooks = writable<Map<string, Book[]>>(new Map());
-	const runPrecedents = writable<Map<string, Record<string, Book[]>>>(new Map());
-	const runAuthorRelationshipAuthors = writable<Map<string, AuthorRelationshipAuthorsByBookId>>(
-		new Map()
-	);
+	const runData = writable<Map<string, RecommendationRunData>>(new Map());
 
 	return {
 		ensureUser(userId: string | null) {
 			if (ownerUserId === userId) return;
 			this.reset();
 			ownerUserId = userId;
-		},
-		getRunDimensionMatches(requestId: string): DimensionMatchSnapshotsByBookId | undefined {
-			return get(runDimensionMatches).get(requestId);
 		},
 		history: {
 			subscribe: history.subscribe
@@ -85,45 +84,21 @@ export function createRecommendationsPageStore() {
 				...meta
 			}));
 		},
-		getRunBooks(requestId: string): Book[] | undefined {
-			return get(runBooks).get(requestId);
+		getRun(requestId: string): RecommendationRunData | undefined {
+			return get(runData).get(requestId);
 		},
-		getRunPrecedents(requestId: string): Record<string, Book[]> | undefined {
-			return get(runPrecedents).get(requestId);
-		},
-		getRunAuthorRelationshipAuthors(
-			requestId: string
-		): AuthorRelationshipAuthorsByBookId | undefined {
-			return get(runAuthorRelationshipAuthors).get(requestId);
-		},
-		setRunBooks(
-			requestId: string,
-			books: Book[],
-			likedBookPrecedentsByBookId: Record<string, Book[]> = {},
-			authorRelationshipAuthorsByBookId: AuthorRelationshipAuthorsByBookId = {},
-			dimensionMatchSnapshotsByBookId: DimensionMatchSnapshotsByBookId = {}
-		) {
-			runDimensionMatches.update((state) =>
-				new Map(state).set(requestId, dimensionMatchSnapshotsByBookId)
-			);
-			runBooks.update((state) => {
+		setRun(requestId: string, data: RecommendationRunData) {
+			runData.update((state) => {
 				const next = new Map(state);
-				next.set(requestId, [...books]);
-				return next;
-			});
-			runPrecedents.update((state) => {
-				const next = new Map(state);
-				next.set(requestId, likedBookPrecedentsByBookId);
-				return next;
-			});
-			runAuthorRelationshipAuthors.update((state) => {
-				const next = new Map(state);
-				next.set(requestId, authorRelationshipAuthorsByBookId);
+				next.set(requestId, {
+					...data,
+					books: [...data.books]
+				});
 				return next;
 			});
 		},
 		reset() {
-			runDimensionMatches.set(new Map());
+			runData.set(new Map());
 			history.set({
 				runs: [],
 				uniqueBooks: [],
@@ -131,9 +106,6 @@ export function createRecommendationsPageStore() {
 				uniqueLoaded: false,
 				...emptyUniqueMeta()
 			});
-			runBooks.set(new Map());
-			runPrecedents.set(new Map());
-			runAuthorRelationshipAuthors.set(new Map());
 		}
 	};
 }

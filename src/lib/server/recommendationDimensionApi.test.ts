@@ -36,21 +36,29 @@ const fixture = vi.hoisted(() => ({
 	books: [
 		{ id: 'b', book_id: 'book', title: 'Book', author: 'Author' },
 		{ id: 's', book_id: 'series', title: 'Series', author: 'Author' }
-	]
+	],
+	filteredBookIds: null as string[] | null
 }));
 
 vi.mock('$lib/server/supabase', () => ({ createSupabaseWithAuth: fixture.createWithAuth }));
 vi.mock('$lib/server/catalogBooks', () => ({
-	fetchBooksByUlids: async () => fixture.books.map((b) => ({ ...b })),
-	fetchBooksByUlidsInOrder: async () => fixture.books.map((b) => ({ ...b }))
+	fetchBooksByUlids: async (_supabase: unknown, ids: string[]) =>
+		fixture.books.filter((book) => ids.includes(book.book_id)).map((book) => ({ ...book })),
+	fetchBooksByUlidsInOrder: async (_supabase: unknown, ids: string[]) =>
+		ids
+			.map((id) => fixture.books.find((book) => book.book_id === id))
+			.filter((book): book is (typeof fixture.books)[number] => book != null)
+			.map((book) => ({ ...book }))
 }));
 vi.mock('$lib/server/recommendationFilters', async (importOriginal) => ({
 	...(await importOriginal<typeof import('$lib/server/recommendationFilters')>()),
-	filterBookIdsExcludingUserLists: async (_db: unknown, ids: string[]) => ids
+	filterBookIdsExcludingUserLists: async (_db: unknown, ids: string[]) =>
+		fixture.filteredBookIds ?? ids
 }));
 
 beforeEach(() => {
 	fixture.selects.length = 0;
+	fixture.filteredBookIds = null;
 	fixture.createWithAuth.mockImplementation(() => ({
 		from(table: string) {
 			let rows: Array<Record<string, unknown>> =
@@ -136,4 +144,24 @@ it('uses the latest containing request in the combined API even when database it
 	expect(payload.recommendationAppearanceCount).toEqual({ series: 2, book: 1 });
 	expect(payload.bestRecommendationRank).toEqual({ series: 1, book: 2 });
 	expect(fixture.selects.some((s) => s.includes('dimension_matches'))).toBe(true);
+});
+
+it('resolves evidence only for books that survive filtering', async () => {
+	fixture.filteredBookIds = ['book'];
+
+	const response = await getRun(event('/api/recommendations', '?request_id=new'));
+	const payload = await response.json();
+
+	expect(payload.books.map((book: { book_id: string }) => book.book_id)).toEqual(['book']);
+	expect(payload.dimensionMatchSnapshotsByBookId).toEqual({
+		book: { request_id: 'new', matches: fixture.rows[1].dimension_matches }
+	});
+	expect(payload.authorRelationshipAuthorsByBookId).toEqual({ book: ['Liked author'] });
+
+	const uniquePayload = await (await getUnique(event('/api/recommendations/unique'))).json();
+	expect(uniquePayload.books.map((book: { book_id: string }) => book.book_id)).toEqual(['book']);
+	expect(uniquePayload.dimensionMatchSnapshotsByBookId).toEqual({
+		book: { request_id: 'new', matches: fixture.rows[1].dimension_matches }
+	});
+	expect(uniquePayload.authorRelationshipAuthorsByBookId).toEqual({ book: ['Liked author'] });
 });
