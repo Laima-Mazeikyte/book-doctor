@@ -26,6 +26,8 @@
 	import { ratingsStore } from '$lib/stores/ratings';
 	import { userLibraryHydrationStore, isUserLibraryIdsReady } from '$lib/stores/userLibrary';
 	import { t } from '$lib/copy';
+	import NotInterestedPagination from '$lib/components/NotInterestedPagination.svelte';
+	import { notInterestedPageLoader, notInterestedPageStore } from '$lib/notInterested/pageLoader';
 	import type { Book, RatingValue } from '$lib/types/book';
 
 	interface RatedEntry {
@@ -40,9 +42,8 @@
 		triggerDisplayCount?: number;
 		/** When true, badge shows a sync indicator instead of a count (session/library bootstrap). */
 		countsPending?: boolean;
-		/** When both resolvers are set, the drawer shows Rated / Bookmarked / Not interested tabs (browse page). */
+		/** When set, the drawer shows Rated / Bookmarked / Not interested tabs (browse page). */
 		resolveBook?: (bookId: string) => Book | undefined;
-		resolveBookByBookId?: (bookId: string) => Book | undefined;
 	}
 
 	let {
@@ -50,8 +51,7 @@
 		summaryHooks,
 		triggerDisplayCount,
 		countsPending = false,
-		resolveBook,
-		resolveBookByBookId
+		resolveBook
 	}: Props = $props();
 
 	type ShelfFilterId = 'rated' | 'bookmarked' | 'not-interested';
@@ -59,11 +59,10 @@
 	const shelfListPanelId = 'ratings-drawer-shelf-panel';
 	const shelfTabIdPrefix = 'ratings-drawer-shelf-tab';
 
-	const shelfTabsEnabled = $derived(Boolean(resolveBook && resolveBookByBookId));
+	const shelfTabsEnabled = $derived(Boolean(resolveBook));
 
 	let activeShelfTab = $state<ShelfFilterId>('rated');
 	let fetchedBookmarkBooks = $state.raw<Book[]>([]);
-	let fetchedNotInterestedBooks = $state.raw<Book[]>([]);
 	let shelfDetailsLoadedForUserId = $state<string | null>(null);
 	let shelfDetailsLoading = $state(false);
 	let shelfDetailsRequestId = 0;
@@ -74,15 +73,6 @@
 
 	function bookFallbackById(bookId: string): Book | undefined {
 		return ratingsStore.getRatedBook(bookId) ?? resolveBook?.(bookId);
-	}
-
-	function bookFallbackByBookId(bookUlid: string): Book | undefined {
-		if (!bookUlid) return undefined;
-		for (const ratedBookId of get(ratingsStore).keys()) {
-			const b = ratingsStore.getRatedBook(ratedBookId);
-			if (b?.book_id === bookUlid) return b;
-		}
-		return resolveBookByBookId?.(bookUlid);
 	}
 
 	async function fetchShelfDetails(): Promise<void> {
@@ -97,19 +87,12 @@
 		shelfDetailsLoading = true;
 		try {
 			const headers = { Authorization: `Bearer ${token}` };
-			const [bookmarksRes, notInterestedRes] = await Promise.all([
-				fetch(resolve('/api/bookmarks'), { headers }),
-				fetch(resolve('/api/not-interested/books'), { headers })
-			]);
+			const bookmarksRes = await fetch(resolve('/api/bookmarks'), { headers });
 
 			if (requestId !== shelfDetailsRequestId) return;
 			if (bookmarksRes.ok) {
 				const data = (await bookmarksRes.json()) as { books?: Book[] };
 				fetchedBookmarkBooks = data.books ?? [];
-			}
-			if (notInterestedRes.ok) {
-				const data = (await notInterestedRes.json()) as { books?: Book[] };
-				fetchedNotInterestedBooks = data.books ?? [];
 			}
 			shelfDetailsLoadedForUserId = userId;
 		} catch (e) {
@@ -132,19 +115,16 @@
 		ratedEntries.length === 0 && (!libraryIdsReady || $ratingsStore.size > 0)
 	);
 
-	const partitionCounts = $derived.by(() => {
-		if (!shelfTabsEnabled || !libraryIdsReady) return { ni: 0, rated: 0, bookmarked: 0 };
+	const tabCounts = $derived.by(() => {
+		if (!shelfTabsEnabled || !libraryIdsReady) return { rated: 0, bookmarked: 0 };
 		return {
 			rated: $ratingsStore.size,
-			bookmarked: $planToReadStore.size,
-			ni: $notInterestedStore.size
+			bookmarked: $planToReadStore.size
 		};
 	});
 
-	function countForShelfTab(id: ShelfFilterId): number {
-		if (id === 'rated') return partitionCounts.rated;
-		if (id === 'bookmarked') return partitionCounts.bookmarked;
-		return partitionCounts.ni;
+	function countForShelfTab(id: string): number {
+		return tabCounts[id as 'rated' | 'bookmarked'] ?? 0;
 	}
 
 	const shelfTabItems = $derived([
@@ -153,6 +133,7 @@
 		{ id: 'not-interested' as const, label: t('rated.tabs.notInterested') }
 	]);
 
+	const notInterestedPageState = $derived($notInterestedPageStore.entries.newest);
 	const shelfEmptyMessage = $derived.by(() => {
 		if (activeShelfTab === 'rated') return t('rated.empty');
 		if (activeShelfTab === 'bookmarked') return t('rated.emptyBookmarked');
@@ -191,27 +172,10 @@
 	const niShelfEntries = $derived.by((): RatedEntry[] => {
 		if (!shelfTabsEnabled) return [];
 		const ratings = $ratingsStore;
-		const notInterestedIds = $notInterestedStore;
-		const out: RatedEntry[] = [];
-		const seen = new SvelteSet<string>();
-		const fetchedIds = new SvelteSet(fetchedNotInterestedBooks.map((book) => book.book_id));
-		for (const bookId of [...notInterestedIds].reverse()) {
-			if (fetchedIds.has(bookId)) continue;
-			const book = bookFallbackByBookId(bookId);
-			if (!book || seen.has(book.id)) continue;
-			if (!notInterestedIds.has(book.book_id)) continue;
-			seen.add(book.id);
-			const r = ratings.get(book.id);
-			out.push({ book, rating: r ?? RATING_PLACEHOLDER });
-		}
-		for (const book of fetchedNotInterestedBooks) {
-			const bookId = book.book_id;
-			if (seen.has(book.id) || !notInterestedIds.has(bookId)) continue;
-			seen.add(book.id);
-			const r = ratings.get(book.id);
-			out.push({ book, rating: r ?? RATING_PLACEHOLDER });
-		}
-		return out;
+		return notInterestedPageState.books.map((book) => ({
+			book,
+			rating: ratings.get(book.id) ?? RATING_PLACEHOLDER
+		}));
 	});
 
 	const drawerSourceEntries = $derived.by((): RatedEntry[] => {
@@ -240,6 +204,8 @@
 	let detailFocusReturnEl = $state<HTMLElement | null>(null);
 	let hoverDetailRating = $state(0);
 	let drawerHadOpen = $state(false);
+	let shelfScrollEl = $state<HTMLDivElement | null>(null);
+	const shelfScrollPositions = new SvelteMap<ShelfFilterId, number>();
 	const ratingsSyncMeta = ratingsStore.syncMeta;
 	const panelId = 'ratings-drawer-panel';
 	const triggerId = 'ratings-trigger';
@@ -295,7 +261,7 @@
 	});
 
 	const triggerBadgeCount = $derived(
-		triggerDisplayCount ?? (shelfTabsEnabled ? partitionCounts.rated : ratedEntries.length)
+		triggerDisplayCount ?? (shelfTabsEnabled ? tabCounts.rated : ratedEntries.length)
 	);
 
 	const triggerAriaLabel = $derived(
@@ -398,9 +364,13 @@
 		hoverDetailRating = 0;
 		open = true;
 		void fetchShelfDetails();
+		void tick().then(() => {
+			if (shelfScrollEl) shelfScrollEl.scrollTop = shelfScrollPositions.get('rated') ?? 0;
+		});
 	}
 
 	function selectShelfTab(id: ShelfFilterId) {
+		if (shelfScrollEl) shelfScrollPositions.set(activeShelfTab, shelfScrollEl.scrollTop);
 		if (detailBookId && browser) {
 			const st = shallowPageState();
 			if (st.rateRatingsDrawerDetail === true) {
@@ -417,6 +387,9 @@
 		const nextSource =
 			id === 'rated' ? ratedEntries : id === 'bookmarked' ? bookmarkedShelfEntries : niShelfEntries;
 		drawerOrderIds = nextSource.map((e) => e.book.id);
+		void tick().then(() => {
+			if (shelfScrollEl) shelfScrollEl.scrollTop = shelfScrollPositions.get(id) ?? 0;
+		});
 	}
 
 	function clearPendingRemove(bookId: string) {
@@ -598,13 +571,15 @@
 	function detailBookmarkClick(e: MouseEvent) {
 		if (!detailEntry) return;
 		e.stopPropagation();
-		summaryHooks?.onBookmark?.(detailEntry.book);
+		const book = detailEntry.book;
+		summaryHooks?.onBookmark?.(book);
 	}
 
 	function detailNotInterestedClick(e: MouseEvent) {
 		if (!detailEntry) return;
 		e.stopPropagation();
-		summaryHooks?.onNotInterested?.(detailEntry.book);
+		const book = detailEntry.book;
+		summaryHooks?.onNotInterested?.(book);
 	}
 
 	function detailStarAriaLabel(value: RatingValue): string {
@@ -663,11 +638,17 @@
 		const userId = $authStore.user?.id ?? null;
 		if (shelfDetailsLoadedForUserId != null && shelfDetailsLoadedForUserId !== userId) {
 			fetchedBookmarkBooks = [];
-			fetchedNotInterestedBooks = [];
 			shelfDetailsLoadedForUserId = null;
 			shelfDetailsRequestId += 1;
 			shelfDetailsLoading = false;
 		}
+	});
+
+	$effect(() => {
+		const authKey = `${$authStore.user?.id ?? ''}:${$authStore.session?.access_token ?? ''}`;
+		if (!open || activeShelfTab !== 'not-interested') return;
+		void authKey;
+		void notInterestedPageLoader.ensureLoaded('newest');
 	});
 
 	$effect(() => {
@@ -1024,6 +1005,7 @@
 								items={shelfTabItems}
 								selectedId={activeShelfTab}
 								countsReady={libraryIdsReady}
+								countedTabIds={['rated', 'bookmarked']}
 								getCount={(id) => countForShelfTab(id as ShelfFilterId)}
 								onSelect={(id) => selectShelfTab(id as ShelfFilterId)}
 								scrollSingleRow={true}
@@ -1034,15 +1016,22 @@
 						<div
 							id={shelfListPanelId}
 							class="ratings-drawer__shelf-scroll scrollbar-subtle"
+							bind:this={shelfScrollEl}
+							onscroll={() => {
+								if (shelfScrollEl)
+									shelfScrollPositions.set(activeShelfTab, shelfScrollEl.scrollTop);
+							}}
 							role="tabpanel"
 							aria-labelledby={`${shelfTabIdPrefix}-${activeShelfTab}`}
 						>
 							{#if drawerOrderedEntries.length === 0}
-								{#if activeShelfTab === 'rated' && ratedShelfDetailsPending}
+								{#if (activeShelfTab === 'rated' && ratedShelfDetailsPending) || (activeShelfTab === 'not-interested' && notInterestedPageState.loading)}
 									<div class="ratings-drawer__loading" aria-live="polite">
 										<Spinner />
 										<p class="ratings-drawer__loading-text">{t('rated.loadingList')}</p>
 									</div>
+								{:else if activeShelfTab === 'not-interested' && notInterestedPageState.error}
+									<NotInterestedPagination state={notInterestedPageState} order="newest" />
 								{:else}
 									<p class="ratings-drawer__empty">{shelfEmptyMessage}</p>
 								{/if}
@@ -1052,6 +1041,9 @@
 										{@render drawerListRow(entry)}
 									{/each}
 								</ul>
+							{/if}
+							{#if activeShelfTab === 'not-interested' && drawerOrderedEntries.length > 0}
+								<NotInterestedPagination state={notInterestedPageState} order="newest" />
 							{/if}
 						</div>
 					{:else}

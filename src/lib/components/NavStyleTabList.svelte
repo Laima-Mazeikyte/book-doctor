@@ -22,6 +22,8 @@
 		countsReady?: boolean;
 		/** When false, the count pill is omitted entirely (tabs that have nothing to count). */
 		showCounts?: boolean;
+		/** IDs that should receive a count pill. Defaults to every tab when omitted. */
+		countedTabIds?: readonly string[];
 		/** Return numeric count for a tab id (shown in a small pill). */
 		getCount?: (id: string) => number;
 		onSelect?: (id: string) => void;
@@ -40,6 +42,7 @@
 		idPrefix = 'tab',
 		countsReady = true,
 		showCounts = true,
+		countedTabIds,
 		getCount = () => 0,
 		onSelect,
 		scrollSingleRow = false
@@ -90,8 +93,12 @@
 	}
 
 	function tabAriaLabel(item: NavStyleTabItem): string {
-		if (!showCounts || !countsReady) return item.label;
+		if (!shouldShowCount(item.id) || !countsReady) return item.label;
 		return `${item.label}, ${getCount(item.id)}`;
+	}
+
+	function shouldShowCount(id: string): boolean {
+		return showCounts && (countedTabIds?.includes(id) ?? true);
 	}
 </script>
 
@@ -112,7 +119,7 @@
 				onkeydown={(e) => handleTabKeydown(e, item.id)}
 			>
 				<span class="nav-style-tabs__tab-label">{item.label}</span>
-				{#if showCounts}
+				{#if shouldShowCount(item.id)}
 					<span
 						class="nav-style-tabs__count"
 						class:nav-style-tabs__count--triple={countsReady && getCount(item.id) >= 100}

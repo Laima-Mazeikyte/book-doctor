@@ -73,25 +73,27 @@ function attachBookmarkPersistence(supabase: SupabaseClient, userId: string): vo
 
 function attachNotInterestedPersistence(supabase: SupabaseClient, userId: string): void {
 	notInterestedStore.setPersistence({
-		add(bookId) {
-			supabase
+		async add(bookId) {
+			const { error } = await supabase
 				.from('user_not_interested')
-				.upsert({ user_id: userId, book_id: bookId }, { onConflict: 'user_id,book_id' })
-				.then(({ error }) => {
-					if (error) console.error('[not-interested] Failed to add:', error.message);
-					else notifyLibraryPersistedMutationForBrowseFeedWarm();
-				});
+				.upsert({ user_id: userId, book_id: bookId }, { onConflict: 'user_id,book_id' });
+			if (error) {
+				console.error('[not-interested] Failed to add:', error.message);
+				throw error;
+			}
+			notifyLibraryPersistedMutationForBrowseFeedWarm();
 		},
-		remove(bookId) {
-			supabase
+		async remove(bookId) {
+			const { error } = await supabase
 				.from('user_not_interested')
 				.delete()
 				.eq('user_id', userId)
-				.eq('book_id', bookId)
-				.then(({ error }) => {
-					if (error) console.error('[not-interested] Failed to remove:', error.message);
-					else notifyLibraryPersistedMutationForBrowseFeedWarm();
-				});
+				.eq('book_id', bookId);
+			if (error) {
+				console.error('[not-interested] Failed to remove:', error.message);
+				throw error;
+			}
+			notifyLibraryPersistedMutationForBrowseFeedWarm();
 		}
 	});
 }

@@ -903,18 +903,6 @@
 		};
 	}
 
-	/** Resolve a book by ULID `book_id` for ratings drawer (NI tab, etc.). */
-	function findBookByBookId(bookUlid: string): Book | undefined {
-		if (!bookUlid) return undefined;
-		for (const bookId of get(ratingsStore).keys()) {
-			const b = ratingsStore.getRatedBook(bookId);
-			if (b?.book_id === bookUlid) return b;
-		}
-		const fromPopular = popularBooks.find((b) => b.book_id === bookUlid);
-		if (fromPopular) return fromPopular;
-		return searchResults.find((b) => b.book_id === bookUlid);
-	}
-
 	const ratedBooksDetailsStore = ratingsStore.ratedBooksDetails;
 
 	const ratedEntries = $derived.by(() => {
@@ -1835,7 +1823,6 @@
 				countsPending={sessionBootstrapPending}
 				triggerDisplayCount={bottomBarDisplayState.triggerCount}
 				resolveBook={findBookById}
-				resolveBookByBookId={findBookByBookId}
 				summaryHooks={{
 					onSearchAuthor: handleSearchAuthor,
 					onBookmark: (book) => handleRateBookmark(book),

@@ -17,7 +17,7 @@
 	import { notInterestedStore } from '$lib/stores/notInterested';
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
 	import RecommendationsLoading from '$lib/components/RecommendationsLoading.svelte';
-	import { authStore } from '$lib/stores/auth';
+	import { authInitStore, authRestorePending, authStore } from '$lib/stores/auth';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import {
 		coverPriorityFor,
@@ -30,6 +30,7 @@
 		type AuthorRelationshipAuthorsByBookId
 	} from '$lib/recommendations/authorRelationships';
 	import { filterRatedLikedBookPrecedents } from '$lib/recommendations/likedBookPrecedents';
+	import { resolveRecommendationsAuthLoad } from '$lib/recommendations/recommendationsAuth';
 	import {
 		createEmptyRecommendationsUniquePayload,
 		recommendationsPageStore,
@@ -57,22 +58,27 @@
 		return 'best-fit';
 	}
 
-	if (browser) recommendationsPageStore.ensureUser(get(authStore).user?.id ?? null);
+	const initialAuthRestorePending = browser && get(authRestorePending);
+	if (browser && !initialAuthRestorePending) {
+		recommendationsPageStore.ensureUser(get(authStore).user?.id ?? null);
+	}
 	let activeUserId: string | null = null;
 	const initialSnapshot = recommendationsPageStore.getSnapshot();
+	const authUserId = $derived($authStore.user?.id ?? null);
 
 	let uniquePayload = $state<RecommendationsUniquePayload>(initialSnapshot.unique);
-	let uniqueLoaded = $state(initialSnapshot.uniqueLoaded);
-	let uniqueBooksLoading = $state(!initialSnapshot.uniqueLoaded);
+	let uniqueLoaded = $state(!initialAuthRestorePending && initialSnapshot.uniqueLoaded);
+	let uniqueBooksLoading = $state(initialAuthRestorePending || !initialSnapshot.uniqueLoaded);
 	let error = $state<string | null>(null);
 	let viewMode = $state<'loading' | 'history' | 'empty' | 'error'>(
-		initialSnapshot.uniqueLoaded
+		!initialAuthRestorePending && initialSnapshot.uniqueLoaded
 			? initialSnapshot.unique.hasRuns
 				? 'history'
 				: 'empty'
 			: 'loading'
 	);
 	let activeRouteLoadId = 0;
+	let retryGeneration = $state(0);
 	let gridColumns = $state(estimateGridColumns());
 	let sortOrder = $state<RecSortId>(readRecSortFromLs());
 
@@ -148,14 +154,10 @@
 		if (uniqueLoaded) recommendationsCountStore.set(recommendedRawList.length);
 	});
 
-	async function fetchUniqueBooks(
-		accessToken: string | null
-	): Promise<RecommendationsUniquePayload> {
-		const headers: Record<string, string> = {};
-		if (accessToken) {
-			headers['Authorization'] = `Bearer ${accessToken}`;
-		}
-		const res = await fetch('/api/recommendations/unique', { headers });
+	async function fetchUniqueBooks(accessToken: string): Promise<RecommendationsUniquePayload> {
+		const res = await fetch('/api/recommendations/unique', {
+			headers: { Authorization: `Bearer ${accessToken}` }
+		});
 		if (!res.ok) throw new Error(`HTTP ${res.status}`);
 		const data: {
 			books?: Book[];
@@ -206,9 +208,10 @@
 		}
 	}
 
-	function isActiveRouteLoad(loadId: number): boolean {
+	function isActiveRouteLoad(loadId: number, loadGeneration: number): boolean {
 		return (
 			loadId === activeRouteLoadId &&
+			loadGeneration === retryGeneration &&
 			activeUserId === (get(authStore).user?.id ?? null) &&
 			page.url.pathname === '/rate/recommendations' &&
 			!page.url.searchParams.get('request_id')?.trim()
@@ -241,6 +244,18 @@
 		uniqueBooksLoading = !snapshot.uniqueLoaded;
 	}
 
+	function retryRecommendations(): void {
+		if (!get(authStore).session?.access_token) {
+			if (browser) window.location.reload();
+			return;
+		}
+
+		error = null;
+		viewMode = 'loading';
+		uniqueBooksLoading = true;
+		retryGeneration += 1;
+	}
+
 	/** Legacy and external links: ?request_id= opens the shortlist route. */
 	$effect(() => {
 		if (!browser) return;
@@ -260,15 +275,44 @@
 		if (url.pathname !== '/rate/recommendations') return;
 		if (url.searchParams.get('request_id')?.trim()) return;
 
+		const loadId = ++activeRouteLoadId;
+		const loadGeneration = retryGeneration;
+		const authLoad = resolveRecommendationsAuthLoad({
+			initStatus: $authInitStore.status,
+			accessToken: get(authStore).session?.access_token ?? null
+		});
+
+		// Do not treat the pre-restore null session as a signed-out state. Invalidate any
+		// previous account's response while the layout determines the current session.
+		if (authLoad.kind === 'loading') {
+			activeUserId = null;
+			uniqueBooksLoading = true;
+			applyUniquePayload(createEmptyRecommendationsUniquePayload(), { loaded: false });
+			return;
+		}
+
 		// Re-fetch when the signed-in user changes, not when the access token refreshes alone
 		// (e.g. anonymous → permanent on the same user id should keep the current list).
-		const userId = $authStore.user?.id ?? null;
-		const loadId = ++activeRouteLoadId;
+		const userId = authUserId;
 		activeUserId = userId;
 		recommendationsPageStore.ensureUser(userId);
 
 		const cachedSnapshot = recommendationsPageStore.getSnapshot();
 		applyCachedSnapshot(cachedSnapshot);
+
+		if (authLoad.kind !== 'fetch') {
+			if (authLoad.kind === 'error') {
+				applyUniquePayload(createEmptyRecommendationsUniquePayload(), {
+					loaded: false,
+					errorMessage: t('recommendations.failedToLoad')
+				});
+			} else {
+				applyUniquePayload(createEmptyRecommendationsUniquePayload(), { loaded: true });
+			}
+			uniqueBooksLoading = false;
+			return;
+		}
+		const authorizedAccessToken = authLoad.accessToken;
 
 		const refreshUniqueBooks = async (): Promise<void> => {
 			if (!cachedSnapshot.uniqueLoaded) {
@@ -276,12 +320,11 @@
 			}
 
 			try {
-				const accessToken = get(authStore).session?.access_token ?? null;
-				const payload = await fetchUniqueBooks(accessToken);
-				if (!isActiveRouteLoad(loadId)) return;
+				const payload = await fetchUniqueBooks(authorizedAccessToken);
+				if (!isActiveRouteLoad(loadId, loadGeneration)) return;
 				applyUniquePayload(payload, { persist: true });
 			} catch (e) {
-				if (!isActiveRouteLoad(loadId)) return;
+				if (!isActiveRouteLoad(loadId, loadGeneration)) return;
 				console.error('[recommendations] Failed to load unique recommendations:', e);
 				if (!cachedSnapshot.uniqueLoaded) {
 					applyUniquePayload(createEmptyRecommendationsUniquePayload(), {
@@ -290,7 +333,7 @@
 					});
 				}
 			} finally {
-				if (isActiveRouteLoad(loadId)) {
+				if (isActiveRouteLoad(loadId, loadGeneration)) {
 					uniqueBooksLoading = false;
 				}
 			}
@@ -317,6 +360,7 @@
 		<RecommendationsEmpty
 			ratedCount={$ratingsStore.size}
 			message={error ?? t('recommendations.noRecommendationsYet')}
+			onRetry={viewMode === 'error' ? retryRecommendations : undefined}
 		/>
 	{:else if viewMode === 'history'}
 		<h1

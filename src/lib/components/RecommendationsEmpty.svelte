@@ -1,16 +1,19 @@
 <script lang="ts">
+	import Button from '$lib/components/Button.svelte';
 	import { t } from '$lib/copy';
 
 	interface Props {
 		title?: string;
 		message?: string;
 		ratedCount: number;
+		onRetry?: () => void;
 	}
 
 	let {
 		title = t('shared.recommendationsEmpty.title'),
 		message = t('shared.recommendationsEmpty.defaultMessage'),
-		ratedCount
+		ratedCount,
+		onRetry
 	}: Props = $props();
 </script>
 
@@ -22,11 +25,17 @@
 			? ''
 			: t('shared.recommendationsEmpty.youRatedCountPlural')}.
 	</p>
+	{#if onRetry}
+		<Button variant="primary" onclick={onRetry}>{t('recommendations.retry')}</Button>
+	{/if}
 </div>
 
 <style>
 	.recommendations-empty {
 		text-align: center;
+	}
+	.recommendations-empty :global(.btn) {
+		margin-top: var(--space-2);
 	}
 	.recommendations-empty__title {
 		margin: 0 0 var(--space-4) 0;

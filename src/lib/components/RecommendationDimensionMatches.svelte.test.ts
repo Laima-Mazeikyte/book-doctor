@@ -34,8 +34,8 @@ const copyValues = {
 		'original storytelling'
 	],
 	violence: [
-		'gentler stories',
-		'tense atmosphere',
+		'idea-driven storytelling',
+		'event-driven storytelling',
 		'intense action',
 		'graphic scenes',
 		'brutal scenes'
@@ -57,7 +57,11 @@ it('renders approved sentences using the book score', async () => {
 			{ dimension_key: 'violence', candidate_raw_score: 0.3 }
 		]
 	});
-	for (const phrase of ['gentle relationships', 'distinctive storytelling', 'tense atmosphere']) {
+	for (const phrase of [
+		'gentle relationships',
+		'distinctive storytelling',
+		'event-driven storytelling'
+	]) {
 		await expect
 			.element(rendered.getByText(`Matches your interest in ${phrase}`, { exact: true }))
 			.toBeVisible();

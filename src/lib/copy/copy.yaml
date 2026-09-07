@@ -52,6 +52,9 @@ en:
     metaDescription: "Review books you've selected as 'not interested'."
     intro: "Books you've marked as not interested. Click the button again to show them in recommendations."
     empty: 'No books marked as not interested yet.'
+    loadError: "Couldn't load your not interested books right now."
+    retry: 'Try again'
+    loadMore: 'Load more'
   rated:
     title: 'Bookshelf'
     metaDescription: 'Your Unread bookshelf: rated titles, bookmarks, and books marked not interested. Easy to browse and manage.'
@@ -80,6 +83,7 @@ en:
     emptyRun: 'No books in this recommendation run.'
     noRecommendationsYet: 'No recommendations yet. Rate more books and try again.'
     failedToLoad: 'Failed to load recommendations'
+    retry: 'Try again'
     allUniqueTitles: 'All recommended titles'
     sort:
       ariaLabel: 'Sort recommendations'
@@ -115,8 +119,8 @@ en:
           '3': 'distinctive storytelling'
           '4': 'original storytelling'
         violence:
-          '0': 'gentler stories'
-          '1': 'tense atmosphere'
+          '0': 'idea-driven storytelling'
+          '1': 'event-driven storytelling'
           '2': 'intense action'
           '3': 'graphic scenes'
           '4': 'brutal scenes'

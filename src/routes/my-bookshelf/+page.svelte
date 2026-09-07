@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
@@ -11,14 +11,11 @@
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { notInterestedStore } from '$lib/stores/notInterested';
 	import { bookmarksPageStore } from '$lib/stores/bookmarksPage';
-	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
 	import { ratedSummarySheetKeepAlive } from '$lib/stores/ratedSummarySheetKeepAlive';
-	import {
-		isUserLibraryDetailsReady,
-		userLibraryHydrationStore
-	} from '$lib/stores/userLibrary';
+	import { isUserLibraryDetailsReady, userLibraryHydrationStore } from '$lib/stores/userLibrary';
 	import BookCard from '$lib/components/BookCard.svelte';
 	import BookCardGridSkeleton from '$lib/components/BookCardGridSkeleton.svelte';
+	import NotInterestedPagination from '$lib/components/NotInterestedPagination.svelte';
 	import {
 		coverPriorityFor,
 		estimateGridColumns,
@@ -27,6 +24,8 @@
 	import NavStyleTabList from '$lib/components/NavStyleTabList.svelte';
 	import { ChevronDown } from 'lucide-svelte';
 	import { t } from '$lib/copy';
+	import { notInterestedPageLoader, notInterestedPageStore } from '$lib/notInterested/pageLoader';
+	import type { NotInterestedOrder } from '$lib/notInterested/types';
 	import type { Book, RatingValue } from '$lib/types/book';
 
 	/** Rendered column count for the bookshelf grid — drives cover eager/lazy priority. */
@@ -37,12 +36,19 @@
 
 	const LS_FILTER_KEY = 'book-doctor:my-bookshelf-filter';
 	const LS_SORT_KEY = 'book-doctor:my-bookshelf-sort';
+	const LS_NI_SORT_KEY = 'book-doctor:my-bookshelf-not-interested-sort';
 
 	const SHELF_SORT_IDS = ['newest', 'oldest', 'rating-high', 'rating-low'] as const;
 	type ShelfSortId = (typeof SHELF_SORT_IDS)[number];
+	const NOT_INTERESTED_SORT_IDS = ['newest', 'oldest'] as const;
+	type NotInterestedSortId = (typeof NOT_INTERESTED_SORT_IDS)[number];
 
 	function isValidShelfSortId(s: string | null | undefined): s is ShelfSortId {
 		return s != null && (SHELF_SORT_IDS as readonly string[]).includes(s);
+	}
+
+	function isValidNotInterestedSortId(s: string | null | undefined): s is NotInterestedSortId {
+		return s != null && (NOT_INTERESTED_SORT_IDS as readonly string[]).includes(s);
 	}
 
 	function isValidFilter(s: string | null | undefined): s is FilterId {
@@ -59,6 +65,17 @@
 		try {
 			const s = localStorage.getItem(LS_SORT_KEY);
 			if (isValidShelfSortId(s)) return s;
+		} catch {
+			// ignore
+		}
+		return 'newest';
+	}
+
+	function readNotInterestedSortFromLs(): NotInterestedSortId {
+		if (!browser) return 'newest';
+		try {
+			const s = localStorage.getItem(LS_NI_SORT_KEY);
+			if (isValidNotInterestedSortId(s)) return s;
 		} catch {
 			// ignore
 		}
@@ -95,14 +112,15 @@
 	}
 
 	let bookmarkBooks = $state<Book[]>([]);
-	let niBooks = $state<Book[]>([]);
-	let bmNiLoading = $state(false);
-	/** First bm/ni fetch for this user may block the bookmark & NI tabs; later session refreshes refetch in the background. */
-	let bmNiBlockingCompletedUserId = $state<string | null>(null);
-	let loadRequestId = 0;
+	let bookmarkLoading = $state(false);
+	/** The first bookmark fetch for a user may block only the Bookmarked tab. */
+	let bookmarkBlockingCompletedUserId = $state<string | null>(null);
+	let bookmarkLoadRequestId = 0;
 
 	let activeFilter = $state<FilterId>('rated');
 	let sortOrder = $state<ShelfSortId>(readSortFromLs());
+	let notInterestedSortOrder = $state<NotInterestedSortId>(readNotInterestedSortFromLs());
+	const shelfScrollPositions = new SvelteMap<string, number>();
 
 	// Canonical reactive rated-book list (rating values joined with book details). Reading this —
 	// instead of hand-joining $ratingsStore + getRatedBook — is what keeps the list rebuilding as
@@ -164,19 +182,18 @@
 		const session = $authStore.session;
 		const token = session?.access_token ?? null;
 		const snapshot = bookmarksPageStore.getSnapshot();
-		const requestId = ++loadRequestId;
+		const requestId = ++bookmarkLoadRequestId;
 
 		if (!token) {
-			bmNiLoading = false;
-			bmNiBlockingCompletedUserId = null;
+			bookmarkLoading = false;
+			bookmarkBlockingCompletedUserId = null;
 			bookmarkBooks = snapshot.loaded ? snapshot.books : [];
-			niBooks = [];
 			return;
 		}
 
 		const userId = session?.user?.id ?? null;
-		const needsBlockingBmNi = !userId || bmNiBlockingCompletedUserId !== userId;
-		bmNiLoading = needsBlockingBmNi;
+		const needsBlockingBookmarks = !userId || bookmarkBlockingCompletedUserId !== userId;
+		bookmarkLoading = needsBlockingBookmarks;
 		if (snapshot.loaded) {
 			bookmarkBooks = snapshot.books;
 		}
@@ -191,24 +208,22 @@
 			.then((d) => d.books ?? [])
 			.catch(() => (snapshot.loaded ? snapshot.books : []));
 
-		const niPromise = fetch('/api/not-interested/books', {
-			headers: { Authorization: `Bearer ${token}` }
-		})
-			.then((res) => {
-				if (!res.ok) throw new Error('ni');
-				return res.json() as Promise<{ books: Book[] }>;
-			})
-			.then((d) => d.books ?? [])
-			.catch(() => [] as Book[]);
-
-		void Promise.all([bmPromise, niPromise]).then(([bm, ni]) => {
-			if (requestId !== loadRequestId) return;
+		void bmPromise.then((bm) => {
+			if (requestId !== bookmarkLoadRequestId) return;
 			bookmarkBooks = bm;
-			niBooks = ni;
 			bookmarksPageStore.setBooks(bm);
-			bmNiLoading = false;
-			if (userId) bmNiBlockingCompletedUserId = userId;
+			bookmarkLoading = false;
+			if (userId) bookmarkBlockingCompletedUserId = userId;
 		});
+	});
+
+	$effect(() => {
+		const filter = activeFilter;
+		const order: NotInterestedOrder = notInterestedSortOrder;
+		const authKey = `${$authStore.user?.id ?? ''}:${$authStore.session?.access_token ?? ''}`;
+		if (filter !== 'not-interested') return;
+		void authKey;
+		void notInterestedPageLoader.ensureLoaded(order);
 	});
 
 	/** Sync from URL only when `$page.url` changes — do not subscribe to `activeFilter`, or a tab change can run before `goto` updates the query and this effect would snap `activeFilter` back to the stale param (breaking keyboard focus on other tabs). */
@@ -243,17 +258,6 @@
 	});
 
 	const ratedBooksForPartition = $derived($ratedBooksStore.map((e) => e.book));
-	const ratedIdSet = $derived(new SvelteSet($ratedBooksStore.map((e) => e.book.id)));
-
-	const unionBooksById = $derived.by(() => {
-		const m = new SvelteMap<string, Book>();
-		for (const b of ratedBooksForPartition) m.set(b.id, b);
-		for (const b of bookmarkBooks) if (!m.has(b.id)) m.set(b.id, b);
-		for (const b of niBooks) {
-			if ($notInterestedStore.has(b.book_id) && !m.has(b.id)) m.set(b.id, b);
-		}
-		return m;
-	});
 
 	const notInterestedIds = $derived.by(() => new SvelteSet([...$notInterestedStore]));
 	const planIds = $derived($planToReadStore);
@@ -269,7 +273,7 @@
 	});
 
 	const countsReady = $derived(
-		(!$authStore.session?.access_token || !bmNiLoading) && !ratedHydrating
+		(!$authStore.session?.access_token || !bookmarkLoading) && !ratedHydrating
 	);
 
 	// Escape hatch: if hydration hasn't finished within 15s (e.g. a request that never resolves),
@@ -288,26 +292,17 @@
 		return () => clearTimeout(id);
 	});
 
-	const partitionCounts = $derived.by(() => {
-		if (!countsReady) return { ni: 0, rated: 0, bookmarked: 0 };
-		let ni = 0;
+	const tabCounts = $derived.by(() => {
+		if (!countsReady) return { rated: 0, bookmarked: 0 };
 		let rated = 0;
-		let bookmarked = 0;
-		for (const book of unionBooksById.values()) {
-			if (isNotInterested(book, notInterestedIds)) {
-				ni++;
-				continue;
-			}
-			if (ratedIdSet.has(book.id)) rated++;
-			if (planIds.has(book.id)) bookmarked++;
+		for (const book of ratedBooksForPartition) {
+			if (!isNotInterested(book, notInterestedIds)) rated++;
 		}
-		return { ni, rated, bookmarked };
+		return { rated, bookmarked: planIds.size };
 	});
 
-	function countForTab(id: FilterId): number {
-		if (id === 'rated') return partitionCounts.rated;
-		if (id === 'bookmarked') return partitionCounts.bookmarked;
-		return partitionCounts.ni;
+	function countForTab(id: string): number {
+		return tabCounts[id as 'rated' | 'bookmarked'] ?? 0;
 	}
 
 	const tabItems = $derived([
@@ -316,7 +311,12 @@
 		{ id: 'not-interested' as FilterId, label: t('rated.tabs.notInterested') }
 	]);
 
+	const niPageState = $derived($notInterestedPageStore.entries[notInterestedSortOrder]);
+
 	const sortOptionLabel = $derived.by((): string => {
+		if (activeFilter === 'not-interested') {
+			return notInterestedSortOrder === 'newest' ? t('rated.sort.newest') : t('rated.sort.oldest');
+		}
 		switch (sortOrder) {
 			case 'newest':
 				return t('rated.sort.newest');
@@ -337,21 +337,18 @@
 		bookmarkBooks.filter((b) => !isNotInterested(b, notInterestedIds))
 	);
 
-	const niTabBooks = $derived(niBooks.filter((b) => $notInterestedStore.has(b.book_id)));
+	const niTabBooks = $derived(niPageState.books);
 
 	const sortedBookmarkTabBooks = $derived.by(() =>
 		sortBooksByShelfOrder(bookmarkTabBooks, sortOrder, $ratingsStore)
 	);
 
-	const sortedNiTabBooks = $derived.by(() =>
-		sortBooksByShelfOrder(niTabBooks, sortOrder, $ratingsStore)
+	const listLoading = $derived(
+		Boolean($authStore.session?.access_token) && activeFilter === 'bookmarked' && bookmarkLoading
 	);
-
-	const listNeedsBmNi = $derived(
-		activeFilter === 'bookmarked' || activeFilter === 'not-interested'
+	const notInterestedInitialLoading = $derived(
+		activeFilter === 'not-interested' && !niPageState.loaded && !niPageState.error
 	);
-
-	const listLoading = $derived($authStore.session?.access_token && listNeedsBmNi && bmNiLoading);
 
 	// Rated tab: show the loading skeleton (not the empty message) while the library is still
 	// hydrating and we have nothing to show yet. Locally-cached ratings render immediately, so this
@@ -363,16 +360,45 @@
 	const currentListBooks = $derived.by((): Book[] => {
 		if (activeFilter === 'rated') return ratedDisplayEntries.map((e) => e.book);
 		if (activeFilter === 'bookmarked') return sortedBookmarkTabBooks;
-		return sortedNiTabBooks;
+		return niTabBooks;
 	});
 
+	function shelfScrollKey(filter: FilterId = activeFilter): string {
+		if (filter === 'not-interested') return `${filter}:${notInterestedSortOrder}`;
+		return `${filter}:${sortOrder}`;
+	}
+
+	function rememberShelfScroll(filter: FilterId = activeFilter): void {
+		if (!browser) return;
+		shelfScrollPositions.set(shelfScrollKey(filter), window.scrollY);
+	}
+
+	function restoreShelfScroll(filter: FilterId = activeFilter): void {
+		if (!browser) return;
+		const top = shelfScrollPositions.get(shelfScrollKey(filter)) ?? 0;
+		void tick().then(() => window.scrollTo({ top, behavior: 'auto' }));
+	}
+
 	function setSortOrder(next: ShelfSortId) {
+		rememberShelfScroll();
 		sortOrder = next;
 		try {
 			localStorage.setItem(LS_SORT_KEY, next);
 		} catch {
 			// ignore
 		}
+		restoreShelfScroll();
+	}
+
+	function setNotInterestedSortOrder(next: NotInterestedSortId) {
+		rememberShelfScroll();
+		notInterestedSortOrder = next;
+		try {
+			localStorage.setItem(LS_NI_SORT_KEY, next);
+		} catch {
+			// ignore
+		}
+		restoreShelfScroll('not-interested');
 	}
 
 	function cardContextFor(): 'bookmarks' | 'not-interested' {
@@ -380,6 +406,7 @@
 	}
 
 	function selectTab(id: FilterId) {
+		rememberShelfScroll();
 		activeFilter = id;
 		try {
 			localStorage.setItem(LS_FILTER_KEY, id);
@@ -392,6 +419,7 @@
 			keepFocus: true,
 			noScroll: true
 		});
+		restoreShelfScroll(id);
 	}
 
 	function handleBookmark(book: Book, id: string) {
@@ -399,7 +427,6 @@
 		planToReadStore.toggle(id, book.book_id);
 		if (!wasBookmarked) {
 			notInterestedStore.remove(book.book_id);
-			niBooks = niBooks.filter((b) => b.book_id !== book.book_id);
 			if (!bookmarkBooks.some((b) => b.id === book.id)) {
 				const rest = bookmarkBooks.filter((b) => b.id !== book.id);
 				bookmarkBooks = sortOrder === 'oldest' ? [...rest, book] : [book, ...rest];
@@ -425,19 +452,11 @@
 			if (get(ratingsStore).has(book.id)) {
 				ratingsStore.removeRating(book.id, book.book_id);
 			}
-			{
-				const rest = niBooks.filter((b) => b.id !== book.id);
-				niBooks = sortOrder === 'oldest' ? [...rest, book] : [book, ...rest];
-			}
-		} else if (wasNotInterested && !nowNotInterested) {
-			niBooks = niBooks.filter((b) => b.book_id !== book.book_id);
 		}
 	}
 
 	function handleRateFromNi(book: Book, id: string, value: RatingValue) {
 		ratingsStore.setRating(id, value, book.book_id, book);
-		niBooks = niBooks.filter((b) => b.book_id !== book.book_id);
-		recommendationsCountStore.update((n) => n + 1);
 	}
 </script>
 
@@ -457,6 +476,7 @@
 			items={tabItems}
 			selectedId={activeFilter}
 			{countsReady}
+			countedTabIds={['rated', 'bookmarked']}
 			getCount={(id) => countForTab(id as FilterId)}
 			onSelect={(id) => selectTab(id as FilterId)}
 		/>
@@ -467,16 +487,25 @@
 				id="bookshelf-sort"
 				class="bookshelf-page__sort-select"
 				aria-label={t('rated.sort.ariaLabel')}
-				value={sortOrder}
+				value={activeFilter === 'not-interested' ? notInterestedSortOrder : sortOrder}
 				onchange={(e) => {
 					const v = (e.currentTarget as HTMLSelectElement).value;
-					if (isValidShelfSortId(v)) setSortOrder(v);
+					if (activeFilter === 'not-interested') {
+						if (isValidNotInterestedSortId(v)) setNotInterestedSortOrder(v);
+					} else if (isValidShelfSortId(v)) {
+						setSortOrder(v);
+					}
 				}}
 			>
-				<option value="newest">{t('rated.sort.newest')}</option>
-				<option value="oldest">{t('rated.sort.oldest')}</option>
-				<option value="rating-high">{t('rated.sort.ratingHigh')}</option>
-				<option value="rating-low">{t('rated.sort.ratingLow')}</option>
+				{#if activeFilter === 'not-interested'}
+					<option value="newest">{t('rated.sort.newest')}</option>
+					<option value="oldest">{t('rated.sort.oldest')}</option>
+				{:else}
+					<option value="newest">{t('rated.sort.newest')}</option>
+					<option value="oldest">{t('rated.sort.oldest')}</option>
+					<option value="rating-high">{t('rated.sort.ratingHigh')}</option>
+					<option value="rating-low">{t('rated.sort.ratingLow')}</option>
+				{/if}
 			</select>
 			<span class="bookshelf-page__sort-chevron" aria-hidden="true">
 				<ChevronDown size={18} strokeWidth={2} />
@@ -492,14 +521,14 @@
 	>
 		{#if ratedListLoading && ratedLoadTimedOut}
 			<p class="bookshelf-page__empty" role="alert">{t('rated.loadError')}</p>
-		{:else if listLoading || ratedListLoading}
+		{:else if listLoading || ratedListLoading || notInterestedInitialLoading}
 			<p class="bookshelf-page__loading typ-body">{t('rated.loadingList')}</p>
 			<BookCardGridSkeleton class="bookshelf-page__list" ariaLabel={t('rated.title')} />
 		{:else if activeFilter === 'rated' && ratedDisplayEntries.length === 0}
 			<p class="bookshelf-page__empty">{t('rated.empty')}</p>
 		{:else if activeFilter === 'bookmarked' && bookmarkTabBooks.length === 0}
 			<p class="bookshelf-page__empty">{t('rated.emptyBookmarked')}</p>
-		{:else if activeFilter === 'not-interested' && niTabBooks.length === 0}
+		{:else if activeFilter === 'not-interested' && niTabBooks.length === 0 && !niPageState.nextCursor && !niPageState.error}
 			<p class="bookshelf-page__empty">{t('rated.emptyNotInterested')}</p>
 		{:else}
 			<ul
@@ -547,6 +576,9 @@
 					{/each}
 				{/if}
 			</ul>
+			{#if activeFilter === 'not-interested'}
+				<NotInterestedPagination state={niPageState} order={notInterestedSortOrder} />
+			{/if}
 		{/if}
 	</div>
 </div>
