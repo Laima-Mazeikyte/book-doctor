@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount, tick } from 'svelte';
+	import { BookOpen } from 'lucide-svelte';
 	import { t } from '$lib/copy';
 	import { getFooterSupplementContext } from '$lib/footerSupplementContext';
 	import { isAnonymousOrSignedOut } from '$lib/stores/auth';
@@ -98,8 +99,23 @@
 	let showPersonalRatings = $state(false);
 	let tablePreviewAuthorId = $state<number | null>(null);
 
-	const landmarks = $derived(release ? landmarkAuthors(release.index, 8) : []);
 	const oneSidedSeeds = $derived(release ? oneSidedAuthors(release.index, 8) : []);
+	const landmarks = $derived(
+		release
+			? landmarkAuthors(release.index, 8, new Set(oneSidedSeeds.map((author) => author.id)))
+			: []
+	);
+	/*
+	 * Someone who arrived through the one-way shortcut came for those relationships, so that
+	 * author's table opens with them. Any other route keeps the default opening view.
+	 */
+	let oneSidedRouteId = $state<number | null>(null);
+	const tableOpensOneSided = $derived(focus !== null && oneSidedRouteId === focus.id);
+
+	function focusFromOneSided(author: Author): void {
+		oneSidedRouteId = author.id;
+		focus = author;
+	}
 	const personalRatings = $derived.by(() =>
 		release ? aggregatePersonalAuthorRatings(release.index, ratedBooks) : EMPTY_PERSONAL_RATINGS
 	);
@@ -274,9 +290,43 @@
 		// Nested ids only mean anything inside their parent, so changing parent always clears it.
 		selectedSubcommunity = null;
 		if (!release || !map) return;
-		map.frameAuthors(
-			community ? communityMembers(release.index, community.id) : release.index.mapped
-		);
+		if (community) map.frameAuthors(communityMembers(release.index, community.id));
+		// With an author in focus, releasing the group returns to that author's neighbourhood.
+		else if (mode === 'browse' && focus) map.frameNeighbourhood();
+		else map.frameAuthors(release.index.mapped);
+	}
+
+	/*
+	 * The focused author's community and subgroup in the author card. Choosing one emphasises and
+	 * frames it on the map exactly as the legend does, while the author and their connections stay
+	 * selected; choosing the active one again releases it.
+	 */
+	const focusCommunity = $derived(
+		release && focus ? (release.index.communityById.get(focus.communityId) ?? null) : null
+	);
+	const focusSubcommunity = $derived(
+		release && focus
+			? (release.index.subcommunityByKey.get(
+					subcommunityKey(focus.communityId, focus.subcommunityId)
+				) ?? null)
+			: null
+	);
+
+	function toggleFocusCommunity(community: Community): void {
+		const active = selectedCommunity?.id === community.id && !selectedSubcommunity;
+		chooseCommunity(active ? null : community);
+	}
+
+	function toggleFocusSubcommunity(community: Community, subcommunity: Subcommunity): void {
+		const active =
+			selectedSubcommunity?.communityId === subcommunity.communityId &&
+			selectedSubcommunity.id === subcommunity.id;
+		if (active) {
+			chooseCommunity(null);
+			return;
+		}
+		selectedCommunity = community;
+		chooseSubcommunity(subcommunity);
 	}
 
 	function chooseSubcommunity(subcommunity: Subcommunity | null): void {
@@ -430,12 +480,15 @@
 		footerSupplement?.set(
 			footerSupplementOwner,
 			t('lab.authorConnections.about.provenance', {
-				version: release.manifest.version,
-				map: release.manifest.sources.map_version,
-				graph: release.manifest.sources.author_graph_version
+				graph: graphVersionLabel(release.manifest.sources.author_graph_version)
 			})
 		);
 	});
+
+	/** `production-v5` → `v5`; any other format is shown as-is. */
+	function graphVersionLabel(version: string): string {
+		return /(?:^|-)(v\d+)$/i.exec(version)?.[1] ?? version;
+	}
 
 	onDestroy(() => {
 		pageDestroyed = true;
@@ -458,6 +511,20 @@
 	});
 	$effect(() => {
 		subcommunitySeq = selectedSubcommunity ? ++selectionCounter : 0;
+	});
+
+	/*
+	 * A highlighted community or subgroup belongs to the moment it was chosen. Selecting another
+	 * author, clearing the author, or switching tabs releases it; the map then frames the new
+	 * selection on its own.
+	 */
+	let emphasisOwnerId: number | null = null;
+	$effect(() => {
+		const ownerId = mode === 'browse' ? (focus?.id ?? null) : null;
+		if (ownerId === emphasisOwnerId) return;
+		emphasisOwnerId = ownerId;
+		selectedCommunity = null;
+		selectedSubcommunity = null;
 	});
 </script>
 
@@ -578,7 +645,7 @@
 											<button
 												type="button"
 												class="btn btn--secondary btn--compact"
-												onclick={() => (focus = author)}
+												onclick={() => focusFromOneSided(author)}
 											>
 												{author.name}
 											</button>
@@ -594,20 +661,44 @@
 											<p class="ac-page__focus-name">{focus.name}</p>
 											<p class="ac-page__focus-meta">
 												{focus.genre}
-												{#if release.index.communityById.get(focus.communityId)}
-													<span class="ac-page__dot">·</span>
-													{release.index.communityById.get(focus.communityId)?.label}
-													{#if release.index.subcommunityByKey.get(subcommunityKey(focus.communityId, focus.subcommunityId))}
-														<span class="ac-page__dot">›</span>
-														{release.index.subcommunityByKey.get(
-															subcommunityKey(focus.communityId, focus.subcommunityId)
-														)?.label}
+												{#if focusCommunity}
+													<span class="ac-page__dot" aria-hidden="true">›</span>
+													<button
+														type="button"
+														class="ac-page__group-link"
+														aria-pressed={selectedCommunity?.id === focusCommunity.id &&
+															!selectedSubcommunity}
+														aria-label={t('lab.authorConnections.communities.showOnMap', {
+															group: focusCommunity.label
+														})}
+														onclick={() => toggleFocusCommunity(focusCommunity)}
+														>{focusCommunity.label}</button
+													>
+													{#if focusSubcommunity}
+														<span class="ac-page__dot" aria-hidden="true">›</span>
+														<button
+															type="button"
+															class="ac-page__group-link"
+															aria-pressed={selectedSubcommunity?.communityId ===
+																focusSubcommunity.communityId &&
+																selectedSubcommunity?.id === focusSubcommunity.id}
+															aria-label={t('lab.authorConnections.communities.showOnMap', {
+																group: focusSubcommunity.label
+															})}
+															onclick={() =>
+																toggleFocusSubcommunity(focusCommunity, focusSubcommunity)}
+															>{focusSubcommunity.label}</button
+														>
 													{/if}
 												{/if}
 											</p>
 											{#if focus.sampleTitles.length > 0}
 												<p class="ac-page__focus-titles">
-													{focus.sampleTitles.slice(0, 3).join(' · ')}
+													<BookOpen class="ac-page__titles-icon" size={14} aria-hidden="true" />
+													<span class="ac-page__sr-only"
+														>{t('lab.authorConnections.browse.sampleTitles')}</span
+													>
+													<span>{focus.sampleTitles.slice(0, 3).join(' · ')}</span>
 												</p>
 											{/if}
 											{#if availability(focus) !== 'both'}
@@ -661,7 +752,7 @@
 														<button
 															type="button"
 															class="btn btn--secondary btn--compact"
-															onclick={() => (focus = author)}
+															onclick={() => focusFromOneSided(author)}
 														>
 															{author.name}
 														</button>
@@ -675,6 +766,7 @@
 												{focus}
 												connections={neighbourhood.connections}
 												limit={connectionLimit}
+												oneSidedFirst={tableOpensOneSided}
 												onVisibleRowsChange={publishTableSnapshot}
 												onCompareAuthor={compareFromTable}
 												onPreviewAuthor={(author) => (tablePreviewAuthorId = author?.id ?? null)}
@@ -854,6 +946,27 @@
 		color: var(--color-text-muted);
 		overflow-wrap: anywhere;
 	}
+	.ac-page__focus-titles {
+		display: flex;
+		align-items: flex-start;
+		gap: var(--space-1);
+	}
+	.ac-page__focus-titles :global(.ac-page__titles-icon) {
+		flex: none;
+		/* Centre the icon on the first line of text when titles wrap. */
+		margin-top: calc((1lh - 14px) / 2);
+	}
+	.ac-page__sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		padding: 0;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
+	}
 	.ac-page__focus-availability {
 		font-family: var(--font-family-interactive);
 		font-size: var(--primitive-type-size-14);
@@ -861,6 +974,26 @@
 	}
 	.ac-page__dot {
 		padding: 0 var(--space-1);
+	}
+	.ac-page__group-link {
+		padding: 0;
+		border: 0;
+		background: none;
+		color: inherit;
+		font: inherit;
+		text-align: left;
+		text-decoration: underline dotted;
+		text-underline-offset: 0.2em;
+		cursor: pointer;
+	}
+	.ac-page__group-link:hover,
+	.ac-page__group-link[aria-pressed='true'] {
+		color: var(--color-text);
+		text-decoration-style: solid;
+	}
+	.ac-page__group-link:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 2px;
 	}
 	.ac-page__loading {
 		display: flex;

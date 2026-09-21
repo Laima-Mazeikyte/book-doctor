@@ -40,7 +40,6 @@ export type CanvasRenderKind = 'orbit' | 'pan' | 'zoom' | 'flight' | 'canonical'
 export interface CanvasRendererColors {
 	background: string;
 	context: string;
-	focus: string;
 	loved: string;
 	hated: string;
 	neutral: string;
@@ -225,7 +224,6 @@ export class CanvasPointRenderer {
 	private readonly paletteIndex: Uint16Array;
 	private paletteColors: string[] = [];
 	private contextPaletteIndex = 0;
-	private focusPaletteIndex = 0;
 
 	private readonly rotatedX: Float32Array;
 	private readonly rotatedY: Float32Array;
@@ -283,7 +281,6 @@ export class CanvasPointRenderer {
 	private depthOrderPitch = Number.NaN;
 
 	private emphasisFlags: Uint8Array | null = null;
-	private subgroupEmphasis = false;
 	private showPersonalRatings = false;
 	private personalRatingsReference: ReadonlyMap<number, PersonalAuthorRating> | null = null;
 
@@ -379,12 +376,10 @@ export class CanvasPointRenderer {
 			this.paletteIndex[slot] = add(this.basePointColors[slot] || this.colors.context);
 		}
 		this.contextPaletteIndex = add(this.colors.context);
-		this.focusPaletteIndex = add(this.colors.focus);
 	}
 
 	setColors(colors: CanvasRendererColors): boolean {
-		const paletteChanged =
-			this.colors.context !== colors.context || this.colors.focus !== colors.focus;
+		const paletteChanged = this.colors.context !== colors.context;
 		const backgroundChanged = this.colors.background !== colors.background;
 		const changed =
 			paletteChanged ||
@@ -399,10 +394,9 @@ export class CanvasPointRenderer {
 		return true;
 	}
 
-	setEmphasis(flags: Uint8Array | null, subgroupEmphasis: boolean): boolean {
-		if (this.emphasisFlags === flags && this.subgroupEmphasis === subgroupEmphasis) return false;
+	setEmphasis(flags: Uint8Array | null): boolean {
+		if (this.emphasisFlags === flags) return false;
 		this.emphasisFlags = flags;
-		this.subgroupEmphasis = subgroupEmphasis;
 		return true;
 	}
 
@@ -617,9 +611,7 @@ export class CanvasPointRenderer {
 		const screenDepth = this.screenDepth;
 		const screenRadius = this.screenRadius;
 		const showPersonalRatings = this.showPersonalRatings;
-		const subgroupEmphasis = this.subgroupEmphasis;
 		const contextPaletteIndex = this.contextPaletteIndex;
-		const focusPaletteIndex = this.focusPaletteIndex;
 		for (let index = 0; index < length; index++) {
 			const slot = list[index];
 			const depthAlpha = Math.max(0.28, Math.min(0.95, 0.58 + screenDepth[slot] * 0.12));
@@ -637,7 +629,6 @@ export class CanvasPointRenderer {
 					(tier === POINT_TIER_FOCUS && flags
 						? Math.max(FOCUS_MIN_ALPHA, depthAlpha)
 						: depthAlpha) * personalAlpha;
-				if (subgroupEmphasis && tier === POINT_TIER_FOCUS) palette = focusPaletteIndex;
 			}
 			if (palette !== lastPaletteIndex) {
 				context.fillStyle = paletteColors[palette];

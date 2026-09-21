@@ -341,8 +341,15 @@ export function searchAuthors(index: AuthorIndex, query: string, limit = 12): Au
  * Well-connected authors that have paired evidence to show — used to seed the page before the
  * reader has picked anyone.
  */
-export function landmarkAuthors(index: AuthorIndex, count: number): Author[] {
-	return [...index.connected]
+export function landmarkAuthors(
+	index: AuthorIndex,
+	count: number,
+	exclude: ReadonlySet<number> = new Set()
+): Author[] {
+	// The one-way shortcut is offered beside this one, and its authors are among the busiest
+	// here too. Excluded, the two lists together offer twice as many ways in.
+	return index.connected
+		.filter((author) => !exclude.has(author.id))
 		.sort(
 			(a, b) =>
 				b.connectionPairCount - a.connectionPairCount ||

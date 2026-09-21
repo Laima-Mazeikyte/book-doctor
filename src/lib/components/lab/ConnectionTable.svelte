@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/copy';
 	import MetricTooltip from './MetricTooltip.svelte';
-	import { composeDefaultOrder } from '$lib/lab/author-taste/order';
+	import { composeDefaultOrder, composeOneSidedFirstOrder } from '$lib/lab/author-taste/order';
 	import { normaliseName } from '$lib/lab/author-taste/authors';
 	import {
 		formatInterval,
@@ -34,12 +34,21 @@
 		 * thousands, for a popular one — while the table showed two dozen.
 		 */
 		onVisibleRowsChange?: (snapshot: ConnectionTableSnapshot) => void;
+		/** Open with reliably one-way relationships first, for the one-way shortcut. */
+		oneSidedFirst?: boolean;
 		onCompareAuthor: (author: Author) => void;
 		onPreviewAuthor?: (author: Author | null) => void;
 	}
 
-	let { focus, connections, limit, onVisibleRowsChange, onCompareAuthor, onPreviewAuthor }: Props =
-		$props();
+	let {
+		focus,
+		connections,
+		limit,
+		oneSidedFirst = false,
+		onVisibleRowsChange,
+		onCompareAuthor,
+		onPreviewAuthor
+	}: Props = $props();
 
 	/**
 	 * The keyboard- and screen-reader-equivalent view of the map. Every author drawn on the
@@ -131,7 +140,8 @@
 
 	/** The complete order is independent of the aperture; only the final slice reads `limit`. */
 	const ordered = $derived.by(() => {
-		if (sortKey === 'default') return composeDefaultOrder(filtered);
+		if (sortKey === 'default')
+			return oneSidedFirst ? composeOneSidedFirstOrder(filtered) : composeDefaultOrder(filtered);
 		const sorted = [...filtered].sort(compare);
 		if (sortDescending) sorted.reverse();
 		return sorted;

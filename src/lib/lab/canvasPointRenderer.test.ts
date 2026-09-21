@@ -19,7 +19,6 @@ const viewport = { width: 200, height: 100 };
 const colors: CanvasRendererColors = {
 	background: '#fff',
 	context: '#999',
-	focus: '#f00',
 	loved: '#0a0',
 	hated: '#a00',
 	neutral: '#00a'
@@ -328,17 +327,18 @@ describe('canvas point renderer', () => {
 		const authors = [makeAuthor(0, -0.3), makeAuthor(1, 0, 0, 0.1), makeAuthor(2, 0.3, 0, 0.2)];
 		const { renderer, context, camera } = makeRenderer(authors);
 		const flags = new Uint8Array([POINT_TIER_CONTEXT, POINT_TIER_PARENT, POINT_TIER_FOCUS]);
-		expect(renderer.setEmphasis(flags, true)).toBe(true);
-		expect(renderer.setEmphasis(flags, true)).toBe(false);
+		expect(renderer.setEmphasis(flags)).toBe(true);
+		expect(renderer.setEmphasis(flags)).toBe(false);
 		expect(renderer.setPersonalRatings(new Map([[2, rating('loved')]]))).toBe(true);
 		expect(renderer.setPersonalRatingsVisibility(true)).toBe(true);
 		renderer.render(camera, 'data', false);
 
 		expect(context.fillRecords).toHaveLength(3);
+		// A selected subgroup keeps its community colour; only opacity separates it from its parent.
 		expect(context.fillRecords.map((record) => record.fillStyle)).toEqual([
 			'#999',
 			'#c1c1c1',
-			'#f00'
+			'#c1c1c1'
 		]);
 		expect(context.fillRecords[0].globalAlpha).toBeCloseTo(0.0232, 3);
 		expect(context.fillRecords[1].globalAlpha).toBeCloseTo(0.037888, 4);

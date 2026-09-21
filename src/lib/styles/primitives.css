@@ -57,6 +57,16 @@
 	--primitive-series-violet: #9085e9;
 	--primitive-series-amber: #c98500;
 
+	/* Second categorical triad, for a view whose signals differ from the one above
+	   (polarization features vs quality features) — a different set of hues says so at a glance.
+	   Validated as a set against the card surface (#121c1c) on the all-pairs list:
+	   worst CVD ΔE 8.7 (deuteranopia, OKLab ×100, ≥8 target), worst normal-vision ΔE 22.7
+	   (≥15 floor), all three ≥ 3:1 contrast, all inside the dark lightness band.
+	   Do not eyeball a replacement — re-run the palette validator on any change. */
+	--primitive-series-rose: #d2567f;
+	--primitive-series-blue: #3f93d6;
+	--primitive-series-olive: #8d8f2f;
+
 	/* Shadow (opacity only; color from theme) */
 	--primitive-shadow-opacity-subtle: 0.25;
 	--primitive-shadow-opacity-hairline: 0.04;

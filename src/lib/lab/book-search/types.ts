@@ -1,13 +1,11 @@
 /** Types for the versioned book-ranking handoff. */
 
-export const RANKING_MODES = [
-	'best_books',
-	'best_series',
-	'polarizing_books',
-	'polarizing_series'
-] as const;
+export const RANKING_MODES = ['best_items', 'polarizing_items'] as const;
 
 export type RankingMode = (typeof RANKING_MODES)[number];
+
+/** Every ranking model combines exactly three standardized features. */
+export const FEATURE_COUNT = 3;
 
 export class BookRankingFormatError extends Error {
 	constructor(message: string) {
@@ -26,24 +24,15 @@ export interface RankingModel {
 export interface RankingPreset {
 	name: string;
 	weights: number[];
-	settled: boolean;
 	reach_share?: number;
 }
 
 export interface BookRankingManifest {
 	schema_version: number;
-	generated_utc: string;
 	version: string;
-	display: {
-		top_n: number;
-	};
 	datasets: Record<RankingMode, string>;
 	model: Record<RankingMode, RankingModel>;
 	presets: Record<RankingMode, RankingPreset[]>;
-	disclosure: {
-		headline: string;
-		items: string[];
-	};
 	quality: {
 		items: Record<RankingMode, number>;
 	};
@@ -58,7 +47,7 @@ export interface RankingPayload {
 export interface BookPopulation {
 	mode: RankingMode;
 	count: number;
-	itemIds: string[];
+	itemTypes: Array<'book' | 'series'>;
 	titles: string[];
 	authors: string[];
 	seriesNames: Array<string | null>;
@@ -70,9 +59,8 @@ export interface BookPopulation {
 
 export interface BookRanking {
 	order: Int32Array;
+	/** One-based rank by population index, for constant-time row rendering. */
+	places: Int32Array;
+	/** Weighted z-score; for polarization, the reach blend mapped back onto the z scale. */
 	scores: Float64Array;
-	statisticalScores: Float64Array;
-	contributions: Float64Array[];
-	denominator: number;
-	reachShare: number;
 }

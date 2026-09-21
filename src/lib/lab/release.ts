@@ -21,8 +21,8 @@ export function joinUrl(...parts: string[]): string {
 	return tail.length ? `${base}/${tail.join('/')}` : base;
 }
 
-export async function fetchJson<T>(url: string): Promise<T> {
-	const response = await fetch(url);
+export async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+	const response = await fetch(url, options);
 	if (!response.ok) {
 		throw new Error(`Could not load ${url} (${response.status}).`);
 	}
@@ -44,7 +44,8 @@ export async function resolveWebRoot(base: string, pinnedVersion?: string): Prom
 	if (pinned) return `versions/${trimSlashes(pinned)}/web`;
 
 	const pointer = await fetchJson<{ web_root?: string; version?: string }>(
-		joinUrl(base, 'current_release.json')
+		joinUrl(base, 'current_release.json'),
+		{ cache: 'no-cache' }
 	);
 	if (pointer.web_root) return trimSlashes(pointer.web_root);
 	if (pointer.version) return `versions/${trimSlashes(pointer.version)}/web`;

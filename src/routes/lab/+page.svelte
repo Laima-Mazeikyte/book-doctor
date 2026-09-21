@@ -37,9 +37,8 @@
 		display: flex;
 		flex-direction: column;
 		width: 100%;
-		max-width: 52rem;
+		max-width: 64rem;
 		margin-inline: auto;
-		padding-bottom: var(--space-8);
 	}
 	.lab-page__title {
 		margin: 0 0 var(--space-4) 0;
@@ -56,7 +55,7 @@
 		padding: 0;
 		display: grid;
 		gap: var(--space-4);
-		grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
 	}
 	.lab-card {
 		display: flex;

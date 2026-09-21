@@ -4,6 +4,8 @@ import {
 	buildAuthorIndex,
 	decodeCommunities,
 	decodeSubcommunities,
+	landmarkAuthors,
+	oneSidedAuthors,
 	searchAuthors,
 	subcommunityMembers,
 	type AuthorIndexInput
@@ -63,6 +65,7 @@ function row(
 		subcommunityId?: number;
 		mapState?: number;
 		connectionPairCount?: number;
+		oneSidedDegree?: number;
 		genreIndex?: number;
 		connection?: [number, number, number] | null;
 	} = {}
@@ -82,7 +85,7 @@ function row(
 		options.connectionPairCount ?? 5,
 		2,
 		1,
-		0,
+		options.oneSidedDegree ?? 0,
 		0,
 		['A Title'],
 		connection?.[0] ?? null,
@@ -131,6 +134,31 @@ describe('buildAuthorIndex', () => {
 			'mapOnly',
 			'neither'
 		]);
+	});
+
+	/*
+	 * The two browse shortcuts sit side by side, so the busiest authors must not fill both.
+	 */
+	it('keeps the two browse shortcuts free of shared authors', () => {
+		const index = build([
+			row('Busy and one sided', {
+				mapState: 2,
+				connection: [0, 0, 108],
+				connectionPairCount: 90,
+				oneSidedDegree: 4
+			}),
+			row('Busy only', { mapState: 2, connection: [1, 0, 108], connectionPairCount: 80 }),
+			row('Quiet', { mapState: 2, connection: [2, 0, 108], connectionPairCount: 10 })
+		]);
+
+		const oneSided = oneSidedAuthors(index, 8);
+		expect(oneSided.map((author) => author.name)).toEqual(['Busy and one sided']);
+		const excluded = new Set(oneSided.map((author) => author.id));
+		expect(landmarkAuthors(index, 8, excluded).map((author) => author.name)).toEqual([
+			'Busy only',
+			'Quiet'
+		]);
+		expect(landmarkAuthors(index, 8).map((author) => author.name)).toContain('Busy and one sided');
 	});
 
 	it('treats a zero-byte connection block as no connections', () => {

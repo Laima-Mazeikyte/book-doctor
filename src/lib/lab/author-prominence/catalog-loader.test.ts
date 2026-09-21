@@ -95,3 +95,33 @@ describe('AuthorProminenceCatalogLoader', () => {
 		expect(mocks.resolveBooksByIdsInOrder).toHaveBeenCalledTimes(2);
 	});
 });
+
+describe('AuthorProminenceCatalogLoader.loadMany', () => {
+	beforeEach(() => {
+		mocks.getSupabase.mockReset();
+		mocks.resolveBooksByIdsInOrder.mockReset();
+		mocks.getSupabase.mockReturnValue(client);
+	});
+
+	it('resolves a whole series in one request and shares the single-book cache', async () => {
+		const second: Book = { ...book, id: 'uuid-book-2', book_id: '01KR2ADTNG29NSQV23VAGV8FXC' };
+		mocks.resolveBooksByIdsInOrder.mockResolvedValue([book, second]);
+		const loader = createAuthorProminenceCatalogLoader();
+
+		const books = await loader.loadMany([book.book_id, second.book_id.toLowerCase()]);
+		expect(books.map((entry) => entry?.book_id)).toEqual([book.book_id, second.book_id]);
+		expect(mocks.resolveBooksByIdsInOrder).toHaveBeenCalledTimes(1);
+
+		await expect(loader.load(second.book_id)).resolves.toEqual(second);
+		expect(mocks.resolveBooksByIdsInOrder).toHaveBeenCalledTimes(1);
+	});
+
+	it('reports a book the catalog does not carry as null without failing the rest', async () => {
+		mocks.resolveBooksByIdsInOrder.mockResolvedValue([book]);
+		const loader = createAuthorProminenceCatalogLoader();
+
+		const books = await loader.loadMany([book.book_id, '01KR2ADTNG29NSQV23VAGV8FXD']);
+		expect(books).toEqual([book, null]);
+		expect(loader.cachedBookCount).toBe(1);
+	});
+});

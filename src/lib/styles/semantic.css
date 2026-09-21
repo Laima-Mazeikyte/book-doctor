@@ -138,6 +138,11 @@
 	--color-viz-series-1: var(--primitive-series-aqua);
 	--color-viz-series-2: var(--primitive-series-violet);
 	--color-viz-series-3: var(--primitive-series-amber);
+
+	/* Alternate triad: the same slots for a view with different signals. */
+	--color-viz-series-alt-1: var(--primitive-series-rose);
+	--color-viz-series-alt-2: var(--primitive-series-blue);
+	--color-viz-series-alt-3: var(--primitive-series-olive);
 	/** Unfilled track behind a bar, and the zero baseline drawn across it. */
 	--color-viz-track: var(--primitive-gray-300);
 	--color-viz-baseline: var(--primitive-gray-400);

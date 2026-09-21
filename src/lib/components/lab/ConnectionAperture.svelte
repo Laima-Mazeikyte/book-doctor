@@ -4,8 +4,6 @@
 
 	interface Props {
 		value: number;
-		visibleCount: number;
-		mappedCount: number;
 		onChange: (value: number) => void;
 	}
 
@@ -13,7 +11,7 @@
 	const MAX = 50;
 	const PRESETS = [5, 10, 20, 30, 50];
 
-	let { value, visibleCount, mappedCount, onChange }: Props = $props();
+	let { value, onChange }: Props = $props();
 
 	let rootEl: HTMLDivElement | null = $state(null);
 	let triggerEl: HTMLButtonElement | null = $state(null);
@@ -121,7 +119,7 @@
 		onkeydown={handleKeydown}
 	>
 		<span>{t('lab.authorConnections.browse.aperture.trigger')}</span>
-		<span class="connection-aperture__chevron" aria-hidden="true">▾</span>
+		<span class="connection-aperture__chevron" aria-hidden="true">▴</span>
 	</button>
 
 	{#if open}
@@ -129,15 +127,10 @@
 			id="connection-aperture-panel"
 			class="connection-aperture__popover"
 			role="dialog"
-			aria-labelledby="connection-aperture-title"
+			aria-label={t('lab.authorConnections.browse.aperture.accessibleName')}
 			tabindex="-1"
 			onkeydown={handleKeydown}
 		>
-			<div class="connection-aperture__heading">
-				<h2 id="connection-aperture-title">{t('lab.authorConnections.browse.aperture.title')}</h2>
-				<strong>{value}</strong>
-			</div>
-
 			<div class="connection-aperture__slider-labels" aria-hidden="true">
 				<span>{t('lab.authorConnections.browse.aperture.focused')}</span>
 				<span>{t('lab.authorConnections.browse.aperture.wider')}</span>
@@ -158,33 +151,25 @@
 				oninput={handleInput}
 				onkeydown={handleSliderKeydown}
 			/>
-			<div
-				class="connection-aperture__presets"
-				role="group"
-				aria-label={t('lab.authorConnections.browse.aperture.shortcuts')}
-			>
-				{#each PRESETS as preset (preset)}
-					<button
-						type="button"
-						class:connection-aperture__preset--active={value === preset}
-						class="connection-aperture__preset"
-						onclick={() => commit(preset)}
-					>
-						{preset}
-					</button>
-				{/each}
-			</div>
-
-			{#if mappedCount !== visibleCount}
-				<div class="connection-aperture__status">
-					<p>
-						{t('lab.authorConnections.browse.aperture.mapped', {
-							table: visibleCount,
-							mapped: mappedCount
-						})}
-					</p>
+			<div class="connection-aperture__footer">
+				<div
+					class="connection-aperture__presets"
+					role="group"
+					aria-label={t('lab.authorConnections.browse.aperture.shortcuts')}
+				>
+					{#each PRESETS as preset (preset)}
+						<button
+							type="button"
+							class:connection-aperture__preset--active={value === preset}
+							class="connection-aperture__preset"
+							onclick={() => commit(preset)}
+						>
+							{preset}
+						</button>
+					{/each}
 				</div>
-			{/if}
+				<strong class="connection-aperture__value" aria-hidden="true">{value}</strong>
+			</div>
 		</div>
 	{/if}
 
@@ -242,22 +227,11 @@
 		color: var(--color-text);
 		box-shadow: var(--shadow-lg, 0 8px 30px rgb(0 0 0 / 18%));
 	}
-	.connection-aperture__heading,
 	.connection-aperture__slider-labels {
 		display: flex;
 		align-items: baseline;
 		justify-content: space-between;
 		gap: var(--space-3);
-	}
-	.connection-aperture__heading h2 {
-		margin: 0;
-		font-size: var(--primitive-type-size-16);
-	}
-	.connection-aperture__heading strong {
-		font-size: var(--primitive-type-size-18);
-	}
-	.connection-aperture__slider-labels {
-		margin-top: var(--space-4);
 		font-size: var(--primitive-type-size-13);
 		color: var(--color-text-muted);
 	}
@@ -268,11 +242,21 @@
 		accent-color: var(--color-accent);
 		cursor: pointer;
 	}
+	.connection-aperture__footer {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-3);
+		margin-top: var(--space-3);
+	}
 	.connection-aperture__presets {
 		display: flex;
 		flex-wrap: wrap;
 		gap: var(--space-2);
-		margin-top: var(--space-3);
+	}
+	.connection-aperture__value {
+		font-size: var(--primitive-type-size-18);
+		font-variant-numeric: tabular-nums;
 	}
 	.connection-aperture__preset {
 		min-width: 2.5rem;
@@ -292,16 +276,6 @@
 		background: var(--color-bg-hover);
 		color: var(--color-text);
 		font-weight: 700;
-	}
-	.connection-aperture__status {
-		display: grid;
-		gap: 0.2rem;
-		margin-top: var(--space-4);
-		font-size: var(--primitive-type-size-13);
-		line-height: 1.35;
-	}
-	.connection-aperture__status p {
-		margin: 0;
 	}
 	.connection-aperture__announcement {
 		position: absolute;

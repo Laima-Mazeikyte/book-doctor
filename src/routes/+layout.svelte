@@ -329,8 +329,10 @@
 <div
 	class="app-chrome"
 	class:app-chrome--landing={page.url.pathname === '/'}
+	class:app-chrome--lab-index={page.url.pathname === '/lab'}
 	class:app-chrome--shortlist={isShortlistShell}
 	class:app-chrome--author-connections={page.url.pathname === '/lab/author-connections'}
+	class:app-chrome--book-search={page.url.pathname === '/lab/book-search'}
 	class:app-chrome--author-prominence={page.url.pathname === '/lab/author-prominence'}
 >
 	{#if !isShortlistShell}
@@ -410,14 +412,17 @@
 		flex-direction: column;
 		min-height: 0;
 	}
-	.app-chrome--landing {
+	/* Short pages whose footer sits at the viewport bottom instead of below the fold. */
+	.app-chrome--landing,
+	.app-chrome--lab-index {
 		min-height: 100dvh;
 	}
 	.app-chrome :global(main) {
 		min-width: 0;
 		width: 100%;
 	}
-	.app-chrome--landing :global(main) {
+	.app-chrome--landing :global(main),
+	.app-chrome--lab-index :global(main) {
 		flex: 1;
 		min-height: 0;
 		display: flex;
@@ -427,7 +432,8 @@
 		min-width: 0;
 		min-height: calc(100dvh - var(--app-header-chrome-height));
 	}
-	.app-chrome--landing .main-min {
+	.app-chrome--landing .main-min,
+	.app-chrome--lab-index .main-min {
 		flex: 1;
 		min-height: 0;
 		display: flex;
@@ -438,7 +444,8 @@
 		min-width: 0;
 		width: 100%;
 	}
-	.app-chrome--landing .page-enter {
+	.app-chrome--landing .page-enter,
+	.app-chrome--lab-index .page-enter {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
@@ -465,5 +472,31 @@
 		min-height: 0;
 		display: flex;
 		flex-direction: column;
+	}
+	@media (min-width: 768px) {
+		.app-chrome--book-search {
+			height: 100dvh;
+			min-height: 0;
+			overflow: hidden;
+		}
+		.app-chrome--book-search > :global(.app-header),
+		.app-chrome--book-search > :global(.app-footer) {
+			flex: 0 0 auto;
+		}
+		.app-chrome--book-search :global(main.main-book-grid-shell) {
+			display: flex;
+			flex: 1;
+			flex-direction: column;
+			min-height: 0;
+			overflow: hidden;
+			padding-block: 8px;
+		}
+		.app-chrome--book-search .main-min,
+		.app-chrome--book-search .page-enter {
+			display: flex;
+			flex: 1;
+			flex-direction: column;
+			min-height: 0;
+		}
 	}
 </style>

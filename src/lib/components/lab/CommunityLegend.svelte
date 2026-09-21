@@ -86,7 +86,7 @@
 				</button>
 
 				{#if isSelected && communityChildren.length > 0}
-					<div class="community-legend__children">
+					<div class="community-legend__children" style="--community-color:{community.color}">
 						<h4 class="community-legend__children-heading">
 							{t('lab.authorConnections.communities.within', { community: community.label })}
 						</h4>
@@ -267,9 +267,11 @@
 		outline: 2px solid var(--color-focus);
 		outline-offset: 2px;
 	}
-	.community-legend__chip--active {
-		border-color: var(--color-accent);
-		background: var(--color-accent-bg);
+	/* The selected subgroup takes its community's colour, matching its tint on the map. */
+	.community-legend__chip--active,
+	.community-legend__chip--active:hover {
+		border-color: var(--community-color, var(--color-accent));
+		background: color-mix(in srgb, var(--community-color, var(--color-accent)) 18%, transparent);
 	}
 	.community-legend__chip-meta {
 		color: var(--color-text-muted);

@@ -6,8 +6,6 @@ it('exposes the five-to-fifty aperture and preset shortcuts', async () => {
 	const changes: number[] = [];
 	const rendered = render(ConnectionAperture, {
 		value: 10,
-		visibleCount: 10,
-		mappedCount: 10,
 		onChange: (value: number) => {
 			changes.push(value);
 			void rendered.rerender({ value });
@@ -34,8 +32,6 @@ it('uses five-step page-key increments and closes before page escape', async () 
 	const changes: number[] = [];
 	const rendered = render(ConnectionAperture, {
 		value: 20,
-		visibleCount: 6,
-		mappedCount: 6,
 		onChange: (value: number) => {
 			changes.push(value);
 			void rendered.rerender({ value });

@@ -38,6 +38,18 @@ const NOTABLE_TAIL = 4;
  * view is deliberately fixed at ten rows: the table can reveal more of this same order without
  * replacing a row that was already visible.
  */
+/**
+ * The opening view for an author reached through the one-way shortcut: every reliably one-way
+ * relationship first, in strength order, then the usual opening view of everything else. The
+ * reader arrived for those rows, so they should not have to hunt for them.
+ */
+export function composeOneSidedFirstOrder(connections: Connection[]): Connection[] {
+	const oneSided = connections.filter((connection) => isOneSided(connection.record));
+	if (oneSided.length === 0) return composeDefaultOrder(connections);
+	const rest = connections.filter((connection) => !isOneSided(connection.record));
+	return [...oneSided, ...composeDefaultOrder(rest)];
+}
+
 export function composeDefaultOrder(connections: Connection[]): Connection[] {
 	const strengthOrder = [...connections];
 	const notable = strengthOrder.filter((connection) => statusRank(connection) <= 1);

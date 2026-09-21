@@ -53,10 +53,10 @@
 		 * Group to hold in focus while everything else recedes. A null `subcommunityId` means
 		 * the whole community.
 		 *
-		 * Subcommunities are not given permanent colours. There are 34 of them against 9
-		 * communities, well past what a categorical palette can carry, so a selected subgroup gets a
-		 * transient focus hue while its parent community keeps its own colour as context. That stays
-		 * legible even where subgroup centroids overlap and the map cannot separate them spatially.
+		 * Subcommunities are not given colours of their own: there are 34 of them against 9
+		 * communities, well past what a categorical palette can carry. A selected subgroup is drawn
+		 * at full strength in its community's colour, while the rest of that community stays in the
+		 * same colour at reduced opacity as context.
 		 */
 		emphasis?: { communityId: number; subcommunityId: number | null } | null;
 		/** Temporary table preview author id; unlike focus, this never changes the selected author. */
@@ -150,7 +150,6 @@
 
 	let colors = $state<CanvasRendererColors & { label: string; labelHalo: string }>({
 		background: '#ffffff',
-		focus: '#f0c674',
 		loved: '#6fcf97',
 		hated: '#d96b5f',
 		neutral: '#9aa5a5',
@@ -255,9 +254,6 @@
 	const drawableConnections = $derived(
 		rankedConnections.filter((item) => active.has(item.connection.other.id))
 	);
-	const mappedConnectionCount = $derived(
-		connections.filter((connection) => isMapped(connection.other)).length
-	);
 	const isolationId = $derived.by(() => {
 		if (
 			previewAuthorId !== null &&
@@ -345,7 +341,6 @@
 			style.getPropertyValue(name).trim() || fallback;
 		colors = {
 			background: read('--color-viz-map-bg', colors.background),
-			focus: read('--color-viz-map-focus', colors.focus),
 			loved: read('--color-viz-affinity', colors.loved),
 			hated: read('--color-viz-conflict', colors.hated),
 			neutral: read('--color-viz-neutral', colors.neutral),
@@ -905,10 +900,7 @@
 		const currentRenderer = renderer;
 		if (!currentRenderer || !ready) return;
 		const colorsChanged = currentRenderer.setColors(colors);
-		const emphasisChanged = currentRenderer.setEmphasis(
-			emphasised,
-			emphasis !== null && emphasis.subcommunityId !== null
-		);
+		const emphasisChanged = currentRenderer.setEmphasis(emphasised);
 		const ratingsChanged = currentRenderer.setPersonalRatings(personalRatings);
 		const ratingsVisibilityChanged =
 			currentRenderer.setPersonalRatingsVisibility(showPersonalRatings);
@@ -1285,12 +1277,7 @@
 			{/if}
 			<div class="author-map__controls" bind:this={controlsEl}>
 				{#if focus && connectionSnapshotReady && connectionTotalCount > 0 && onConnectionLimitChange}
-					<ConnectionAperture
-						value={connectionLimit}
-						visibleCount={connections.length}
-						mappedCount={mappedConnectionCount}
-						onChange={onConnectionLimitChange}
-					/>
+					<ConnectionAperture value={connectionLimit} onChange={onConnectionLimitChange} />
 				{/if}
 				{#if onTogglePersonalRatings}
 					<button
