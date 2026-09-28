@@ -11,26 +11,33 @@ import {
 } from '$lib/server/recommendationPrecedents';
 import { requireAccessToken } from '$lib/server/requestAuth';
 import { createSupabaseWithAuth } from '$lib/server/supabase';
+import { overallRecommendationLogs } from '$lib/server/overallRecommendationLogs';
 
 export const GET: RequestHandler = async ({ url, request }) => {
 	const requestId = url.searchParams.get('request_id')?.trim() ?? null;
+	const includeRated = requestId !== null && url.searchParams.get('include_rated') === '1';
 	const accessToken = requireAccessToken(request);
 	const supabase = createSupabaseWithAuth(accessToken);
 
 	let targetRequestId: string | null = requestId;
 
 	if (!targetRequestId) {
-		const { data: logs, error: logError } = await supabase
+		const { data: allLogs, error: logError } = await supabase
 			.from('recommendation_log')
 			.select('request_id')
-			.order('created_at', { ascending: false })
-			.limit(1);
+			.order('created_at', { ascending: false });
 
 		if (logError) {
 			console.error(logError);
 			throw error(500, 'Failed to load recommendation');
 		}
-		targetRequestId = logs?.[0]?.request_id ?? null;
+		try {
+			targetRequestId =
+				(await overallRecommendationLogs(supabase, allLogs ?? []))[0]?.request_id ?? null;
+		} catch (requestError) {
+			console.error(requestError);
+			throw error(500, 'Failed to load recommendation requests');
+		}
 	}
 
 	if (!targetRequestId) {
@@ -41,6 +48,20 @@ export const GET: RequestHandler = async ({ url, request }) => {
 			authorRelationshipAuthorsByBookId: {},
 			dimensionMatchSnapshotsByBookId: {}
 		});
+	}
+	if (includeRated) {
+		// The filtered page preserves a run's original books, including titles rated later.
+		// Verify the owning request under the caller's RLS before using this read mode.
+		const { data: ownedRequest, error: ownerError } = await supabase
+			.from('recommendation_requests')
+			.select('id')
+			.eq('id', targetRequestId)
+			.maybeSingle();
+		if (ownerError) {
+			console.error(ownerError);
+			throw error(500, 'Failed to load recommendation request');
+		}
+		if (!ownedRequest) throw error(404, 'Recommendation request unavailable');
 	}
 
 	const { data: items, error: itemsError } = await supabase
@@ -71,7 +92,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 
 	bookIds = await filterBookIdsExcludingUserLists(supabase, bookIds, {
 		excludeNotInterested: !requestId,
-		excludeRated: true
+		excludeRated: !includeRated
 	});
 	if (bookIds.length === 0) {
 		return json({

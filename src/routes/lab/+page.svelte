@@ -6,7 +6,8 @@
 	const experiments = [
 		{ key: 'authorConnections', path: '/lab/author-connections' },
 		{ key: 'authorProminence', path: '/lab/author-prominence' },
-		{ key: 'bookSearch', path: '/lab/book-search' }
+		{ key: 'bookSearch', path: '/lab/book-search' },
+		{ key: 'recommendationBenchmark', path: '/lab/recommendation-benchmark' }
 	] as const;
 </script>
 

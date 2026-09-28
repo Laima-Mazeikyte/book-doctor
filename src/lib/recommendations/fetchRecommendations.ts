@@ -18,10 +18,11 @@ export type FetchRecommendationsResult = {
 
 export async function fetchRecommendations(
 	accessToken: string | null,
-	requestId: string | null
+	requestId: string | null,
+	{ includeRated = false }: { includeRated?: boolean } = {}
 ): Promise<FetchRecommendationsResult> {
 	const url = requestId
-		? `/api/recommendations?request_id=${encodeURIComponent(requestId)}`
+		? `/api/recommendations?request_id=${encodeURIComponent(requestId)}${includeRated ? '&include_rated=1' : ''}`
 		: '/api/recommendations';
 	const headers: Record<string, string> = {};
 	if (accessToken) {

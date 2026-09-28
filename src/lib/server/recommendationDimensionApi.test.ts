@@ -41,6 +41,7 @@ const fixture = vi.hoisted(() => ({
 		{ request_id: 'new', created_at: '2026-09-06T00:00:00Z' },
 		{ request_id: 'old', created_at: '2026-09-05T00:00:00Z' }
 	],
+	requests: [] as Array<{ id: string; filters: unknown }>,
 	filteredBookIds: null as string[] | null
 }));
 
@@ -63,10 +64,15 @@ vi.mock('$lib/server/recommendationFilters', async (importOriginal) => ({
 beforeEach(() => {
 	fixture.selects.length = 0;
 	fixture.filteredBookIds = null;
+	fixture.requests = [];
 	fixture.createWithAuth.mockImplementation(() => ({
 		from(table: string) {
 			let rows: Array<Record<string, unknown>> =
-				table === 'recommendation_log' ? [...fixture.logs] : [...fixture.rows];
+				table === 'recommendation_log'
+					? [...fixture.logs]
+					: table === 'recommendation_requests'
+						? [...fixture.requests]
+						: [...fixture.rows];
 			const query = {
 				select(fields: string) {
 					fixture.selects.push(fields);
@@ -76,8 +82,12 @@ beforeEach(() => {
 					rows = rows.filter((row) => row[key] === value);
 					return query;
 				},
-				in() {
+				in(key: string, values: unknown[]) {
+					rows = rows.filter((row) => values.includes(row[key]));
 					return query;
+				},
+				maybeSingle() {
+					return Promise.resolve({ data: rows[0] ?? null, error: null });
 				},
 				order(key: string) {
 					if (key === 'rank') rows.sort((a, b) => Number(a.rank) - Number(b.rank));
@@ -184,4 +194,74 @@ it('resolves evidence only for books that survive filtering', async () => {
 		book: { request_id: 'new', matches: fixture.rows[1].dimension_matches }
 	});
 	expect(uniquePayload.authorRelationshipAuthorsByBookId).toEqual({ book: ['Liked author'] });
+});
+
+it('keeps filtered runs out of the overall list and latest overall lookup', async () => {
+	fixture.logs = [
+		{ request_id: '42', created_at: '2026-09-07T00:00:00Z' },
+		{ request_id: 'old', created_at: '2026-09-05T00:00:00Z' }
+	];
+	fixture.requests = [{ id: '42', filters: { genres: { all_of: ['Africa'] } } }];
+	fixture.rows = [
+		{
+			book_id: 'book',
+			request_id: '42',
+			rank: 1,
+			dimension_matches: [],
+			author_relationship_evidence: []
+		},
+		{
+			book_id: 'series',
+			request_id: 'old',
+			rank: 1,
+			dimension_matches: [],
+			author_relationship_evidence: []
+		}
+	];
+	try {
+		const unique = await (await getUnique(event('/api/recommendations/unique'))).json();
+		expect(unique.books.map((book: { book_id: string }) => book.book_id)).toEqual(['series']);
+		const latestOverall = await (await getRun(event('/api/recommendations'))).json();
+		expect(latestOverall.request_id).toBe('old');
+		expect(latestOverall.books.map((book: { book_id: string }) => book.book_id)).toEqual([
+			'series'
+		]);
+	} finally {
+		fixture.logs = [
+			{ request_id: 'new', created_at: '2026-09-06T00:00:00Z' },
+			{ request_id: 'old', created_at: '2026-09-05T00:00:00Z' }
+		];
+		fixture.rows = [
+			{
+				book_id: 'series',
+				request_id: 'old',
+				rank: 1,
+				dimension_matches: [{ dimension_key: 'spice', candidate_raw_score: 1 }],
+				author_relationship_evidence: ['Older author']
+			},
+			{
+				book_id: 'book',
+				request_id: 'new',
+				rank: 2,
+				dimension_matches: [
+					{ dimension_key: 'spice', candidate_raw_score: 0 },
+					{ dimension_key: 'pace', candidate_raw_score: 1 }
+				],
+				author_relationship_evidence: ['Liked author']
+			},
+			{
+				book_id: 'series',
+				request_id: 'new',
+				rank: 1,
+				dimension_matches: [],
+				author_relationship_evidence: []
+			}
+		];
+	}
+});
+
+it('requires an owned request for the filtered page result mode', async () => {
+	await expect(
+		getRun(event('/api/recommendations', '?request_id=999&include_rated=1'))
+	).rejects.toMatchObject({ status: 404 });
 });

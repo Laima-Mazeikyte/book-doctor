@@ -15,6 +15,7 @@ import {
 } from '$lib/server/recommendationPrecedents';
 import { requireAccessToken } from '$lib/server/requestAuth';
 import { createSupabaseWithAuth } from '$lib/server/supabase';
+import { overallRecommendationLogs } from '$lib/server/overallRecommendationLogs';
 
 type RecommendationItemRow = RecommendationPrecedentRow & {
 	request_id?: unknown;
@@ -25,7 +26,7 @@ export const GET: RequestHandler = async ({ request }) => {
 	const supabase = createSupabaseWithAuth(accessToken);
 
 	// Get user's recommendation runs (newest first) for per-book recency ordering
-	const { data: logs, error: logError } = await supabase
+	const { data: allLogs, error: logError } = await supabase
 		.from('recommendation_log')
 		.select('request_id, created_at')
 		.order('created_at', { ascending: false });
@@ -33,6 +34,13 @@ export const GET: RequestHandler = async ({ request }) => {
 	if (logError) {
 		console.error(logError);
 		throw error(500, 'Failed to load recommendation runs');
+	}
+	let logs;
+	try {
+		logs = await overallRecommendationLogs(supabase, allLogs ?? []);
+	} catch (requestError) {
+		console.error(requestError);
+		throw error(500, 'Failed to load recommendation requests');
 	}
 
 	const requestIds = (logs ?? []).map((r) => r.request_id).filter(Boolean);

@@ -15,7 +15,6 @@
 	import { ChevronDown } from 'lucide-svelte';
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { notInterestedStore } from '$lib/stores/notInterested';
-	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
 	import RecommendationsLoading from '$lib/components/RecommendationsLoading.svelte';
 	import { authInitStore, authRestorePending, authStore } from '$lib/stores/auth';
 	import { ratingsStore } from '$lib/stores/ratings';
@@ -148,10 +147,6 @@
 			return [...list, keep.book];
 		}
 		return list;
-	});
-
-	$effect(() => {
-		if (uniqueLoaded) recommendationsCountStore.set(recommendedRawList.length);
 	});
 
 	async function fetchUniqueBooks(accessToken: string): Promise<RecommendationsUniquePayload> {
@@ -349,6 +344,10 @@
 </svelte:head>
 
 <div class="recommendations-page">
+	<nav class="recommendations-page__tabs" aria-label="Recommendation views">
+		<a href={resolve('/rate/recommendations')} aria-current="page">For you</a>
+		<a href={resolve('/rate/recommendations/filtered')}>Filter books</a>
+	</nav>
 	{#if viewMode === 'loading'}
 		<h1
 			class="recommendations-page__title recommendations-page__title--spaced typ-display2 typ-display2--content"
@@ -442,6 +441,22 @@
 		justify-content: flex-start;
 		width: 100%;
 		padding-bottom: var(--space-8);
+	}
+	.recommendations-page__tabs {
+		display: flex;
+		justify-content: center;
+		gap: var(--space-4);
+		margin-bottom: var(--space-5);
+	}
+	.recommendations-page__tabs a {
+		color: var(--color-text-muted);
+		padding: var(--space-2);
+		text-decoration: none;
+		border-bottom: 2px solid transparent;
+	}
+	.recommendations-page__tabs a[aria-current='page'] {
+		color: var(--color-text);
+		border-color: var(--color-text);
 	}
 	.recommendations-page__title {
 		margin: 0 0 var(--space-3) 0;

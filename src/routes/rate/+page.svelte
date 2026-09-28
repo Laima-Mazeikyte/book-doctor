@@ -1872,6 +1872,9 @@
 					>
 						{recommendationsSubmitLabel}
 					</Button>
+					<a class="rate-page__filtered-link" href={resolve('/rate/recommendations/filtered')}>
+						Choose filters
+					</a>
 				</div>
 			{:else}
 				<div class="rate-page__recommendations-hint-wrap">
@@ -2324,6 +2327,12 @@
 		align-items: flex-end;
 		gap: var(--space-1);
 		max-width: min(20rem, 100%);
+	}
+	.rate-page__filtered-link {
+		padding: var(--space-2);
+		color: var(--color-text-muted);
+		text-decoration: underline;
+		text-underline-offset: 0.2em;
 	}
 	.rate-page__recommendations-hint-wrap {
 		width: fit-content;

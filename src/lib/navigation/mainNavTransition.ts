@@ -3,6 +3,7 @@ export const MAIN_NAV_PATHS = new Set([
 	'/rate',
 	'/my-bookshelf',
 	'/rate/recommendations',
+	'/rate/recommendations/filtered',
 	'/rate/recommendations/shortlist',
 	'/faq'
 ]);

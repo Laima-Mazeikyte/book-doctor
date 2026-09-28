@@ -121,7 +121,8 @@
 	const showAppFooter = $derived.by(() => {
 		const pathname = page.url.pathname;
 		if (isShortlistShell) return false;
-		if (pathname === '/rate/recommendations') return true;
+		if (pathname === '/rate/recommendations' || pathname === '/rate/recommendations/filtered')
+			return true;
 		return pathname !== '/rate' && !pathname.startsWith('/rate/');
 	});
 
