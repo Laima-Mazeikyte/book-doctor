@@ -67,3 +67,17 @@ it('restores focus to the exact activation control after close', async () => {
 	await expect.poll(() => document.activeElement === triggerElement).toBe(true);
 	expect(onClose).toHaveBeenCalledTimes(1);
 });
+
+it('renders HTML-like book fields as text rather than executable markup', async () => {
+	const title = '<img src=x onerror=alert(1)>';
+	const summary = '<script>alert(2)</script>';
+	const state: BookSummarySheetState = {
+		kind: 'ready',
+		book: { ...book, title, summary },
+		trigger: trigger()
+	};
+	const rendered = render(BookSummarySheet, { state, onClose: vi.fn() });
+	await expect.element(rendered.getByRole('heading', { name: title, exact: true })).toBeVisible();
+	await expect.element(rendered.getByText(summary, { exact: true })).toBeVisible();
+	expect(document.querySelector('img[src="x"]')).toBeNull();
+});

@@ -4,6 +4,7 @@
 	import { Bookmark, ThumbsDown, Search, Star } from 'lucide-svelte';
 	import Button from '$lib/components/Button.svelte';
 	import BookQualityEvidence from '$lib/components/BookQualityEvidence.svelte';
+	import BookCorrection from './BookCorrection.svelte';
 	import RecommendationAuthorRelationships from '$lib/components/RecommendationAuthorRelationships.svelte';
 	import RecommendationPrecedents from '$lib/components/RecommendationPrecedents.svelte';
 	import { t } from '$lib/copy';
@@ -272,6 +273,9 @@
 		{#if showQualityEvidence}
 			<BookQualityEvidence {book} />
 		{/if}
+		{#key book.book_id}
+			<BookCorrection {book} />
+		{/key}
 	</div>
 {/snippet}
 

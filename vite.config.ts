@@ -18,7 +18,7 @@ export default defineConfig({
 		allowedHosts: ['book-doctor.test']
 	},
 	optimizeDeps: {
-		include: ['lucide-svelte']
+		include: ['lucide-svelte', '@supabase/supabase-js']
 	},
 	test: {
 		expect: { requireAssertions: true },
