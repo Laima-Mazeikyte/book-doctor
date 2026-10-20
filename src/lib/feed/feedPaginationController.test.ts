@@ -6,11 +6,17 @@ import {
 	type FeedPaginationState
 } from './feedPaginationController';
 
-function transition(state: FeedPaginationState, event: Parameters<typeof transitionFeedPagination>[1]) {
+function transition(
+	state: FeedPaginationState,
+	event: Parameters<typeof transitionFeedPagination>[1]
+) {
 	return transitionFeedPagination(state, event).state;
 }
 
-function commands(state: FeedPaginationState, event: Parameters<typeof transitionFeedPagination>[1]) {
+function commands(
+	state: FeedPaginationState,
+	event: Parameters<typeof transitionFeedPagination>[1]
+) {
 	return transitionFeedPagination(state, event).commands;
 }
 
@@ -65,6 +71,57 @@ describe('feedPaginationController', () => {
 		});
 
 		expect(state.phase).toBe('readyToPrefetch');
+	});
+
+	it('keeps unchanged browse progress stable but still checks the dwell deadline', () => {
+		let state = transition(initialFeedPaginationState(), {
+			type: 'ENTER_FEED',
+			batchStartIndex: 0,
+			batchSize: 50,
+			now: 1000
+		});
+		const progress = {
+			type: 'BROWSE_PROGRESS' as const,
+			maxSeenIndex: 24,
+			nearBottom: false,
+			columns: 5
+		};
+		state = transition(state, { ...progress, now: 1500 });
+		expect(transition(state, { ...progress, now: 2999 })).toBe(state);
+		expect(transition(state, { ...progress, now: 3000 }).phase).toBe('readyToPrefetch');
+	});
+
+	it('keeps insufficient progress stable after the dwell deadline', () => {
+		const state = transition(initialFeedPaginationState(), {
+			type: 'ENTER_FEED',
+			batchStartIndex: 0,
+			batchSize: 50,
+			now: 1000
+		});
+		expect(
+			transition(state, {
+				type: 'BROWSE_PROGRESS',
+				maxSeenIndex: -1,
+				nearBottom: false,
+				columns: 5,
+				now: 3000
+			})
+		).toBe(state);
+	});
+
+	it('does not replace repeated sentinel state or suppress a ready load command', () => {
+		const pending = transition(initialFeedPaginationState(), {
+			type: 'ENTER_FEED',
+			batchStartIndex: 0,
+			batchSize: 50,
+			now: 1000
+		});
+		const waiting = transition(pending, { type: 'SENTINEL_PREFETCH', now: 1100 });
+		expect(transition(waiting, { type: 'SENTINEL_BOTTOM', now: 1200 })).toBe(waiting);
+		const ready = { ...waiting, phase: 'readyToPrefetch' as const };
+		const result = transitionFeedPagination(ready, { type: 'SENTINEL_PREFETCH', now: 3200 });
+		expect(result.state).toBe(ready);
+		expect(result.commands).toEqual([{ type: 'REQUEST_LOAD' }]);
 	});
 
 	it('grants browse credit with lower progress near the bottom', () => {

@@ -27,7 +27,13 @@ export type FeedPaginationState = {
 export type FeedPaginationEvent =
 	| { type: 'ENTER_FEED'; batchStartIndex: number; batchSize: number; now: number }
 	| { type: 'RESET' }
-	| { type: 'BROWSE_PROGRESS'; maxSeenIndex: number; nearBottom: boolean; columns: number; now: number }
+	| {
+			type: 'BROWSE_PROGRESS';
+			maxSeenIndex: number;
+			nearBottom: boolean;
+			columns: number;
+			now: number;
+	  }
 	| { type: 'SENTINEL_PREFETCH'; now: number }
 	| { type: 'SENTINEL_BOTTOM'; now: number }
 	| { type: 'MANUAL_LOAD'; now: number }
@@ -137,7 +143,7 @@ export function transitionFeedPagination(
 }
 
 function sentinelWantsLoad(state: FeedPaginationState): FeedPaginationTransition {
-	const next = { ...state, sentinelWantsLoad: true };
+	const next = state.sentinelWantsLoad ? state : { ...state, sentinelWantsLoad: true };
 	if (state.phase !== 'readyToPrefetch') {
 		return { state: next, commands: [] };
 	}
@@ -171,7 +177,7 @@ function applyBrowseProgress(
 	if (state.phase !== 'creditPending' || state.batchSize <= 0) return state;
 
 	const maxSeenIndex = Math.max(state.maxSeenIndex, event.maxSeenIndex);
-	const next = { ...state, maxSeenIndex };
+	const next = maxSeenIndex === state.maxSeenIndex ? state : { ...state, maxSeenIndex };
 	if (event.now - state.batchMountedAt < FEED_BATCH_BROWSE_DWELL_MS) return next;
 
 	const progress = batchProgressByRows({

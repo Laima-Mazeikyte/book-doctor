@@ -51,6 +51,7 @@
 	import { searchBooks, searchBooksByAuthor, SEARCH_MIN_QUERY_LENGTH } from '$lib/search';
 	import { nextRateSearchModeAfterQueryChange } from '$lib/search/rateSearchAuthorMode';
 	import {
+		FEED_BATCH_BROWSE_DWELL_MS,
 		FEED_NEAR_BOTTOM_PX,
 		FEED_REQUEST_BATCH_SIZE,
 		FEED_REQUEST_CREATE_COOLDOWN_MS
@@ -482,6 +483,11 @@
 	let startedFromLatestFeed = $state(false);
 	let lastAppendWasFeed = $state(false);
 	let feedPagination = $state(initialFeedPaginationState());
+	// Stable primitive dependencies keep progress updates from restarting observer effects.
+	const feedPaginationPhase = $derived(feedPagination.phase);
+	const feedBatchStartIndex = $derived(feedPagination.batchStartIndex);
+	const feedBatchSize = $derived(feedPagination.batchSize);
+	const feedBatchMountedAt = $derived(feedPagination.batchMountedAt);
 	let feedPaginationCooldownRetryTimer: ReturnType<typeof setTimeout> | null = null;
 	let feedScrollProgressRaf = 0;
 	/** Cold `loadInitialMainList` used Top 100 because no access token was ready in time; retry feed once auth exists. */
@@ -712,7 +718,7 @@
 		const feedOnly = paginationFeedOnly;
 		const lastFeed = lastAppendWasFeed;
 		const feedEligible = canRequestPersonalizedFeed;
-		const feedPhase = feedPagination.phase;
+		const feedPhase = feedPaginationPhase;
 
 		const tryLoadFromSentinel = (type: 'SENTINEL_PREFETCH' | 'SENTINEL_BOTTOM') => {
 			if (loading || initial || overlayBlocksFeed) return;
@@ -767,10 +773,11 @@
 		const active =
 			paginationFeedOnly &&
 			lastAppendWasFeed &&
-			feedPagination.phase === 'creditPending' &&
+			feedPaginationPhase === 'creditPending' &&
 			!searchOverlayOpen;
-		const batchStartIndex = feedPagination.batchStartIndex;
-		const batchSize = feedPagination.batchSize;
+		const batchStartIndex = feedBatchStartIndex;
+		const batchSize = feedBatchSize;
+		const batchMountedAt = feedBatchMountedAt;
 		const columns = feedGridColumns;
 		void popularBooks.length;
 		void batchStartIndex;
@@ -786,7 +793,11 @@
 		window.addEventListener('resize', onScrollOrResize);
 		window.visualViewport?.addEventListener('resize', onScrollOrResize);
 		queueMicrotask(onScrollOrResize);
+		// Recheck once at the dwell deadline, even if the user stops scrolling beforehand.
+		const remainingDwellMs = batchMountedAt + FEED_BATCH_BROWSE_DWELL_MS - Date.now();
+		const dwellTimer = remainingDwellMs > 0 ? setTimeout(onScrollOrResize, remainingDwellMs) : null;
 		return () => {
+			if (dwellTimer !== null) clearTimeout(dwellTimer);
 			window.removeEventListener('scroll', onScrollOrResize);
 			window.removeEventListener('resize', onScrollOrResize);
 			window.visualViewport?.removeEventListener('resize', onScrollOrResize);

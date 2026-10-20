@@ -1,6 +1,9 @@
 import { expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import { page as browserPage } from 'vitest/browser';
 import BookCard from './BookCard.svelte';
+import '../../app.css';
+import coverFixture from '$lib/assets/favicon.svg?url';
 
 const appPage = vi.hoisted(() => ({
 	current: { state: {} as Record<string, unknown> }
@@ -8,8 +11,11 @@ const appPage = vi.hoisted(() => ({
 
 vi.mock('$app/stores', () => ({
 	page: {
-		subscribe(run: (value: typeof appPage.current) => void) {
-			run(appPage.current);
+		subscribe(run: (value: typeof appPage.current & { url: URL }) => void) {
+			run({
+				...appPage.current,
+				url: new URL('http://localhost/rate')
+			});
 			return () => undefined;
 		}
 	}
@@ -95,4 +101,99 @@ it('strips its owned shallow marker when a rate card is removed', async () => {
 
 	window.history.back();
 	appPage.current = { state: {} };
+});
+
+it('keeps translucent actions responsive without filters or duplicate cover images', async () => {
+	await browserPage.viewport(1280, 900);
+	const rendered = render(BookCard, {
+		props: {
+			book: { ...book, coverUrl: coverFixture },
+			context: 'recommendations',
+			coverPriority: 'lazy',
+			onBookmark: vi.fn(),
+			onNotInterested: vi.fn()
+		}
+	});
+	const cover = rendered.container.querySelector<HTMLImageElement>('img')!;
+	expect(rendered.container.querySelectorAll('img')).toHaveLength(1);
+	expect(rendered.container.querySelectorAll('canvas')).toHaveLength(0);
+	expect(cover.loading).toBe('lazy');
+	for (const width of [180, 280, 400]) {
+		rendered.container.style.width = width + 'px';
+		await expect
+			.element(rendered.getByRole('button', { name: 'Add to Bookmarks', exact: true }))
+			.toBeVisible();
+	}
+	const summary = rendered
+		.getByRole('button', {
+			name: 'A book by An author. See summary',
+			exact: true
+		})
+		.last();
+	await summary.hover();
+	await expect.poll(() => summary.element().getBoundingClientRect().width).toBeGreaterThan(80);
+	for (const element of rendered.container.querySelectorAll(
+		'.book-card__media-inner, .book-card__media-inner *'
+	)) {
+		const style = getComputedStyle(element);
+		expect(style.filter).toBe('none');
+		expect(style.backdropFilter).toBe('none');
+	}
+	for (const action of rendered.container.querySelectorAll('.book-card__action')) {
+		expect(getComputedStyle(action).backgroundImage).toBe('none');
+	}
+	await summary.click();
+	await expect.element(rendered.getByTestId('book-summary-sheet')).toBeVisible();
+	rendered.unmount();
+});
+
+it('keeps translucent actions and callbacks working when the cover fails', async () => {
+	const onBookmark = vi.fn();
+	const onNotInterested = vi.fn();
+	const rendered = render(BookCard, {
+		props: {
+			book: { ...book, coverUrl: coverFixture },
+			context: 'recommendations',
+			onBookmark,
+			onNotInterested
+		}
+	});
+	rendered.container.style.width = '280px';
+	rendered.container.querySelector('.book-card__cover-hit img')!.dispatchEvent(new Event('error'));
+	await expect.poll(() => rendered.container.querySelectorAll('img').length).toBe(0);
+	expect(
+		getComputedStyle(rendered.container.querySelector('.book-card__action')!).backgroundImage
+	).toBe('none');
+	await rendered.getByRole('button', { name: 'Add to Bookmarks', exact: true }).click();
+	expect(onBookmark).toHaveBeenCalledWith(book.id);
+	await rendered.getByRole('button', { name: 'Not interested', exact: true }).click();
+	expect(onNotInterested).toHaveBeenCalledWith(book.id);
+	await rendered.rerender({ bookmarked: true, notInterested: true });
+	expect(rendered.container.querySelectorAll('canvas')).toHaveLength(0);
+	expect(
+		rendered.container.querySelector('.book-card__action--saved')?.getAttribute('aria-pressed')
+	).toBe('true');
+	await rendered
+		.getByRole('button', { name: 'A book by An author. See summary', exact: true })
+		.last()
+		.click();
+	await expect.element(rendered.getByTestId('book-summary-sheet')).toBeVisible();
+	rendered.unmount();
+});
+
+it('keeps selected actions distinct from the translucent surface', async () => {
+	const rendered = render(BookCard, {
+		props: {
+			book: { ...book, coverUrl: coverFixture },
+			context: 'recommendations',
+			bookmarked: true,
+			onBookmark: vi.fn()
+		}
+	});
+	rendered.container.style.width = '280px';
+	const bookmark = rendered.container.querySelector('.book-card__cover-actions--tl button')!;
+	const selectedBackground = getComputedStyle(bookmark).backgroundColor;
+	await rendered.rerender({ bookmarked: false });
+	await expect.poll(() => getComputedStyle(bookmark).backgroundColor).not.toBe(selectedBackground);
+	rendered.unmount();
 });

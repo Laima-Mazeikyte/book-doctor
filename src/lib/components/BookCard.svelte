@@ -783,14 +783,11 @@
 		);
 	}
 
-	/* Cover overlay actions only: frosted glass (overrides pill-surface rules above) */
+	/* Translucent cover actions: keep artwork visible without live filters. */
 	.book-card__media-inner .book-card__cover-actions .book-card__action {
 		border: none;
 		color: var(--primitive-white);
-		-webkit-backdrop-filter: blur(12px);
-		backdrop-filter: blur(12px);
 	}
-
 	/* Selected chip on cover: base rule above wins specificity over .book-card__action--saved; restore contrast */
 	.book-card__media-inner .book-card__cover-actions .book-card__action.book-card__action--saved,
 	.book-card__media-inner
@@ -804,7 +801,9 @@
 		.book-card__action:not(.book-card__action--saved):not(
 			.book-card__action--not-interested-active
 		) {
-		background: color-mix(in srgb, var(--book-card-cover-tint) 12%, transparent);
+		background-color: color-mix(in srgb, var(--book-card-cover-tint) 65%, transparent);
+		background-image: none;
+		box-shadow: none;
 	}
 
 	.book-card__media-inner
@@ -817,6 +816,7 @@
 		.book-card__action:not(.book-card__action--saved):not(
 			.book-card__action--not-interested-active
 		):focus-visible {
-		background: color-mix(in srgb, var(--book-card-cover-tint) 30%, transparent);
+		background-color: color-mix(in srgb, var(--book-card-cover-tint) 78%, transparent);
+		background-image: none;
 	}
 </style>
