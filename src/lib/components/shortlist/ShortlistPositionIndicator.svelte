@@ -16,7 +16,7 @@
 	aria-atomic="true"
 	aria-label={t('recommendations.shortlist.positionAriaLabel', { position, total })}
 >
-	{#each { length: total } as _, index (index)}
+	{#each { length: total }, index (index)}
 		<span
 			class="shortlist-position__dot"
 			class:shortlist-position__dot--active={index + 1 === position}

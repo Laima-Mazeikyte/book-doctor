@@ -7,6 +7,7 @@
 	} from '$lib/footerSupplementContext';
 	import { get } from 'svelte/store';
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { MAINTENANCE_ON, isAllowedDuringMaintenance } from '$lib/maintenance';
 	import { fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
@@ -23,9 +24,14 @@
 	import AppFooter from '$lib/components/AppFooter.svelte';
 	import BugReportModal from '$lib/components/BugReportModal.svelte';
 	import SaveAccountPrompt from '$lib/components/SaveAccountPrompt.svelte';
-	import { createLayoutAuthController, mountRatingsRetryListeners } from '$lib/auth/bootstrap-auth';
+	import LibrarySaveNotice from '$lib/components/LibrarySaveNotice.svelte';
+	import { librarySaves } from '$lib/stores/librarySaves';
+	import { createLayoutAuthController } from '$lib/auth/bootstrap-auth';
 	import { AUTH_SIGNED_IN_EVENT, isAuthTransitionActive } from '$lib/auth/completeAuthSuccess';
-	import { onAfterNavigateForBrowseFeedWarm } from '$lib/feed/browseFeedWarm';
+	import {
+		onAfterNavigateForBrowseFeedWarm,
+		notifyLibraryPersistedMutationForBrowseFeedWarm
+	} from '$lib/feed/browseFeedWarm';
 	import { isRateShellPath } from '$lib/navigation/rateShell';
 	import { getSupabase } from '$lib/supabase';
 	import {
@@ -45,17 +51,17 @@
 		unregisterUserLibraryIdsLoader
 	} from '$lib/stores/userLibrary';
 	import { ratingsStore } from '$lib/stores/ratings';
+	import { libraryLoads } from '$lib/stores/libraryLoads';
 	import { readLibraryCache, writeLibraryCache } from '$lib/stores/libraryCache';
 	import {
 		recommendationsCountStore,
 		refreshRecommendationsCountFromApi
 	} from '$lib/stores/recommendationsCount';
-	import { notInterestedStore } from '$lib/stores/notInterested';
 	import { GOODREADS_IMPORT_COMPLETE_EVENT } from '$lib/goodreads/runImport';
 	import { bookmarksPageStore } from '$lib/stores/bookmarksPage';
 	import { recommendationsPageStore } from '$lib/stores/recommendationsPage';
 	import {
-		attachRatingsPersistence,
+		attachLibraryPersistence,
 		createLibraryLoadCoordinator,
 		loadUserLibraryDetails,
 		reloadUserLibraryAfterMigration,
@@ -66,9 +72,16 @@
 	let { children } = $props();
 
 	let bugModalOpen = $state(false);
+	let bugModalRestoreFocusTarget = $state<HTMLElement | null>(null);
 	let pageEnterTransition = $state(false);
 
-	function openBugModal() {
+	function openBugModal(restoreFocusTarget?: HTMLElement | null) {
+		bugModalRestoreFocusTarget =
+			restoreFocusTarget instanceof HTMLElement
+				? restoreFocusTarget
+				: document.activeElement instanceof HTMLElement
+					? document.activeElement
+					: null;
 		bugModalOpen = true;
 	}
 
@@ -114,7 +127,8 @@
 			pathname === '/faq' ||
 			pathname === '/rate' ||
 			pathname.startsWith('/rate/') ||
-			pathname.startsWith('/lab')
+			pathname.startsWith('/lab') ||
+			pathname.startsWith('/books/')
 		);
 	});
 
@@ -149,18 +163,25 @@
 	}
 
 	onMount(() => {
-		ratingsStore.hydratePendingFromLocalStorage();
-		notInterestedStore.hydrateFromLocalStorage();
+		librarySaves.initialize();
+		const unsubscribeSaved = librarySaves.onBookSaved(() => {
+			const owner = librarySaves.getOwner();
+			void librarySaves
+				.flush()
+				.then(() => {
+					if (librarySaves.getOwner() === owner) notifyLibraryPersistedMutationForBrowseFeedWarm();
+				})
+				.catch(() => undefined);
+		});
 
 		const supabaseClient = getSupabase();
 		if (!supabaseClient) {
 			markAuthInitReady();
-			return;
+			return unsubscribeSaved;
 		}
 
 		const authController = createLayoutAuthController(supabaseClient);
 		const unmountAuth = authController.mount();
-		const unmountRetry = mountRatingsRetryListeners();
 
 		registerUserLibraryIdsLoader((userId) => {
 			const supabase = getSupabase();
@@ -196,8 +217,8 @@
 		window.addEventListener(GOODREADS_IMPORT_COMPLETE_EVENT, onGoodreadsImportComplete);
 
 		return () => {
+			unsubscribeSaved();
 			unmountAuth();
-			unmountRetry();
 			unregisterUserLibraryIdsLoader();
 			unregisterUserLibraryDetailsLoader();
 			window.removeEventListener(AUTH_SIGNED_IN_EVENT, onSignedIn);
@@ -210,7 +231,8 @@
 		// Keep client-side navigation inside the allowlist while in maintenance mode.
 		if (MAINTENANCE_ON && to && !isAllowedDuringMaintenance(to.url.pathname)) {
 			navigation.cancel();
-			if (to.url.pathname !== '/') void goto('/');
+			const homeHref = resolve('/');
+			if (to.url.pathname !== homeHref) void goto(homeHref);
 			return;
 		}
 		pageEnterTransition =
@@ -267,12 +289,15 @@
 		}
 
 		hadUserBefore.current = true;
-		attachRatingsPersistence(supabase, user.id, persistenceUserId);
+		attachLibraryPersistence(supabase, user.id, persistenceUserId);
 
 		const pathname = page.url.pathname;
 		if (libraryHydratedForUserId.current !== user.id) {
 			// Paint the rated library instantly from the local cache, then revalidate from the server.
-			ratingsStore.hydrateFromCache(readLibraryCache(user.id) ?? []);
+			bookmarksPageStore.ensureUser(user.id);
+			const cachedRatings = readLibraryCache(user.id) ?? [];
+			ratingsStore.hydrateFromCache(cachedRatings);
+			if (cachedRatings.length) libraryLoads.markSnapshot(user.id, ['ratings', 'ratedDetails']);
 			activeLibraryLoadRequestId = startUserLibraryIdsLoad(
 				supabase,
 				user.id,
@@ -362,8 +387,13 @@
 		<AppFooter onOpenBugReport={openBugModal} supplement={footerSupplementText} />
 	{/if}
 </div>
-<BugReportModal open={bugModalOpen} onClose={closeBugModal} />
+<BugReportModal
+	open={bugModalOpen}
+	onClose={closeBugModal}
+	restoreFocusTarget={bugModalRestoreFocusTarget}
+/>
 <SaveAccountPrompt open={showSaveAccountPrompt} />
+<LibrarySaveNotice />
 
 <style>
 	.app-chrome {

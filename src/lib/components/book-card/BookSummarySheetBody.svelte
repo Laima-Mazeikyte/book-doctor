@@ -1,9 +1,17 @@
 <script lang="ts">
+	import { authStore, authReady } from '$lib/stores/auth';
+	import { canUseLibraryAction, userLibraryHydrationStore } from '$lib/stores/userLibrary';
+	import { resolve } from '$app/paths';
+	import { bookPath } from '$lib/books/bookUrl';
 	import RecommendationDimensionMatches from '$lib/components/RecommendationDimensionMatches.svelte';
 	import type { DimensionMatch } from '$lib/recommendations/dimensionMatches';
 	import { Bookmark, ThumbsDown, Search, Star } from 'lucide-svelte';
 	import Button from '$lib/components/Button.svelte';
+	import RecommendationSubmitLabel from '$lib/components/RecommendationSubmitLabel.svelte';
 	import BookQualityEvidence from '$lib/components/BookQualityEvidence.svelte';
+	import LibrarySaveIndicator from '$lib/components/LibrarySaveIndicator.svelte';
+	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
+	import { librarySaves } from '$lib/stores/librarySaves';
 	import BookCorrection from './BookCorrection.svelte';
 	import RecommendationAuthorRelationships from '$lib/components/RecommendationAuthorRelationships.svelte';
 	import RecommendationPrecedents from '$lib/components/RecommendationPrecedents.svelte';
@@ -111,6 +119,14 @@
 		dimensionMatches = [],
 		showQualityEvidence = false
 	}: Props = $props();
+	const overlaySaveBlocked = $derived(
+		notInterestedOverlay === 'new-rec' &&
+			($librarySaves.queuedCount > 0 || $librarySaves.isFlushing)
+	);
+	const overlayBusy = $derived(notInterestedOverlayBusy || overlaySaveBlocked);
+	const overlaySaving = $derived(
+		notInterestedOverlayBusy || (overlaySaveBlocked && $librarySaves.failedCount === 0)
+	);
 
 	const showSummaryRemoveSlot = $derived(canRemoveRatingInSheet || reserveSummaryRemoveLayoutSlot);
 	const summaryRemoveLayoutOnly = $derived(
@@ -127,6 +143,11 @@
 	const showNotInterestedOverlay = $derived(
 		notInterested && notInterestedOverlay != null && onNotInterestedOverlayClick != null
 	);
+	function actionReady(action: 'rating' | 'bookmark' | 'dismissal'): boolean {
+		return (
+			$authReady && canUseLibraryAction(action, $authStore.user?.id, $userLibraryHydrationStore)
+		);
+	}
 </script>
 
 {#snippet summaryStarGlyph(filled: boolean)}
@@ -160,6 +181,7 @@
 {#snippet headerTextBlock()}
 	<div class="book-card__summary-header-text">
 		<h3 class="book-card__summary-sheet-title typ-h3" id={summaryTitleId}>{book.title}</h3>
+		<a class="typ-caption" href={resolve(bookPath(book))}>{t('shared.bookSummary.viewBookPage')}</a>
 
 		{#if showAuthorInSheetMeta || book.year}
 			<div
@@ -219,6 +241,7 @@
 					<button
 						type="button"
 						class="book-card__star"
+						disabled={!actionReady('rating')}
 						class:book-card__star--active={displayRating >= value}
 						aria-label={starAriaLabel(value)}
 						aria-pressed={starAriaPressed(value)}
@@ -228,6 +251,7 @@
 						{@render summaryStarGlyph(displayRating >= value)}
 					</button>
 				{/each}
+				<LibrarySaveIndicator bookUlid={book.book_id} kind="rating" />
 			</div>
 			{#if showSummaryRemoveSlot}
 				<button
@@ -239,6 +263,7 @@
 						? undefined
 						: t('shared.ratingsBar.removeRatingFor', { title: book.title })}
 					tabindex={summaryRemoveLayoutOnly ? -1 : undefined}
+					disabled={!actionReady('rating')}
 					onclick={(e) => {
 						if (!summaryRemoveLayoutOnly) onRemoveRatingClick(e);
 					}}
@@ -296,9 +321,11 @@
 					aria-label={bookmarked
 						? t('shared.recommendationCard.removeFromReadingList')
 						: t('shared.recommendationCard.addToReadingList')}
+					disabled={!actionReady('bookmark')}
 					onclick={onBookmarkClick}
 				>
 					<Bookmark size={14} aria-hidden="true" />
+					<LibrarySaveIndicator bookUlid={book.book_id} kind="bookmark" />
 					{#if !iconOnly || bookmarked}
 						<span class="book-card__action-label">
 							{bookmarked
@@ -318,6 +345,7 @@
 					aria-label={readItActive
 						? t('recommendations.shortlist.removeIveReadIt')
 						: t('recommendations.shortlist.iveReadIt')}
+					disabled={!actionReady('rating')}
 					onclick={(e) => onReadItClick?.(e)}
 				>
 					<Star size={14} aria-hidden="true" fill="none" />
@@ -336,9 +364,11 @@
 					aria-label={notInterested
 						? t('shared.recommendationCard.removeFromNotInterested')
 						: t('shared.recommendationCard.notInterested')}
+					disabled={!actionReady('dismissal')}
 					onclick={onNotInterestedClick}
 				>
 					<ThumbsDown size={14} aria-hidden="true" />
+					<LibrarySaveIndicator bookUlid={book.book_id} kind="dismissal" />
 					{#if !iconOnly || notInterested}
 						<span class="book-card__action-label"
 							>{t('shared.recommendationCard.notInterested')}</span
@@ -358,6 +388,9 @@
 	role={onSummaryPointerDown ? 'region' : undefined}
 	aria-labelledby={onSummaryPointerDown ? summaryTitleId : undefined}
 >
+	{#if !isShortlistSideBySide}
+		<LibraryLoadNotice collections={['ratings', 'bookmarks', 'dismissals']} />
+	{/if}
 	{#if isShortlistSideBySide}
 		<div class="book-card__summary-shortlist-main">
 			<div class="book-card__summary-side-layout">
@@ -368,19 +401,30 @@
 								<Button
 									variant="primary"
 									pill
-									aria-disabled={notInterestedOverlayBusy ? 'true' : undefined}
-									aria-busy={notInterestedOverlayBusy ? 'true' : undefined}
+									aria-disabled={overlayBusy ? 'true' : undefined}
+									aria-busy={overlaySaving ? 'true' : undefined}
 									onclick={(e) => {
-										if (notInterestedOverlayBusy) {
+										if (overlayBusy) {
 											e.preventDefault();
 											return;
 										}
 										onNotInterestedOverlayClick?.();
 									}}
 								>
-									{notInterestedOverlay === 'replace'
-										? t('recommendations.shortlist.offerAnotherBook')
-										: t('recommendations.shortlist.getNewRecommendations')}
+									{#if notInterestedOverlay === 'replace'}
+										{t('recommendations.shortlist.offerAnotherBook')}
+									{:else}
+										<RecommendationSubmitLabel
+											busy={notInterestedOverlayBusy}
+											label={overlaySaveBlocked
+												? t(
+														$librarySaves.failedCount
+															? 'librarySaves.retryNeeded'
+															: 'librarySaves.saving'
+													)
+												: t('recommendations.shortlist.getNewRecommendations')}
+										/>
+									{/if}
 								</Button>
 							</div>
 						{/if}

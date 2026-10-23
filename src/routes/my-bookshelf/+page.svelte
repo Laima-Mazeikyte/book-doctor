@@ -12,7 +12,13 @@
 	import { notInterestedStore } from '$lib/stores/notInterested';
 	import { bookmarksPageStore } from '$lib/stores/bookmarksPage';
 	import { ratedSummarySheetKeepAlive } from '$lib/stores/ratedSummarySheetKeepAlive';
-	import { isUserLibraryDetailsReady, userLibraryHydrationStore } from '$lib/stores/userLibrary';
+	import {
+		areLibraryCollectionsAvailable,
+		userLibraryHydrationStore
+	} from '$lib/stores/userLibrary';
+	import { libraryLoads, type LibraryCollection } from '$lib/stores/libraryLoads';
+	import { loadBookmarkDetails } from '$lib/auth/load-bookmarks';
+	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
 	import BookCard from '$lib/components/BookCard.svelte';
 	import BookCardGridSkeleton from '$lib/components/BookCardGridSkeleton.svelte';
 	import NotInterestedPagination from '$lib/components/NotInterestedPagination.svelte';
@@ -29,6 +35,8 @@
 	import type { Book, RatingValue } from '$lib/types/book';
 
 	/** Rendered column count for the bookshelf grid — drives cover eager/lazy priority. */
+	// Token refreshes keep the current retry budget; changing accounts starts a new load.
+	const libraryUserId = $derived($authStore.user?.id);
 	let gridColumns = $state(estimateGridColumns());
 
 	const FILTER_IDS = ['rated', 'bookmarked', 'not-interested'] as const;
@@ -112,10 +120,13 @@
 	}
 
 	let bookmarkBooks = $state<Book[]>([]);
-	let bookmarkLoading = $state(false);
-	/** The first bookmark fetch for a user may block only the Bookmarked tab. */
-	let bookmarkBlockingCompletedUserId = $state<string | null>(null);
-	let bookmarkLoadRequestId = 0;
+	const bookmarkLoad = $derived($userLibraryHydrationStore.collections.bookmarkDetails);
+	const bookmarkLoading = $derived(
+		Boolean($authStore.user) &&
+			!bookmarkLoad.hasSnapshot &&
+			bookmarkLoad.status !== 'error' &&
+			bookmarkBooks.length === 0
+	);
 
 	let activeFilter = $state<FilterId>('rated');
 	let sortOrder = $state<ShelfSortId>(readSortFromLs());
@@ -179,50 +190,28 @@
 	});
 
 	$effect(() => {
-		const session = $authStore.session;
-		const token = session?.access_token ?? null;
-		const snapshot = bookmarksPageStore.getSnapshot();
-		const requestId = ++bookmarkLoadRequestId;
-
-		if (!token) {
-			bookmarkLoading = false;
-			bookmarkBlockingCompletedUserId = null;
-			bookmarkBooks = snapshot.loaded ? snapshot.books : [];
-			return;
-		}
-
-		const userId = session?.user?.id ?? null;
-		const needsBlockingBookmarks = !userId || bookmarkBlockingCompletedUserId !== userId;
-		bookmarkLoading = needsBlockingBookmarks;
-		if (snapshot.loaded) {
-			bookmarkBooks = snapshot.books;
-		}
-
-		const bmPromise = fetch('/api/bookmarks', {
-			headers: { Authorization: `Bearer ${token}` }
-		})
-			.then((res) => {
-				if (!res.ok) throw new Error('bm');
-				return res.json() as Promise<{ books: Book[] }>;
-			})
-			.then((d) => d.books ?? [])
-			.catch(() => (snapshot.loaded ? snapshot.books : []));
-
-		void bmPromise.then((bm) => {
-			if (requestId !== bookmarkLoadRequestId) return;
-			bookmarkBooks = bm;
-			bookmarksPageStore.setBooks(bm);
-			bookmarkLoading = false;
-			if (userId) bookmarkBlockingCompletedUserId = userId;
+		const userId = libraryUserId;
+		if (!userId) return;
+		untrack(() => {
+			void libraryLoads.visit(['ratings', 'bookmarks', 'dismissals', 'ratedDetails']);
+			void loadBookmarkDetails(userId, true);
 		});
+	});
+	$effect(() => {
+		const snapshot = $bookmarksPageStore;
+		bookmarkBooks = snapshot.userId === $authStore.user?.id ? snapshot.books : [];
+	});
+	$effect(() => {
+		const userId = libraryUserId;
+		const resources = activeResources;
+		if (userId) untrack(() => void libraryLoads.visit(resources));
 	});
 
 	$effect(() => {
 		const filter = activeFilter;
 		const order: NotInterestedOrder = notInterestedSortOrder;
-		const authKey = `${$authStore.user?.id ?? ''}:${$authStore.session?.access_token ?? ''}`;
+		void libraryUserId;
 		if (filter !== 'not-interested') return;
-		void authKey;
 		void notInterestedPageLoader.ensureLoaded(order);
 	});
 
@@ -262,41 +251,43 @@
 	const notInterestedIds = $derived.by(() => new SvelteSet([...$notInterestedStore]));
 	const planIds = $derived($planToReadStore);
 
-	// True until we actually know the rated set: auth must be resolved and, for a signed-in/anon
-	// user, the rated-book details must have hydrated (the rated list renders purely from details).
-	// Distinguishes "still loading" from "confirmed zero" so we don't flash the empty state on load.
-	const ratedHydrating = $derived.by(() => {
-		if (!$authReady) return true;
-		const user = $authStore.user;
-		if (!user) return false;
-		return !isUserLibraryDetailsReady(user.id, $userLibraryHydrationStore);
-	});
-
-	const countsReady = $derived(
-		(!$authStore.session?.access_token || !bookmarkLoading) && !ratedHydrating
+	const ratedResources = ['ratings', 'ratedDetails', 'dismissals'] as const;
+	const bookmarkResources = ['bookmarks', 'bookmarkDetails', 'dismissals'] as const;
+	const activeResources = $derived<readonly LibraryCollection[]>(
+		activeFilter === 'rated'
+			? ratedResources
+			: activeFilter === 'bookmarked'
+				? bookmarkResources
+				: ['dismissals']
 	);
-
-	// Escape hatch: if hydration hasn't finished within 15s (e.g. a request that never resolves),
-	// stop showing the skeleton forever and surface a retry message instead. Resets whenever
-	// hydration completes or a new load begins.
-	let ratedLoadTimedOut = $state(false);
-	$effect(() => {
-		if (!ratedHydrating) {
-			ratedLoadTimedOut = false;
-			return;
-		}
-		ratedLoadTimedOut = false;
-		const id = setTimeout(() => {
-			ratedLoadTimedOut = true;
-		}, 15_000);
-		return () => clearTimeout(id);
-	});
+	const activeLoadFailed = $derived(
+		$userLibraryHydrationStore.userId === $authStore.user?.id &&
+			activeResources.some(
+				(kind) => $userLibraryHydrationStore.collections[kind].status === 'error'
+			)
+	);
+	const ratedHydrating = $derived(
+		!$authReady ||
+			!areLibraryCollectionsAvailable($authStore.user?.id, $userLibraryHydrationStore, [
+				'ratings',
+				'ratedDetails'
+			])
+	);
+	const countsReady = $derived($authReady);
+	function countReady(id: string): boolean {
+		return (
+			$authReady &&
+			areLibraryCollectionsAvailable($authStore.user?.id, $userLibraryHydrationStore, [
+				id === 'rated' ? 'ratings' : 'bookmarks'
+			])
+		);
+	}
 
 	const tabCounts = $derived.by(() => {
 		if (!countsReady) return { rated: 0, bookmarked: 0 };
-		let rated = 0;
+		let rated = $ratingsStore.size;
 		for (const book of ratedBooksForPartition) {
-			if (!isNotInterested(book, notInterestedIds)) rated++;
+			if (isNotInterested(book, notInterestedIds)) rated--;
 		}
 		return { rated, bookmarked: planIds.size };
 	});
@@ -333,9 +324,16 @@
 		}
 	});
 
-	const bookmarkTabBooks = $derived(
-		bookmarkBooks.filter((b) => !isNotInterested(b, notInterestedIds))
-	);
+	const bookmarkDetails = planToReadStore.bookDetails;
+	const bookmarkTabBooks = $derived.by(() => {
+		void $bookmarkDetails;
+		return planToReadStore
+			.mergeBooks(bookmarkBooks)
+			.filter(
+				(b) =>
+					(!countReady('bookmarked') || planIds.has(b.id)) && !isNotInterested(b, notInterestedIds)
+			);
+	});
 
 	const niTabBooks = $derived(niPageState.books);
 
@@ -344,7 +342,10 @@
 	);
 
 	const listLoading = $derived(
-		Boolean($authStore.session?.access_token) && activeFilter === 'bookmarked' && bookmarkLoading
+		Boolean($authStore.session?.access_token) &&
+			activeFilter === 'bookmarked' &&
+			bookmarkLoading &&
+			!activeLoadFailed
 	);
 	const notInterestedInitialLoading = $derived(
 		activeFilter === 'not-interested' && !niPageState.loaded && !niPageState.error
@@ -354,7 +355,10 @@
 	// hydrating and we have nothing to show yet. Locally-cached ratings render immediately, so this
 	// only kicks in when the list is genuinely empty pending the server sync.
 	const ratedListLoading = $derived(
-		activeFilter === 'rated' && ratedHydrating && ratedDisplayEntries.length === 0
+		activeFilter === 'rated' &&
+			ratedHydrating &&
+			ratedDisplayEntries.length === 0 &&
+			!activeLoadFailed
 	);
 
 	const currentListBooks = $derived.by((): Book[] => {
@@ -424,7 +428,7 @@
 
 	function handleBookmark(book: Book, id: string) {
 		const wasBookmarked = planToReadStore.has(book.id);
-		planToReadStore.toggle(id, book.book_id);
+		planToReadStore.toggle(id, book.book_id, book);
 		if (!wasBookmarked) {
 			notInterestedStore.remove(book.book_id);
 			if (!bookmarkBooks.some((b) => b.id === book.id)) {
@@ -442,10 +446,10 @@
 	function handleNotInterested(book: Book) {
 		const bid = book.book_id;
 		const wasNotInterested = notInterestedStore.has(bid);
-		const nowNotInterested = notInterestedStore.toggle(bid);
+		const nowNotInterested = notInterestedStore.toggle(bid, book);
 		if (nowNotInterested && !wasNotInterested) {
 			if (planToReadStore.has(book.id)) {
-				planToReadStore.toggle(book.id, book.book_id);
+				planToReadStore.toggle(book.id, book.book_id, book);
 				bookmarkBooks = bookmarkBooks.filter((b) => b.id !== book.id);
 				bookmarksPageStore.removeBook(book.id);
 			}
@@ -476,6 +480,10 @@
 			items={tabItems}
 			selectedId={activeFilter}
 			{countsReady}
+			getCountReady={countReady}
+			getCountFailed={(id) =>
+				$userLibraryHydrationStore.collections[id === 'rated' ? 'ratings' : 'bookmarks'].status ===
+				'error'}
 			countedTabIds={['rated', 'bookmarked']}
 			getCount={(id) => countForTab(id as FilterId)}
 			onSelect={(id) => selectTab(id as FilterId)}
@@ -519,14 +527,20 @@
 		role="tabpanel"
 		aria-labelledby="bookshelf-tab-{activeFilter}"
 	>
-		{#if ratedListLoading && ratedLoadTimedOut}
-			<p class="bookshelf-page__empty" role="alert">{t('rated.loadError')}</p>
-		{:else if listLoading || ratedListLoading || notInterestedInitialLoading}
+		<LibraryLoadNotice
+			collections={activeResources}
+			label={activeFilter === 'rated'
+				? 'ratings'
+				: activeFilter === 'bookmarked'
+					? 'bookmarks'
+					: 'dismissals'}
+		/>
+		{#if listLoading || ratedListLoading || notInterestedInitialLoading}
 			<p class="bookshelf-page__loading typ-body">{t('rated.loadingList')}</p>
 			<BookCardGridSkeleton class="bookshelf-page__list" ariaLabel={t('rated.title')} />
-		{:else if activeFilter === 'rated' && ratedDisplayEntries.length === 0}
+		{:else if activeFilter === 'rated' && ratedDisplayEntries.length === 0 && !activeLoadFailed}
 			<p class="bookshelf-page__empty">{t('rated.empty')}</p>
-		{:else if activeFilter === 'bookmarked' && bookmarkTabBooks.length === 0}
+		{:else if activeFilter === 'bookmarked' && bookmarkTabBooks.length === 0 && !activeLoadFailed}
 			<p class="bookshelf-page__empty">{t('rated.emptyBookmarked')}</p>
 		{:else if activeFilter === 'not-interested' && niTabBooks.length === 0 && !niPageState.nextCursor && !niPageState.error}
 			<p class="bookshelf-page__empty">{t('rated.emptyNotInterested')}</p>

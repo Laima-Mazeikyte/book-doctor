@@ -48,4 +48,9 @@
 			transform: scale(1);
 		}
 	}
+	@media (prefers-reduced-motion: reduce) {
+		.ratings-sync-dot--pending {
+			animation: none;
+		}
+	}
 </style>

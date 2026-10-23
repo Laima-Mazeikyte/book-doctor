@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, tick } from 'svelte';
+	import { onDestroy, tick, untrack } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
@@ -24,7 +24,15 @@
 	import { notInterestedStore } from '$lib/stores/notInterested';
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { ratingsStore } from '$lib/stores/ratings';
-	import { userLibraryHydrationStore, isUserLibraryIdsReady } from '$lib/stores/userLibrary';
+	import {
+		userLibraryHydrationStore,
+		isUserLibraryIdsReady,
+		areLibraryCollectionsAvailable
+	} from '$lib/stores/userLibrary';
+	import { libraryLoads, type LibraryCollection } from '$lib/stores/libraryLoads';
+	import { bookmarksPageStore } from '$lib/stores/bookmarksPage';
+	import { loadBookmarkDetails } from '$lib/auth/load-bookmarks';
+	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
 	import { t } from '$lib/copy';
 	import NotInterestedPagination from '$lib/components/NotInterestedPagination.svelte';
 	import { notInterestedPageLoader, notInterestedPageStore } from '$lib/notInterested/pageLoader';
@@ -61,62 +69,69 @@
 
 	const shelfTabsEnabled = $derived(Boolean(resolveBook));
 
+	// Token refreshes keep the current retry budget; changing accounts starts a new load.
+	const libraryUserId = $derived($authStore.user?.id);
 	let activeShelfTab = $state<ShelfFilterId>('rated');
-	let fetchedBookmarkBooks = $state.raw<Book[]>([]);
-	let shelfDetailsLoadedForUserId = $state<string | null>(null);
-	let shelfDetailsLoading = $state(false);
-	let shelfDetailsRequestId = 0;
+	const fetchedBookmarkBooks = $derived(
+		$bookmarksPageStore.userId === $authStore.user?.id ? $bookmarksPageStore.books : []
+	);
+	const activeResources = $derived<readonly LibraryCollection[]>(
+		activeShelfTab === 'rated'
+			? ['ratings', 'ratedDetails', 'dismissals']
+			: activeShelfTab === 'bookmarked'
+				? ['bookmarks', 'bookmarkDetails', 'dismissals']
+				: ['ratings', 'bookmarks', 'dismissals']
+	);
+	const shelfFailed = $derived(
+		$userLibraryHydrationStore.userId === $authStore.user?.id &&
+			activeResources.some(
+				(kind) => $userLibraryHydrationStore.collections[kind].status === 'error'
+			)
+	);
+	const bookmarkShelfPending = $derived(
+		!areLibraryCollectionsAvailable($authStore.user?.id, $userLibraryHydrationStore, [
+			'bookmarkDetails'
+		]) && !shelfFailed
+	);
 
 	function shelfNotInterested(book: Book, notInterestedIds: Set<string>): boolean {
 		return notInterestedIds.has(book.book_id);
 	}
 
 	function bookFallbackById(bookId: string): Book | undefined {
-		return ratingsStore.getRatedBook(bookId) ?? resolveBook?.(bookId);
+		return (
+			ratingsStore.getRatedBook(bookId) ?? planToReadStore.getBook(bookId) ?? resolveBook?.(bookId)
+		);
 	}
 
 	async function fetchShelfDetails(): Promise<void> {
-		if (!browser || !shelfTabsEnabled) return;
-		const auth = get(authStore);
-		const token = auth.session?.access_token ?? null;
-		const userId = auth.user?.id ?? null;
-		if (!token || !userId) return;
-		if (shelfDetailsLoading || shelfDetailsLoadedForUserId === userId) return;
-
-		const requestId = ++shelfDetailsRequestId;
-		shelfDetailsLoading = true;
-		try {
-			const headers = { Authorization: `Bearer ${token}` };
-			const bookmarksRes = await fetch(resolve('/api/bookmarks'), { headers });
-
-			if (requestId !== shelfDetailsRequestId) return;
-			if (bookmarksRes.ok) {
-				const data = (await bookmarksRes.json()) as { books?: Book[] };
-				fetchedBookmarkBooks = data.books ?? [];
-			}
-			shelfDetailsLoadedForUserId = userId;
-		} catch (e) {
-			console.error('[ratings-drawer] Failed to load shelf details:', e);
-		} finally {
-			if (requestId === shelfDetailsRequestId) {
-				shelfDetailsLoading = false;
-			}
-		}
+		const userId = get(authStore).user?.id;
+		if (!userId) return;
+		void libraryLoads.visit(['ratings', 'bookmarks', 'dismissals', 'ratedDetails']);
+		if (shelfTabsEnabled) await loadBookmarkDetails(userId, true);
 	}
 
 	const libraryIdsReady = $derived.by(() =>
 		isUserLibraryIdsReady($authStore.user?.id ?? null, $userLibraryHydrationStore)
 	);
 
-	const triggerCountsPending = $derived(countsPending || !libraryIdsReady);
+	const ratingsAvailable = $derived(
+		areLibraryCollectionsAvailable($authStore.user?.id, $userLibraryHydrationStore, ['ratings'])
+	);
+	const triggerCountsPending = $derived(countsPending || !ratingsAvailable);
 
 	/** Rated tab: library still loading, or ids known but book rows not resolved yet. */
 	const ratedShelfDetailsPending = $derived(
-		ratedEntries.length === 0 && (!libraryIdsReady || $ratingsStore.size > 0)
+		ratedEntries.length === 0 &&
+			!areLibraryCollectionsAvailable($authStore.user?.id, $userLibraryHydrationStore, [
+				'ratings',
+				'ratedDetails'
+			]) &&
+			!shelfFailed
 	);
 
 	const tabCounts = $derived.by(() => {
-		if (!shelfTabsEnabled || !libraryIdsReady) return { rated: 0, bookmarked: 0 };
+		if (!shelfTabsEnabled) return { rated: 0, bookmarked: 0 };
 		return {
 			rated: $ratingsStore.size,
 			bookmarked: $planToReadStore.size
@@ -142,7 +157,9 @@
 
 	const RATING_PLACEHOLDER = 1 as RatingValue;
 
+	const bookmarkDetails = planToReadStore.bookDetails;
 	const bookmarkedShelfEntries = $derived.by((): RatedEntry[] => {
+		void $bookmarkDetails;
 		if (!shelfTabsEnabled) return [];
 		const ratings = $ratingsStore;
 		const planIds = $planToReadStore;
@@ -160,7 +177,14 @@
 			out.push({ book, rating: r ?? RATING_PLACEHOLDER });
 		}
 		for (const book of fetchedBookmarkBooks) {
-			if (seen.has(book.id) || !planIds.has(book.id)) continue;
+			if (
+				seen.has(book.id) ||
+				(areLibraryCollectionsAvailable($authStore.user?.id, $userLibraryHydrationStore, [
+					'bookmarks'
+				]) &&
+					!planIds.has(book.id))
+			)
+				continue;
 			if (shelfNotInterested(book, notInterestedIds)) continue;
 			seen.add(book.id);
 			const r = ratings.get(book.id);
@@ -261,7 +285,9 @@
 	});
 
 	const triggerBadgeCount = $derived(
-		triggerDisplayCount ?? (shelfTabsEnabled ? tabCounts.rated : ratedEntries.length)
+		!libraryIdsReady && ratingsAvailable
+			? $ratingsStore.size
+			: (triggerDisplayCount ?? (shelfTabsEnabled ? tabCounts.rated : ratedEntries.length))
 	);
 
 	const triggerAriaLabel = $derived(
@@ -620,7 +646,7 @@
 	}
 
 	function retryPendingRatings() {
-		void ratingsStore.retryPending();
+		void ratingsStore.retryPending().catch(() => undefined);
 	}
 
 	function starHoverPreviewSupported(): boolean {
@@ -635,19 +661,24 @@
 	}
 
 	$effect(() => {
-		const userId = $authStore.user?.id ?? null;
-		if (shelfDetailsLoadedForUserId != null && shelfDetailsLoadedForUserId !== userId) {
-			fetchedBookmarkBooks = [];
-			shelfDetailsLoadedForUserId = null;
-			shelfDetailsRequestId += 1;
-			shelfDetailsLoading = false;
-		}
+		const userId = libraryUserId;
+		const tab = activeShelfTab;
+		if (!userId || !open) return;
+		untrack(() => {
+			void libraryLoads.visit(
+				tab === 'rated'
+					? ['ratings', 'ratedDetails', 'dismissals']
+					: tab === 'bookmarked'
+						? ['bookmarks', 'dismissals']
+						: ['ratings', 'bookmarks', 'dismissals']
+			);
+			if (tab === 'bookmarked') void loadBookmarkDetails(userId);
+		});
 	});
 
 	$effect(() => {
-		const authKey = `${$authStore.user?.id ?? ''}:${$authStore.session?.access_token ?? ''}`;
+		void libraryUserId;
 		if (!open || activeShelfTab !== 'not-interested') return;
-		void authKey;
 		void notInterestedPageLoader.ensureLoaded('newest');
 	});
 
@@ -769,6 +800,7 @@
 					}}
 				>
 					<BookRatingStarsRow
+						bookUlid={entry.book.book_id}
 						ratingWrapWidth="auto"
 						displayRating={pendingRemoveIds.has(entry.book.id)
 							? hoverEntryId === entry.book.id && hoverRating > 0
@@ -876,7 +908,13 @@
 >
 	<span class="ratings-bar__count" aria-hidden="true">
 		{#if triggerCountsPending}
-			<span class="ratings-bar__count-sync"><RatingsSyncDot variant="pending" /></span>
+			<span class="ratings-bar__count-sync"
+				><RatingsSyncDot
+					variant={$userLibraryHydrationStore.collections.ratings.status === 'error'
+						? 'failed'
+						: 'pending'}
+				/></span
+			>
 		{:else}
 			{triggerBadgeCount}
 		{/if}
@@ -985,12 +1023,13 @@
 						onNotInterestedClick={detailNotInterestedClick}
 					/>
 				{:else if !shelfTabsEnabled && drawerOrderedEntries.length === 0}
+					<LibraryLoadNotice collections={activeResources} />
 					{#if ratedShelfDetailsPending}
 						<div class="ratings-drawer__loading" aria-live="polite">
 							<Spinner />
 							<p class="ratings-drawer__loading-text">{t('rated.loadingList')}</p>
 						</div>
-					{:else}
+					{:else if !shelfFailed}
 						<p class="ratings-drawer__empty">
 							{t('shared.ratingsBar.empty')}
 						</p>
@@ -1005,6 +1044,13 @@
 								items={shelfTabItems}
 								selectedId={activeShelfTab}
 								countsReady={libraryIdsReady}
+								getCountReady={(id) =>
+									areLibraryCollectionsAvailable($authStore.user?.id, $userLibraryHydrationStore, [
+										id === 'rated' ? 'ratings' : 'bookmarks'
+									])}
+								getCountFailed={(id) =>
+									$userLibraryHydrationStore.collections[id === 'rated' ? 'ratings' : 'bookmarks']
+										.status === 'error'}
 								countedTabIds={['rated', 'bookmarked']}
 								getCount={(id) => countForShelfTab(id as ShelfFilterId)}
 								onSelect={(id) => selectShelfTab(id as ShelfFilterId)}
@@ -1024,15 +1070,16 @@
 							role="tabpanel"
 							aria-labelledby={`${shelfTabIdPrefix}-${activeShelfTab}`}
 						>
+							<LibraryLoadNotice collections={activeResources} />
 							{#if drawerOrderedEntries.length === 0}
-								{#if (activeShelfTab === 'rated' && ratedShelfDetailsPending) || (activeShelfTab === 'not-interested' && notInterestedPageState.loading)}
+								{#if (activeShelfTab === 'rated' && ratedShelfDetailsPending) || (activeShelfTab === 'bookmarked' && bookmarkShelfPending) || (activeShelfTab === 'not-interested' && notInterestedPageState.loading)}
 									<div class="ratings-drawer__loading" aria-live="polite">
 										<Spinner />
 										<p class="ratings-drawer__loading-text">{t('rated.loadingList')}</p>
 									</div>
 								{:else if activeShelfTab === 'not-interested' && notInterestedPageState.error}
 									<NotInterestedPagination state={notInterestedPageState} order="newest" />
-								{:else}
+								{:else if !shelfFailed}
 									<p class="ratings-drawer__empty">{shelfEmptyMessage}</p>
 								{/if}
 							{:else}
@@ -1047,6 +1094,7 @@
 							{/if}
 						</div>
 					{:else}
+						<LibraryLoadNotice collections={activeResources} />
 						<ul class="ratings-drawer__list">
 							{#each drawerOrderedEntries as entry (entry.book.id)}
 								{@render drawerListRow(entry)}

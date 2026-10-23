@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { tick } from 'svelte';
-	import { fade } from 'svelte/transition';
+	import ModalDialog from './ModalDialog.svelte';
 	import { get } from 'svelte/store';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -18,9 +17,10 @@
 	interface Props {
 		open: boolean;
 		onClose: () => void;
+		restoreFocusTarget?: HTMLElement | null;
 	}
 
-	let { open, onClose }: Props = $props();
+	let { open, onClose, restoreFocusTarget = null }: Props = $props();
 
 	type Phase = 'select' | 'preview' | 'importing' | 'done' | 'timeout';
 
@@ -29,7 +29,6 @@
 	let error = $state<string | null>(null);
 	let imported = $state(0);
 	let misses = $state<ImportMiss[]>([]);
-	let closeButtonEl = $state<HTMLButtonElement | null>(null);
 
 	const titleId = 'goodreads-modal-title';
 
@@ -44,15 +43,6 @@
 		too_many_rows: 'shared.goodreadsModal.errorTooManyRows'
 	};
 
-	function portal(node: HTMLElement, target: HTMLElement = document.body) {
-		target.appendChild(node);
-		return {
-			destroy() {
-				node.parentNode?.removeChild(node);
-			}
-		};
-	}
-
 	function reset() {
 		phase = 'select';
 		rows = [];
@@ -61,32 +51,8 @@
 		misses = [];
 	}
 
-	function handleOverlayClick(e: MouseEvent) {
-		// Don't let an accidental backdrop click discard an in-flight import.
-		if (e.target === e.currentTarget && phase !== 'importing') onClose();
-	}
-
-	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape' && phase !== 'importing') onClose();
-	}
-
 	$effect(() => {
 		if (open) reset();
-	});
-
-	$effect(() => {
-		if (!open) return;
-		tick().then(() => closeButtonEl?.focus());
-	});
-
-	$effect(() => {
-		if (open) {
-			const prev = document.body.style.overflow;
-			document.body.style.overflow = 'hidden';
-			return () => {
-				document.body.style.overflow = prev;
-			};
-		}
 	});
 
 	async function handleFileChange(e: Event) {
@@ -136,125 +102,100 @@
 		phase = 'done';
 
 		// Send the user to their bookshelf so the freshly imported ratings are waiting when
-		// they close this modal. The modal is portaled to <body> and lives in the persistent
-		// header, so it stays open across this navigation — the user closes it manually after
+		// they close this modal. The modal lives in the persistent header, so it stays open
+		// across this navigation — the user closes it manually after
 		// reviewing any unmatched items (and to confirm the import finished).
 		void goto(resolve('/my-bookshelf'));
 	}
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
-
-{#if open}
-	<div
-		use:portal
-		class="gr-modal-overlay"
-		role="dialog"
-		aria-modal="true"
-		aria-labelledby={titleId}
-		tabindex="-1"
-		onclick={handleOverlayClick}
-		onkeydown={handleKeydown}
-		transition:fade={{ duration: 150 }}
-	>
-		<div
-			class="gr-modal-panel"
-			role="presentation"
-			onclick={(e) => e.stopPropagation()}
-			onkeydown={(e) => e.stopPropagation()}
-		>
-			<div class="gr-modal__header">
-				<h2 id={titleId} class="gr-modal__title typ-h3">{t('shared.goodreadsModal.title')}</h2>
-				<Button
-					variant="secondary"
-					compact
-					type="button"
-					aria-label={t('shared.goodreadsModal.close')}
-					disabled={phase === 'importing'}
-					ref={(el) => (closeButtonEl = el as HTMLButtonElement)}
-					onclick={onClose}
-				>
-					{t('shared.goodreadsModal.close')}
-				</Button>
-			</div>
-
-			{#if error}
-				<p class="gr-modal__error" role="alert">{error}</p>
-			{/if}
-
-			{#if phase === 'select'}
-				<p class="gr-modal__intro">{t('shared.goodreadsModal.intro')}</p>
-				<input
-					type="file"
-					accept=".csv,text/csv"
-					class="gr-modal__file"
-					onchange={handleFileChange}
-				/>
-			{:else if phase === 'preview'}
-				{#if rows.length === 0}
-					<p class="gr-modal__intro">{t('shared.goodreadsModal.previewNone')}</p>
-					<div class="gr-modal__actions">
-						<Button variant="secondary" onclick={reset}
-							>{t('shared.goodreadsModal.chooseAnother')}</Button
-						>
-					</div>
-				{:else}
-					<p class="gr-modal__intro">
-						{plural('shared.goodreadsModal.previewSummary', rows.length)}
-					</p>
-					<div class="gr-modal__actions">
-						<Button variant="secondary" onclick={reset}
-							>{t('shared.goodreadsModal.chooseAnother')}</Button
-						>
-						<Button variant="primary" onclick={handleImport}
-							>{t('shared.goodreadsModal.import')}</Button
-						>
-					</div>
-				{/if}
-			{:else if phase === 'importing'}
-				<p class="gr-modal__intro" role="status">{t('shared.goodreadsModal.importing')}</p>
-			{:else if phase === 'timeout'}
-				<p class="gr-modal__intro" role="status">{t('shared.goodreadsModal.timeout')}</p>
-				<div class="gr-modal__actions">
-					<Button variant="primary" onclick={onClose}>{t('shared.goodreadsModal.close')}</Button>
-				</div>
-			{:else if phase === 'done'}
-				<p class="gr-modal__intro" role="status">
-					{plural('shared.goodreadsModal.doneSummary', imported)}
-				</p>
-				{#if misses.length > 0}
-					<p class="gr-modal__misses-heading">
-						{t('shared.goodreadsModal.unmatchedHeading', { count: misses.length })}
-					</p>
-					<ul class="gr-modal__misses">
-						{#each misses as miss (miss.index)}
-							<li class="gr-modal__miss">
-								<span class="gr-modal__miss-title">{miss.title}</span>
-								{#if miss.author}<span class="gr-modal__miss-author"> — {miss.author}</span>{/if}
-							</li>
-						{/each}
-					</ul>
-				{/if}
-				<div class="gr-modal__actions">
-					<Button variant="primary" onclick={onClose}>{t('shared.goodreadsModal.done')}</Button>
-				</div>
-			{/if}
+<ModalDialog
+	{open}
+	{onClose}
+	{restoreFocusTarget}
+	labelledby={titleId}
+	closeDisabled={phase === 'importing'}
+>
+	<div class="gr-modal-panel">
+		<div class="gr-modal__header">
+			<h2 id={titleId} class="gr-modal__title typ-h3">{t('shared.goodreadsModal.title')}</h2>
+			<Button
+				variant="secondary"
+				compact
+				type="button"
+				aria-label={t('shared.goodreadsModal.close')}
+				disabled={phase === 'importing'}
+				onclick={onClose}
+			>
+				{t('shared.goodreadsModal.close')}
+			</Button>
 		</div>
+
+		{#if error}
+			<p class="gr-modal__error" role="alert">{error}</p>
+		{/if}
+
+		{#if phase === 'select'}
+			<p class="gr-modal__intro">{t('shared.goodreadsModal.intro')}</p>
+			<input
+				type="file"
+				accept=".csv,text/csv"
+				class="gr-modal__file"
+				onchange={handleFileChange}
+			/>
+		{:else if phase === 'preview'}
+			{#if rows.length === 0}
+				<p class="gr-modal__intro">{t('shared.goodreadsModal.previewNone')}</p>
+				<div class="gr-modal__actions">
+					<Button variant="secondary" onclick={reset}
+						>{t('shared.goodreadsModal.chooseAnother')}</Button
+					>
+				</div>
+			{:else}
+				<p class="gr-modal__intro">
+					{plural('shared.goodreadsModal.previewSummary', rows.length)}
+				</p>
+				<div class="gr-modal__actions">
+					<Button variant="secondary" onclick={reset}
+						>{t('shared.goodreadsModal.chooseAnother')}</Button
+					>
+					<Button variant="primary" onclick={handleImport}
+						>{t('shared.goodreadsModal.import')}</Button
+					>
+				</div>
+			{/if}
+		{:else if phase === 'importing'}
+			<p class="gr-modal__intro" role="status">{t('shared.goodreadsModal.importing')}</p>
+		{:else if phase === 'timeout'}
+			<p class="gr-modal__intro" role="status">{t('shared.goodreadsModal.timeout')}</p>
+			<div class="gr-modal__actions">
+				<Button variant="primary" onclick={onClose}>{t('shared.goodreadsModal.close')}</Button>
+			</div>
+		{:else if phase === 'done'}
+			<p class="gr-modal__intro" role="status">
+				{plural('shared.goodreadsModal.doneSummary', imported)}
+			</p>
+			{#if misses.length > 0}
+				<p class="gr-modal__misses-heading">
+					{t('shared.goodreadsModal.unmatchedHeading', { count: misses.length })}
+				</p>
+				<ul class="gr-modal__misses">
+					{#each misses as miss (miss.index)}
+						<li class="gr-modal__miss">
+							<span class="gr-modal__miss-title">{miss.title}</span>
+							{#if miss.author}<span class="gr-modal__miss-author"> — {miss.author}</span>{/if}
+						</li>
+					{/each}
+				</ul>
+			{/if}
+			<div class="gr-modal__actions">
+				<Button variant="primary" onclick={onClose}>{t('shared.goodreadsModal.done')}</Button>
+			</div>
+		{/if}
 	</div>
-{/if}
+</ModalDialog>
 
 <style>
-	.gr-modal-overlay {
-		position: fixed;
-		inset: 0;
-		z-index: 200;
-		background: var(--color-overlay-scrim);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: var(--space-4);
-	}
-
 	.gr-modal-panel {
 		background: var(--color-card-bg);
 		border-radius: var(--radius-md);

@@ -12,16 +12,13 @@ import {
 	type BookGenreSlotRow
 } from '$lib/book-catalog-fields';
 import { coverUrlForBookId } from '$lib/book-cover';
-import { notifyLibraryPersistedMutationForBrowseFeedWarm } from '$lib/feed/browseFeedWarm';
+import { librarySaves } from '$lib/stores/librarySaves';
 import { notInterestedStore } from '$lib/stores/notInterested';
 import { planToReadStore } from '$lib/stores/planToRead';
 import { ratingsStore } from '$lib/stores/ratings';
 import { clearLibraryCache } from '$lib/stores/libraryCache';
-import {
-	markUserLibraryDetailsReady,
-	markUserLibraryIdsReady,
-	markUserLibraryIdsStarted
-} from '$lib/stores/userLibrary';
+import { markUserLibraryIdsStarted, scheduleUserLibraryDetailsLoad } from '$lib/stores/userLibrary';
+import { libraryLoads } from '$lib/stores/libraryLoads';
 import type { Book, RatingValue } from '$lib/types/book';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -46,99 +43,113 @@ export function createLibraryLoadCoordinator(): LibraryLoadCoordinator {
 	};
 }
 
-function attachBookmarkPersistence(supabase: SupabaseClient, userId: string): void {
-	planToReadStore.setPersistence({
-		add(bookId) {
-			supabase
-				.from('user_bookmarks')
-				.upsert({ user_id: userId, book_id: bookId }, { onConflict: 'user_id,book_id' })
-				.then(({ error }) => {
-					if (error) console.error('[bookmarks] Failed to add:', error.message);
-					else notifyLibraryPersistedMutationForBrowseFeedWarm();
-				});
-		},
-		remove(bookId) {
-			supabase
-				.from('user_bookmarks')
-				.delete()
-				.eq('user_id', userId)
-				.eq('book_id', bookId)
-				.then(({ error }) => {
-					if (error) console.error('[bookmarks] Failed to remove:', error.message);
-					else notifyLibraryPersistedMutationForBrowseFeedWarm();
-				});
-		}
-	});
+function checkResult(result: {
+	error: { message: string; code?: string } | null;
+	status: number;
+}): void {
+	if (result.error)
+		throw Object.assign(new Error(result.error.message), {
+			status: result.status,
+			code: result.error.code
+		});
 }
 
-function attachNotInterestedPersistence(supabase: SupabaseClient, userId: string): void {
-	notInterestedStore.setPersistence({
-		async add(bookId) {
-			const { error } = await supabase
-				.from('user_not_interested')
-				.upsert({ user_id: userId, book_id: bookId }, { onConflict: 'user_id,book_id' });
-			if (error) {
-				console.error('[not-interested] Failed to add:', error.message);
-				throw error;
-			}
-			notifyLibraryPersistedMutationForBrowseFeedWarm();
-		},
-		async remove(bookId) {
-			const { error } = await supabase
-				.from('user_not_interested')
-				.delete()
-				.eq('user_id', userId)
-				.eq('book_id', bookId);
-			if (error) {
-				console.error('[not-interested] Failed to remove:', error.message);
-				throw error;
-			}
-			notifyLibraryPersistedMutationForBrowseFeedWarm();
-		}
-	});
-}
-
-export function attachRatingsPersistence(
+/** Attach all writers together, before any library read can fail. */
+export function attachLibraryPersistence(
 	supabase: SupabaseClient,
 	userId: string,
 	persistenceUserId: { current: string | null }
 ): void {
-	if (persistenceUserId.current === userId) {
-		void ratingsStore.flushPending();
-		return;
-	}
-
+	if (persistenceUserId.current === userId) return;
 	persistenceUserId.current = userId;
-	ratingsStore.setPersistence({
-		async set(bookId, value) {
-			const { error } = await supabase.from('user_ratings').upsert(
-				{
-					user_id: userId,
-					book_id: bookId,
-					book_rating: value
-					// updated_at is set by the set_user_ratings_updated_at trigger / column default
-				},
-				{ onConflict: 'user_id,book_id' }
-			);
-			if (error) {
-				console.error('[ratings] Failed to save rating:', error.message);
-				throw error;
+	ratingsStore.setPersistence(
+		{
+			async set(bookId, value, signal = new AbortController().signal) {
+				checkResult(
+					await supabase
+						.from('user_ratings')
+						.upsert(
+							{
+								user_id: userId,
+								book_id: bookId,
+								book_rating: value
+							},
+							{ onConflict: 'user_id,book_id' }
+						)
+						.abortSignal(signal)
+				);
+			},
+			async remove(bookId, signal = new AbortController().signal) {
+				checkResult(
+					await supabase
+						.from('user_ratings')
+						.delete()
+						.eq('user_id', userId)
+						.eq('book_id', bookId)
+						.abortSignal(signal)
+				);
 			}
-			notifyLibraryPersistedMutationForBrowseFeedWarm();
 		},
-		async remove(bookId) {
-			const { error } = await supabase
-				.from('user_ratings')
-				.delete()
-				.eq('user_id', userId)
-				.eq('book_id', bookId);
-			if (error) {
-				console.error('[ratings] Failed to remove rating:', error.message);
-				throw error;
+		userId
+	);
+	planToReadStore.setPersistence(
+		{
+			async add(bookId, signal = new AbortController().signal) {
+				checkResult(
+					await supabase
+						.from('user_bookmarks')
+						.upsert(
+							{
+								user_id: userId,
+								book_id: bookId
+							},
+							{ onConflict: 'user_id,book_id' }
+						)
+						.abortSignal(signal)
+				);
+			},
+			async remove(bookId, signal = new AbortController().signal) {
+				checkResult(
+					await supabase
+						.from('user_bookmarks')
+						.delete()
+						.eq('user_id', userId)
+						.eq('book_id', bookId)
+						.abortSignal(signal)
+				);
 			}
-			notifyLibraryPersistedMutationForBrowseFeedWarm();
-		}
-	});
+		},
+		userId
+	);
+	notInterestedStore.setPersistence(
+		{
+			async add(bookId, signal = new AbortController().signal) {
+				checkResult(
+					await supabase
+						.from('user_not_interested')
+						.upsert(
+							{
+								user_id: userId,
+								book_id: bookId
+							},
+							{ onConflict: 'user_id,book_id' }
+						)
+						.abortSignal(signal)
+				);
+			},
+			async remove(bookId, signal = new AbortController().signal) {
+				checkResult(
+					await supabase
+						.from('user_not_interested')
+						.delete()
+						.eq('user_id', userId)
+						.eq('book_id', bookId)
+						.abortSignal(signal)
+				);
+			}
+		},
+		userId
+	);
 }
 
 /**
@@ -161,11 +172,12 @@ function unresolvedBookUlids(
 async function resolveUuidMapForRows(
 	supabase: SupabaseClient,
 	rows: Array<{ book_id: string; books?: { id?: unknown } | null }>,
-	isStale: () => boolean
+	isStale: () => boolean,
+	signal: AbortSignal
 ): Promise<Record<string, string>> {
 	const ulids = unresolvedBookUlids(rows);
 	if (ulids.length === 0) return {};
-	return fetchUuidByUlid(supabase, ulids, isStale);
+	return fetchUuidByUlid(supabase, ulids, isStale, signal);
 }
 
 export async function loadUserLibraryIds(
@@ -174,92 +186,91 @@ export async function loadUserLibraryIds(
 	requestId: number,
 	coordinator: LibraryLoadCoordinator
 ): Promise<void> {
-	try {
-		await loadUserLibraryIdsBody(supabase, userId, requestId, coordinator);
-	} finally {
-		if (!coordinator.isStale(requestId)) {
-			markUserLibraryIdsReady(userId);
-		}
-	}
-}
-
-async function loadUserLibraryIdsBody(
-	supabase: SupabaseClient,
-	userId: string,
-	requestId: number,
-	coordinator: LibraryLoadCoordinator
-): Promise<void> {
-	const isStale = () => coordinator.isStale(requestId);
-
-	const [ratingsResult, bookmarksResult, notInterestedResult] = await Promise.all([
-		supabase
-			.from('user_ratings')
-			.select('book_id, book_rating, books(id, book_id)')
-			// Drives the bookshelf "Newest" order: most recently rated/re-rated first, with
-			// book_id as a stable tiebreaker so batch imports (shared updated_at) don't shuffle.
-			.order('updated_at', { ascending: false })
-			.order('book_id', { ascending: true })
-			.eq('user_id', userId),
-		supabase.from('user_bookmarks').select('book_id, books(id, book_id)').eq('user_id', userId),
-		supabase.from('user_not_interested').select('book_id').eq('user_id', userId)
-	]);
-
-	if (isStale()) return;
-
-	const { data: ratingRows, error: ratingsError } = ratingsResult;
-	if (ratingsError) {
-		console.error('[ratings] Failed to load user ratings:', ratingsError.message);
-		return;
-	}
-
-	const rawRatingRows = (ratingRows ?? []) as unknown as RatingIdRow[];
-	const ratingUuidByUlid = await resolveUuidMapForRows(supabase, rawRatingRows, isStale);
-	if (isStale()) return;
-
-	const ratingEntries = rawRatingRows.flatMap((row) => {
-		const bookId = bookUuidFromJoinRow(row, ratingUuidByUlid);
-		if (!bookId) {
-			console.warn('[ratings] Skipping rating with unresolved book UUID for ULID:', row.book_id);
-			return [];
-		}
-		return [{ bookId, rating: row.book_rating }];
-	});
-	ratingsStore.hydrate(ratingEntries);
-
-	const { data: bmRows, error: bmError } = bookmarksResult;
-	if (bmError) {
-		console.error('[bookmarks] Failed to load bookmarks:', bmError.message);
-	}
-
-	const rawBookmarkRows = (bmRows ?? []) as unknown as BookIdJoinRow[];
-	const bookmarkUuidByUlid = await resolveUuidMapForRows(supabase, rawBookmarkRows, isStale);
-	if (isStale()) return;
-
-	if (rawBookmarkRows.length > 0) {
-		const resolvedBookmarks = rawBookmarkRows.flatMap((row) => {
-			const uuid = bookUuidFromJoinRow(row, bookmarkUuidByUlid);
-			if (!uuid) {
-				console.warn(
-					'[bookmarks] Skipping bookmark with unresolved book UUID for ULID:',
-					row.book_id
-				);
-				return [];
-			}
-			return [{ uuid, ulid: bookmarkUlidFromRow(row) }];
-		});
-		const ids = resolvedBookmarks.map((entry) => entry.uuid);
-		const idToUlid = new Map(resolvedBookmarks.map((entry) => [entry.uuid, entry.ulid]));
-		planToReadStore.hydrate(ids, idToUlid);
-	} else {
-		planToReadStore.hydrate([], new Map());
-	}
-	attachBookmarkPersistence(supabase, userId);
-
-	const { data: niRows } = notInterestedResult;
-	notInterestedStore.hydrate(
-		(niRows ?? []).map((r) => r.book_id).filter((id): id is string => typeof id === 'string')
+	const isCurrent = () => !coordinator.isStale(requestId) && librarySaves.getOwner() === userId;
+	if (!isCurrent()) return;
+	libraryLoads.register(
+		userId,
+		'ratings',
+		async (signal) => {
+			const readRevision = librarySaves.getRevision();
+			const result = await supabase
+				.from('user_ratings')
+				.select('book_id, book_rating, books(id, book_id)')
+				.order('updated_at', { ascending: false })
+				.order('book_id', { ascending: true })
+				.eq('user_id', userId)
+				.abortSignal(signal);
+			checkResult(result);
+			const rows = (result.data ?? []) as unknown as RatingIdRow[];
+			const mapping = await resolveUuidMapForRows(supabase, rows, () => !isCurrent(), signal);
+			const entries = rows.map((row) => {
+				const bookId = bookUuidFromJoinRow(row, mapping);
+				if (!bookId) throw new Error('Could not resolve a rated book.');
+				return { bookId, rating: row.book_rating };
+			});
+			return () => {
+				ratingsStore.hydrate(entries, readRevision);
+				scheduleUserLibraryDetailsLoad(userId);
+			};
+		},
+		requestId,
+		isCurrent
 	);
-	attachNotInterestedPersistence(supabase, userId);
+	libraryLoads.register(
+		userId,
+		'bookmarks',
+		async (signal) => {
+			const readRevision = librarySaves.getRevision();
+			const result = await supabase
+				.from('user_bookmarks')
+				.select('book_id, books(id, book_id)')
+				.eq('user_id', userId)
+				.abortSignal(signal);
+			checkResult(result);
+			const rows = (result.data ?? []) as unknown as BookIdJoinRow[];
+			const mapping = await resolveUuidMapForRows(supabase, rows, () => !isCurrent(), signal);
+			const resolved = rows.map((row) => {
+				const uuid = bookUuidFromJoinRow(row, mapping);
+				if (!uuid) throw new Error('Could not resolve a bookmarked book.');
+				return { uuid, ulid: bookmarkUlidFromRow(row) };
+			});
+			return () =>
+				planToReadStore.hydrate(
+					resolved.map((row) => row.uuid),
+					new Map(resolved.map((row) => [row.uuid, row.ulid])),
+					readRevision
+				);
+		},
+		requestId,
+		isCurrent
+	);
+	libraryLoads.register(
+		userId,
+		'dismissals',
+		async (signal) => {
+			const readRevision = librarySaves.getRevision();
+			const result = await supabase
+				.from('user_not_interested')
+				.select('book_id')
+				.eq('user_id', userId)
+				.abortSignal(signal);
+			checkResult(result);
+			return () =>
+				notInterestedStore.hydrate(
+					(result.data ?? [])
+						.map((row) => row.book_id)
+						.filter((id): id is string => typeof id === 'string'),
+					readRevision
+				);
+		},
+		requestId,
+		isCurrent
+	);
+	await Promise.all(
+		['ratings', 'bookmarks', 'dismissals'].map((kind) =>
+			libraryLoads.load(kind as 'ratings' | 'bookmarks' | 'dismissals')
+		)
+	);
 }
 
 export async function loadUserLibraryDetails(
@@ -268,37 +279,44 @@ export async function loadUserLibraryDetails(
 	requestId: number,
 	coordinator: LibraryLoadCoordinator
 ): Promise<void> {
-	try {
-		await loadUserLibraryDetailsBody(supabase, userId, requestId, coordinator);
-	} finally {
-		if (!coordinator.isStale(requestId)) {
-			markUserLibraryDetailsReady(userId);
-		}
-	}
+	const isCurrent = () => !coordinator.isStale(requestId) && librarySaves.getOwner() === userId;
+	if (!isCurrent()) return;
+	libraryLoads.register(
+		userId,
+		'ratedDetails',
+		(signal) => loadUserLibraryDetailsBody(supabase, userId, requestId, coordinator, signal),
+		requestId,
+		isCurrent
+	);
+	await libraryLoads.load('ratedDetails');
 }
 
 async function loadUserLibraryDetailsBody(
 	supabase: SupabaseClient,
 	userId: string,
 	requestId: number,
-	coordinator: LibraryLoadCoordinator
-): Promise<void> {
-	const isStale = () => coordinator.isStale(requestId);
+	coordinator: LibraryLoadCoordinator,
+	signal: AbortSignal
+): Promise<() => void> {
+	const isStale = () => coordinator.isStale(requestId) || librarySaves.getOwner() !== userId;
+	const readRevision = librarySaves.getRevision();
 
-	const { data: rows, error: ratingsError } = await supabase
+	const {
+		data: rows,
+		error: ratingsError,
+		status
+	} = await supabase
 		.from('user_ratings')
 		.select(
 			`book_id, book_rating, books(id, book_id, book_name, author, year, summary, ${BOOK_GENRE_TYPE_SELECT})`
 		)
 		.eq('user_id', userId)
-		.order('updated_at', { ascending: false });
+		.order('updated_at', { ascending: false })
+		.abortSignal(signal);
 
-	if (isStale()) return;
+	if (isStale()) return () => {};
 
-	if (ratingsError) {
-		console.error('[ratings] Failed to load rated book details:', ratingsError.message);
-		return;
-	}
+	if (ratingsError) throw Object.assign(new Error(ratingsError.message), { status });
 
 	const rawRows = rows ?? [];
 	const unresolvedDetailUlids = unresolvedBookUlids(
@@ -317,11 +335,13 @@ async function loadUserLibraryDetailsBody(
 	> = [];
 
 	if (unresolvedDetailUlids.length > 0) {
-		const { data: bookRows } = await supabase
+		const { data: bookRows, error: bookError } = await supabase
 			.from('books')
 			.select(`id, book_id, book_name, author, year, summary, ${BOOK_GENRE_TYPE_SELECT}`)
-			.in('book_id', unresolvedDetailUlids);
-		if (isStale()) return;
+			.in('book_id', unresolvedDetailUlids)
+			.abortSignal(signal);
+		if (bookError) throw bookError;
+		if (isStale()) return () => {};
 		if (bookRows) {
 			bookIdByUlid = Object.fromEntries(bookRows.map((b) => [b.book_id, String(b.id)])) as Record<
 				string,
@@ -358,13 +378,7 @@ async function loadUserLibraryDetailsBody(
 			rowWithBooks.books?.id != null
 				? String(rowWithBooks.books.id)
 				: (bookIdByUlid[rowWithBooks.book_id] ?? null);
-		if (!uuid) {
-			console.warn(
-				'[ratings] Skipping rated book details with unresolved UUID for ULID:',
-				rowWithBooks.book_id
-			);
-			continue;
-		}
+		if (!uuid) throw new Error('Could not resolve rated book details.');
 
 		if (rowWithBooks.books?.id != null && rowWithBooks.books?.book_name != null) {
 			const b = rowWithBooks.books;
@@ -400,8 +414,10 @@ async function loadUserLibraryDetailsBody(
 		}
 	}
 
-	if (isStale()) return;
-	ratingsStore.setRatedBooksDetails(detailsMap);
+	if (isStale()) return () => {};
+	if (detailsMap.size !== rawRows.length)
+		throw new Error('Some rated book details are unavailable.');
+	return () => ratingsStore.setRatedBooksDetails(detailsMap, readRevision);
 }
 
 export function startUserLibraryIdsLoad(
@@ -424,8 +440,8 @@ export function reloadUserLibraryAfterMigration(
 	hydratedForUserId: { current: string | null },
 	persistenceUserId: { current: string | null }
 ): number {
-	attachRatingsPersistence(supabase, userId, persistenceUserId);
-	void ratingsStore.flushPending();
+	attachLibraryPersistence(supabase, userId, persistenceUserId);
+	void librarySaves.flush().catch(() => undefined);
 	// Drop any stale (e.g. anonymous) library cache; the account's cache is rebuilt after this load.
 	clearLibraryCache();
 	hydratedForUserId.current = null;
@@ -437,10 +453,9 @@ export function resetUserLibraryOnSignOut(hadUserBefore: { current: boolean }): 
 	planToReadStore.setPersistence(null);
 	notInterestedStore.setPersistence(null);
 	if (hadUserBefore.current) {
-		ratingsStore.reset();
-		planToReadStore.reset();
-		notInterestedStore.reset();
-		notInterestedStore.clearLocalStorage();
+		ratingsStore.reset(true);
+		planToReadStore.reset(true);
+		notInterestedStore.reset(true);
 		clearLibraryCache();
 	}
 	hadUserBefore.current = false;

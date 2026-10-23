@@ -1,4 +1,6 @@
 <script lang="ts">
+	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
+	import { isUserLibraryIdsReady, userLibraryHydrationStore } from '$lib/stores/userLibrary';
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -41,6 +43,8 @@
 	import { notInterestedStore } from '$lib/stores/notInterested';
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { ratingsStore } from '$lib/stores/ratings';
+	import { librarySaves } from '$lib/stores/librarySaves';
+	import { t } from '$lib/copy';
 	import { refreshRecommendationsCountFromApi } from '$lib/stores/recommendationsCount';
 	import type { Book, RatingValue } from '$lib/types/book';
 
@@ -134,12 +138,12 @@
 	let activeKey = '';
 	let waitStartedAt = 0;
 
-	const ratingsSyncMeta = ratingsStore.syncMeta;
 	const ratedBooksStore = ratingsStore.ratedBooks;
 	const canSubmit = $derived(
 		$ratingsStore.size >= MIN_RATINGS &&
-			$ratingsSyncMeta.queuedCount === 0 &&
-			!$ratingsSyncMeta.isFlushing &&
+			isUserLibraryIdsReady($authStore.user?.id, $userLibraryHydrationStore) &&
+			$librarySaves.queuedCount === 0 &&
+			!$librarySaves.isFlushing &&
 			!!$authStore.user
 	);
 	const cleanLikedAuthors = $derived(buildCleanLikedAuthorSet($ratedBooksStore));
@@ -320,7 +324,7 @@
 		submitting = true;
 		let createdId: string | null = null;
 		try {
-			await notInterestedStore.flushPending();
+			await librarySaves.flush();
 			if (get(authStore).user?.id !== userId) return;
 			const { data, error } = await supabase
 				.from('recommendation_requests')
@@ -368,16 +372,16 @@
 	}
 
 	function handleNotInterested(book: Book) {
-		const dismissed = notInterestedStore.toggle(book.book_id);
+		const dismissed = notInterestedStore.toggle(book.book_id, book);
 		if (dismissed) {
-			if (planToReadStore.has(book.id)) planToReadStore.toggle(book.id, book.book_id);
+			if (planToReadStore.has(book.id)) planToReadStore.toggle(book.id, book.book_id, book);
 			if (get(ratingsStore).has(book.id)) ratingsStore.removeRating(book.id, book.book_id);
 		}
 	}
 
 	function handleBookmark(book: Book) {
 		const alreadyBookmarked = planToReadStore.has(book.id);
-		planToReadStore.toggle(book.id, book.book_id);
+		planToReadStore.toggle(book.id, book.book_id, book);
 		if (!alreadyBookmarked) notInterestedStore.remove(book.book_id);
 	}
 
@@ -601,13 +605,16 @@
 						</details>
 					</details>
 
+					<LibraryLoadNotice collections={['ratings', 'bookmarks', 'dismissals']} />
 					{#if formError}<p class="filtered-page__form-error" role="alert">{formError}</p>{/if}
 					{#if !canSubmit}
 						<p class="filtered-page__eligibility">
-							{#if $ratingsStore.size < MIN_RATINGS}
+							{#if !isUserLibraryIdsReady($authStore.user?.id, $userLibraryHydrationStore)}
+								{t('libraryLoad.wait')}
+							{:else if $ratingsStore.size < MIN_RATINGS}
 								Rate at least ten books to start a search.
-							{:else if $ratingsSyncMeta.queuedCount > 0 || $ratingsSyncMeta.isFlushing}
-								Wait for your ratings to finish saving before searching.
+							{:else if $librarySaves.queuedCount > 0 || $librarySaves.isFlushing}
+								{t('librarySaves.wait')}
 							{:else}
 								Open Browse to start your reading session.
 							{/if}

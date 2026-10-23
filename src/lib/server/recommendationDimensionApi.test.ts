@@ -97,6 +97,10 @@ beforeEach(() => {
 					rows = rows.slice(0, count);
 					return query;
 				},
+				range(from: number, to: number) {
+					rows = rows.slice(from, to + 1);
+					return query;
+				},
 				then(resolve: (value: unknown) => unknown) {
 					return Promise.resolve({ data: rows, error: null }).then(resolve);
 				}

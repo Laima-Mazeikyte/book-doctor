@@ -1,6 +1,7 @@
 import { get, writable } from 'svelte/store';
 import { authStore, waitForAuthReady } from '$lib/stores/auth';
 import { notInterestedStore } from '$lib/stores/notInterested';
+import { librarySaves } from '$lib/stores/librarySaves';
 import type {
 	NotInterestedLoaderSnapshot,
 	NotInterestedOrder,
@@ -77,7 +78,18 @@ function resetForAccount(accountId: string | null): void {
 	for (const order of ORDERS) entries[order].inFlight.clear();
 	activeAccountId = accountId;
 	entries = createEntries();
+	for (const order of ORDERS) entries[order].books = mergeLocalChanges([], order);
 	publish();
+}
+
+function mergeLocalChanges(books: Book[], order: NotInterestedOrder, readRevision = -1): Book[] {
+	const next = new Map(books.map((book) => [book.book_id, book]));
+	const added: Book[] = [];
+	for (const change of librarySaves.overlays('dismissal', readRevision)) {
+		if (!change.value) next.delete(change.bookUlid);
+		else if (change.book && !next.has(change.bookUlid)) added.push(change.book);
+	}
+	return order === 'newest' ? [...added.reverse(), ...next.values()] : [...next.values(), ...added];
 }
 
 function accountIdFromAuth(): string | null {
@@ -105,9 +117,11 @@ export async function fetchNotInterestedPage(
 	if (cursor) params.set('cursor', cursor);
 
 	const response = await fetch(`/api/not-interested/books?${params.toString()}`, {
-		headers: { Authorization: `Bearer ${accessToken}` }
+		headers: { Authorization: `Bearer ${accessToken}` },
+		signal: AbortSignal.timeout(15_000)
 	});
-	if (!response.ok) throw new Error('Failed to load not interested');
+	if (!response.ok)
+		throw Object.assign(new Error('Failed to load not interested'), { status: response.status });
 
 	const data = (await response.json()) as { books?: unknown; nextCursor?: unknown };
 	if (!Array.isArray(data.books)) throw new Error('Failed to load not interested');
@@ -181,14 +195,40 @@ function requestPage(
 	if (existingRequest) return existingRequest;
 
 	const generation = entry.generation;
+	const readRevision = librarySaves.getRevision();
 	entry.loading = true;
 	entry.error = null;
 	publish();
 
-	const request = fetchNotInterestedPage(order, cursor, accessToken)
+	const fetchPage = async () => {
+		for (const delay of [0, 1000, 2000, 5000]) {
+			if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+			if (!isCurrent(order, entry, accountId, generation)) throw new Error('Load cancelled.');
+			try {
+				return await fetchNotInterestedPage(
+					order,
+					cursor,
+					get(authStore).session?.access_token ?? accessToken
+				);
+			} catch (reason) {
+				const status = (reason as { status?: number }).status;
+				if (
+					delay === 5000 ||
+					(status && status >= 400 && status < 500 && ![408, 429].includes(status))
+				)
+					throw reason;
+			}
+		}
+		throw new Error('Failed to load not interested');
+	};
+	const request = fetchPage()
 		.then((page) => {
 			if (!isCurrent(order, entry, accountId, generation)) return;
-			const visibleBooks = page.books.filter((book) => !entry.removedBookIds.has(book.book_id));
+			const visibleBooks = mergeLocalChanges(
+				page.books.filter((book) => !entry.removedBookIds.has(book.book_id)),
+				order,
+				readRevision
+			);
 			entry.books = replaceExistingBooks ? visibleBooks : appendUnique(entry.books, visibleBooks);
 			entry.nextCursor = page.nextCursor;
 			entry.loaded = true;
@@ -250,6 +290,7 @@ const loader = {
 		await waitForAuthReady();
 		syncAccount();
 		const entry = entries[order];
+		if (entry.loaded && !entry.stale && entry.error) return this.retry(order);
 		if (entry.loaded && !entry.stale) return;
 		if (entry.stale) {
 			if (entry.loading) return startFirstPage(order);
@@ -339,6 +380,25 @@ notInterestedStore.onChange(({ action, bookId, source }) => {
 		return;
 	}
 	loader.invalidate();
+});
+
+// A failed dismissal may never reach a server page. Keep its optimistic book
+// visible here (and removals absent), including after restoring the pending queue.
+librarySaves.subscribe((snapshot) => {
+	if (
+		activeAccountId ? snapshot.ownerId !== activeAccountId : !snapshot.ownerId.startsWith('guest:')
+	)
+		return;
+	let changed = false;
+	for (const order of ORDERS) {
+		const entry = entries[order];
+		const books = mergeLocalChanges(entry.books, order);
+		if (books.length !== entry.books.length || books.some((book, i) => book !== entry.books[i])) {
+			entry.books = books;
+			changed = true;
+		}
+	}
+	if (changed) publish();
 });
 
 export const notInterestedPageStore = snapshotStore;

@@ -18,6 +18,7 @@
 	import { refreshRecommendationsCountFromApi } from '$lib/stores/recommendationsCount';
 	import {
 		isUserLibraryIdsReady,
+		areLibraryCollectionsAvailable,
 		scheduleUserLibraryDetailsLoad,
 		userLibraryHydrationStore
 	} from '$lib/stores/userLibrary';
@@ -28,10 +29,15 @@
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import Spinner from '$lib/components/Spinner.svelte';
 	import Button from '$lib/components/Button.svelte';
+	import RecommendationSubmitLabel from '$lib/components/RecommendationSubmitLabel.svelte';
+	import RecommendationSubmissionNotice from '$lib/components/RecommendationSubmissionNotice.svelte';
+	import { createRecommendationSubmission } from '$lib/recommendations/requestRecommendations';
 	import { X } from 'lucide-svelte';
 	import { getBookById } from '$lib/data/dummyBooks';
 	import { mobileMenuOpen } from '$lib/stores/mobileMenu';
 	import { ratingsStore } from '$lib/stores/ratings';
+	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
+	import { librarySaves } from '$lib/stores/librarySaves';
 	import { notInterestedStore } from '$lib/stores/notInterested';
 	import { planToReadStore } from '$lib/stores/planToRead';
 	import { bookSummarySheetHistory } from '$lib/stores/bookSummarySheetHistory';
@@ -938,28 +944,50 @@
 		$authRestorePending || ($authStore.user?.id != null && !libraryIdsReady)
 	);
 
-	const ratingsSyncMeta = ratingsStore.syncMeta;
+	const libraryLoadFailed = $derived(
+		!libraryIdsReady &&
+			$userLibraryHydrationStore.userId === $authStore.user?.id &&
+			['ratings', 'bookmarks', 'dismissals'].some(
+				(kind) =>
+					$userLibraryHydrationStore.collections[kind as 'ratings' | 'bookmarks' | 'dismissals']
+						.status === 'error'
+			)
+	);
 	const ratedCount = $derived($ratingsStore.size);
 	const canGetRecommendations = $derived(ratedCount >= MIN_RATINGS_FOR_RECOMMENDATIONS);
-	/** No queued rating writes and not mid-flush — safe to start a recommendations run. */
-	const ratingsSyncedForRecommendations = $derived(
-		$ratingsSyncMeta.queuedCount === 0 && !$ratingsSyncMeta.isFlushing
+	const recommendationSubmission = createRecommendationSubmission();
+	const recommendationsSubmitting = $derived($recommendationSubmission.status === 'submitting');
+	const canOpenStartedRecommendations = $derived($recommendationSubmission.error === 'open');
+	beforeNavigate(({ to }) => recommendationSubmission.leave(to?.url ?? null));
+	onDestroy(() => recommendationSubmission.destroy());
+	/** Recommendations use the library only after every intended change has saved. */
+	const librarySyncedForRecommendations = $derived(
+		$librarySaves.queuedCount === 0 && !$librarySaves.isFlushing
+	);
+	const recommendationsSubmitBlocked = $derived(
+		recommendationsSubmitting ||
+			(!canOpenStartedRecommendations &&
+				(!librarySyncedForRecommendations || !libraryIdsReady || !canGetRecommendations))
 	);
 	/** Matches ratings drawer: pending vs failed copy for the bottom CTA. */
 	const recommendationsSubmitSyncFailed = $derived(
-		!ratingsSyncedForRecommendations &&
-			$ratingsSyncMeta.queuedCount > 0 &&
-			!$ratingsSyncMeta.isFlushing &&
-			$ratingsSyncMeta.failedCount > 0
+		!librarySyncedForRecommendations &&
+			$librarySaves.queuedCount > 0 &&
+			!$librarySaves.isFlushing &&
+			$librarySaves.failedCount > 0
 	);
 	/** Shown on the recommendations CTA and the sub-threshold hint while the queue is non-empty. */
 	const recommendationsOffQueueLabel = $derived(
-		$ratingsSyncMeta.isFlushing || $ratingsSyncMeta.failedCount === 0
-			? t('shared.ratingsBar.syncing')
-			: t('shared.ratingsBar.retryNeeded')
+		$librarySaves.isFlushing || $librarySaves.failedCount === 0
+			? t('librarySaves.saving')
+			: t('librarySaves.retryNeeded')
 	);
 	const recommendationsSubmitLabel = $derived(
-		ratingsSyncedForRecommendations ? t('rate.getRecommendations') : recommendationsOffQueueLabel
+		canOpenStartedRecommendations
+			? t('recommendations.submission.open')
+			: librarySyncedForRecommendations
+				? t('rate.getRecommendations')
+				: recommendationsOffQueueLabel
 	);
 	type BottomBarDisplayState = {
 		userId: string | null;
@@ -977,10 +1005,8 @@
 	let bottomBarConfirmedRatedCount = $state(0);
 	let bottomBarDisplayUserId = $state<string | null>(null);
 	const bottomBarUserId = $derived($authStore.user?.id ?? null);
-	const ratingsSyncFailedForRecommendations = $derived(
-		$ratingsSyncMeta.queuedCount > 0 &&
-			!$ratingsSyncMeta.isFlushing &&
-			$ratingsSyncMeta.failedCount > 0
+	const librarySaveFailedForRecommendations = $derived(
+		$librarySaves.queuedCount > 0 && !$librarySaves.isFlushing && $librarySaves.failedCount > 0
 	);
 
 	function recommendationsLabelForCount(count: number): string {
@@ -991,8 +1017,8 @@
 	}
 
 	function recommendationsDisplayCount(): number {
-		if (ratingsSyncedForRecommendations) return ratedCount;
-		if (ratingsSyncFailedForRecommendations) return bottomBarConfirmedRatedCount;
+		if (librarySyncedForRecommendations) return ratedCount;
+		if (librarySaveFailedForRecommendations) return bottomBarConfirmedRatedCount;
 		if (ratedCount >= MIN_RATINGS_FOR_RECOMMENDATIONS) {
 			return MIN_RATINGS_FOR_RECOMMENDATIONS - 1;
 		}
@@ -1006,7 +1032,7 @@
 			bottomBarConfirmedRatedCount = 0;
 		}
 		if (sessionBootstrapPending) return;
-		if (ratingsSyncedForRecommendations && bottomBarConfirmedRatedCount !== ratedCount) {
+		if (librarySyncedForRecommendations && bottomBarConfirmedRatedCount !== ratedCount) {
 			bottomBarConfirmedRatedCount = ratedCount;
 		}
 		const recommendationCount = recommendationsDisplayCount();
@@ -1014,7 +1040,7 @@
 			userId,
 			triggerCount: ratedCount,
 			canGetRecommendations:
-				ratingsSyncedForRecommendations && ratedCount >= MIN_RATINGS_FOR_RECOMMENDATIONS,
+				librarySyncedForRecommendations && ratedCount >= MIN_RATINGS_FOR_RECOMMENDATIONS,
 			recommendationsLabel: recommendationsLabelForCount(recommendationCount)
 		};
 		if (
@@ -1237,9 +1263,7 @@
 			if (sid !== searchFeedSessionId) return;
 			await tick();
 
-			await ratingsStore.flushPending();
-			await planToReadStore.flushPending();
-			await notInterestedStore.flushPending();
+			await librarySaves.flush();
 			if (sid !== searchFeedSessionId) return;
 
 			const token = get(authStore).session?.access_token ?? null;
@@ -1290,6 +1314,7 @@
 		const supabase = getSupabase();
 		const user = get(authStore).user;
 		if (!token || !supabase || !user?.id) return false;
+		await librarySaves.flush();
 
 		const requestId =
 			resolveExhaustedFeedRefreshRequestId(feedState) ??
@@ -1455,10 +1480,8 @@
 				// ratings that unlocked the feed are persisted — and a session exists — before the
 				// backend generates it, otherwise it sees a below-threshold user and skips.
 				await ensureAnonymousSessionIfNeeded();
-				await ratingsStore.flushPending();
-				await planToReadStore.flushPending();
-				await notInterestedStore.flushPending();
 			}
+			await librarySaves.flush();
 
 			const supabase = getSupabase();
 			const token = await resolveAccessToken({ lazyAnonymous: !startedFromLatestFeed });
@@ -1603,35 +1626,8 @@
 	}
 
 	async function handleSubmit() {
-		if (!canGetRecommendations) return;
-		const sync = get(ratingsSyncMeta);
-		if (sync.queuedCount > 0 || sync.isFlushing) return;
-		const user = get(authStore).user;
-		if (!user?.id) {
-			goto(resolve('/rate/recommendations'));
-			return;
-		}
-		const supabase = getSupabase();
-		if (supabase) {
-			try {
-				const { data, error } = await supabase
-					.from('recommendation_requests')
-					.insert({ user_id: user.id })
-					.select('id')
-					.single();
-				if (!error && data?.id != null) {
-					goto(
-						resolve(
-							`/rate/recommendations/shortlist?request_id=${encodeURIComponent(String(data.id))}`
-						)
-					);
-					return;
-				}
-			} catch {
-				// fall through
-			}
-		}
-		goto(resolve('/rate/recommendations'));
+		if (recommendationsSubmitBlocked) return;
+		await recommendationSubmission.submit();
 	}
 
 	function handleToolbarSearchActivate() {
@@ -1831,7 +1827,10 @@
 			<RatingsBar
 				bind:this={ratingsBar}
 				{ratedEntries}
-				countsPending={sessionBootstrapPending}
+				countsPending={$authRestorePending ||
+					!areLibraryCollectionsAvailable($authStore.user?.id, $userLibraryHydrationStore, [
+						'ratings'
+					])}
 				triggerDisplayCount={bottomBarDisplayState.triggerCount}
 				resolveBook={findBookById}
 				summaryHooks={{
@@ -1843,7 +1842,10 @@
 						searchOverlayOpen ? handleSearchAfterRate() : handleMainListAfterRate()
 				}}
 			/>
-			{#if sessionBootstrapPending}
+			<LibraryLoadNotice collections={['ratings', 'bookmarks', 'dismissals']} />
+			{#if libraryLoadFailed}
+				<p class="rate-page__recommendations-hint-wrap">{t('libraryLoad.wait')}</p>
+			{:else if sessionBootstrapPending}
 				<div class="rate-page__recommendations-hint-wrap">
 					<div
 						class="btn btn--primary btn--pill rate-page__recommendations-hint rate-page__recommendations-hint--syncing"
@@ -1855,7 +1857,7 @@
 						<span class="btn__label">{t('shared.ratingsBar.syncing')}</span>
 					</div>
 				</div>
-			{:else if bottomBarDisplayState.canGetRecommendations}
+			{:else if bottomBarDisplayState.canGetRecommendations || recommendationsSubmitting || canOpenStartedRecommendations}
 				<div class="rate-page__recommendations-cta">
 					{#snippet recommendationsCtaSyncIcon()}
 						<RatingsSyncDot variant={recommendationsSubmitSyncFailed ? 'failed' : 'pending'} />
@@ -1863,26 +1865,41 @@
 					<Button
 						variant="primary"
 						pill
-						class="rate-page__recommendations-submit{!ratingsSyncedForRecommendations
+						class="rate-page__recommendations-submit{!librarySyncedForRecommendations
 							? ' rate-page__recommendations-submit--syncing'
 							: ''}{recommendationsSubmitSyncFailed
 							? ' rate-page__recommendations-submit--sync-failed'
 							: ''}"
-						icon={!ratingsSyncedForRecommendations ? recommendationsCtaSyncIcon : undefined}
-						aria-disabled={!ratingsSyncedForRecommendations ? 'true' : undefined}
-						aria-busy={!ratingsSyncedForRecommendations && !recommendationsSubmitSyncFailed
+						icon={!librarySyncedForRecommendations &&
+						!canOpenStartedRecommendations &&
+						!recommendationsSubmitting
+							? recommendationsCtaSyncIcon
+							: undefined}
+						aria-disabled={recommendationsSubmitBlocked ? 'true' : undefined}
+						aria-busy={recommendationsSubmitting ||
+						(!canOpenStartedRecommendations &&
+							!librarySyncedForRecommendations &&
+							!recommendationsSubmitSyncFailed)
 							? 'true'
 							: undefined}
 						onclick={(e) => {
-							if (!ratingsSyncedForRecommendations) {
+							if (recommendationsSubmitBlocked) {
 								e.preventDefault();
 								return;
 							}
 							void handleSubmit();
 						}}
 					>
-						{recommendationsSubmitLabel}
+						<RecommendationSubmitLabel
+							label={recommendationsSubmitLabel}
+							busy={recommendationsSubmitting}
+						/>
 					</Button>
+					<RecommendationSubmissionNotice
+						submission={recommendationSubmission}
+						onRetry={handleSubmit}
+						retryDisabled={recommendationsSubmitBlocked}
+					/>
 					<a class="rate-page__filtered-link" href={resolve('/rate/recommendations/filtered')}>
 						Choose filters
 					</a>
@@ -1890,22 +1907,22 @@
 			{:else}
 				<div class="rate-page__recommendations-hint-wrap">
 					<div
-						class="btn btn--primary btn--pill rate-page__recommendations-hint{!ratingsSyncedForRecommendations
+						class="btn btn--primary btn--pill rate-page__recommendations-hint{!librarySyncedForRecommendations
 							? ' rate-page__recommendations-hint--syncing'
 							: ''}{recommendationsSubmitSyncFailed
 							? ' rate-page__recommendations-hint--sync-failed'
 							: ''}"
 						role="status"
 						aria-live="polite"
-						aria-busy={!ratingsSyncedForRecommendations && !recommendationsSubmitSyncFailed
+						aria-busy={!librarySyncedForRecommendations && !recommendationsSubmitSyncFailed
 							? 'true'
 							: undefined}
 					>
-						{#if !ratingsSyncedForRecommendations}
+						{#if !librarySyncedForRecommendations}
 							<RatingsSyncDot variant={recommendationsSubmitSyncFailed ? 'failed' : 'pending'} />
 						{/if}
 						<span class="btn__label">
-							{ratingsSyncedForRecommendations
+							{librarySyncedForRecommendations
 								? bottomBarDisplayState.recommendationsLabel
 								: recommendationsOffQueueLabel}
 						</span>

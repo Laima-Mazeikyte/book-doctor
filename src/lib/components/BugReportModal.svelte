@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { tick } from 'svelte';
-	import { fade } from 'svelte/transition';
+	import ModalDialog from './ModalDialog.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import { isAnonymousOrSignedOut, signedInEmail } from '$lib/stores/auth';
 	import { getDeviceInfo } from '$lib/bugs/deviceInfo';
@@ -10,38 +9,20 @@
 	interface Props {
 		open: boolean;
 		onClose: () => void;
+		restoreFocusTarget?: HTMLElement | null;
 	}
 
-	let { open, onClose }: Props = $props();
+	let { open, onClose, restoreFocusTarget = null }: Props = $props();
 
 	let description = $state('');
 	let name = $state('');
 	let loading = $state(false);
 	let error = $state<string | null>(null);
 	let successMessage = $state(false);
-	let closeButtonEl = $state<HTMLButtonElement | null>(null);
-	let firstInputEl = $state<HTMLTextAreaElement | null>(null);
 
 	const titleId = 'bug-modal-title';
 	const author = $derived((name.trim() || $signedInEmail) ?? null);
 	const nameRequired = $derived($isAnonymousOrSignedOut);
-
-	function portal(node: HTMLElement, target: HTMLElement = document.body) {
-		target.appendChild(node);
-		return {
-			destroy() {
-				node.parentNode?.removeChild(node);
-			}
-		};
-	}
-
-	function handleOverlayClick(e: MouseEvent) {
-		if (e.target === e.currentTarget) onClose();
-	}
-
-	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') onClose();
-	}
 
 	$effect(() => {
 		if (open) {
@@ -49,24 +30,6 @@
 			name = '';
 			error = null;
 			successMessage = false;
-		}
-	});
-
-	$effect(() => {
-		if (!open) return;
-		tick().then(() => {
-			closeButtonEl?.focus();
-			firstInputEl?.focus();
-		});
-	});
-
-	$effect(() => {
-		if (open) {
-			const prev = document.body.style.overflow;
-			document.body.style.overflow = 'hidden';
-			return () => {
-				document.body.style.overflow = prev;
-			};
 		}
 	});
 
@@ -102,104 +65,80 @@
 	}
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
-
-{#if open}
-	<div
-		use:portal
-		class="bug-modal-overlay"
-		role="dialog"
-		aria-modal="true"
-		aria-labelledby={titleId}
-		tabindex="-1"
-		onclick={handleOverlayClick}
-		onkeydown={handleKeydown}
-		transition:fade={{ duration: 150 }}
-	>
-		<div
-			class="bug-modal-panel"
-			role="presentation"
-			onclick={(e) => e.stopPropagation()}
-			onkeydown={(e) => e.stopPropagation()}
-		>
-			<div class="bug-modal__header">
-				<h2 id={titleId} class="bug-modal__title typ-h3">
-					{t('shared.bugModal.title')}
-				</h2>
-				<Button
-					variant="secondary"
-					compact
-					type="button"
-					aria-label={t('shared.bugModal.close')}
-					ref={(el) => (closeButtonEl = el as HTMLButtonElement)}
-					onclick={onClose}
-				>
-					{t('shared.bugModal.close')}
-				</Button>
-			</div>
-
-			{#if successMessage}
-				<p class="bug-modal__success" role="status">{t('shared.bugModal.successMessage')}</p>
-			{:else}
-				{#if error}
-					<p class="bug-modal__error" role="alert">{error}</p>
-				{/if}
-
-				<form class="bug-modal__form" onsubmit={handleSubmit}>
-					<label class="bug-modal__label" for="bug-description">
-						{t('shared.bugModal.description')}
-					</label>
-					<textarea
-						bind:this={firstInputEl}
-						id="bug-description"
-						class="bug-modal__textarea"
-						placeholder={t('shared.bugModal.descriptionPlaceholder')}
-						bind:value={description}
-						required
-						rows="4"
-						disabled={loading}
-					></textarea>
-
-					<label class="bug-modal__label" for="bug-name">
-						{t('shared.bugModal.name')}
-					</label>
-					<input
-						id="bug-name"
-						type="text"
-						class="bug-modal__input"
-						placeholder={t('shared.bugModal.namePlaceholder')}
-						bind:value={name}
-						required={nameRequired}
-						disabled={loading}
-					/>
-
-					<Button type="submit" variant="primary" disabled={loading}>
-						{loading ? t('shared.bugModal.submitting') : t('shared.bugModal.submit')}
-					</Button>
-				</form>
-			{/if}
+<ModalDialog
+	{open}
+	{onClose}
+	{restoreFocusTarget}
+	labelledby={titleId}
+	initialFocus="#bug-description"
+>
+	<div class="bug-modal-panel">
+		<div class="bug-modal__header">
+			<h2 id={titleId} class="bug-modal__title typ-h3">
+				{t('shared.bugModal.title')}
+			</h2>
+			<Button
+				variant="secondary"
+				compact
+				type="button"
+				aria-label={t('shared.bugModal.close')}
+				onclick={onClose}
+			>
+				{t('shared.bugModal.close')}
+			</Button>
 		</div>
+
+		{#if successMessage}
+			<p class="bug-modal__success" role="status">{t('shared.bugModal.successMessage')}</p>
+		{:else}
+			{#if error}
+				<p class="bug-modal__error" role="alert">{error}</p>
+			{/if}
+
+			<form class="bug-modal__form" onsubmit={handleSubmit}>
+				<label class="bug-modal__label" for="bug-description">
+					{t('shared.bugModal.description')}
+				</label>
+				<textarea
+					id="bug-description"
+					class="bug-modal__textarea"
+					placeholder={t('shared.bugModal.descriptionPlaceholder')}
+					bind:value={description}
+					required
+					rows="4"
+					disabled={loading}
+				></textarea>
+
+				<label class="bug-modal__label" for="bug-name">
+					{t('shared.bugModal.name')}
+				</label>
+				<input
+					id="bug-name"
+					type="text"
+					class="bug-modal__input"
+					placeholder={t('shared.bugModal.namePlaceholder')}
+					bind:value={name}
+					required={nameRequired}
+					disabled={loading}
+				/>
+
+				<Button type="submit" variant="primary" disabled={loading}>
+					{loading ? t('shared.bugModal.submitting') : t('shared.bugModal.submit')}
+				</Button>
+			</form>
+		{/if}
 	</div>
-{/if}
+</ModalDialog>
 
 <style>
-	.bug-modal-overlay {
-		position: fixed;
-		inset: 0;
-		z-index: 200;
-		background: var(--color-overlay-scrim);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: var(--space-4);
-	}
-
 	.bug-modal-panel {
 		background: var(--color-card-bg);
 		border-radius: var(--radius-md);
 		box-shadow: var(--shadow-modal-elevated);
 		width: 100%;
 		max-width: 24rem;
+		max-height: 85vh;
+		overflow-y: auto;
 		padding: var(--space-5);
 	}
 

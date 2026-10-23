@@ -29,7 +29,7 @@
 	}
 
 	interface Props {
-		onOpenBugReport: () => void;
+		onOpenBugReport: (restoreFocusTarget?: HTMLElement | null) => void;
 	}
 
 	let { onOpenBugReport }: Props = $props();
@@ -42,6 +42,7 @@
 	let accountPanelEl = $state<HTMLDivElement | null>(null);
 	let mobileMenuToggleEl = $state<HTMLButtonElement | null>(null);
 	let authModalRestoreFocusTarget = $state<HTMLElement | null>(null);
+	let goodreadsRestoreFocusTarget = $state<HTMLElement | null>(null);
 
 	let showAuthActions = $derived($authReady && $isAnonymousOrSignedOut);
 	let email = $derived($signedInEmail);
@@ -81,6 +82,7 @@
 	}
 
 	function openGoodreadsSync() {
+		goodreadsRestoreFocusTarget = get(mobileMenuOpen) ? mobileMenuToggleEl : accountTriggerEl;
 		goodreadsSyncOpen = true;
 		closeAccountDropdown();
 		closeMobileMenu();
@@ -110,7 +112,7 @@
 
 	function openBugReportFromMenu() {
 		closeMobileMenu();
-		onOpenBugReport();
+		onOpenBugReport(mobileMenuToggleEl);
 	}
 
 	function handleClickOutsideAccount(e: MouseEvent) {
@@ -413,7 +415,11 @@
 	restoreFocusTarget={authModalRestoreFocusTarget}
 />
 
-<GoodreadsSyncModal open={goodreadsSyncOpen} onClose={closeGoodreadsSync} />
+<GoodreadsSyncModal
+	open={goodreadsSyncOpen}
+	onClose={closeGoodreadsSync}
+	restoreFocusTarget={goodreadsRestoreFocusTarget}
+/>
 
 <style>
 	.app-header {

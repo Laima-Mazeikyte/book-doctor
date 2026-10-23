@@ -11,13 +11,23 @@ import {
 } from './types';
 import { buildPopulation } from './ranking';
 
-const DEFAULT_BASE = '/best-book-search-local';
 const SUPPORTED_SCHEMA_VERSIONS = [2];
 
 export interface Release {
 	base: string;
 	webRoot: string;
 	manifest: BookRankingManifest;
+}
+
+/** Book rankings are served from the configured public artifact store in every environment. */
+export function resolveBookRankingArtifactBase(configured: string | undefined): string {
+	const base = artifactBase(configured, '');
+	if (!base) {
+		throw new BookRankingFormatError(
+			'PUBLIC_BOOK_RANKINGS_BASE is required; book rankings are served from Supabase Storage.'
+		);
+	}
+	return base;
 }
 
 function validate(manifest: BookRankingManifest): void {
@@ -61,7 +71,7 @@ function validate(manifest: BookRankingManifest): void {
 }
 
 export async function loadRelease(): Promise<Release> {
-	const base = artifactBase(env.PUBLIC_BOOK_RANKINGS_BASE, DEFAULT_BASE);
+	const base = resolveBookRankingArtifactBase(env.PUBLIC_BOOK_RANKINGS_BASE);
 	const webRoot = await resolveWebRoot(base);
 	const manifest = await fetchJson<BookRankingManifest>(joinUrl(base, webRoot, 'manifest.json'));
 	validate(manifest);

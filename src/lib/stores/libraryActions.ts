@@ -12,7 +12,7 @@ function startAnonymousPersistence(): void {
 /** Toggle a bookmark using the UUID for local state and ULID for persistence. */
 export function toggleBookmarked(book: Book): boolean {
 	const wasBookmarked = planToReadStore.has(book.id);
-	planToReadStore.toggle(book.id, book.book_id);
+	planToReadStore.toggle(book.id, book.book_id, book);
 	if (!wasBookmarked) notInterestedStore.remove(book.book_id);
 	startAnonymousPersistence();
 	return !wasBookmarked;
@@ -20,9 +20,9 @@ export function toggleBookmarked(book: Book): boolean {
 
 /** Toggle not-interested and clear every conflicting library action when adding it. */
 export function toggleNotInterested(book: Book): boolean {
-	const nowNotInterested = notInterestedStore.toggle(book.book_id);
+	const nowNotInterested = notInterestedStore.toggle(book.book_id, book);
 	if (nowNotInterested) {
-		if (planToReadStore.has(book.id)) planToReadStore.toggle(book.id, book.book_id);
+		if (planToReadStore.has(book.id)) planToReadStore.toggle(book.id, book.book_id, book);
 		if (get(ratingsStore).has(book.id)) ratingsStore.removeRating(book.id, book.book_id);
 	}
 	startAnonymousPersistence();

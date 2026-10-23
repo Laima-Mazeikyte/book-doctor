@@ -1,10 +1,14 @@
 <script lang="ts">
+	import { authStore, authReady } from '$lib/stores/auth';
+	import { canUseLibraryAction, userLibraryHydrationStore } from '$lib/stores/userLibrary';
 	import { Star } from 'lucide-svelte';
 	import type { RatingValue } from '$lib/types/book';
+	import LibrarySaveIndicator from '$lib/components/LibrarySaveIndicator.svelte';
 
 	const RATING_OPTIONS: RatingValue[] = [1, 2, 3, 4, 5];
 
 	interface Props {
+		bookUlid?: string;
 		displayRating: number;
 		ariaGroupLabel: string;
 		starAriaLabel: (value: RatingValue) => string;
@@ -17,6 +21,7 @@
 	}
 
 	let {
+		bookUlid,
 		displayRating,
 		ariaGroupLabel,
 		starAriaLabel,
@@ -26,6 +31,11 @@
 		onstarEnter,
 		onstarClick
 	}: Props = $props();
+	function actionReady(action: 'rating' | 'bookmark' | 'dismissal'): boolean {
+		return (
+			$authReady && canUseLibraryAction(action, $authStore.user?.id, $userLibraryHydrationStore)
+		);
+	}
 </script>
 
 <div class="book-card__rating-wrap" class:book-card__rating-wrap--auto={ratingWrapWidth === 'auto'}>
@@ -34,6 +44,7 @@
 			<button
 				type="button"
 				class="book-card__star"
+				disabled={!actionReady('rating')}
 				class:book-card__star--active={displayRating >= value}
 				aria-label={starAriaLabel(value)}
 				aria-pressed={starAriaPressed(value)}
@@ -45,6 +56,7 @@
 				</span>
 			</button>
 		{/each}
+		{#if bookUlid}<LibrarySaveIndicator {bookUlid} kind="rating" />{/if}
 	</div>
 </div>
 

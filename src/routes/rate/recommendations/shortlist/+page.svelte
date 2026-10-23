@@ -1,8 +1,12 @@
 <script lang="ts">
+	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
 	import type { DimensionMatchSnapshotsByBookId } from '$lib/recommendations/dimensionMatches';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
-	import { goto } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
+	import { onDestroy } from 'svelte';
+	import { resolve } from '$app/paths';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { page } from '$app/state';
 	import ShortlistCarousel from '$lib/components/shortlist/ShortlistCarousel.svelte';
 	import {
@@ -20,7 +24,8 @@
 		RECOMMENDATIONS_POLL_INTERVAL_MS,
 		RECOMMENDATIONS_POLL_TIMEOUT_MS
 	} from '$lib/recommendations/fetchRecommendations';
-	import { requestRecommendations } from '$lib/recommendations/requestRecommendations';
+	import { createRecommendationSubmission } from '$lib/recommendations/requestRecommendations';
+	import RecommendationSubmissionNotice from '$lib/components/RecommendationSubmissionNotice.svelte';
 	import { refreshRecommendationsCountFromApi } from '$lib/stores/recommendationsCount';
 	import { authStore } from '$lib/stores/auth';
 	import { notInterestedStore } from '$lib/stores/notInterested';
@@ -50,12 +55,15 @@
 	let pollTimer: ReturnType<typeof setTimeout> | null = null;
 	let activeLoadId = 0;
 	let activeIndex = $state(0);
-	let requestingRecommendations = $state(false);
+	const recommendationSubmission = createRecommendationSubmission();
+	const requestingRecommendations = $derived($recommendationSubmission.status === 'submitting');
+	beforeNavigate(({ to }) => recommendationSubmission.leave(to?.url ?? null));
+	onDestroy(() => recommendationSubmission.destroy());
 	let sessionNiCount = $state(0);
 	let insertionsUsed = $state(0);
-	let insertedBookIds = $state<Set<string>>(new Set());
-	let dismissalOrdinals = $state<Map<string, number>>(new Map());
-	let replaceUsedBookIds = $state<Set<string>>(new Set());
+	const insertedBookIds = new SvelteSet<string>();
+	const dismissalOrdinals = new SvelteMap<string, number>();
+	const replaceUsedBookIds = new SvelteSet<string>();
 	let shortlistLayoutChanged = $state(false);
 	let scrollToBookIndex: ((index: number) => void) | undefined;
 
@@ -79,9 +87,9 @@
 	function resetShortlistSession() {
 		sessionNiCount = 0;
 		insertionsUsed = 0;
-		insertedBookIds = new Set();
-		dismissalOrdinals = new Map();
-		replaceUsedBookIds = new Set();
+		insertedBookIds.clear();
+		dismissalOrdinals.clear();
+		replaceUsedBookIds.clear();
 		shortlistLayoutChanged = false;
 	}
 
@@ -111,13 +119,13 @@
 	function handleNotInterested(book: Book) {
 		const bid = book.book_id;
 		const wasNotInterested = notInterestedStore.has(bid);
-		const nowNotInterested = notInterestedStore.toggle(bid);
+		const nowNotInterested = notInterestedStore.toggle(bid, book);
 		shortlistLayoutChanged = true;
 		if (nowNotInterested && !wasNotInterested) {
 			sessionNiCount += 1;
-			dismissalOrdinals = new Map(dismissalOrdinals).set(bid, sessionNiCount);
+			dismissalOrdinals.set(bid, sessionNiCount);
 			if (planToReadStore.has(book.id)) {
-				planToReadStore.toggle(book.id, book.book_id);
+				planToReadStore.toggle(book.id, book.book_id, book);
 			}
 			if (get(ratingsStore).has(book.id)) {
 				ratingsStore.removeRating(book.id, book.book_id);
@@ -126,18 +134,14 @@
 			if (!insertedBookIds.has(bid)) {
 				sessionNiCount = Math.max(0, sessionNiCount - 1);
 			}
-			const next = new Map(dismissalOrdinals);
-			next.delete(bid);
-			dismissalOrdinals = next;
-			const nextReplaceUsed = new Set(replaceUsedBookIds);
-			nextReplaceUsed.delete(bid);
-			replaceUsedBookIds = nextReplaceUsed;
+			dismissalOrdinals.delete(bid);
+			replaceUsedBookIds.delete(bid);
 		}
 	}
 
 	function handleBookmark(book: Book) {
 		const wasBookmarked = planToReadStore.has(book.id);
-		planToReadStore.toggle(book.id, book.book_id);
+		planToReadStore.toggle(book.id, book.book_id, book);
 		if (!wasBookmarked) {
 			const bid = book.book_id;
 			if (notInterestedStore.has(bid)) {
@@ -145,12 +149,8 @@
 				if (!insertedBookIds.has(bid)) {
 					sessionNiCount = Math.max(0, sessionNiCount - 1);
 				}
-				const next = new Map(dismissalOrdinals);
-				next.delete(bid);
-				dismissalOrdinals = next;
-				const nextReplaceUsed = new Set(replaceUsedBookIds);
-				nextReplaceUsed.delete(bid);
-				replaceUsedBookIds = nextReplaceUsed;
+				dismissalOrdinals.delete(bid);
+				replaceUsedBookIds.delete(bid);
 			}
 		}
 	}
@@ -164,14 +164,7 @@
 	}
 
 	async function handleRequestNewRecommendations() {
-		if (requestingRecommendations) return;
-		requestingRecommendations = true;
-		try {
-			await notInterestedStore.flushPending();
-			await requestRecommendations($authStore.user?.id);
-		} finally {
-			requestingRecommendations = false;
-		}
+		await recommendationSubmission.submit();
 	}
 
 	function getNotInterestedOverlay(bookId: string): NotInterestedOverlay {
@@ -192,15 +185,20 @@
 		visibleBooks = result.visible;
 		reserveBooks = result.reserve;
 		insertionsUsed += 1;
-		insertedBookIds = new Set(insertedBookIds).add(result.incoming.book_id);
-		replaceUsedBookIds = new Set(replaceUsedBookIds).add(book.book_id);
+		insertedBookIds.add(result.incoming.book_id);
+		replaceUsedBookIds.add(book.book_id);
 		const nextIndex = index + 1;
 		activeIndex = nextIndex;
 		queueMicrotask(() => scrollToBookIndex?.(nextIndex));
 	}
 
-	function startPoll(accessToken: string | null, requestId: string, loadId: number) {
-		activeUserId = get(authStore).user?.id ?? null;
+	function startPoll(
+		userId: string | null,
+		accessToken: string | null,
+		requestId: string,
+		loadId: number
+	) {
+		activeUserId = userId;
 		recommendationsPageStore.ensureUser(activeUserId);
 		const fromHistory = page.url.searchParams.get('from') === 'history';
 		const cachedRun = recommendationsPageStore.getRun(requestId);
@@ -316,7 +314,12 @@
 		viewState = 'loading';
 		visibleBooks = [];
 		reserveBooks = [];
-		startPoll($authStore.session?.access_token ?? null, requestId, loadId);
+		startPoll(
+			$authStore.user?.id ?? null,
+			$authStore.session?.access_token ?? null,
+			requestId,
+			loadId
+		);
 	}
 
 	$effect(() => {
@@ -335,14 +338,14 @@
 		}
 
 		if (!requestId) {
-			void goto('/rate/recommendations', { replaceState: true });
+			void goto(resolve('/rate/recommendations'), { replaceState: true });
 			return;
 		}
 
 		const userId = $authStore.user?.id ?? null;
 		const loadId = ++activeLoadId;
 		const accessToken = get(authStore).session?.access_token ?? null;
-		startPoll(accessToken, requestId, loadId);
+		startPoll(userId, accessToken, requestId, loadId);
 
 		return () => {
 			if (pollTimer != null) {
@@ -352,7 +355,7 @@
 		};
 	});
 
-	const backHref = '/rate/recommendations';
+	const backHref = resolve('/rate/recommendations');
 
 	function handleClose() {
 		void goto(backHref);
@@ -379,6 +382,7 @@
 				{t('recommendations.shortlist.title')}
 			</h1>
 			<p class="shortlist-page__description">{t('recommendations.shortlist.description')}</p>
+			<RecommendationSubmissionNotice submission={recommendationSubmission} />
 			{#if viewState === 'ready' && visibleBooks.length > 1}
 				<div class="shortlist-page__position">
 					<ShortlistPositionIndicator position={activeIndex + 1} total={visibleBooks.length} />
@@ -387,6 +391,7 @@
 		</div>
 	</header>
 
+	<LibraryLoadNotice collections={['ratings', 'bookmarks', 'dismissals']} />
 	{#if viewState === 'loading'}
 		<ShortlistLoading />
 	{:else if viewState === 'failed'}

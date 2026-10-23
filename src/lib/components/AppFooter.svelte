@@ -3,7 +3,7 @@
 	import { resolve } from '$app/paths';
 
 	interface Props {
-		onOpenBugReport: () => void;
+		onOpenBugReport: (restoreFocusTarget?: HTMLElement | null) => void;
 		supplement?: string | null;
 	}
 
@@ -20,7 +20,11 @@
 				<a href={resolve('/lab')} class="app-footer__link">{t('shared.footer.lab')}</a>
 			</li>
 			<li>
-				<button type="button" class="app-footer__link" onclick={onOpenBugReport}>
+				<button
+					type="button"
+					class="app-footer__link"
+					onclick={(event) => onOpenBugReport(event.currentTarget)}
+				>
 					{t('shared.footer.reportBug')}
 				</button>
 			</li>

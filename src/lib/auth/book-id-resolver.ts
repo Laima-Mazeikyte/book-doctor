@@ -28,14 +28,14 @@ export function bookmarkUlidFromRow(row: BookIdJoinRow): string {
 export async function fetchUuidByUlid(
 	supabase: SupabaseClient,
 	bookIds: string[],
-	isStale: () => boolean
+	isStale: () => boolean,
+	signal?: AbortSignal
 ): Promise<Record<string, string>> {
 	if (bookIds.length === 0) return {};
 
-	const { data: bookRows } = await supabase
-		.from('books')
-		.select('id, book_id')
-		.in('book_id', bookIds);
+	const query = supabase.from('books').select('id, book_id').in('book_id', bookIds);
+	const { data: bookRows, error } = await (signal ? query.abortSignal(signal) : query);
+	if (error) throw error;
 
 	if (isStale()) return {};
 

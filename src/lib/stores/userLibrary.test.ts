@@ -1,5 +1,5 @@
 import { get } from 'svelte/store';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
 	clearUserLibraryHydration,
@@ -11,9 +11,10 @@ import {
 } from './userLibrary';
 
 describe('user library hydration', () => {
+	beforeEach(clearUserLibraryHydration);
 	it('marks id hydration in progress for the active user', () => {
 		markUserLibraryIdsStarted('user-1');
-		expect(get(userLibraryHydrationStore)).toEqual({
+		expect(get(userLibraryHydrationStore)).toMatchObject({
 			userId: 'user-1',
 			idsReady: false,
 			detailsReady: false
@@ -23,7 +24,7 @@ describe('user library hydration', () => {
 	it('marks ids ready and leaves details pending', () => {
 		markUserLibraryIdsStarted('user-1');
 		markUserLibraryIdsReady('user-1');
-		expect(get(userLibraryHydrationStore)).toEqual({
+		expect(get(userLibraryHydrationStore)).toMatchObject({
 			userId: 'user-1',
 			idsReady: true,
 			detailsReady: false
@@ -34,7 +35,7 @@ describe('user library hydration', () => {
 		markUserLibraryIdsStarted('user-1');
 		markUserLibraryIdsReady('user-1');
 		markUserLibraryDetailsReady('user-1');
-		expect(get(userLibraryHydrationStore)).toEqual({
+		expect(get(userLibraryHydrationStore)).toMatchObject({
 			userId: 'user-1',
 			idsReady: true,
 			detailsReady: true
@@ -43,7 +44,7 @@ describe('user library hydration', () => {
 
 	it('treats cleared hydration as ready for signed-out restore', () => {
 		clearUserLibraryHydration();
-		expect(get(userLibraryHydrationStore)).toEqual({
+		expect(get(userLibraryHydrationStore)).toMatchObject({
 			userId: null,
 			idsReady: true,
 			detailsReady: true

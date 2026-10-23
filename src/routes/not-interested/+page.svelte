@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { authStore } from '$lib/stores/auth';
@@ -18,6 +19,8 @@
 	import { notInterestedPageLoader, notInterestedPageStore } from '$lib/notInterested/pageLoader';
 	import type { Book, RatingValue } from '$lib/types/book';
 
+	// Token refreshes keep the current retry budget; changing accounts starts a new load.
+	const libraryUserId = $derived($authStore.user?.id);
 	let gridColumns = $state(estimateGridColumns());
 	const pageState = $derived($notInterestedPageStore.entries.newest);
 	const books = $derived(pageState.books);
@@ -26,9 +29,8 @@
 
 	$effect(() => {
 		const pathname = $page.url.pathname;
-		const authKey = `${$authStore.user?.id ?? ''}:${$authStore.session?.access_token ?? ''}`;
+		void libraryUserId;
 		if (pathname !== '/not-interested') return;
-		void authKey;
 		void notInterestedPageLoader.ensureLoaded('newest');
 	});
 
@@ -62,7 +64,7 @@
 
 	function handleNotInterested(book: Book) {
 		const wasNotInterested = notInterestedStore.has(book.book_id);
-		notInterestedStore.toggle(book.book_id);
+		notInterestedStore.toggle(book.book_id, book);
 		if (wasNotInterested) {
 			refreshRecommendationCount();
 		}
@@ -70,7 +72,7 @@
 
 	function handleBookmark(book: Book, id: string) {
 		const wasBookmarked = planToReadStore.has(book.id);
-		planToReadStore.toggle(id, book.book_id);
+		planToReadStore.toggle(id, book.book_id, book);
 		if (!wasBookmarked) {
 			notInterestedStore.remove(book.book_id);
 			refreshRecommendationCount();
@@ -89,6 +91,7 @@
 </svelte:head>
 
 <div class="not-interested-page">
+	<LibraryLoadNotice collections={['ratings', 'bookmarks', 'dismissals']} />
 	<h1 class="not-interested-page__title typ-display2">{t('notInterested.title')}</h1>
 	<p class="not-interested-page__intro">{t('notInterested.intro')}</p>
 	{#if initialLoading}

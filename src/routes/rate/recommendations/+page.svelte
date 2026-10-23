@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
 	import {
 		normalizeDimensionMatchSnapshots,
 		type DimensionMatchSnapshotsByBookId
@@ -66,7 +67,6 @@
 	const authUserId = $derived($authStore.user?.id ?? null);
 
 	let uniquePayload = $state<RecommendationsUniquePayload>(initialSnapshot.unique);
-	let uniqueLoaded = $state(!initialAuthRestorePending && initialSnapshot.uniqueLoaded);
 	let uniqueBooksLoading = $state(initialAuthRestorePending || !initialSnapshot.uniqueLoaded);
 	let error = $state<string | null>(null);
 	let viewMode = $state<'loading' | 'history' | 'empty' | 'error'>(
@@ -184,10 +184,10 @@
 	function handleNotInterested(book: Book) {
 		const bid = book.book_id;
 		const wasNotInterested = notInterestedStore.has(bid);
-		const nowNotInterested = notInterestedStore.toggle(bid);
+		const nowNotInterested = notInterestedStore.toggle(bid, book);
 		if (nowNotInterested && !wasNotInterested) {
 			if (planToReadStore.has(book.id)) {
-				planToReadStore.toggle(book.id, book.book_id);
+				planToReadStore.toggle(book.id, book.book_id, book);
 			}
 			if (get(ratingsStore).has(book.id)) {
 				ratingsStore.removeRating(book.id, book.book_id);
@@ -197,7 +197,7 @@
 
 	function handleBookmark(book: Book, id: string) {
 		const wasBookmarked = planToReadStore.has(book.id);
-		planToReadStore.toggle(id, book.book_id);
+		planToReadStore.toggle(id, book.book_id, book);
 		if (!wasBookmarked) {
 			notInterestedStore.remove(book.book_id);
 		}
@@ -222,7 +222,6 @@
 		}: { loaded?: boolean; persist?: boolean; errorMessage?: string | null } = {}
 	) {
 		uniquePayload = payload;
-		uniqueLoaded = loaded;
 		error = errorMessage;
 		viewMode = errorMessage
 			? 'error'
@@ -344,6 +343,7 @@
 </svelte:head>
 
 <div class="recommendations-page">
+	<LibraryLoadNotice collections={['ratings', 'bookmarks', 'dismissals']} />
 	<nav class="recommendations-page__tabs" aria-label="Recommendation views">
 		<a href={resolve('/rate/recommendations')} aria-current="page">For you</a>
 		<a href={resolve('/rate/recommendations/filtered')}>Filter books</a>

@@ -1,105 +1,107 @@
-import { writable } from 'svelte/store';
+import { derived } from 'svelte/store';
+import { libraryLoads, type LibraryCollection, type LibraryLoadSnapshot } from './libraryLoads';
+import { librarySaves } from './librarySaves';
 
-export interface UserLibraryHydrationState {
-	userId: string | null;
+export const LIBRARY_ID_COLLECTIONS = ['ratings', 'bookmarks', 'dismissals'] as const;
+export interface UserLibraryHydrationState extends LibraryLoadSnapshot {
 	idsReady: boolean;
 	detailsReady: boolean;
 }
+export const userLibraryHydrationStore = derived(
+	libraryLoads,
+	(state): UserLibraryHydrationState => ({
+		...state,
+		idsReady:
+			!state.userId || LIBRARY_ID_COLLECTIONS.every((kind) => state.collections[kind].hasSnapshot),
+		detailsReady: !state.userId || state.collections.ratedDetails.hasSnapshot
+	})
+);
 
-export const userLibraryHydrationStore = writable<UserLibraryHydrationState>({
-	userId: null,
-	idsReady: true,
-	detailsReady: true
+// Account changes invalidate reads immediately, before the layout's next reactive pass.
+librarySaves.subscribe(({ ownerId }) => {
+	libraryLoads.activate(ownerId.startsWith('guest:') ? null : ownerId);
 });
 
 let idsLoader: ((userId: string) => void) | null = null;
 let detailsLoader: ((userId: string) => void) | null = null;
 
-/** Layout: lightweight library id load started for this Supabase user id. */
 export function markUserLibraryIdsStarted(userId: string): void {
-	userLibraryHydrationStore.set({ userId, idsReady: false, detailsReady: false });
+	libraryLoads.activate(userId);
 }
 
-/** Layout: ratings, bookmarks, and not-interested id hydration finished for this user. */
+/** Used when a complete, successful ID snapshot is already available. */
 export function markUserLibraryIdsReady(userId: string): void {
-	userLibraryHydrationStore.update((state) =>
-		state.userId === userId
-			? { ...state, idsReady: true }
-			: { userId, idsReady: true, detailsReady: false }
-	);
+	libraryLoads.markSnapshot(userId, LIBRARY_ID_COLLECTIONS);
 	scheduleUserLibraryDetailsLoad(userId);
 }
 
-/** Layout: rated-book details hydration finished for this user. */
 export function markUserLibraryDetailsReady(userId: string): void {
-	userLibraryHydrationStore.update((state) =>
-		state.userId === userId
-			? { ...state, detailsReady: true }
-			: { userId, idsReady: true, detailsReady: true }
+	libraryLoads.markSnapshot(userId, ['ratedDetails']);
+}
+
+export function clearUserLibraryHydration(): void {
+	libraryLoads.reset();
+}
+
+export function areLibraryCollectionsAvailable(
+	userId: string | null | undefined,
+	hydration: UserLibraryHydrationState,
+	kinds: readonly LibraryCollection[]
+): boolean {
+	return (
+		!userId ||
+		(hydration.userId === userId && kinds.every((kind) => hydration.collections[kind].hasSnapshot))
 	);
 }
 
-/** Layout: no signed-in user — nothing to hydrate. */
-export function clearUserLibraryHydration(): void {
-	userLibraryHydrationStore.set({ userId: null, idsReady: true, detailsReady: true });
-}
-
-/** True when rating/bookmark/not-interested ids are hydrated for the active user. */
 export function isUserLibraryIdsReady(
 	userId: string | null | undefined,
 	hydration: UserLibraryHydrationState
 ): boolean {
-	if (!userId) return true;
-	if (hydration.userId !== userId) return false;
-	return hydration.idsReady;
+	return areLibraryCollectionsAvailable(userId, hydration, LIBRARY_ID_COLLECTIONS);
 }
 
-/** True when rated-book details (titles/covers) are hydrated for the active user. */
 export function isUserLibraryDetailsReady(
 	userId: string | null | undefined,
 	hydration: UserLibraryHydrationState
 ): boolean {
-	if (!userId) return true;
-	if (hydration.userId !== userId) return false;
-	return hydration.detailsReady;
+	return areLibraryCollectionsAvailable(userId, hydration, ['ratedDetails']);
 }
 
-/** Layout registers the deferred library id loader. */
+export function canUseLibraryAction(
+	action: 'rating' | 'bookmark' | 'dismissal',
+	userId: string | null | undefined,
+	hydration: UserLibraryHydrationState
+): boolean {
+	const needed: readonly LibraryCollection[] =
+		action === 'rating'
+			? ['ratings', 'dismissals']
+			: action === 'bookmark'
+				? ['bookmarks', 'dismissals']
+				: LIBRARY_ID_COLLECTIONS;
+	return areLibraryCollectionsAvailable(userId, hydration, needed);
+}
+
 export function registerUserLibraryIdsLoader(fn: (userId: string) => void): void {
 	idsLoader = fn;
 }
-
 export function unregisterUserLibraryIdsLoader(): void {
 	idsLoader = null;
 }
-
-/** Schedule library id hydration after first paint / idle time (non-blocking). */
-export function scheduleUserLibraryIdsLoad(userId: string | null | undefined): void {
-	if (!userId || !idsLoader) return;
-	const run = () => idsLoader?.(userId);
-	if (typeof requestIdleCallback !== 'undefined') {
-		requestIdleCallback(() => run(), { timeout: 3000 });
-		return;
-	}
-	setTimeout(run, 0);
-}
-
-/** Layout registers the deferred rated-book details loader. */
 export function registerUserLibraryDetailsLoader(fn: (userId: string) => void): void {
 	detailsLoader = fn;
 }
-
 export function unregisterUserLibraryDetailsLoader(): void {
 	detailsLoader = null;
 }
 
-/** Schedule rated-book details after first paint / idle time (non-blocking). */
+function schedule(run: () => void) {
+	if (typeof requestIdleCallback !== 'undefined') requestIdleCallback(run, { timeout: 3000 });
+	else setTimeout(run, 0);
+}
+export function scheduleUserLibraryIdsLoad(userId: string | null | undefined): void {
+	if (userId && idsLoader) schedule(() => idsLoader?.(userId));
+}
 export function scheduleUserLibraryDetailsLoad(userId: string | null | undefined): void {
-	if (!userId || !detailsLoader) return;
-	const run = () => detailsLoader?.(userId);
-	if (typeof requestIdleCallback !== 'undefined') {
-		requestIdleCallback(() => run(), { timeout: 3000 });
-		return;
-	}
-	setTimeout(run, 0);
+	if (userId && detailsLoader) schedule(() => detailsLoader?.(userId));
 }

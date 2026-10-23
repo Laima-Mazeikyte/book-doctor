@@ -1,9 +1,15 @@
-import { expect, it, vi } from 'vitest';
+import { beforeEach, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { page as browserPage } from 'vitest/browser';
 import BookCard from './BookCard.svelte';
 import '../../app.css';
 import coverFixture from '$lib/assets/favicon.svg?url';
+import { authStore, markAuthInitChecking, markAuthInitReady } from '$lib/stores/auth';
+
+beforeEach(() => {
+	authStore.setSession(null);
+	markAuthInitReady();
+});
 
 const appPage = vi.hoisted(() => ({
 	current: { state: {} as Record<string, unknown> }
@@ -40,6 +46,27 @@ const book = {
 	author: 'An author',
 	summary: 'A complete summary'
 };
+
+it('waits for session restoration before enabling library actions', async () => {
+	markAuthInitChecking();
+	const rendered = render(BookCard, {
+		props: { book, context: 'recommendations', onBookmark: vi.fn(), onNotInterested: vi.fn() }
+	});
+	await expect
+		.element(rendered.getByRole('button', { name: 'Add to Bookmarks', exact: true }))
+		.toBeDisabled();
+	await expect
+		.element(rendered.getByRole('button', { name: 'Not interested', exact: true }))
+		.toBeDisabled();
+	markAuthInitReady();
+	await expect
+		.element(rendered.getByRole('button', { name: 'Add to Bookmarks', exact: true }))
+		.toBeEnabled();
+	await expect
+		.element(rendered.getByRole('button', { name: 'Not interested', exact: true }))
+		.toBeEnabled();
+	rendered.unmount();
+});
 
 it('opens the extracted canonical summary sheet without rate-only history', async () => {
 	const historyLength = window.history.length;

@@ -40,12 +40,38 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	vi.useRealTimers();
 	vi.unstubAllGlobals();
 	authStore.setSession(null);
 	authInitStore.set({ status: 'idle' });
 });
 
 describe('not interested page loader', () => {
+	it('retries temporary failures three times and starts a fresh cycle when revisited', async () => {
+		vi.useFakeTimers();
+		const fetchMock = vi.mocked(fetch);
+		fetchMock.mockImplementation(async () => Response.json({}, { status: 503 }));
+		const loading = notInterestedPageLoader.ensureLoaded('newest');
+		await vi.advanceTimersByTimeAsync(8000);
+		await loading;
+		expect(fetchMock).toHaveBeenCalledTimes(4);
+		expect(notInterestedPageLoader.getSnapshot('newest')).toMatchObject({
+			loaded: false,
+			loading: false
+		});
+		expect(notInterestedPageLoader.getSnapshot('newest').error).toBeTruthy();
+		await vi.advanceTimersByTimeAsync(60_000);
+		expect(fetchMock).toHaveBeenCalledTimes(4);
+		fetchMock.mockResolvedValue(response({ books: [book], nextCursor: null }));
+		await notInterestedPageLoader.ensureLoaded('newest');
+		expect(fetchMock).toHaveBeenCalledTimes(5);
+		expect(notInterestedPageLoader.getSnapshot('newest')).toMatchObject({
+			books: [book],
+			error: null,
+			loaded: true
+		});
+	});
+
 	it('waits for auth restoration and deduplicates the first page request', async () => {
 		const fetchMock = vi.mocked(fetch);
 		let resolveResponse: (value: Response) => void = () => undefined;
@@ -78,7 +104,7 @@ describe('not interested page loader', () => {
 		const fetchMock = vi.mocked(fetch);
 		fetchMock
 			.mockResolvedValueOnce(response({ books: [book], nextCursor: 'cursor-1' }))
-			.mockResolvedValueOnce({ ok: false } as Response)
+			.mockResolvedValueOnce({ ok: false, status: 403 } as Response)
 			.mockResolvedValueOnce(
 				response({ books: [{ ...book, id: 'uuid-2', book_id: 'ni-2' }], nextCursor: null })
 			);
@@ -215,7 +241,7 @@ describe('not interested page loader', () => {
 		const fetchMock = vi.mocked(fetch);
 		fetchMock
 			.mockResolvedValueOnce(response({ books: [book], nextCursor: 'cursor-1' }))
-			.mockResolvedValueOnce({ ok: false } as Response);
+			.mockResolvedValueOnce({ ok: false, status: 403 } as Response);
 
 		await notInterestedPageLoader.ensureLoaded('newest');
 		notInterestedPageLoader.invalidate('newest');

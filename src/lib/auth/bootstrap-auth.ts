@@ -9,7 +9,7 @@ import {
 	passwordRecoveryActive,
 	waitForAuthReady
 } from '$lib/stores/auth';
-import { ratingsStore } from '$lib/stores/ratings';
+import { librarySaves } from '$lib/stores/librarySaves';
 
 export async function getSessionAfterUrlTokens(supabase: SupabaseClient): Promise<Session | null> {
 	const hasUrlToken =
@@ -35,6 +35,7 @@ export async function getSessionAfterUrlTokens(supabase: SupabaseClient): Promis
 
 export function createLayoutAuthController(supabase: SupabaseClient) {
 	let lastAppliedSessionKey: string | null = null;
+	let guestDraftToClaim: string | null = null;
 
 	function sessionKey(session: Session | null): string {
 		return session?.user?.id && session.access_token
@@ -47,8 +48,12 @@ export function createLayoutAuthController(supabase: SupabaseClient) {
 		if (key === lastAppliedSessionKey) return false;
 
 		lastAppliedSessionKey = key;
+		if (session?.user.is_anonymous && guestDraftToClaim) {
+			librarySaves.claimGuest(session.user.id, guestDraftToClaim);
+			guestDraftToClaim = null;
+		}
+		librarySaves.activateOwner(session?.user.id ?? null);
 		authStore.setSession(session);
-		if (session?.user) void ratingsStore.flushPending();
 		return true;
 	}
 
@@ -60,6 +65,7 @@ export function createLayoutAuthController(supabase: SupabaseClient) {
 		if (anonymousSignInPromise) return anonymousSignInPromise;
 
 		anonymousSignInPromise = (async () => {
+			guestDraftToClaim = librarySaves.getOwner();
 			try {
 				const { data: signInData, error } = await supabase.auth.signInAnonymously();
 
@@ -87,6 +93,8 @@ export function createLayoutAuthController(supabase: SupabaseClient) {
 				console.error('[auth] Lazy anonymous sign-in error', e);
 				return !!get(authStore).session;
 			} finally {
+				guestDraftToClaim = null;
+				if (!get(authStore).session) librarySaves.failGuest();
 				anonymousSignInPromise = null;
 			}
 		})();
@@ -129,23 +137,4 @@ export function createLayoutAuthController(supabase: SupabaseClient) {
 	}
 
 	return { mount, applyAuthSession };
-}
-
-export function mountRatingsRetryListeners(): () => void {
-	const retryQueuedRatings = () => {
-		void ratingsStore.flushPending();
-	};
-	const handleVisibilityChange = () => {
-		if (document.visibilityState === 'visible') retryQueuedRatings();
-	};
-
-	window.addEventListener('online', retryQueuedRatings);
-	window.addEventListener('focus', retryQueuedRatings);
-	document.addEventListener('visibilitychange', handleVisibilityChange);
-
-	return () => {
-		window.removeEventListener('online', retryQueuedRatings);
-		window.removeEventListener('focus', retryQueuedRatings);
-		document.removeEventListener('visibilitychange', handleVisibilityChange);
-	};
 }

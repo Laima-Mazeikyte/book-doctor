@@ -26,6 +26,8 @@
 		countedTabIds?: readonly string[];
 		/** Return numeric count for a tab id (shown in a small pill). */
 		getCount?: (id: string) => number;
+		getCountReady?: (id: string) => boolean;
+		getCountFailed?: (id: string) => boolean;
 		onSelect?: (id: string) => void;
 		/**
 		 * One row + horizontal overflow (scrollbar hidden). Use in narrow panels (e.g. ratings drawer).
@@ -44,6 +46,8 @@
 		showCounts = true,
 		countedTabIds,
 		getCount = () => 0,
+		getCountReady,
+		getCountFailed,
 		onSelect,
 		scrollSingleRow = false
 	}: Props = $props();
@@ -93,7 +97,7 @@
 	}
 
 	function tabAriaLabel(item: NavStyleTabItem): string {
-		if (!shouldShowCount(item.id) || !countsReady) return item.label;
+		if (!shouldShowCount(item.id) || !(getCountReady?.(item.id) ?? countsReady)) return item.label;
 		return `${item.label}, ${getCount(item.id)}`;
 	}
 
@@ -122,11 +126,14 @@
 				{#if shouldShowCount(item.id)}
 					<span
 						class="nav-style-tabs__count"
-						class:nav-style-tabs__count--triple={countsReady && getCount(item.id) >= 100}
+						class:nav-style-tabs__count--triple={(getCountReady?.(item.id) ?? countsReady) &&
+							getCount(item.id) >= 100}
 						aria-hidden="true"
 					>
-						{#if !countsReady}
-							<span class="nav-style-tabs__sync-dot"><RatingsSyncDot variant="pending" /></span>
+						{#if !(getCountReady?.(item.id) ?? countsReady)}
+							<span class="nav-style-tabs__sync-dot"
+								><RatingsSyncDot variant={getCountFailed?.(item.id) ? 'failed' : 'pending'} /></span
+							>
 						{:else}
 							{getCount(item.id)}
 						{/if}

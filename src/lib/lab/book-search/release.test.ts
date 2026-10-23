@@ -1,10 +1,16 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadDataset, loadRelease } from './release';
 import { BookRankingFormatError } from './types';
 
-vi.mock('$env/dynamic/public', () => ({
-	env: { PUBLIC_BOOK_RANKINGS_BASE: '/handoff', PUBLIC_BOOK_RANKINGS_VERSION: 'v8' }
+const publicEnv = vi.hoisted(() => ({
+	PUBLIC_BOOK_RANKINGS_BASE: undefined as string | undefined,
+	PUBLIC_BOOK_RANKINGS_VERSION: 'v8'
 }));
+vi.mock('$env/dynamic/public', () => ({ env: publicEnv }));
+const HOSTED_BASE = 'https://rankings.example/book-search';
+beforeEach(() => {
+	publicEnv.PUBLIC_BOOK_RANKINGS_BASE = ` ${HOSTED_BASE}/ `;
+});
 
 const model = {
 	features: ['regard', 'reach', 'recognition'],
@@ -70,14 +76,14 @@ describe('v9 book ranking release', () => {
 			);
 		vi.stubGlobal('fetch', fetcher);
 		const release = await loadRelease();
-		expect(fetcher).toHaveBeenNthCalledWith(1, '/handoff/current_release.json', {
+		expect(fetcher).toHaveBeenNthCalledWith(1, `${HOSTED_BASE}/current_release.json`, {
 			cache: 'no-cache'
 		});
 		const population = await loadDataset(release, 'best_items');
 		expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
-			'/handoff/current_release.json',
-			'/handoff/versions/v9/web/manifest.json',
-			'/handoff/versions/v9/web/rankings/best_items.json'
+			`${HOSTED_BASE}/current_release.json`,
+			`${HOSTED_BASE}/versions/v9/web/manifest.json`,
+			`${HOSTED_BASE}/versions/v9/web/rankings/best_items.json`
 		]);
 		expect(release.manifest.model.best_items).toEqual(model);
 		expect(population.count).toBe(2);
@@ -87,6 +93,17 @@ describe('v9 book ranking release', () => {
 			['volume-b1', 'volume-b2']
 		]);
 	});
+
+	it.each([undefined, '', '   '])(
+		'requires hosted configuration before fetching (%j)',
+		async (base) => {
+			publicEnv.PUBLIC_BOOK_RANKINGS_BASE = base;
+			const fetcher = vi.fn();
+			vi.stubGlobal('fetch', fetcher);
+			await expect(loadRelease()).rejects.toThrow('PUBLIC_BOOK_RANKINGS_BASE is required');
+			expect(fetcher).not.toHaveBeenCalled();
+		}
+	);
 
 	it('rejects a legacy schema instead of using its scores', async () => {
 		vi.stubGlobal(

@@ -1,6 +1,32 @@
 # App microcopy – edit strings here. Use {{variable}} for interpolation in code.
 # To add a locale later, add another top-level key (e.g. es:, fr:) with the same structure.
 en:
+  librarySaves:
+    noticeLabel: 'Unsaved library changes'
+    failed: 'Couldn’t save {{changes}}.'
+    rating_one: '{{count}} rating'
+    rating_other: '{{count}} ratings'
+    bookmark_one: '{{count}} bookmark'
+    bookmark_other: '{{count}} bookmarks'
+    dismissal_one: '{{count}} “Not interested” change'
+    dismissal_other: '{{count}} “Not interested” changes'
+    retry: 'Retry'
+    retrying: 'Retrying…'
+    saving: 'Saving changes…'
+    retryNeeded: 'Changes need saving'
+    unsaved: 'Couldn’t save. Use Retry in the unsaved changes message.'
+    authentication: 'Please sign in again if Retry cannot reconnect your session.'
+    wait: 'Save your library changes before getting recommendations. Use Retry if saving failed.'
+  libraryLoad:
+    wait: 'Load your library to get recommendations.'
+    loadError: 'Couldn’t load your {{collection}}.'
+    refreshError: 'Couldn’t refresh your {{collection}}. Showing previously loaded books.'
+    retry: 'Retry'
+    retrying: 'Trying again…'
+    books: 'books'
+    ratings: 'ratings'
+    bookmarks: 'bookmarks'
+    dismissals: '“Not interested” list'
   bookCorrections:
     title: 'Suggest a correction'
     viewPending: 'View your proposed changes'
@@ -125,6 +151,12 @@ en:
       ratingLow: 'Lowest rating'
 
   recommendations:
+    submission:
+      starting: 'Starting recommendations…'
+      open: 'Open shortlist'
+      startError: 'Couldn’t start recommendations'
+      openError: 'Recommendations started, but couldn’t open your shortlist'
+      retry: 'Retry'
     title: 'Recommendations'
     metaDescription: "What to read next? Your unique book recommendations on Unread, shaped by books you've rated so far."
     myRecommendations: 'What to read next?'
@@ -748,6 +780,7 @@ en:
       searchThisAuthor: 'Search author'
       searchThisAuthorAriaLabel: 'Search for books by {{author}}'
     recommendationCard:
+      noDescription: 'No description available.'
       seeSummary: 'See summary'
       seeSummaryCoverAriaLabelWithAuthor: '{{title}} by {{author}}. See summary'
       seeSummaryCoverAriaLabelTitleOnly: '{{title}}. See summary'
@@ -781,6 +814,7 @@ en:
         top_10_percent: 'Top 10% of catalog'
         top_25_percent: 'Top 25% of catalog'
     bookSummary:
+      viewBookPage: 'View book page →'
       loading: 'Loading book details…'
       unavailable: 'Book details unavailable. Please try again.'
       retry: 'Retry'

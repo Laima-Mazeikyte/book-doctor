@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { authStore, authReady } from '$lib/stores/auth';
+	import { canUseLibraryAction, userLibraryHydrationStore } from '$lib/stores/userLibrary';
 	import RecommendationDimensionMatches from '$lib/components/RecommendationDimensionMatches.svelte';
 	import { onDestroy, tick } from 'svelte';
 	import { get } from 'svelte/store';
@@ -12,6 +14,7 @@
 	} from '$lib/rateSearchExternalNav';
 	import { BookOpenText, Bookmark, ThumbsDown } from 'lucide-svelte';
 	import { ratingsStore } from '$lib/stores/ratings';
+	import LibrarySaveIndicator from './LibrarySaveIndicator.svelte';
 	import {
 		bookSummarySheetHistory,
 		clearBookSummarySheetHistory,
@@ -252,6 +255,11 @@
 	function starAriaPressed(value: RatingValue): boolean {
 		return currentRating === value;
 	}
+	function actionReady(action: 'rating' | 'bookmark' | 'dismissal'): boolean {
+		return (
+			$authReady && canUseLibraryAction(action, $authStore.user?.id, $userLibraryHydrationStore)
+		);
+	}
 </script>
 
 <article
@@ -314,9 +322,11 @@
 						aria-label={bookmarked
 							? t('shared.recommendationCard.removeFromReadingList')
 							: t('shared.recommendationCard.addToReadingList')}
+						disabled={!actionReady('bookmark')}
 						onclick={handleBookmarkClick}
 					>
 						<Bookmark size={14} aria-hidden="true" />
+						<LibrarySaveIndicator bookUlid={book.book_id} kind="bookmark" />
 						{#if bookmarked}
 							<span class="book-card__action-label">{t('shared.recommendationCard.saved')}</span>
 						{:else}
@@ -343,9 +353,11 @@
 						aria-label={notInterested
 							? t('shared.recommendationCard.removeFromNotInterested')
 							: t('shared.recommendationCard.notInterested')}
+						disabled={!actionReady('dismissal')}
 						onclick={handleNotInterestedClick}
 					>
 						<ThumbsDown size={14} aria-hidden="true" />
+						<LibrarySaveIndicator bookUlid={book.book_id} kind="dismissal" />
 						{#if notInterested}
 							<span class="book-card__action-label"
 								>{t('shared.recommendationCard.notInterested')}</span
@@ -385,6 +397,7 @@
 
 	<div class="book-card__body">
 		<BookRatingStarsRow
+			bookUlid={book.book_id}
 			ratingWrapWidth="auto"
 			{displayRating}
 			ariaGroupLabel={starRowAriaGroupLabel}
