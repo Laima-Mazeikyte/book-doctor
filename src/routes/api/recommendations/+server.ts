@@ -90,10 +90,15 @@ export const GET: RequestHandler = async ({ url, request }) => {
 
 	let bookIds = items.map((i) => String(i.book_id ?? '').trim()).filter(Boolean);
 
-	bookIds = await filterBookIdsExcludingUserLists(supabase, bookIds, {
-		excludeNotInterested: !requestId,
-		excludeRated: !includeRated
-	});
+	try {
+		bookIds = await filterBookIdsExcludingUserLists(supabase, bookIds, {
+			excludeNotInterested: !requestId,
+			excludeRated: !includeRated
+		});
+	} catch (filterError) {
+		console.error('[recommendations] Failed to load exclusions:', filterError);
+		throw error(500, 'Failed to load recommendations');
+	}
 	if (bookIds.length === 0) {
 		return json({
 			books: [],

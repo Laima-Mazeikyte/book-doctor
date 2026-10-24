@@ -12,7 +12,6 @@
 	import LibrarySaveIndicator from '$lib/components/LibrarySaveIndicator.svelte';
 	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
 	import { librarySaves } from '$lib/stores/librarySaves';
-	import BookCorrection from './BookCorrection.svelte';
 	import RecommendationAuthorRelationships from '$lib/components/RecommendationAuthorRelationships.svelte';
 	import RecommendationPrecedents from '$lib/components/RecommendationPrecedents.svelte';
 	import { t } from '$lib/copy';
@@ -180,8 +179,9 @@
 
 {#snippet headerTextBlock()}
 	<div class="book-card__summary-header-text">
-		<h3 class="book-card__summary-sheet-title typ-h3" id={summaryTitleId}>{book.title}</h3>
-		<a class="typ-caption" href={resolve(bookPath(book))}>{t('shared.bookSummary.viewBookPage')}</a>
+		<h3 class="book-card__summary-sheet-title typ-h3" id={summaryTitleId}>
+			<a href={resolve(bookPath(book))}>{book.title}</a>
+		</h3>
 
 		{#if showAuthorInSheetMeta || book.year}
 			<div
@@ -298,9 +298,6 @@
 		{#if showQualityEvidence}
 			<BookQualityEvidence {book} />
 		{/if}
-		{#key book.book_id}
-			<BookCorrection {book} />
-		{/key}
 	</div>
 {/snippet}
 

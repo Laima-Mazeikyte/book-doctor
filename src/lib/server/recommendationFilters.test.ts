@@ -1,5 +1,74 @@
-import { describe, expect, it } from 'vitest';
-import { parseRecommendationRank, parseRecommendationTimestamp } from './recommendationFilters';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { describe, expect, it, vi } from 'vitest';
+import {
+	filterBookIdsExcludingUserLists,
+	parseRecommendationRank,
+	parseRecommendationTimestamp
+} from './recommendationFilters';
+
+function exclusionClient(results: Record<string, { data: unknown; error: unknown }>) {
+	const from = vi.fn((table: string) => ({ select: async () => results[table] }));
+	return { client: { from } as unknown as SupabaseClient, from };
+}
+
+describe('filterBookIdsExcludingUserLists', () => {
+	it('excludes rated and dismissed books while preserving candidate order', async () => {
+		const { client, from } = exclusionClient({
+			user_not_interested: { data: [{ book_id: 'dismissed' }], error: null },
+			user_ratings: { data: [{ book_id: 'rated' }], error: null }
+		});
+		await expect(
+			filterBookIdsExcludingUserLists(client, ['second', 'rated', 'dismissed', 'first'], {
+				excludeNotInterested: true,
+				excludeRated: true
+			})
+		).resolves.toEqual(['second', 'first']);
+		expect(from.mock.calls).toEqual([['user_not_interested'], ['user_ratings']]);
+	});
+
+	it.each(['user_not_interested', 'user_ratings'])(
+		'propagates a failed %s read even if it returns partial data',
+		async (table) => {
+			const failure = { code: '42501', message: 'Permission denied' };
+			const { client } = exclusionClient({
+				user_not_interested: { data: [], error: null },
+				user_ratings: { data: [], error: null },
+				[table]: { data: [{ book_id: 'rated' }], error: failure }
+			});
+			await expect(
+				filterBookIdsExcludingUserLists(client, ['rated', 'dismissed'], {
+					excludeNotInterested: true,
+					excludeRated: true
+				})
+			).rejects.toBe(failure);
+		}
+	);
+
+	it('does not query disabled lists or an empty candidate list', async () => {
+		const { client, from } = exclusionClient({});
+		await expect(filterBookIdsExcludingUserLists(client, ['book'], {})).resolves.toEqual(['book']);
+		await expect(
+			filterBookIdsExcludingUserLists(client, [], {
+				excludeNotInterested: true,
+				excludeRated: true
+			})
+		).resolves.toEqual([]);
+		expect(from).not.toHaveBeenCalled();
+	});
+
+	it('does not load ratings when dismissals already exclude every candidate', async () => {
+		const { client, from } = exclusionClient({
+			user_not_interested: { data: [{ book_id: 'book' }], error: null }
+		});
+		await expect(
+			filterBookIdsExcludingUserLists(client, ['book'], {
+				excludeNotInterested: true,
+				excludeRated: true
+			})
+		).resolves.toEqual([]);
+		expect(from).toHaveBeenCalledTimes(1);
+	});
+});
 
 describe('parseRecommendationTimestamp', () => {
 	it('returns null for missing or invalid values', () => {

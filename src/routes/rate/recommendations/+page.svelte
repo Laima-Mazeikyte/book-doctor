@@ -1,5 +1,6 @@
 <script lang="ts">
 	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
+	import RecommendationLoadNotice from '$lib/components/RecommendationLoadNotice.svelte';
 	import {
 		normalizeDimensionMatchSnapshots,
 		type DimensionMatchSnapshotsByBookId
@@ -223,12 +224,12 @@
 	) {
 		uniquePayload = payload;
 		error = errorMessage;
-		viewMode = errorMessage
-			? 'error'
-			: loaded
-				? payload.hasRuns
-					? 'history'
-					: 'empty'
+		viewMode = loaded
+			? payload.hasRuns
+				? 'history'
+				: 'empty'
+			: errorMessage
+				? 'error'
 				: 'loading';
 		if (persist) recommendationsPageStore.setUnique(payload);
 	}
@@ -245,8 +246,6 @@
 		}
 
 		error = null;
-		viewMode = 'loading';
-		uniqueBooksLoading = true;
 		retryGeneration += 1;
 	}
 
@@ -320,12 +319,10 @@
 			} catch (e) {
 				if (!isActiveRouteLoad(loadId, loadGeneration)) return;
 				console.error('[recommendations] Failed to load unique recommendations:', e);
-				if (!cachedSnapshot.uniqueLoaded) {
-					applyUniquePayload(createEmptyRecommendationsUniquePayload(), {
-						loaded: false,
-						errorMessage: t('recommendations.failedToLoad')
-					});
-				}
+				applyUniquePayload(cachedSnapshot.unique, {
+					loaded: cachedSnapshot.uniqueLoaded,
+					errorMessage: t('recommendations.failedToLoad')
+				});
 			} finally {
 				if (isActiveRouteLoad(loadId, loadGeneration)) {
 					uniqueBooksLoading = false;
@@ -359,7 +356,7 @@
 		<RecommendationsEmpty
 			ratedCount={$ratingsStore.size}
 			message={error ?? t('recommendations.noRecommendationsYet')}
-			onRetry={viewMode === 'error' ? retryRecommendations : undefined}
+			onRetry={error ? retryRecommendations : undefined}
 		/>
 	{:else if viewMode === 'history'}
 		<h1
@@ -367,6 +364,10 @@
 		>
 			{t('recommendations.myRecommendations')}
 		</h1>
+
+		{#if error}
+			<RecommendationLoadNotice onRetry={retryRecommendations} />
+		{/if}
 
 		<div class="recommendations-page__toolbar">
 			<div class="recommendations-page__sort">

@@ -3,6 +3,8 @@ import { render } from 'vitest-browser-svelte';
 import type { Book } from '$lib/types/book';
 import BookSummarySheet from './BookSummarySheet.svelte';
 import type { BookSummarySheetState } from './bookSummarySheet';
+import { authStore } from '$lib/stores/auth';
+import type { Session } from '@supabase/supabase-js';
 
 const book: Book = {
 	id: 'uuid-book-1',
@@ -80,4 +82,26 @@ it('renders HTML-like book fields as text rather than executable markup', async 
 	await expect.element(rendered.getByRole('heading', { name: title, exact: true })).toBeVisible();
 	await expect.element(rendered.getByText(summary, { exact: true })).toBeVisible();
 	expect(document.querySelector('img[src="x"]')).toBeNull();
+});
+
+it('links the title directly to the full page and leaves corrections on that page', async () => {
+	authStore.setSession({
+		access_token: 'token',
+		user: { id: 'reader', is_anonymous: false }
+	} as Session);
+	const rendered = render(BookSummarySheet, {
+		state: { kind: 'ready', book, trigger: trigger() },
+		onClose: vi.fn()
+	});
+	await expect
+		.element(rendered.getByRole('link', { name: book.title, exact: true }))
+		.toHaveAttribute('href', `/books/${book.book_id}/a-book`);
+	await expect
+		.element(rendered.getByRole('link', { name: 'View book page →', exact: true }))
+		.not.toBeInTheDocument();
+	await expect
+		.element(rendered.getByRole('button', { name: 'Suggest a correction', exact: true }))
+		.not.toBeInTheDocument();
+	rendered.unmount();
+	authStore.setSession(null);
 });

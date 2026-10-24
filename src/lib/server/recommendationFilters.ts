@@ -13,9 +13,10 @@ export async function filterBookIdsExcludingUserLists(
 	let filtered = bookIds;
 
 	if (excludeNotInterested && filtered.length > 0) {
-		const { data: notInterestedRows } = await supabase
+		const { data: notInterestedRows, error } = await supabase
 			.from('user_not_interested')
 			.select('book_id');
+		if (error) throw error;
 		const notInterestedSet = new Set(
 			(notInterestedRows ?? [])
 				.map((r) => r.book_id)
@@ -25,7 +26,8 @@ export async function filterBookIdsExcludingUserLists(
 	}
 
 	if (excludeRated && filtered.length > 0) {
-		const { data: ratedRows } = await supabase.from('user_ratings').select('book_id');
+		const { data: ratedRows, error } = await supabase.from('user_ratings').select('book_id');
+		if (error) throw error;
 		const ratedSet = new Set(
 			(ratedRows ?? []).map((r) => r.book_id).filter((id): id is string => typeof id === 'string')
 		);

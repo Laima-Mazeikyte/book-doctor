@@ -1,16 +1,10 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
+	import BookCorrection from '$lib/components/book-card/BookCorrection.svelte';
 	import { resolve } from '$app/paths';
-	import {
-		Bookmark,
-		BookOpen,
-		ChevronDown,
-		LockKeyhole,
-		Share2,
-		Star,
-		ThumbsDown,
-		Trophy
-	} from 'lucide-svelte';
+	import { Bookmark, BookOpen, ChevronDown, LockKeyhole, Star, ThumbsDown } from 'lucide-svelte';
 	import type { Book, RatingValue } from '$lib/types/book';
 	import { bookPath } from '$lib/books/bookUrl';
 	import type { bookCharacteristics } from '$lib/books/characteristics';
@@ -35,23 +29,17 @@
 
 	interface Props {
 		book: Book;
-		authorBooks: Book[];
-		authorBooksUnavailable: boolean;
-		authorBooksTruncated: boolean;
 		canonicalUrl: string;
 		characteristics: ReturnType<typeof bookCharacteristics>;
 	}
-	let {
-		book,
-		authorBooks,
-		authorBooksUnavailable,
-		authorBooksTruncated,
-		canonicalUrl,
-		characteristics
-	}: Props = $props();
+	let { book, canonicalUrl, characteristics }: Props = $props();
 	let coverFailed = $state(false);
 	let authorExpanded = $state(false);
-	let shareStatus = $state('');
+	let authorBooks = $state<Book[]>([]);
+	let authorBooksTruncated = $state(false);
+	let authorBooksStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
+	let authorController: AbortController | null = null;
+	const failedAuthorCovers = new SvelteSet<string>();
 	let referenceBooks = $state<Book[]>([]);
 	let referencesStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
 	const ratingOptions: RatingValue[] = [1, 2, 3, 4, 5];
@@ -62,7 +50,9 @@
 		$authReady && isUserLibraryIdsReady($authStore.user?.id, $userLibraryHydrationStore)
 	);
 	function actionReady(action: 'rating' | 'bookmark' | 'dismissal') {
-		return $authReady && canUseLibraryAction(action, $authStore.user?.id, $userLibraryHydrationStore);
+		return (
+			$authReady && canUseLibraryAction(action, $authStore.user?.id, $userLibraryHydrationStore)
+		);
 	}
 	const hasReadingHistory = $derived($ratingsStore.size >= 10);
 	const likedReferences = $derived(
@@ -84,6 +74,34 @@
 			? book.summary.trim().replace(/\s+/g, ' ').slice(0, 200)
 			: `Explore ${book.title}${book.author ? ` by ${book.author}` : ''} on unread.`
 	);
+
+	async function loadAuthorBooks() {
+		if (authorBooksStatus === 'loading' || authorBooksStatus === 'ready') return;
+		authorController = new AbortController();
+		const controller = authorController;
+		authorBooksStatus = 'loading';
+		const params = new URLSearchParams({ author: book.author, exclude: book.book_id });
+		try {
+			const response = await fetch(`${resolve('/api/books/by-author')}?${params}`, {
+				signal: controller.signal
+			});
+			if (!response.ok) throw new Error('Unable to load author books');
+			const payload: { books: Book[]; truncated: boolean } = await response.json();
+			if (controller.signal.aborted) return;
+			authorBooks = payload.books;
+			authorBooksTruncated = payload.truncated;
+			authorBooksStatus = 'ready';
+		} catch {
+			if (!controller.signal.aborted) authorBooksStatus = 'error';
+		}
+	}
+
+	function toggleAuthorBooks() {
+		authorExpanded = !authorExpanded;
+		if (authorExpanded) void loadAuthorBooks();
+	}
+
+	onDestroy(() => authorController?.abort());
 
 	// Existing recommendation evidence remains private, account-scoped, and separate from
 	// public catalog characteristics. No new match-score or similarity contract is assumed.
@@ -112,26 +130,6 @@
 			});
 		return () => controller.abort();
 	});
-
-	async function shareBook() {
-		shareStatus = '';
-		try {
-			if (navigator.share) {
-				await navigator.share({
-					title: book.title,
-					text: `${book.title}${book.author ? ` by ${book.author}` : ''}`,
-					url: canonicalUrl
-				});
-				shareStatus = 'Shared';
-			} else {
-				await navigator.clipboard.writeText(canonicalUrl);
-				shareStatus = 'Link copied';
-			}
-		} catch (error) {
-			if (!(error instanceof DOMException && error.name === 'AbortError'))
-				shareStatus = 'Unable to share. Copy the book link below.';
-		}
-	}
 </script>
 
 <svelte:head>
@@ -170,52 +168,116 @@
 
 <article class="book-page">
 	<LibraryLoadNotice collections={['ratings', 'bookmarks', 'dismissals']} />
-	<div class="page-toolbar">
-		<a class="back-link" href={resolve('/rate')}>Discover books</a>
-		<button class="text-button" onclick={shareBook}
-			><Share2 size={16} aria-hidden="true" /> Share</button
-		>
-	</div>
-	<p class="share-status" role="status">{shareStatus}</p>
-
 	<div class="book-layout">
-		<div class="book-cover">
-			{#if book.coverUrl && !coverFailed}
-				<img
-					src={book.coverUrl}
-					alt={`Cover of ${book.title}`}
-					fetchpriority="high"
-					onerror={() => (coverFailed = true)}
-				/>
-			{:else}
-				<div class="cover-fallback">
-					<BookOpen size={40} aria-hidden="true" /><span>{book.title}</span><small
-						>{book.author}</small
-					>
-				</div>
-			{/if}
+		<div class="cover-column">
+			<div class="book-cover">
+				{#if book.coverUrl && !coverFailed}
+					<img
+						src={book.coverUrl}
+						alt={`Cover of ${book.title}`}
+						fetchpriority="high"
+						onerror={() => (coverFailed = true)}
+					/>
+				{:else}
+					<div class="cover-fallback">
+						<BookOpen size={40} aria-hidden="true" /><span>{book.title}</span><small
+							>{book.author}</small
+						>
+					</div>
+				{/if}
+			</div>
+			<div class="library-actions">
+				<button
+					class="action-button save-button"
+					disabled={!actionReady('dismissal')}
+					aria-pressed={saved}
+					onclick={() => toggleBookmarked(book)}
+					><Bookmark
+						size={18}
+						fill={saved ? 'currentColor' : 'none'}
+						aria-hidden="true"
+					/><LibrarySaveIndicator bookUlid={book.book_id} kind="bookmark" />{saved
+						? 'Saved'
+						: 'Save book'}</button
+				>
+				<fieldset
+					disabled={!libraryReady}
+					aria-label={rating ? `Your rating: ${rating} of 5` : 'Book rating'}
+				>
+					<div class="rating-stars">
+						<div class="rating-options">
+							{#each ratingOptions as value (value)}<button
+									class="star-button"
+									aria-label={`Rate ${value} of 5 stars`}
+									aria-pressed={rating === value}
+									onclick={() => toggleBookRating(book, value)}
+									><Star
+										size={23}
+										fill={rating >= value ? 'currentColor' : 'none'}
+										aria-hidden="true"
+									/></button
+								>{/each}
+						</div>
+						<LibrarySaveIndicator bookUlid={book.book_id} kind="rating" />
+						{#if rating}<button class="text-button" onclick={() => removeBookRating(book)}
+								>Clear</button
+							>{/if}
+					</div>
+				</fieldset>
+				<button
+					class="action-button"
+					disabled={!libraryReady}
+					aria-pressed={dismissed}
+					onclick={() => toggleNotInterested(book)}
+					><ThumbsDown size={17} aria-hidden="true" /><LibrarySaveIndicator
+						bookUlid={book.book_id}
+						kind="dismissal"
+					/>{dismissed ? 'Marked not interested' : 'Not interested'}</button
+				>
+			</div>
 		</div>
 
 		<div class="book-information">
-			<p class="eyebrow">{book.type || book.genres?.[0] || 'Book'}</p>
-			<h1 class="typ-display2">{book.title}</h1>
+			<h1 class="typ-h3">{book.title}</h1>
 			{#if book.author}
 				<button
 					class="author-button"
 					aria-expanded={authorExpanded}
 					aria-controls="author-books"
-					onclick={() => (authorExpanded = !authorExpanded)}
+					onclick={toggleAuthorBooks}
 				>
 					{book.author}<ChevronDown size={18} aria-hidden="true" />
 				</button>
 				{#if authorExpanded}
 					<section id="author-books" class="author-books" aria-label={`More by ${book.author}`}>
 						<h2 class="eyebrow">More by {book.author}</h2>
-						{#if authorBooksUnavailable}
-							<p class="muted">Other books are temporarily unavailable. Please try again later.</p>
+						{#if authorBooksStatus === 'loading'}
+							<p class="muted" role="status">Loading other books…</p>
+						{:else if authorBooksStatus === 'error'}
+							<p class="muted" role="alert">Couldn’t load other books by this author.</p>
+							<button class="text-button" onclick={() => void loadAuthorBooks()}>Retry</button>
 						{:else if authorBooks.length}
-							<div class="mini-book-grid">
-								{#each authorBooks as item (item.book_id)}{@render bookLink(item)}{/each}
+							<div class="author-cover-grid">
+								{#each authorBooks as item (item.book_id)}
+									<a
+										class="author-book-cover"
+										href={resolve(bookPath(item))}
+										aria-label={item.title}
+										title={item.title}
+									>
+										{#if item.coverUrl && !failedAuthorCovers.has(item.book_id)}
+											<img
+												src={item.coverUrl}
+												alt=""
+												loading="lazy"
+												decoding="async"
+												onerror={() => failedAuthorCovers.add(item.book_id)}
+											/>
+										{:else}
+											<BookOpen size={24} aria-hidden="true" />
+										{/if}
+									</a>
+								{/each}
 							</div>
 							{#if authorBooksTruncated}<p class="muted">
 									Showing the first 48 other books in this catalog.
@@ -229,96 +291,37 @@
 
 			<ul class="metadata" aria-label="Book details">
 				<li>{book.year || 'Publication year coming soon'}</li>
+				{#if book.type}<li>{book.type}</li>{/if}
 				{#each book.genres ?? [] as genre (genre)}<li>{genre}</li>{/each}
 				{#if !book.genres?.length}<li>Genre information coming soon</li>{/if}
 			</ul>
+			{#if characteristics.labels.length || qualityLabel}
+				<ul class="metadata book-highlights" aria-label="Book characteristics and distinctions">
+					{#each characteristics.labels as characteristic (characteristic.label)}
+						<li>{characteristic.label}</li>
+					{/each}
+					{#if qualityLabel}<li>{qualityLabel}</li>{/if}
+				</ul>
+			{/if}
 			<p class="muted series-placeholder">Series information coming soon</p>
 			<div class="synopsis">
 				{#if book.summary?.trim()}<p>{book.summary}</p>{:else}<p class="muted">
 						Synopsis coming soon
 					</p>{/if}
 			</div>
-
-			<section class="information-section" aria-labelledby="characteristics-title">
-				<h2 id="characteristics-title" class="eyebrow">Reading characteristics</h2>
-				{#if characteristics.labels.length}
-					<ul class="characteristic-list" aria-label="Defining reading characteristics">
-						{#each characteristics.labels.slice(0, 4) as characteristic (characteristic.label)}
-							<li>
-								<strong>{characteristic.label}</strong><span>{characteristic.description}</span>
-							</li>
-						{/each}
-					</ul>
-					{#if characteristics.labels.length > 4}
-						<details>
-							<summary>Show {characteristics.labels.length - 4} more characteristics</summary>
-							<ul class="characteristic-list">
-								{#each characteristics.labels.slice(4) as characteristic (characteristic.label)}<li>
-										<strong>{characteristic.label}</strong><span>{characteristic.description}</span>
-									</li>{/each}
-							</ul>
-						</details>
-					{/if}
-				{:else if characteristics.availableDimensions > 0}
-					<p class="muted">No distinctive characteristics to highlight.</p>
-				{/if}
-				{#if characteristics.availableDimensions === 0}<p class="muted">
-						Reading characteristics coming soon
-					</p>
-				{:else if characteristics.availableDimensions < characteristics.totalDimensions}<p
-						class="muted"
-					>
-						Additional reading characteristics coming soon
-					</p>{/if}
-				<details>
-					<summary>About reading characteristics</summary>
-					<p>
-						Highlights of the book’s pace, vocabulary, depth, originality, discussion potential,
-						graphic violence, and explicit sexual content. Only distinctive characteristics receive
-						labels.
-					</p>
-				</details>
-			</section>
-
-			<section class="information-section" aria-labelledby="distinctions-title">
-				<h2 id="distinctions-title" class="eyebrow">Catalog distinctions</h2>
-				{#if qualityLabel}<p class="distinction">
-						<Trophy size={20} aria-hidden="true" />{qualityLabel}
-					</p>
-				{:else if !book.qualityBand}<p class="muted">Overall catalog standing coming soon</p>{/if}
-				<p class="muted">
-					Reader favorites, critical recognition, polarization, and popularity distinctions coming
-					soon
-				</p>
-				<details>
-					<summary>How distinctions work</summary>
-					<p>
-						Overall standing uses unread’s published catalog quality band. Individual distinctions
-						will highlight exceptional standing in reader favorites, critical recognition,
-						polarization, or popularity.
-					</p>
-					<a href={resolve('/lab/book-search')}>Explore book rankings in Lab →</a>
-				</details>
-			</section>
 		</div>
 
-		<aside class="personal-column" aria-label="Your reading profile and actions">
+		<aside class="personal-column" aria-label="Book recommendations">
 			<section class="profile-panel">
-				<div class="panel-heading">
-					<h2 class="eyebrow"><LockKeyhole size={14} aria-hidden="true" /> Your reading profile</h2>
-					<span class="muted">Only you</span>
-				</div>
 				<p class="match-placeholder">Match score coming soon</p>
 				{#if !libraryReady}<p class="muted" role="status">Loading your reading history…</p>
 				{:else if !hasReadingHistory}<p class="muted">
 						Rate at least 10 books to build your reading profile.
 					</p>
 					<a href={resolve('/rate')}>Rate books →</a>
-				{:else}<p class="muted">
-						Your ratings will help estimate how well this book fits your taste.
-					</p>{/if}
+				{/if}
 
-				<h3 class="reference-heading">Connections to books you’ve enjoyed</h3>
+				<h2 class="reference-heading">Similar to books you’ve enjoyed</h2>
 				{#if !libraryReady || referencesStatus === 'loading'}<p class="muted" role="status">
 						Loading reference books…
 					</p>
@@ -326,51 +329,10 @@
 					<div class="reference-books">
 						{#each likedReferences as item (item.book_id)}{@render bookLink(item)}{/each}
 					</div>
-					<p class="muted">Reference points from your recommendation history.</p>
 				{:else if referencesStatus === 'error'}<p class="muted">
 						Reference books are temporarily unavailable.
 					</p>
 				{:else}<p class="muted">Book connections coming soon</p>{/if}
-
-				<div class="library-actions">
-					<button
-						class="action-button save-button"
-						disabled={!actionReady('dismissal')}
-						aria-pressed={saved}
-						onclick={() => toggleBookmarked(book)}
-						><Bookmark size={18} fill={saved ? 'currentColor' : 'none'} aria-hidden="true" /><LibrarySaveIndicator bookUlid={book.book_id} kind="bookmark" />{saved
-							? 'Saved'
-							: 'Save book'}</button
-					>
-					<fieldset disabled={!libraryReady}>
-						<legend>{rating ? `Your rating: ${rating} of 5` : 'Rate this book'} <LibrarySaveIndicator bookUlid={book.book_id} kind="rating" /></legend>
-						<div class="rating-stars">
-							{#each ratingOptions as value (value)}<button
-									class="star-button"
-									aria-label={`Rate ${value} of 5 stars`}
-									aria-pressed={rating === value}
-									onclick={() => toggleBookRating(book, value)}
-									><Star
-										size={23}
-										fill={rating >= value ? 'currentColor' : 'none'}
-										aria-hidden="true"
-									/></button
-								>{/each}
-							{#if rating}<button class="text-button" onclick={() => removeBookRating(book)}
-									>Clear</button
-								>{/if}
-						</div>
-					</fieldset>
-					<button
-						class="action-button"
-						disabled={!libraryReady}
-						aria-pressed={dismissed}
-						onclick={() => toggleNotInterested(book)}
-						><ThumbsDown size={17} aria-hidden="true" /><LibrarySaveIndicator bookUlid={book.book_id} kind="dismissal" />{dismissed
-							? 'Marked not interested'
-							: 'Not interested'}</button
-					>
-				</div>
 			</section>
 
 			<section class="premium-panel" aria-labelledby="premium-title">
@@ -406,11 +368,7 @@
 			</section>
 		</div>
 	</div>
-	<details class="share-link">
-		<summary>Book link</summary>
-		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- The server constructs this absolute canonical URL with the base path included. -->
-		<a href={canonicalUrl}>{canonicalUrl}</a>
-	</details>
+	<div class="book-correction"><BookCorrection {book} /></div>
 </article>
 
 <style>
@@ -418,26 +376,14 @@
 		max-width: 92rem;
 		margin-inline: auto;
 	}
-	.page-toolbar,
-	.panel-heading {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		gap: 1rem;
-	}
-	.page-toolbar {
-		margin-bottom: 0.5rem;
-	}
 	a {
 		color: var(--color-text);
 		text-underline-offset: 0.2em;
 	}
-	.back-link,
 	.text-button,
 	.eyebrow,
 	.metadata,
 	.muted,
-	details,
 	.placeholder {
 		font-family: var(--font-family-interactive);
 		font-size: 0.85rem;
@@ -453,18 +399,17 @@
 		padding: 0.5rem 0;
 		cursor: pointer;
 	}
-	.share-status {
-		min-height: 1.25rem;
-		margin: 0 0 1rem;
-		font-size: 0.85rem;
-		color: var(--color-text-muted);
-		text-align: right;
-	}
 	.book-layout {
 		display: grid;
-		grid-template-columns: minmax(10rem, 0.65fr) minmax(0, 1.8fr) minmax(17rem, 1fr);
+		grid-template-columns: minmax(12rem, 0.65fr) minmax(0, 1.8fr) minmax(17rem, 1fr);
 		gap: 2.5rem;
 		align-items: start;
+	}
+	.cover-column {
+		min-width: 0;
+	}
+	.book-correction {
+		max-width: 48rem;
 	}
 	.book-cover img,
 	.cover-fallback {
@@ -514,10 +459,26 @@
 		max-height: 28rem;
 		overflow-y: auto;
 	}
-	.mini-book-grid {
+	.author-cover-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-		gap: 1rem;
+		grid-template-columns: repeat(auto-fill, minmax(4rem, 1fr));
+		gap: 0.75rem;
+	}
+	.author-book-cover {
+		display: grid;
+		place-items: center;
+		min-width: 0;
+		aspect-ratio: 2 / 3;
+		overflow: hidden;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		background: var(--color-bg-muted);
+	}
+	.author-book-cover img {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
 	}
 	.metadata {
 		display: flex;
@@ -544,51 +505,14 @@
 	.synopsis p {
 		margin: 0;
 	}
-	.information-section {
-		border-top: 1px solid var(--color-border);
-		padding-top: 1.25rem;
-		margin-top: 1.75rem;
-	}
-	.characteristic-list {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
-		gap: 1rem;
-		list-style: none;
-		padding: 0;
-		margin-block: 1rem;
-	}
-	.characteristic-list li {
-		padding-left: 0.75rem;
-		border-left: 2px solid var(--color-border);
-	}
-	.characteristic-list strong {
-		display: block;
+	.book-highlights {
+		margin-top: 0.75rem;
+		color: var(--color-text);
 		font-weight: 500;
-		margin-bottom: 0.25rem;
-	}
-	.characteristic-list span {
-		display: block;
-		font-family: var(--font-family-interactive);
-		font-size: 0.8rem;
-		line-height: 1.5;
-		color: var(--color-text-muted);
 	}
 	.muted {
 		color: var(--color-text-muted);
 		line-height: 1.6;
-	}
-	details {
-		color: var(--color-text-muted);
-		line-height: 1.6;
-	}
-	summary {
-		cursor: pointer;
-		color: var(--color-text);
-	}
-	.distinction {
-		display: flex;
-		align-items: center;
-		gap: 0.6rem;
 	}
 	.personal-column {
 		display: grid;
@@ -603,17 +527,10 @@
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius);
 	}
-	.panel-heading {
-		align-items: start;
-	}
-	.panel-heading .muted {
-		white-space: nowrap;
-		font-size: 0.75rem;
-	}
 	.match-placeholder {
 		font-size: 1.7rem;
 		line-height: 1.25;
-		margin: 1rem 0;
+		margin: 0 0 1rem;
 	}
 	.reference-heading {
 		font-size: 1.2rem;
@@ -657,9 +574,8 @@
 	.library-actions {
 		display: grid;
 		gap: 0.8rem;
-		border-top: 1px solid var(--color-border);
-		margin-top: 1.25rem;
-		padding-top: 1.25rem;
+		max-width: 20rem;
+		margin: 1.25rem auto 0;
 	}
 	.action-button {
 		display: flex;
@@ -683,27 +599,33 @@
 		cursor: wait;
 	}
 	fieldset {
+		min-width: 0;
 		padding: 0;
 		margin: 0;
 		border: 0;
 	}
-	legend {
-		font-family: var(--font-family-interactive);
-		font-size: 0.8rem;
-		color: var(--color-text-muted);
-		margin-bottom: 0.4rem;
-	}
 	.rating-stars {
 		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
 		align-items: center;
 		gap: 0.25rem;
+	}
+	.rating-options {
+		display: flex;
+		justify-content: center;
+		gap: 0.25rem;
+		width: 100%;
 	}
 	.star-button {
 		display: grid;
 		place-items: center;
+		flex: 1;
+		max-width: 2.75rem;
+		min-height: 2.75rem;
 		background: none;
 		border: 0;
-		padding: 0.5rem;
+		padding: 0.5rem 0;
 		color: var(--color-text);
 		cursor: pointer;
 	}
@@ -757,19 +679,14 @@
 		font-family: var(--font-family-interactive);
 		font-size: 0.85rem;
 	}
-	.share-link {
-		margin-top: 2rem;
-		overflow-wrap: anywhere;
-	}
 	button:focus-visible,
-	a:focus-visible,
-	summary:focus-visible {
+	a:focus-visible {
 		outline: 2px solid var(--color-focus);
 		outline-offset: 4px;
 	}
 	@media (max-width: 1100px) {
 		.book-layout {
-			grid-template-columns: minmax(9rem, 0.55fr) minmax(0, 1.5fr);
+			grid-template-columns: minmax(12rem, 0.55fr) minmax(0, 1.5fr);
 			gap: 1.5rem;
 		}
 		.personal-column {

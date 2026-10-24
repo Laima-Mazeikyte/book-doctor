@@ -113,10 +113,15 @@ export const GET: RequestHandler = async ({ request }) => {
 		}
 	}
 
-	uniqueBookIds = await filterBookIdsExcludingUserLists(supabase, uniqueBookIds, {
-		excludeNotInterested: true,
-		excludeRated: true
-	});
+	try {
+		uniqueBookIds = await filterBookIdsExcludingUserLists(supabase, uniqueBookIds, {
+			excludeNotInterested: true,
+			excludeRated: true
+		});
+	} catch (filterError) {
+		console.error('[recommendations/unique] Failed to load exclusions:', filterError);
+		throw error(500, 'Failed to load recommendations');
+	}
 
 	const recommendationAppearanceCount: Record<string, number> = {};
 	for (const [bid, n] of appearanceCountByBook) {

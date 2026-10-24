@@ -244,9 +244,9 @@ sections(section_name, payload) as (
   select 'sequences', coalesce(jsonb_agg(jsonb_build_object(
     'schema', r.schema_name, 'name', r.relname,
     'owner', pg_catalog.pg_get_userbyid(r.relowner),
-    'type', pg_catalog.format_type(s.seqtypid, null), 'start', s.seqstart,
-    'increment', s.seqincrement, 'minimum', s.seqmin, 'maximum', s.seqmax,
-    'cache', s.seqcache, 'cycle', s.seqcycle,
+    'type', pg_catalog.format_type(s.seqtypid, null), 'start', s.seqstart::text,
+    'increment', s.seqincrement::text, 'minimum', s.seqmin::text, 'maximum', s.seqmax::text,
+    'cache', s.seqcache::text, 'cycle', s.seqcycle,
     'owned_by', (select jsonb_agg(jsonb_build_object(
       'schema', pn.nspname, 'relation', pc.relname, 'column', a.attname,
       'dependency_kind', d.deptype

@@ -3,20 +3,16 @@
 	import { t } from '$lib/copy';
 
 	interface Props {
-		message?: string | null;
 		onRetry?: () => void;
 	}
 
-	let { message, onRetry }: Props = $props();
-
-	const displayMessage = $derived(message?.trim() || t('recommendations.shortlist.errorDefault'));
+	let { onRetry }: Props = $props();
 </script>
 
 <div class="shortlist-state" role="alert">
-	<p class="shortlist-state__title typ-h3">{t('recommendations.shortlist.errorTitle')}</p>
-	<p class="shortlist-state__message typ-body">{displayMessage}</p>
+	<p class="shortlist-state__title typ-h3">{t('recommendations.failedToLoad')}</p>
 	{#if onRetry}
-		<Button variant="primary" onclick={onRetry}>{t('recommendations.shortlist.retry')}</Button>
+		<Button variant="primary" onclick={onRetry}>{t('recommendations.retry')}</Button>
 	{/if}
 </div>
 
@@ -35,10 +31,5 @@
 	}
 	.shortlist-state__title {
 		margin: 0;
-	}
-	.shortlist-state__message {
-		margin: 0;
-		max-width: 22rem;
-		color: var(--color-text-muted);
 	}
 </style>

@@ -49,11 +49,20 @@ These are real contract differences. They may represent intentionally unreleased
 
 The `get_latest_rate_feed_state` function body also differs textually, but its inspected difference is formatting. The three private author-comparison function bodies match their latest checked-in definitions after normalizing line endings and outer whitespace.
 
-## Remaining input
+## Scheduled-job inventory and baseline preparation
 
-`pg_cron` is installed, and `cron.job` exists. The schema export deliberately omitted cron configuration rows. Read them with [export-live-schedules.sql](../scripts/diagnostics/export-live-schedules.sql), export the result as JSON, and save it to `temp/live-schedules-export.json`.
+The separate schedule export, collected on 2026-10-23, contains two active jobs and reports that cron row security is inactive for the exporting `postgres` role. The ignored local copy is `temp/live-schedules-export.json`.
 
-This determines whether and how the captured cleanup function is scheduled, and captures any other database jobs. The read-only query does not execute their commands. If the result reports active row security on `cron.job`, assess whether the exporting role can see every relevant job.
+- `purge_requests_and_logs_24h` calls `public.purge_requests_and_logs_24h()` with cron expression `15 3 * * *`.
+- `delete-expired-feed-items` has cron expression `0 0 * * *`. Its command is a bare procedural block without `DO` or a function wrapper. The exported command fails at `IF` on isolated PostgreSQL 17. A single schema-qualified `DELETE` was tested as the proposed correction. Production run history has not been queried and the live job has not been changed.
+
+A [baseline candidate](baseline/README.md) now reconstructs the active schema outside the current migration chain. Restored table/column/constraint/index/function/policy definitions and effective privileges match the captured application objects in PostgreSQL-level tests with Auth/role stubs. Pending local correction migrations also apply and pass their synthetic-data contract checks.
+
+The supplemental export collected at 13:42:56 GMT on 2026-10-23 resolved the original JSON rounding issue. All six identity sequences have exact bigint bounds `1` through `9223372036854775807`, and the candidate now states them explicitly. Every captured executor-role flag matches the rebuilt role, and the configured cron timezone is `GMT`. No further live metadata is needed for this candidate.
+
+An additional check passed against actual local Supabase PostgreSQL 17.11/Auth/PostgREST/Kong services with `pg_net` and `pg_cron`, using CLI 2.122.0. The baseline applied with the non-superuser `postgres` role, metadata and privileges matched, two authenticated accounts exercised library and recommendation APIs, and the retained correction changes worked through real JWT/RPC calls. All three webhooks reached a local mock backend with the expected payloads and headers. Scheduled jobs were installed and disabled before commit to prevent execution during testing. All disposable services were stopped afterward.
+
+The integration check does not deploy or test the external production backend, production catalog/author datasets, Storage, or Realtime. [PROMOTION.md](baseline/PROMOTION.md) describes the remaining repository migration-chain changes, production history reconciliation, and explicit cron correction. Those rollout steps have not been executed.
 
 Dashboard/Auth/API settings, Storage bucket configuration/data, external backend deployment, and catalog/author datasets remain separate environment or seed inputs. A schema baseline alone does not populate a working catalog or author dataset.
 

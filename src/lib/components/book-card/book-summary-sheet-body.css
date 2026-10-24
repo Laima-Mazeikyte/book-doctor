@@ -111,6 +111,19 @@
 	color: var(--color-book-title);
 	text-align: left;
 }
+.book-card__summary-sheet-title a {
+	font: inherit;
+	color: inherit;
+	text-decoration: none;
+}
+.book-card__summary-sheet-title a:hover {
+	text-decoration: underline;
+	text-underline-offset: 0.15em;
+}
+.book-card__summary-sheet-title a:focus-visible {
+	outline: 2px solid var(--color-focus);
+	outline-offset: 3px;
+}
 .book-card__summary-meta-row {
 	display: flex;
 	flex-wrap: wrap;
@@ -746,9 +759,7 @@ button.book-card__summary-remove-rating.book-card__summary-remove-rating--layout
 		flex-wrap: nowrap;
 	}
 
-	.book-card__summary-cover-actions
-		.book-card__summary-actions--icon-only
-		.book-card__action {
+	.book-card__summary-cover-actions .book-card__summary-actions--icon-only .book-card__action {
 		width: var(--min-tap);
 		height: var(--min-tap);
 		min-width: var(--min-tap);

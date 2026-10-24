@@ -6,7 +6,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 const CATALOG_BATCH_SIZE = 100;
 const MAX_CONCURRENT_CATALOG_BATCHES = 3;
 
-const CATALOG_SELECT = `id, book_id, book_name, author, summary, year, ${BOOK_GENRE_TYPE_SELECT}, ${BOOK_QUALITY_SELECT}`;
+export const CATALOG_SELECT =
+	`id, book_id, book_name, author, summary, year, ${BOOK_GENRE_TYPE_SELECT}, ${BOOK_QUALITY_SELECT}` as const;
 
 function uniqueIds(bookIds: string[]): string[] {
 	return [...new Set(bookIds)];

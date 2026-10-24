@@ -10,10 +10,17 @@ import { ratingsStore } from '$lib/stores/ratings';
 import { planToReadStore } from '$lib/stores/planToRead';
 import { notInterestedStore } from '$lib/stores/notInterested';
 import { bookCharacteristics } from '$lib/books/characteristics';
+import { valuesFromBook } from '$lib/corrections/model';
 import BookDetailPage from './BookDetailPage.svelte';
 
 vi.mock('$lib/auth/anonymous-session', () => ({
 	ensureAnonymousSessionStarted: vi.fn().mockResolvedValue(true)
+}));
+const corrections = vi.hoisted(() => ({ load: vi.fn() }));
+vi.mock('$lib/corrections/api', () => ({
+	loadCorrectionContext: corrections.load,
+	saveCorrection: vi.fn(),
+	withdrawCorrection: vi.fn()
 }));
 const book: Book = {
 	id: 'uuid-book',
@@ -32,9 +39,6 @@ const other: Book = {
 };
 const props = {
 	book,
-	authorBooks: [other],
-	authorBooksUnavailable: false,
-	authorBooksTruncated: false,
 	canonicalUrl: `https://unread.example/books/${book.book_id}/the-test-book`,
 	characteristics: bookCharacteristics({ pace_value: 0.8, violence_value: 0.8 })
 };
@@ -46,12 +50,20 @@ beforeEach(() => {
 	ratingsStore.reset();
 	planToReadStore.reset();
 	notInterestedStore.reset();
+	corrections.load.mockReset().mockResolvedValue({
+		catalog: valuesFromBook(book),
+		pending: [],
+		remaining: 20,
+		resetsAt: null
+	});
 });
 afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
 it('renders real catalog evidence, expands author books, and keeps missing features explicit', async () => {
+	const fetchMock = vi.fn().mockResolvedValue(Response.json({ books: [other], truncated: false }));
+	vi.stubGlobal('fetch', fetchMock);
 	const screen = render(BookDetailPage, props);
 	await expect.element(screen.getByRole('heading', { name: book.title })).toBeVisible();
 	await expect.element(screen.getByText('Top 1% overall', { exact: true })).toBeVisible();
@@ -64,10 +76,15 @@ it('renders real catalog evidence, expands author books, and keeps missing featu
 	await expect
 		.element(screen.getByText('Similar-experience recommendations coming soon'))
 		.toBeVisible();
+	expect(fetchMock).not.toHaveBeenCalled();
 	await screen.getByRole('button', { name: book.author, exact: true }).click();
 	await expect
 		.element(screen.getByRole('link', { name: /Another Book/ }))
 		.toHaveAttribute('href', `/books/${other.book_id}/another-book`);
+	await screen.getByRole('button', { name: book.author, exact: true }).click();
+	await screen.getByRole('button', { name: book.author, exact: true }).click();
+	expect(fetchMock).toHaveBeenCalledTimes(1);
+	expect(fetchMock.mock.calls[0][0]).toContain('/api/books/by-author?author=An+Author');
 	screen.unmount();
 });
 
@@ -109,12 +126,49 @@ it('shows only still-liked reference books from the current account’s recommen
 	);
 	authStore.setSession({ access_token: 'private-token', user: { id: 'reader' } } as Session);
 	markUserLibraryIdsReady('reader');
-	const screen = render(BookDetailPage, { ...props, authorBooks: [] });
+	const screen = render(BookDetailPage, props);
 	await expect.element(screen.getByRole('link', { name: /Another Book/ })).toBeVisible();
 	expect(document.querySelector('.reference-books')?.textContent).not.toContain('A Disliked Book');
 	authStore.setSession(null);
 	await expect.element(screen.getByText('Book connections coming soon')).toBeVisible();
 	expect(document.querySelector('.reference-books')).toBeNull();
+	screen.unmount();
+});
+
+it('shows the existing correction editor on the full page for registered users', async () => {
+	authStore.setSession({
+		access_token: 'token',
+		user: { id: 'reader', is_anonymous: false }
+	} as Session);
+	const screen = render(BookDetailPage, props);
+	await screen.getByRole('button', { name: 'Suggest a correction', exact: true }).click();
+	await expect.element(screen.getByRole('button', { name: 'Title', exact: true })).toBeVisible();
+	await expect
+		.element(screen.getByRole('button', { name: 'Description', exact: true }))
+		.toBeVisible();
+	expect(document.querySelector('.book-correction .correction__panel')).not.toBeNull();
+	authStore.setSession(null);
+	await expect
+		.element(screen.getByRole('button', { name: 'Suggest a correction', exact: true }))
+		.not.toBeInTheDocument();
+	screen.unmount();
+});
+
+it('keeps the book visible during a failed author lookup and retries on demand', async () => {
+	const fetchMock = vi
+		.fn()
+		.mockResolvedValueOnce(new Response('', { status: 503 }))
+		.mockResolvedValueOnce(Response.json({ books: [other], truncated: false }));
+	vi.stubGlobal('fetch', fetchMock);
+	const screen = render(BookDetailPage, props);
+	await screen.getByRole('button', { name: book.author, exact: true }).click();
+	await expect
+		.element(screen.getByRole('alert'))
+		.toHaveTextContent('Couldn’t load other books by this author.');
+	await expect.element(screen.getByRole('heading', { name: book.title })).toBeVisible();
+	await screen.getByRole('button', { name: 'Retry', exact: true }).click();
+	await expect.element(screen.getByRole('link', { name: /Another Book/ })).toBeVisible();
+	expect(fetchMock).toHaveBeenCalledTimes(2);
 	screen.unmount();
 });
 

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
+	import RecommendationLoadNotice from '$lib/components/RecommendationLoadNotice.svelte';
 	import type { DimensionMatchSnapshotsByBookId } from '$lib/recommendations/dimensionMatches';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
@@ -43,6 +44,7 @@
 	import type { Book, RatingValue } from '$lib/types/book';
 
 	type ViewState = 'loading' | 'ready' | 'failed' | 'error' | 'empty';
+	const SLOW_LOADING_MS = 6000;
 
 	let visibleBooks = $state<Book[]>([]);
 	let reserveBooks = $state<Book[]>([]);
@@ -52,7 +54,9 @@
 	let activeUserId: string | null = null;
 	let viewState = $state<ViewState>('loading');
 	let error = $state<string | null>(null);
+	let slowLoading = $state(false);
 	let pollTimer: ReturnType<typeof setTimeout> | null = null;
+	let slowLoadingTimer: ReturnType<typeof setTimeout> | null = null;
 	let activeLoadId = 0;
 	let activeIndex = $state(0);
 	const recommendationSubmission = createRecommendationSubmission();
@@ -114,6 +118,13 @@
 			activeUserId === (get(authStore).user?.id ?? null) &&
 			(page.url.searchParams.get('request_id')?.trim() ?? null) === requestId
 		);
+	}
+
+	function clearLoadTimers() {
+		if (pollTimer != null) clearTimeout(pollTimer);
+		if (slowLoadingTimer != null) clearTimeout(slowLoadingTimer);
+		pollTimer = null;
+		slowLoadingTimer = null;
 	}
 
 	function handleNotInterested(book: Book) {
@@ -196,20 +207,26 @@
 		userId: string | null,
 		accessToken: string | null,
 		requestId: string,
-		loadId: number
+		loadId: number,
+		preserveCurrent = false
 	) {
+		clearLoadTimers();
+		slowLoading = false;
 		activeUserId = userId;
 		recommendationsPageStore.ensureUser(activeUserId);
+		error = null;
 		const fromHistory = page.url.searchParams.get('from') === 'history';
 		const cachedRun = recommendationsPageStore.getRun(requestId);
 
-		if (fromHistory && cachedRun && cachedRun.books.length > 0) {
-			applyBooksFromRun(
-				cachedRun.books,
-				cachedRun.likedBookPrecedentsByBookId,
-				cachedRun.authorRelationshipAuthorsByBookId,
-				cachedRun.dimensionMatchSnapshotsByBookId
-			);
+		if ((fromHistory || preserveCurrent) && cachedRun && cachedRun.books.length > 0) {
+			if (!preserveCurrent) {
+				applyBooksFromRun(
+					cachedRun.books,
+					cachedRun.likedBookPrecedentsByBookId,
+					cachedRun.authorRelationshipAuthorsByBookId,
+					cachedRun.dimensionMatchSnapshotsByBookId
+				);
+			}
 			viewState = 'ready';
 			void refreshRecommendationsCountFromApi(accessToken);
 			void fetchRecommendations(accessToken, requestId)
@@ -238,8 +255,10 @@
 						}
 					}
 				)
-				.catch(() => {
-					/* keep cache */
+				.catch((cause) => {
+					if (!isActiveLoad(loadId, requestId)) return;
+					console.error('[shortlist] Failed to refresh recommendations:', cause);
+					error = t('recommendations.failedToLoad');
 				});
 			return;
 		}
@@ -253,6 +272,10 @@
 		viewState = 'loading';
 
 		const start = Date.now();
+		slowLoadingTimer = setTimeout(() => {
+			slowLoadingTimer = null;
+			if (isActiveLoad(loadId, requestId)) slowLoading = true;
+		}, SLOW_LOADING_MS);
 
 		const schedule = async () => {
 			if (!isActiveLoad(loadId, requestId)) return;
@@ -287,17 +310,15 @@
 				}
 			} catch (e) {
 				if (!isActiveLoad(loadId, requestId)) return;
-				error = e instanceof Error ? e.message : t('recommendations.failedToLoad');
+				console.error('[shortlist] Failed to load recommendations:', e);
+				error = t('recommendations.failedToLoad');
 				viewState = 'error';
 				done = true;
 			}
 
 			if (!isActiveLoad(loadId, requestId)) return;
 			if (done) {
-				if (pollTimer != null) {
-					clearTimeout(pollTimer);
-					pollTimer = null;
-				}
+				clearLoadTimers();
 			} else {
 				pollTimer = setTimeout(schedule, RECOMMENDATIONS_POLL_INTERVAL_MS);
 			}
@@ -310,16 +331,9 @@
 		const requestId = page.url.searchParams.get('request_id')?.trim() ?? null;
 		if (!requestId) return;
 		const loadId = ++activeLoadId;
-		error = null;
-		viewState = 'loading';
-		visibleBooks = [];
-		reserveBooks = [];
-		startPoll(
-			$authStore.user?.id ?? null,
-			$authStore.session?.access_token ?? null,
-			requestId,
-			loadId
-		);
+		const userId = $authStore.user?.id ?? null;
+		const preserveCurrent = viewState === 'ready' && activeUserId === userId;
+		startPoll(userId, $authStore.session?.access_token ?? null, requestId, loadId, preserveCurrent);
 	}
 
 	$effect(() => {
@@ -332,10 +346,7 @@
 		if (!browser) return;
 		const requestId = page.url.searchParams.get('request_id')?.trim() ?? null;
 
-		if (pollTimer != null) {
-			clearTimeout(pollTimer);
-			pollTimer = null;
-		}
+		clearLoadTimers();
 
 		if (!requestId) {
 			void goto(resolve('/rate/recommendations'), { replaceState: true });
@@ -347,12 +358,7 @@
 		const accessToken = get(authStore).session?.access_token ?? null;
 		startPoll(userId, accessToken, requestId, loadId);
 
-		return () => {
-			if (pollTimer != null) {
-				clearTimeout(pollTimer);
-				pollTimer = null;
-			}
-		};
+		return clearLoadTimers;
 	});
 
 	const backHref = resolve('/rate/recommendations');
@@ -392,12 +398,19 @@
 	</header>
 
 	<LibraryLoadNotice collections={['ratings', 'bookmarks', 'dismissals']} />
+	{#if error && viewState === 'ready'}
+		<RecommendationLoadNotice onRetry={retryLoad} />
+	{/if}
 	{#if viewState === 'loading'}
-		<ShortlistLoading />
+		<ShortlistLoading
+			message={t(
+				slowLoading ? 'recommendations.shortlist.takingLonger' : 'recommendations.shortlist.loading'
+			)}
+		/>
 	{:else if viewState === 'failed'}
 		<ShortlistFailed onRetry={retryLoad} />
 	{:else if viewState === 'error'}
-		<ShortlistError message={error} onRetry={retryLoad} />
+		<ShortlistError onRetry={retryLoad} />
 	{:else if viewState === 'empty'}
 		<div class="shortlist-page__empty typ-body">{t('recommendations.emptyRun')}</div>
 	{:else}

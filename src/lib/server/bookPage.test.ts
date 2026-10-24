@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Book } from '$lib/types/book';
+import { createClient } from '@supabase/supabase-js';
 
 const fixture = vi.hoisted(() => ({
-	fetch: vi.fn(),
 	from: vi.fn(),
 	query: {
 		select: vi.fn(),
@@ -13,7 +13,6 @@ const fixture = vi.hoisted(() => ({
 		limit: vi.fn()
 	}
 }));
-vi.mock('$lib/server/catalogBooks', () => ({ fetchBooksByUlidsInOrder: fixture.fetch }));
 vi.mock('$lib/server/supabase', () => ({ supabase: { from: fixture.from } }));
 import { load } from '../../routes/books/[book_id]/[[slug]]/+page.server';
 
@@ -32,12 +31,20 @@ function event(path = `/books/${book.book_id}/the-test-book`) {
 
 beforeEach(() => {
 	vi.resetAllMocks();
-	fixture.fetch.mockResolvedValue([book]);
 	fixture.from.mockReturnValue(fixture.query);
 	for (const key of ['select', 'eq', 'neq', 'order'] as const)
 		fixture.query[key].mockReturnValue(fixture.query);
 	fixture.query.limit.mockResolvedValue({ data: [], error: null });
-	fixture.query.maybeSingle.mockResolvedValue({ data: null, error: null });
+	fixture.query.maybeSingle.mockResolvedValue({
+		data: {
+			id: book.id,
+			book_id: book.book_id,
+			book_name: book.title,
+			author: book.author,
+			pace_value: 0.8
+		},
+		error: null
+	});
 });
 
 describe('public book page loading', () => {
@@ -52,34 +59,49 @@ describe('public book page loading', () => {
 				location: `/books/${book.book_id}/the-test-book${path.includes('?') ? '?source=share' : ''}`
 			});
 		}
-		expect(fixture.from).not.toHaveBeenCalled();
+		expect(fixture.from).toHaveBeenCalledTimes(3);
+		expect(fixture.query.limit).not.toHaveBeenCalled();
 	});
 	it('returns 404 for malformed and absent books, and 503 for catalog outages', async () => {
 		await expect(load(event('/books/invalid/title'))).rejects.toMatchObject({ status: 404 });
-		expect(fixture.fetch).not.toHaveBeenCalled();
-		fixture.fetch.mockResolvedValue([]);
+		expect(fixture.from).not.toHaveBeenCalled();
+		fixture.query.maybeSingle.mockResolvedValue({ data: null, error: null });
 		await expect(load(event())).rejects.toMatchObject({ status: 404 });
-		fixture.fetch.mockRejectedValue(new Error('unavailable'));
+		fixture.query.maybeSingle.mockResolvedValue({ data: null, error: { message: 'unavailable' } });
+		await expect(load(event())).rejects.toMatchObject({ status: 503 });
+		fixture.query.maybeSingle.mockRejectedValue(new Error('Connection lost'));
 		await expect(load(event())).rejects.toMatchObject({ status: 503 });
 	});
-	it('loads author books without making author lookup failures break the book page', async () => {
-		fixture.query.maybeSingle.mockResolvedValue({ data: { pace_value: 0.8 }, error: null });
-		fixture.query.limit.mockResolvedValue({ data: [{ book_id: 'another-id' }], error: null });
-		const otherBook = { ...book, book_id: 'another-id' };
-		fixture.fetch.mockResolvedValueOnce([book]).mockResolvedValueOnce([otherBook]);
+	it('loads the book and characteristics together without waiting for other books by the author', async () => {
+		const reads: URL[] = [];
+		const client = createClient('https://book-page.test', 'public-test-key', {
+			auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+			global: {
+				fetch: async (input) => {
+					const url = new URL(input instanceof Request ? input.url : String(input));
+					reads.push(url);
+					// An author query never completes; it must not gate opening the book.
+					if (url.searchParams.has('author')) return new Promise(() => {});
+					return Response.json({
+						id: book.id,
+						book_id: book.book_id,
+						book_name: book.title,
+						author: book.author,
+						pace_value: 0.8
+					});
+				}
+			}
+		});
+		fixture.from.mockImplementation((table: string) => client.from(table));
 		await expect(load(event())).resolves.toMatchObject({
 			book,
 			characteristics: { labels: [{ label: 'Unhurried' }], availableDimensions: 1 },
-			authorBooks: [otherBook],
 			canonicalUrl: `https://unread.example/books/${book.book_id}/the-test-book`
 		});
-		expect(fixture.query.eq).toHaveBeenCalledWith('author', book.author);
-		expect(fixture.query.neq).toHaveBeenCalledWith('book_id', book.book_id);
-		fixture.query.limit.mockResolvedValue({ data: null, error: { message: 'unavailable' } });
-		await expect(load(event())).resolves.toMatchObject({
-			book,
-			authorBooks: [],
-			authorBooksUnavailable: true
-		});
+		expect(fixture.from).toHaveBeenCalledTimes(1);
+		expect(reads).toHaveLength(1);
+		expect(reads[0].searchParams.get('select')).toContain('book_name');
+		expect(reads[0].searchParams.get('select')).toContain('pace_value');
+		expect(reads[0].searchParams.get('book_id')).toBe(`eq.${book.book_id}`);
 	});
 });

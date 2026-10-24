@@ -26,6 +26,7 @@ function session(userId: string, accessToken: string): Session {
 function uniqueResponse(title?: string) {
 	return {
 		ok: true,
+		status: 200,
 		json: async () => ({
 			books: title
 				? [{ id: `${title}-id`, book_id: `${title}-book`, title, author: 'Author' }]
@@ -99,46 +100,54 @@ describe('recommendations page auth loading', () => {
 		authInitStore.set({ status: 'error', error: 'network' });
 
 		const rendered = render(RecommendationsPage);
-		await expect.element(rendered.getByRole('button', { name: 'Try again' })).toBeVisible();
+		await expect.element(rendered.getByRole('button', { name: 'Retry' })).toBeVisible();
 		expect(fetchMock).not.toHaveBeenCalled();
 
 		rendered.unmount();
 	});
 
-	it('keeps late results from the previous account out of the page', async () => {
-		let resolveFirst: (response: ReturnType<typeof uniqueResponse>) => void = () => undefined;
-		const firstResponse = new Promise<ReturnType<typeof uniqueResponse>>((resolve) => {
-			resolveFirst = resolve;
-		});
-		const fetchMock = vi.fn().mockImplementation((_url: string, init: RequestInit) => {
-			const headers = init.headers as Record<string, string>;
-			return headers.Authorization === 'Bearer token-1'
-				? firstResponse
-				: Promise.resolve(uniqueResponse('second-account'));
-		});
-		vi.stubGlobal('fetch', fetchMock);
-		authStore.setSession(session('user-1', 'token-1'));
-		markAuthInitReady();
+	it.each([true, false])(
+		'ignores a previous account response (successful: %s)',
+		async (success) => {
+			let resolveFirst: (response: ReturnType<typeof uniqueResponse>) => void = () => undefined;
+			const firstResponse = new Promise<ReturnType<typeof uniqueResponse>>((resolve) => {
+				resolveFirst = resolve;
+			});
+			const fetchMock = vi.fn().mockImplementation((_url: string, init: RequestInit) => {
+				const headers = init.headers as Record<string, string>;
+				return headers.Authorization === 'Bearer token-1'
+					? firstResponse
+					: Promise.resolve(uniqueResponse('second-account'));
+			});
+			vi.stubGlobal('fetch', fetchMock);
+			authStore.setSession(session('user-1', 'token-1'));
+			markAuthInitReady();
 
-		const rendered = render(RecommendationsPage);
-		await expect.poll(() => fetchMock.mock.calls.length).toBe(1);
+			const rendered = render(RecommendationsPage);
+			await expect.poll(() => fetchMock.mock.calls.length).toBe(1);
 
-		authStore.setSession(session('user-2', 'token-2'));
-		await expect.poll(() => fetchMock.mock.calls.length).toBe(2);
-		await expect
-			.poll(() => recommendationsPageStore.getSnapshot().unique.books[0]?.title)
-			.toBe('second-account');
-		await expect
-			.element(rendered.getByTestId('test-book-card'))
-			.toHaveTextContent('second-account');
+			authStore.setSession(session('user-2', 'token-2'));
+			await expect.poll(() => fetchMock.mock.calls.length).toBe(2);
+			await expect
+				.poll(() => recommendationsPageStore.getSnapshot().unique.books[0]?.title)
+				.toBe('second-account');
+			await expect
+				.element(rendered.getByTestId('test-book-card'))
+				.toHaveTextContent('second-account');
 
-		resolveFirst(uniqueResponse('first-account'));
-		await new Promise((resolve) => setTimeout(resolve, 20));
-		expect(recommendationsPageStore.getSnapshot().unique.books[0]?.title).toBe('second-account');
-		expect(document.body.textContent).not.toContain('first-account');
+			resolveFirst({
+				...uniqueResponse('first-account'),
+				ok: success,
+				status: success ? 200 : 500
+			});
+			await new Promise((resolve) => setTimeout(resolve, 20));
+			expect(recommendationsPageStore.getSnapshot().unique.books[0]?.title).toBe('second-account');
+			expect(document.body.textContent).not.toContain('first-account');
+			await expect.element(rendered.getByRole('alert')).not.toBeInTheDocument();
 
-		rendered.unmount();
-	});
+			rendered.unmount();
+		}
+	);
 
 	it('offers a retry action after a failed authorized request', async () => {
 		let attempts = 0;
@@ -154,14 +163,69 @@ describe('recommendations page auth loading', () => {
 
 		const rendered = render(RecommendationsPage);
 		await expect.poll(() => fetchMock.mock.calls.length).toBe(1);
-		await expect.element(rendered.getByRole('button', { name: 'Try again' })).toBeVisible();
+		await expect.element(rendered.getByRole('button', { name: 'Retry' })).toBeVisible();
+		await expect.element(rendered.getByText('Couldn’t load your recommendations.')).toBeVisible();
 
-		await rendered.getByRole('button', { name: 'Try again' }).click();
+		await rendered.getByRole('button', { name: 'Retry' }).click();
 		await expect.poll(() => fetchMock.mock.calls.length).toBe(2);
 		await expect
 			.poll(() => recommendationsPageStore.getSnapshot().unique.books[0]?.title)
 			.toBe('retried');
 
+		rendered.unmount();
+	});
+
+	it('keeps cached recommendations visible after an HTTP error and throughout retry', async () => {
+		authStore.setSession(session('user-1', 'token-1'));
+		markAuthInitReady();
+		recommendationsPageStore.ensureUser('user-1');
+		recommendationsPageStore.setUnique({
+			...recommendationsPageStore.getSnapshot().unique,
+			hasRuns: true,
+			books: [{ id: 'cached-id', book_id: 'cached-book', title: 'Cached book', author: 'Author' }]
+		});
+		let resolveRetry!: (response: ReturnType<typeof uniqueResponse>) => void;
+		const retryResponse = new Promise<ReturnType<typeof uniqueResponse>>((resolve) => {
+			resolveRetry = resolve;
+		});
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce({ ok: false, status: 500 })
+			.mockReturnValueOnce(retryResponse);
+		vi.stubGlobal('fetch', fetchMock);
+
+		const rendered = render(RecommendationsPage);
+		await expect
+			.element(rendered.getByRole('alert'))
+			.toHaveTextContent('Couldn’t load your recommendations.');
+		await expect.element(rendered.getByTestId('test-book-card')).toHaveTextContent('Cached book');
+		expect(recommendationsPageStore.getSnapshot().unique.books[0]?.title).toBe('Cached book');
+
+		authStore.setSession(session('user-1', 'refreshed-token'));
+		await rendered.getByRole('button', { name: 'Retry', exact: true }).click();
+		await expect.poll(() => fetchMock.mock.calls.length).toBe(2);
+		expect(fetchMock).toHaveBeenLastCalledWith('/api/recommendations/unique', {
+			headers: { Authorization: 'Bearer refreshed-token' }
+		});
+		await expect.element(rendered.getByTestId('test-book-card')).toHaveTextContent('Cached book');
+
+		resolveRetry(uniqueResponse('Fresh book'));
+		await expect.element(rendered.getByTestId('test-book-card')).toHaveTextContent('Fresh book');
+		await expect.element(rendered.getByRole('alert')).not.toBeInTheDocument();
+		rendered.unmount();
+	});
+
+	it('offers retry when refreshing a previously successful empty snapshot fails', async () => {
+		authStore.setSession(session('user-1', 'token-1'));
+		markAuthInitReady();
+		recommendationsPageStore.ensureUser('user-1');
+		recommendationsPageStore.setUnique(recommendationsPageStore.getSnapshot().unique);
+		vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }));
+
+		const rendered = render(RecommendationsPage);
+		await expect.element(rendered.getByText('Couldn’t load your recommendations.')).toBeVisible();
+		await expect.element(rendered.getByRole('button', { name: 'Retry' })).toBeVisible();
+		expect(recommendationsPageStore.getSnapshot().uniqueLoaded).toBe(true);
 		rendered.unmount();
 	});
 });
