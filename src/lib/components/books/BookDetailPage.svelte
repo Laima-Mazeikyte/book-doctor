@@ -170,7 +170,7 @@
 	<LibraryLoadNotice collections={['ratings', 'bookmarks', 'dismissals']} />
 	<div class="book-layout">
 		<div class="cover-column">
-			<div class="book-cover">
+			<div class="book-cover" class:book-cover--not-interested={dismissed}>
 				{#if book.coverUrl && !coverFailed}
 					<img
 						src={book.coverUrl}
@@ -220,7 +220,7 @@
 						</div>
 						<LibrarySaveIndicator bookUlid={book.book_id} kind="rating" />
 						{#if rating}<button class="text-button" onclick={() => removeBookRating(book)}
-								>Clear</button
+								>Remove</button
 							>{/if}
 					</div>
 				</fieldset>
@@ -410,6 +410,9 @@
 	}
 	.book-correction {
 		max-width: 48rem;
+	}
+	.book-cover--not-interested {
+		opacity: 0.3;
 	}
 	.book-cover img,
 	.cover-fallback {

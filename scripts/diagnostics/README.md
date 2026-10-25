@@ -1,4 +1,244 @@
-# Why the first `/rate` load after idle is slow
+# Investigating `/rate` entry latency
+
+## Current status (2026-10-25)
+
+Start with the [developer testing handoff](rate-entry-developer-handoff.md) for setup,
+shared-database constraints, focused test commands, and expected behavior. Node 22.12+
+and pnpm 9.15.9 are required. The timing benchmark retains its open under-200-ms target.
+
+The shared database now has the additive `get_rate_feed_bootstrap` RPC installed. Its live
+verification at 23:42 UTC passed all ten equivalence comparisons and four access checks.
+The development `/api/feed/latest` implementation now makes one authenticated RPC call,
+preserving its response fields and existing book mapper. The deployed production application
+keeps its six-call implementation until the planned application deployment in approximately
+two months; both implementations use the same database. See the [validation record](rate-feed-bootstrap-validation.md).
+
+Step 2 now gives the layout an account-owned feed controller. It reuses in-flight and recent
+in-memory reads while keeping prepared snapshots separate from the active card list. See the
+[controller validation record](rate-feed-controller-validation.md).
+
+Step 3 now restores complete ratings, bookmark, and dismissal snapshots through the existing
+stores and readiness checks. Returning users with complete cached collections can act while
+library revalidation runs. See the [interaction snapshot validation record](library-snapshot-validation.md).
+Step 4 now restores validated feed candidates for up to 24 hours, filtered against those
+interaction snapshots, while refreshing the next list without replacing mounted cards.
+See the [persistent feed validation record](rate-feed-cache-validation.md). A returning user
+with usable feed and complete interaction snapshots can see and act on cards before network
+revalidation finishes. Step 5 now prepares the same shared read from the landing page after
+existing-session restoration. A configurable 10-second deadline covers the shared response and
+body, preserving cached cards and permitting retry. Missing/unusable caches retain ordinary loading.
+
+Step 6's original controlled local acceptance used zero fade: all 15 production-build browser samples
+reached usable rating actions in 74–149 ms with ready session/route code and usable snapshots.
+The intentional 150-ms fade was restored on 2026-10-25; those figures do not measure the restored UI.
+The restored UI passed all 26 behavioral cases; a separate 15-sample timing run measured 153–420 ms
+and did not consistently meet the unchanged under-200-ms target. See the [UI/UX audit and follow-up checks](rate-entry-ui-ux-audit.md).
+See the [completion validation and reproduction commands](rate-entry-completion-validation.md).
+The [current completion review](rate-entry-status-review.md) separates finished application work
+from explicitly deferred production/infrastructure work and records the pagination copy/retry fix.
+
+For the next real-browser before/after comparison, use the [browser validation procedure](rate-entry-browser-validation.md)
+and [rate-entry-browser-probe.js](rate-entry-browser-probe.js). The probe measures the actual click,
+visible cards and enabled controls; the historical waterfall probe's network-derived "list ready"
+boundary does not describe cache-first display.
+
+Direct entry without either application snapshot still depends on the live feed and library reads.
+Three added fixture checks confirm those dependencies and their overlap. See the [cold-path review](rate-entry-cold-path-review.md)
+for the real-account procedure and historical console investigation. Auth is resolved;
+font-preload cleanup is implemented, as detailed below.
+
+The [auth SDK and book-cover follow-up](rate-entry-auth-sdk-upgrade.md) records the 2.118.0
+upgrade, explicit database retry policy, manual Firefox checks, and cover dismissal treatment.
+The user has now confirmed that the auth error is gone. The [font preload cleanup](font-preload-validation.md)
+is implemented, with measured cold-load font-byte reductions and browser validation.
+
+### Observed in the supplied Firefox HAR
+
+The capture contains four successful warm `/api/feed/latest` requests taking **506–862 ms**,
+then a slow request taking **3566 ms**, after roughly four minutes without recorded API traffic.
+Every successful response has `mode: has_eligible_feed`, `status: completed`, and 50 books.
+There are **no generation-poll requests or auth-refresh requests** in this capture.
+
+The slow feed response breaks down as follows:
+
+| Stage / request            |  Duration |
+| -------------------------- | --------: |
+| Latest request metadata    | 3020.7 ms |
+| Completed request metadata | 3074.8 ms |
+| Ratings count              | 2953.0 ms |
+| Bookmarks count            | 3054.1 ms |
+| Not-interested count       | 3028.7 ms |
+| Books RPC, after metadata  |  483.1 ms |
+| Total inside route handler | 3559.5 ms |
+| Total observed by browser  | 3566.0 ms |
+
+The five metadata reads overlap. Their slowest request contributes **3074.8 ms**, about 86% of
+the handler's duration; the books RPC adds another 483.1 ms. Almost all of the feed request's
+elapsed time is accounted for inside the handler's Supabase calls.
+
+Independent browser-to-Supabase reads slowed during the same interval:
+
+| Browser request    | Total elapsed | `x-envoy-upstream-service-time` |
+| ------------------ | ------------: | ------------------------------: |
+| Rating IDs         |       4157 ms |                         3866 ms |
+| Bookmark IDs       |       2673 ms |                         2336 ms |
+| Not-interested IDs |       2884 ms |                         2468 ms |
+
+The corresponding nearby warm requests report upstream times of 23, 8, and 21 ms. The Envoy
+header covers upstream processing and the network between the gateway and upstream service,
+not the browser-to-gateway leg ([Envoy documentation](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/router_filter#x-envoy-upstream-service-time)).
+This locates most of the delay behind Supabase's gateway; it does **not** identify pure SQL
+execution time, CPU throttling, pool waiting, locks, or a cold connection as the exact cause.
+
+**Finding:** this run is a shared Supabase API/database latency spike that the page exposes by
+blocking its first list on a fresh network read. Polling and token refresh do not explain this
+sample. The capture has no click/DOM markers or cover-image entries, so it does not independently
+measure click-to-paint time. The API wait alone explains the reported multi-second skeleton.
+
+The next infrastructure investigation should compare the slow interval with PostgREST request
+and pool metrics, PostgreSQL query durations/waits, and instance CPU/I/O. A missing index or
+particular query plan is not established by this HAR; the July findings below remain historical.
+
+### Unified RPC follow-up: fresh and warm XHR captures
+
+The follow-up exports beginning at 23:50:25 UTC on 2026-10-24 confirm the unified endpoint
+works through the local application and real Supabase HTTP gateway. The first export has
+13 entries; the second contains those same 13 entries plus a warm feed request and a
+recommendation-count request. Count the feed observations once, rather than treating the
+exports as independent fresh runs.
+
+| Feed observation             | Browser duration | Bootstrap round trip | Handler total |
+| ---------------------------- | ---------------: | -------------------: | ------------: |
+| Earlier six-call slow sample |          3566 ms |                    — |     3559.5 ms |
+| Unified fresh sample         |          1776 ms |            1724.1 ms |     1726.3 ms |
+| Unified warm sample          |           467 ms |             452.2 ms |      454.3 ms |
+
+The earlier warm six-call observations ranged from 506 to 862 ms. The new fresh request is
+about 50% shorter than the earlier slow request, and the new warm request is below the earlier
+warm range. These are individual observations under different upstream/auth conditions,
+not a controlled estimate of the refactor's latency improvement or a bound on future spikes.
+All successful new feed bodies deeply match the original response, including 50 books in
+the same order, 249 ratings, 1228 interactions, and the same metadata. Both new responses are
+successful `has_eligible_feed` / `completed` responses; no generation requests or polls occur.
+
+The fresh bootstrap still spends 1724.1 ms in the Supabase round trip. Envelope validation,
+book mapping, and response construction account for approximately 2.2 ms more in the handler;
+the warm difference is 2.1 ms. These round-trip timings do not isolate database execution from
+upstream queueing or networking. Concurrent initial library reads are also slow: rating IDs
+2787 ms (2521 ms upstream service time), bookmarks 1351 ms (1171 ms upstream), and dismissals
+1438 ms (960 ms upstream). The initial recommendation-count request takes 2563 ms. The shared
+upstream latency remains visible after consolidating the feed reads.
+
+This fresh capture includes a successful token-refresh POST taking 806 ms. It finishes at
+806 ms relative to the first captured XHR; the feed request starts at 2425 ms and finishes at
+4201 ms. Auth is therefore earlier than the measured feed request, and neither the refresh
+nor that pre-feed gap can be assigned to the Start rating click without a click marker.
+The warm feed starts at 27342 ms, about 25 seconds after the fresh feed starts, with no
+additional auth or library fetches during that warm entry. The exports contain only XHR
+requests, so they do not measure click-to-card paint, cover loading, or route-code loading.
+
+Step 1 is verified through the real HTTP path. The shared controller is now implemented in
+development, along with complete interaction snapshots and persistent feed restoration.
+Landing-page preparation is now implemented and shares the same read with `/rate`.
+Those steps let a usable list appear while the network refresh
+continues. Broader post-idle samples remain useful for investigating the Supabase latency tail.
+
+### Code path at the original capture and controlled reproductions (historical)
+
+For an existing, signed-in user entering from the landing page, the counts and feed take
+different paths. The layout restores the session, hydrates cached ratings, and starts library
+reads on the landing page. At that stage the feed had no persistent cache or landing-page prefetch:
+`rate/+page.svelte` waits until mount and auth readiness, then asks the shared controller for
+an initial choice. The controller reuses a recent in-memory result or a request already in
+flight; otherwise it requests `/api/feed/latest`. SvelteKit's link preloading does not start
+this read.
+
+At the time of the capture, the latest-feed endpoint made **six Supabase HTTP requests in two stages**.
+The deployed production application retains this flow during the development overlap:
+
+1. In parallel: latest request, latest completed request, ratings count, bookmarks count,
+   not-interested count.
+2. After all five finish: `get_latest_rate_feed_state`, which also looks up the request pointers
+   before returning eligible books.
+
+The skeleton stays visible through both stages. If there are interactions but no eligible books,
+the page also waits for a pending/new generation job. `pollCuratedFeedRequest` polls immediately,
+then waits **3000 ms** between pending responses. Even a job that finishes just after the first
+poll remains behind the skeleton until the next poll.
+
+Controlled Playwright runs against local Vite, with a valid fixture session, cached ratings,
+mocked API/library responses, and no real account writes:
+
+| Controlled response                           | Counts visible | First cards after click |
+| --------------------------------------------- | -------------: | ----------------------: |
+| Immediate eligible feed                       |          84 ms |                  180 ms |
+| Latest-feed response delayed by 3000 ms       |          88 ms |                 3188 ms |
+| Exhausted feed; first poll pending, next done |          91 ms |                 3210 ms |
+
+These demonstrate two ways to reproduce the symptom; they are **not measurements of the user's
+real Supabase requests**. There is no unconditional three-second render delay. Cover downloads
+begin after the skeleton is replaced and cannot explain the skeleton itself. The idle callback's
+3000 ms timeout in the library details loader does not gate the feed either.
+
+### Capture the actual click
+
+On the local landing page, open DevTools Console and paste
+[`feed-cold-load-probe.js`](feed-cold-load-probe.js). From PowerShell in the project directory,
+this copies the file for pasting:
+
+```powershell
+Get-Content -Raw scripts/diagnostics/feed-cold-load-probe.js | Set-Clipboard
+```
+
+Then run in DevTools Console:
+
+```js
+feedProbe.watch();
+```
+
+Click Start rating, wait for books, then run:
+
+```js
+await feedProbe.report();
+await feedProbe.copy();
+feedProbe.stop();
+```
+
+For client navigation, use the **live watch capture** tables: request starts and DOM milestones
+are relative to the Start rating click. The older stage breakdown describes the initial document
+load and includes landing-page activity. To capture production, paste the probe file into the
+landing page console and call `feedProbe.watch()` before clicking. Keep Disable cache off.
+
+The live capture records feed response `mode`, `status`, book count, and polling timestamps.
+The unified development `/api/feed/latest` sends `Server-Timing` with `feed_bootstrap` for the
+single RPC round trip and response parsing, plus `feed_total` for the complete handler work.
+Earlier instrumentation of the six-call implementation reports the five metadata queries,
+`feed_books`, and `feed_total`; those metadata queries overlap and **must not be summed**.
+These timings include networking and response parsing, not just SQL execution. The probe
+prints and exports whichever timings the running build provides. Production gains the unified
+path and its timing headers when that application code is deployed.
+
+- A slow unified latest-feed response: compare `feed_bootstrap` with `feed_total`. For a six-call
+  build, compare `feed_total`, the slowest metadata query, and `feed_books`.
+- A quick latest response followed by pending `/api/feed` responses: generation/polling is gating
+  display. Check the roughly three-second gap between polls.
+- A late first feed request: check route loading and `/auth/v1/token` refresh before blaming SQL.
+
+For near-instant entry despite the measured upstream spike, fetch while the existing user is
+on the landing page and show a user-scoped cached feed while revalidating. Cached books must
+still be filtered against known ratings, bookmarks, and dismissals. Prefetch alone removes the
+wait only when the landing-page dwell time covers the request; a fresh cache is what removes
+the mandatory network wait for a returning user who clicks immediately.
+
+Consolidating metadata/counts/books into one RPC removes the extra serial round trip and
+reduces request fan-out. That helps uncached and warm loads, but cannot guarantee instant entry
+when Supabase itself stalls. The generation/polling branch remains a separate possible delay
+for exhausted feeds, although it was not taken in the supplied HAR.
+
+## Historical investigation (2026-07-26)
+
+The findings below describe earlier production samples and their database statistics window.
+They are background evidence, not a diagnosis of the current three-second entry delay.
 
 Symptom: a logged-in user returning after some idle time sees the `/rate` skeleton for 4–5s,
 then books appear ~2s later. Every visit after that is ~1s.

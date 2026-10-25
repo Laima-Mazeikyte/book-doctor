@@ -1,0 +1,40 @@
+{
+	"validated_on": "2026-10-25",
+	"environment": "Local production preview, Chromium, one worker",
+	"rate_entry_fade_ms": 150,
+	"conditions": "Ready session, complete interaction snapshots, route code warmed by hover; intercepted APIs; cover completion excluded. Rerun after type/lint/build checks completed.",
+	"metric": "Milliseconds from actual click to DOM card / first animation frame with positive-opacity card and enabled rating control; does not measure full fade completion",
+	"acceptance_ms": 200,
+	"all_samples_met_acceptance": false,
+	"samples_under_acceptance": 6,
+	"sample_count": 15,
+	"rounding_decimal_places": 1,
+	"scenarios": [
+		{
+			"mode": "disk-cache",
+			"dom_card_ms": [150.1, 123.1, 162.5, 190.3, 125.5],
+			"first_card_ms": [180.3, 172.1, 192.8, 236.2, 169.5],
+			"usable_action_ms": [180.3, 172.2, 192.8, 236.3, 169.5],
+			"feed_reads": 1,
+			"feed_responses": 0,
+			"generation_writes": 0
+		},
+		{
+			"mode": "prepared",
+			"dom_card_ms": [271.1, 219.6, 137.5, 118.3, 210.4],
+			"first_card_ms": [420.1, 258.6, 175.2, 152.9, 275.2],
+			"usable_action_ms": [420.1, 258.6, 175.3, 152.9, 275.2],
+			"feed_reads": 1,
+			"generation_writes": 0
+		},
+		{
+			"mode": "warm-navigation",
+			"dom_card_ms": [164.6, 186.4, 174.5, 174.5, 340.5],
+			"first_card_ms": [209.6, 224.3, 217.2, 216.9, 391.1],
+			"usable_action_ms": [209.7, 224.4, 217.3, 217, 391.2],
+			"feed_reads": 1,
+			"generation_writes": 0
+		}
+	],
+	"scope": "Controlled local follow-up; not a matched comparison with the earlier zero-fade run and not evidence of deployed latency. The three strict timing cases failed; thresholds and animation were retained."
+}

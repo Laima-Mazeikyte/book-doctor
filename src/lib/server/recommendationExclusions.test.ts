@@ -73,6 +73,7 @@ describe('recommendation exclusion read failures', () => {
 		vi.spyOn(console, 'error').mockImplementation(() => {});
 		fixture.createWithAuth.mockReturnValue(
 			createClient('https://exclusions.test', 'public-test-key', {
+				db: { retry: false },
 				auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
 				global: { fetch: fetcher }
 			})

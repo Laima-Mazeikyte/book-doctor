@@ -4,6 +4,9 @@ import {
 	clearLibraryCache,
 	readLibraryCache,
 	writeLibraryCache,
+	readLibrarySnapshot,
+	writeLibrarySnapshot,
+	LIBRARY_SNAPSHOT_PREFIX,
 	type CachedRatedBook
 } from './libraryCache';
 
@@ -99,5 +102,103 @@ describe('library cache', () => {
 		expect(readLibraryCache(null)).toBeNull();
 		writeLibraryCache(undefined, sample);
 		expect(ls.length).toBe(0);
+	});
+
+	it('distinguishes missing collections from complete empty collections', () => {
+		writeLibrarySnapshot('user-1', { bookmarks: [], dismissals: [] });
+		expect(readLibrarySnapshot('user-1')).toEqual({ bookmarks: [], dismissals: [] });
+		expect(readLibrarySnapshot('user-2')).toEqual({});
+	});
+
+	it('merges successful collections without erasing unavailable ones', () => {
+		writeLibrarySnapshot('user-1', {
+			dismissals: ['B1'],
+			bookmarks: [{ id: 'u2', book_id: 'B2' }]
+		});
+		writeLibrarySnapshot('user-1', { ratings: { entries: sample, books: sample } });
+		writeLibrarySnapshot('user-1', { bookmarks: [] });
+		expect(readLibrarySnapshot('user-1')).toEqual({
+			ratings: { entries: sample, books: sample },
+			bookmarks: [],
+			dismissals: ['B1']
+		});
+	});
+
+	it.each([
+		{
+			bad: [
+				{ id: 'u1', book_id: 'B1' },
+				{ id: 'u1', book_id: 'B2' }
+			]
+		},
+		{
+			bad: [
+				{ id: 'u1', book_id: 'B1' },
+				{ id: 'u2', book_id: 'B1' }
+			]
+		},
+		{ bad: [{ id: 'u1' }] },
+		{ bad: ['garbage'] }
+	])(
+		'rejects a malformed collection as a whole while retaining independent valid data: %j',
+		({ bad }) => {
+			ls.setItem(
+				LIBRARY_SNAPSHOT_PREFIX + 'user-1',
+				JSON.stringify({
+					version: 2,
+					ownerId: 'user-1',
+					collections: { bookmarks: bad, dismissals: [] }
+				})
+			);
+			expect(readLibrarySnapshot('user-1')).toEqual({ dismissals: [] });
+		}
+	);
+
+	it('rejects mismatched rating details and incompatible owners/versions', () => {
+		const key = LIBRARY_SNAPSHOT_PREFIX + 'user-1';
+		ls.setItem(
+			key,
+			JSON.stringify({
+				version: 2,
+				ownerId: 'user-1',
+				collections: {
+					ratings: { entries: sample, books: [{ ...sample[0], rating: 1 }] },
+					bookmarks: []
+				}
+			})
+		);
+		expect(readLibrarySnapshot('user-1')).toEqual({ bookmarks: [] });
+		for (const envelope of [
+			{ version: 1, ownerId: 'user-1' },
+			{ version: 2, ownerId: 'user-2' }
+		]) {
+			ls.setItem(key, JSON.stringify({ ...envelope, collections: { dismissals: [] } }));
+			expect(readLibrarySnapshot('user-1')).toEqual({});
+		}
+	});
+
+	it('clears both cache versions for one account while preserving pending journals and other accounts', () => {
+		writeLibraryCache('user-1', sample);
+		writeLibrarySnapshot('user-1', { bookmarks: [] });
+		writeLibrarySnapshot('user-2', { dismissals: ['B2'] });
+		ls.setItem('book-doctor:library-pending:v1:user-1', 'durable');
+		clearLibraryCache('user-1');
+		expect(readLibraryCache('user-1')).toBeNull();
+		expect(readLibrarySnapshot('user-1')).toEqual({});
+		expect(readLibrarySnapshot('user-2')).toEqual({ dismissals: ['B2'] });
+		expect(ls.getItem('book-doctor:library-pending:v1:user-1')).toBe('durable');
+	});
+
+	it('tolerates storage failures and bounds stored payload sizes', () => {
+		ls.setItem(LIBRARY_SNAPSHOT_PREFIX + 'user-1', ' '.repeat(4_000_001));
+		expect(readLibrarySnapshot('user-1')).toEqual({});
+		vi.spyOn(ls, 'setItem').mockImplementation(() => {
+			throw new Error('quota');
+		});
+		expect(() => writeLibrarySnapshot('user-1', { dismissals: [] })).not.toThrow();
+		vi.spyOn(ls, 'getItem').mockImplementation(() => {
+			throw new Error('blocked');
+		});
+		expect(readLibrarySnapshot('user-1')).toEqual({});
 	});
 });

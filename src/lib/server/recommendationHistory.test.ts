@@ -101,6 +101,7 @@ describe('50-run recommendation history', () => {
 		failRequests = false;
 		fixture.createWithAuth.mockReturnValue(
 			createClient('https://history.test', 'public-test-key', {
+				db: { retry: false },
 				auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
 				global: { fetch: fetcher }
 			})

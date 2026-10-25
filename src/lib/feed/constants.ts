@@ -1,6 +1,9 @@
 /** Books generated per `feed_requests` row by the feed backend. */
 export const FEED_REQUEST_BATCH_SIZE = 50;
 
+/** Deadline for a shared feed read, including response-body consumption. */
+export const FEED_READ_TIMEOUT_MS = 10_000;
+
 /** Minimum time between client-initiated `feed_requests` inserts on `/rate`. */
 export const FEED_REQUEST_CREATE_COOLDOWN_MS = 2000;
 

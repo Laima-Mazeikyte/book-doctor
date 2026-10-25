@@ -1,0 +1,897 @@
+{
+	"date": "2026-10-25",
+	"scope": "Local production preview, fresh isolated Chromium contexts, synthetic application/API/auth/catalog data; font-file body bytes exclude HTTP headers. Not a page-load speed benchmark.",
+	"cases": [
+		{
+			"path": "/",
+			"width": 1440,
+			"height": 1000,
+			"preloadsBefore": 8,
+			"preloadsAfter": 3,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 3,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 84168,
+			"preloadBytesAfter": 84168,
+			"renderedFontNamesBefore": ["Inter-Regular", "Bespoke-Serif-Variable", "BespokeSerif-Light"],
+			"renderedFontNamesAfter": ["Inter-Regular", "Bespoke-Serif-Variable", "BespokeSerif-Light"],
+			"sampledCLSBefore": 0.002808641975308642,
+			"sampledCLSAfter": 0.002808641975308642,
+			"pageErrors": []
+		},
+		{
+			"path": "/rate",
+			"width": 1440,
+			"height": 1000,
+			"preloadsBefore": 8,
+			"preloadsAfter": 4,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 4,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 108964,
+			"preloadBytesAfter": 108964,
+			"renderedFontNamesBefore": [
+				"Inter-Regular",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Bold",
+				"BespokeSerif-Light"
+			],
+			"renderedFontNamesAfter": [
+				"Inter-Regular",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Bold",
+				"BespokeSerif-Light"
+			],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/faq",
+			"width": 1440,
+			"height": 1000,
+			"preloadsBefore": 8,
+			"preloadsAfter": 3,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 4,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 108964,
+			"preloadBytesAfter": 84168,
+			"renderedFontNamesBefore": ["Inter-Regular", "Bespoke-Serif-Variable"],
+			"renderedFontNamesAfter": ["Inter-Regular", "Bespoke-Serif-Variable"],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/my-bookshelf",
+			"width": 1440,
+			"height": 1000,
+			"preloadsBefore": 8,
+			"preloadsAfter": 4,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 4,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 108964,
+			"preloadBytesAfter": 108964,
+			"renderedFontNamesBefore": ["Inter-Regular", "Bespoke-Serif-Variable", "BespokeSerif-Light"],
+			"renderedFontNamesAfter": ["Inter-Regular", "Bespoke-Serif-Variable", "BespokeSerif-Light"],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/not-interested",
+			"width": 1440,
+			"height": 1000,
+			"preloadsBefore": 8,
+			"preloadsAfter": 5,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 5,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 135720,
+			"preloadBytesAfter": 135720,
+			"renderedFontNamesBefore": [
+				"Inter-Regular",
+				"BethEllen-Regular",
+				"BespokeSerif-Regular",
+				"BespokeSerif-Light"
+			],
+			"renderedFontNamesAfter": [
+				"Inter-Regular",
+				"BethEllen-Regular",
+				"BespokeSerif-Regular",
+				"BespokeSerif-Light"
+			],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/rate/recommendations",
+			"width": 1440,
+			"height": 1000,
+			"preloadsBefore": 8,
+			"preloadsAfter": 4,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 4,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 108964,
+			"preloadBytesAfter": 108964,
+			"renderedFontNamesBefore": [
+				"Inter-Regular",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Bold",
+				"BespokeSerif-Light"
+			],
+			"renderedFontNamesAfter": [
+				"Inter-Regular",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Bold",
+				"BespokeSerif-Light"
+			],
+			"sampledCLSBefore": 0.50497747512629,
+			"sampledCLSAfter": 0.50497747512629,
+			"pageErrors": []
+		},
+		{
+			"path": "/rate/recommendations/shortlist",
+			"width": 1440,
+			"height": 1000,
+			"preloadsBefore": 8,
+			"preloadsAfter": 4,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 5,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 133484,
+			"preloadBytesAfter": 108964,
+			"renderedFontNamesBefore": [
+				"Inter-Regular",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Bold",
+				"BespokeSerif-Light"
+			],
+			"renderedFontNamesAfter": [
+				"Inter-Regular",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Bold",
+				"BespokeSerif-Light"
+			],
+			"sampledCLSBefore": 0.0714699074074074,
+			"sampledCLSAfter": 0.0714699074074074,
+			"pageErrors": []
+		},
+		{
+			"path": "/rate/recommendations/filtered",
+			"width": 1440,
+			"height": 1000,
+			"preloadsBefore": 8,
+			"preloadsAfter": 5,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 5,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 133416,
+			"preloadBytesAfter": 133416,
+			"renderedFontNamesBefore": [
+				"SegoeUI-Light",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Light",
+				"BespokeSerif-Bold",
+				"SegoeUI-Semibold",
+				"SegoeUI"
+			],
+			"renderedFontNamesAfter": [
+				"Inter-Regular",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Light",
+				"BespokeSerif-Bold",
+				"Inter-SemiBold"
+			],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/books/01KR2ADTDY5539KGWBYH9PZAZM/the-font-test-book",
+			"width": 1440,
+			"height": 1000,
+			"preloadsBefore": 8,
+			"preloadsAfter": 5,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 5,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 133236,
+			"preloadBytesAfter": 133236,
+			"renderedFontNamesBefore": [
+				"Inter-Regular",
+				"BespokeSerif-Bold",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Light",
+				"Inter-Medium"
+			],
+			"renderedFontNamesAfter": [
+				"Inter-Regular",
+				"BespokeSerif-Bold",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Light",
+				"Inter-Medium"
+			],
+			"sampledCLSBefore": 0.004783473714192708,
+			"sampledCLSAfter": 0.004783473714192708,
+			"pageErrors": []
+		},
+		{
+			"path": "/auth/reset-password",
+			"width": 1440,
+			"height": 1000,
+			"preloadsBefore": 8,
+			"preloadsAfter": 4,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 4,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 94988,
+			"preloadBytesAfter": 94988,
+			"renderedFontNamesBefore": ["Inter-Regular", "BespokeSerif-Bold", "BespokeSerif-Regular"],
+			"renderedFontNamesAfter": ["Inter-Regular", "BespokeSerif-Bold", "BespokeSerif-Regular"],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/lab",
+			"width": 1440,
+			"height": 1000,
+			"preloadsBefore": 8,
+			"preloadsAfter": 4,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 4,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 108964,
+			"preloadBytesAfter": 108964,
+			"renderedFontNamesBefore": [
+				"Inter-Regular",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Light",
+				"BespokeSerif-Bold"
+			],
+			"renderedFontNamesAfter": [
+				"Inter-Regular",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Light",
+				"BespokeSerif-Bold"
+			],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/lab/book-search",
+			"width": 1440,
+			"height": 1000,
+			"preloadsBefore": 8,
+			"preloadsAfter": 4,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 4,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 108620,
+			"preloadBytesAfter": 108620,
+			"renderedFontNamesBefore": ["Inter-Regular", "Bespoke-Serif-Variable", "Inter-SemiBold"],
+			"renderedFontNamesAfter": ["Inter-Regular", "Bespoke-Serif-Variable", "Inter-SemiBold"],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/lab/recommendation-benchmark",
+			"width": 1440,
+			"height": 1000,
+			"preloadsBefore": 8,
+			"preloadsAfter": 4,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 4,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 108620,
+			"preloadBytesAfter": 108620,
+			"renderedFontNamesBefore": ["Inter-Regular", "Bespoke-Serif-Variable", "Inter-SemiBold"],
+			"renderedFontNamesAfter": ["Inter-Regular", "Bespoke-Serif-Variable", "Inter-SemiBold"],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/lab/author-connections",
+			"width": 1440,
+			"height": 1000,
+			"preloadsBefore": 8,
+			"preloadsAfter": 3,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 3,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 84168,
+			"preloadBytesAfter": 84168,
+			"renderedFontNamesBefore": ["Inter-Regular", "Bespoke-Serif-Variable", "BespokeSerif-Light"],
+			"renderedFontNamesAfter": ["Inter-Regular", "Bespoke-Serif-Variable", "BespokeSerif-Light"],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/lab/author-prominence",
+			"width": 1440,
+			"height": 1000,
+			"preloadsBefore": 8,
+			"preloadsAfter": 4,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 4,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 108620,
+			"preloadBytesAfter": 108620,
+			"renderedFontNamesBefore": ["Inter-Regular", "Inter-SemiBold", "Bespoke-Serif-Variable"],
+			"renderedFontNamesAfter": ["Inter-Regular", "Inter-SemiBold", "Bespoke-Serif-Variable"],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/",
+			"width": 390,
+			"height": 844,
+			"preloadsBefore": 8,
+			"preloadsAfter": 3,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 3,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 84168,
+			"preloadBytesAfter": 84168,
+			"renderedFontNamesBefore": ["Inter-Regular", "Bespoke-Serif-Variable", "BespokeSerif-Light"],
+			"renderedFontNamesAfter": ["Inter-Regular", "Bespoke-Serif-Variable", "BespokeSerif-Light"],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/rate",
+			"width": 390,
+			"height": 844,
+			"preloadsBefore": 8,
+			"preloadsAfter": 4,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 4,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 108964,
+			"preloadBytesAfter": 108964,
+			"renderedFontNamesBefore": [
+				"Inter-Regular",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Bold",
+				"BespokeSerif-Light"
+			],
+			"renderedFontNamesAfter": [
+				"Inter-Regular",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Bold",
+				"BespokeSerif-Light"
+			],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/faq",
+			"width": 390,
+			"height": 844,
+			"preloadsBefore": 8,
+			"preloadsAfter": 3,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 4,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 108964,
+			"preloadBytesAfter": 84168,
+			"renderedFontNamesBefore": ["Inter-Regular", "Bespoke-Serif-Variable"],
+			"renderedFontNamesAfter": ["Inter-Regular", "Bespoke-Serif-Variable"],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/my-bookshelf",
+			"width": 390,
+			"height": 844,
+			"preloadsBefore": 8,
+			"preloadsAfter": 4,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 4,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 108964,
+			"preloadBytesAfter": 108964,
+			"renderedFontNamesBefore": ["Inter-Regular", "Bespoke-Serif-Variable", "BespokeSerif-Light"],
+			"renderedFontNamesAfter": ["Inter-Regular", "Bespoke-Serif-Variable", "BespokeSerif-Light"],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/not-interested",
+			"width": 390,
+			"height": 844,
+			"preloadsBefore": 8,
+			"preloadsAfter": 5,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 5,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 135720,
+			"preloadBytesAfter": 135720,
+			"renderedFontNamesBefore": [
+				"Inter-Regular",
+				"BethEllen-Regular",
+				"BespokeSerif-Regular",
+				"BespokeSerif-Light"
+			],
+			"renderedFontNamesAfter": [
+				"Inter-Regular",
+				"BethEllen-Regular",
+				"BespokeSerif-Regular",
+				"BespokeSerif-Light"
+			],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/rate/recommendations",
+			"width": 390,
+			"height": 844,
+			"preloadsBefore": 8,
+			"preloadsAfter": 4,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 4,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 108964,
+			"preloadBytesAfter": 108964,
+			"renderedFontNamesBefore": [
+				"Inter-Regular",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Bold",
+				"BespokeSerif-Light"
+			],
+			"renderedFontNamesAfter": [
+				"Inter-Regular",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Bold",
+				"BespokeSerif-Light"
+			],
+			"sampledCLSBefore": 0.23332644285842638,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/rate/recommendations/shortlist",
+			"width": 390,
+			"height": 844,
+			"preloadsBefore": 8,
+			"preloadsAfter": 4,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 5,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 133484,
+			"preloadBytesAfter": 108964,
+			"renderedFontNamesBefore": [
+				"Inter-Regular",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Bold",
+				"BespokeSerif-Light"
+			],
+			"renderedFontNamesAfter": [
+				"Inter-Regular",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Bold",
+				"BespokeSerif-Light"
+			],
+			"sampledCLSBefore": 0.11848341232227488,
+			"sampledCLSAfter": 0.11848341232227488,
+			"pageErrors": []
+		},
+		{
+			"path": "/rate/recommendations/filtered",
+			"width": 390,
+			"height": 844,
+			"preloadsBefore": 8,
+			"preloadsAfter": 5,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 5,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 133416,
+			"preloadBytesAfter": 133416,
+			"renderedFontNamesBefore": [
+				"Inter-Regular",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Light",
+				"BespokeSerif-Bold",
+				"Inter-SemiBold"
+			],
+			"renderedFontNamesAfter": [
+				"Inter-Regular",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Light",
+				"BespokeSerif-Bold",
+				"Inter-SemiBold"
+			],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/books/01KR2ADTDY5539KGWBYH9PZAZM/the-font-test-book",
+			"width": 390,
+			"height": 844,
+			"preloadsBefore": 8,
+			"preloadsAfter": 5,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 5,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 133236,
+			"preloadBytesAfter": 133236,
+			"renderedFontNamesBefore": [
+				"Inter-Regular",
+				"BespokeSerif-Bold",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Light"
+			],
+			"renderedFontNamesAfter": [
+				"Inter-Regular",
+				"BespokeSerif-Bold",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Light"
+			],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/auth/reset-password",
+			"width": 390,
+			"height": 844,
+			"preloadsBefore": 8,
+			"preloadsAfter": 4,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 4,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 94988,
+			"preloadBytesAfter": 94988,
+			"renderedFontNamesBefore": ["Inter-Regular", "BespokeSerif-Bold", "BespokeSerif-Regular"],
+			"renderedFontNamesAfter": ["Inter-Regular", "BespokeSerif-Bold", "BespokeSerif-Regular"],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/lab",
+			"width": 390,
+			"height": 844,
+			"preloadsBefore": 8,
+			"preloadsAfter": 4,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 4,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 108964,
+			"preloadBytesAfter": 108964,
+			"renderedFontNamesBefore": [
+				"Inter-Regular",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Light",
+				"BespokeSerif-Bold"
+			],
+			"renderedFontNamesAfter": [
+				"Inter-Regular",
+				"Bespoke-Serif-Variable",
+				"BespokeSerif-Light",
+				"BespokeSerif-Bold"
+			],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/lab/book-search",
+			"width": 390,
+			"height": 844,
+			"preloadsBefore": 8,
+			"preloadsAfter": 4,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 4,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 108620,
+			"preloadBytesAfter": 108620,
+			"renderedFontNamesBefore": ["Inter-Regular", "Bespoke-Serif-Variable", "Inter-SemiBold"],
+			"renderedFontNamesAfter": ["Inter-Regular", "Bespoke-Serif-Variable", "Inter-SemiBold"],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/lab/recommendation-benchmark",
+			"width": 390,
+			"height": 844,
+			"preloadsBefore": 8,
+			"preloadsAfter": 4,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 4,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 108620,
+			"preloadBytesAfter": 108620,
+			"renderedFontNamesBefore": ["Inter-Regular", "Bespoke-Serif-Variable", "Inter-SemiBold"],
+			"renderedFontNamesAfter": ["Inter-Regular", "Bespoke-Serif-Variable", "Inter-SemiBold"],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/lab/author-connections",
+			"width": 390,
+			"height": 844,
+			"preloadsBefore": 8,
+			"preloadsAfter": 3,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 3,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 84168,
+			"preloadBytesAfter": 84168,
+			"renderedFontNamesBefore": ["Inter-Regular", "Bespoke-Serif-Variable", "BespokeSerif-Light"],
+			"renderedFontNamesAfter": ["Inter-Regular", "Bespoke-Serif-Variable", "BespokeSerif-Light"],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		},
+		{
+			"path": "/lab/author-prominence",
+			"width": 390,
+			"height": 844,
+			"preloadsBefore": 8,
+			"preloadsAfter": 4,
+			"fontFilesBefore": 8,
+			"fontFilesAfter": 4,
+			"fontBytesBefore": 222940,
+			"fontBytesAfter": 108620,
+			"preloadBytesAfter": 108620,
+			"renderedFontNamesBefore": ["Inter-Regular", "Inter-SemiBold", "Bespoke-Serif-Variable"],
+			"renderedFontNamesAfter": ["Inter-Regular", "Inter-SemiBold", "Bespoke-Serif-Variable"],
+			"sampledCLSBefore": 0,
+			"sampledCLSAfter": 0,
+			"pageErrors": []
+		}
+	],
+	"serverRenderedHints": [
+		{
+			"path": "/",
+			"count": 3,
+			"hrefs": [
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Light.woff2",
+				"/fonts/inter/fonts/Inter-Regular.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Variable.woff2"
+			]
+		},
+		{
+			"path": "/rate",
+			"count": 4,
+			"hrefs": [
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Light.woff2",
+				"/fonts/inter/fonts/Inter-Regular.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Variable.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Bold.woff2"
+			]
+		},
+		{
+			"path": "/faq",
+			"count": 3,
+			"hrefs": [
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Light.woff2",
+				"/fonts/inter/fonts/Inter-Regular.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Variable.woff2"
+			]
+		},
+		{
+			"path": "/my-bookshelf",
+			"count": 4,
+			"hrefs": [
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Light.woff2",
+				"/fonts/inter/fonts/Inter-Regular.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Variable.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Bold.woff2"
+			]
+		},
+		{
+			"path": "/not-interested",
+			"count": 5,
+			"hrefs": [
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Light.woff2",
+				"/fonts/inter/fonts/Inter-Regular.woff2",
+				"/fonts/beth-ellen/fonts/BethEllen-Regular.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Regular.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Bold.woff2"
+			]
+		},
+		{
+			"path": "/rate/recommendations",
+			"count": 4,
+			"hrefs": [
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Light.woff2",
+				"/fonts/inter/fonts/Inter-Regular.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Variable.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Bold.woff2"
+			]
+		},
+		{
+			"path": "/rate/recommendations/shortlist",
+			"count": 4,
+			"hrefs": [
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Light.woff2",
+				"/fonts/inter/fonts/Inter-Regular.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Variable.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Bold.woff2"
+			]
+		},
+		{
+			"path": "/rate/recommendations/filtered",
+			"count": 5,
+			"hrefs": [
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Light.woff2",
+				"/fonts/inter/fonts/Inter-Regular.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Variable.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Bold.woff2",
+				"/fonts/inter/fonts/Inter-SemiBold.woff2"
+			]
+		},
+		{
+			"path": "/books/01KR2ADTDY5539KGWBYH9PZAZM/the-font-test-book",
+			"count": 5,
+			"hrefs": [
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Light.woff2",
+				"/fonts/inter/fonts/Inter-Regular.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Bold.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Variable.woff2",
+				"/fonts/inter/fonts/Inter-Medium.woff2"
+			]
+		},
+		{
+			"path": "/auth/reset-password",
+			"count": 4,
+			"hrefs": [
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Light.woff2",
+				"/fonts/inter/fonts/Inter-Regular.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Bold.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Regular.woff2"
+			]
+		},
+		{
+			"path": "/lab",
+			"count": 4,
+			"hrefs": [
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Light.woff2",
+				"/fonts/inter/fonts/Inter-Regular.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Variable.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Bold.woff2"
+			]
+		},
+		{
+			"path": "/lab/book-search",
+			"count": 4,
+			"hrefs": [
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Light.woff2",
+				"/fonts/inter/fonts/Inter-Regular.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Variable.woff2",
+				"/fonts/inter/fonts/Inter-SemiBold.woff2"
+			]
+		},
+		{
+			"path": "/lab/recommendation-benchmark",
+			"count": 4,
+			"hrefs": [
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Light.woff2",
+				"/fonts/inter/fonts/Inter-Regular.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Variable.woff2",
+				"/fonts/inter/fonts/Inter-SemiBold.woff2"
+			]
+		},
+		{
+			"path": "/lab/author-connections",
+			"count": 3,
+			"hrefs": [
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Light.woff2",
+				"/fonts/inter/fonts/Inter-Regular.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Variable.woff2"
+			]
+		},
+		{
+			"path": "/lab/author-prominence",
+			"count": 4,
+			"hrefs": [
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Light.woff2",
+				"/fonts/inter/fonts/Inter-Regular.woff2",
+				"/fonts/bespoke-serif/fonts/BespokeSerif-Variable.woff2",
+				"/fonts/inter/fonts/Inter-SemiBold.woff2"
+			]
+		}
+	],
+	"interactionChecks": [
+		{
+			"browser": "chromium",
+			"width": 1440,
+			"scenario": "landing/modal/navigation/faq",
+			"observedLandingWarnings": [],
+			"observedRateWarnings": [],
+			"overflow": false
+		},
+		{
+			"browser": "chromium",
+			"width": 1440,
+			"scenario": "library drawer",
+			"overflow": false
+		},
+		{
+			"browser": "chromium",
+			"width": 1440,
+			"scenario": "recommendation empty state",
+			"overflow": false
+		},
+		{
+			"browser": "chromium",
+			"width": 390,
+			"scenario": "landing/modal/navigation/faq",
+			"observedLandingWarnings": [],
+			"observedRateWarnings": [],
+			"overflow": false
+		},
+		{
+			"browser": "chromium",
+			"width": 390,
+			"scenario": "library drawer",
+			"overflow": false
+		},
+		{
+			"browser": "chromium",
+			"width": 390,
+			"scenario": "recommendation empty state",
+			"overflow": false
+		},
+		{
+			"browser": "firefox",
+			"width": 1440,
+			"scenario": "landing/modal/navigation/faq",
+			"observedLandingWarnings": [],
+			"observedRateWarnings": [],
+			"overflow": false
+		},
+		{
+			"browser": "firefox",
+			"width": 1440,
+			"scenario": "library drawer",
+			"overflow": false
+		},
+		{
+			"browser": "firefox",
+			"width": 1440,
+			"scenario": "recommendation empty state",
+			"overflow": false
+		},
+		{
+			"browser": "firefox",
+			"width": 390,
+			"scenario": "landing/modal/navigation/faq",
+			"observedLandingWarnings": [],
+			"observedRateWarnings": [],
+			"overflow": false
+		},
+		{
+			"browser": "firefox",
+			"width": 390,
+			"scenario": "library drawer",
+			"overflow": false
+		},
+		{
+			"browser": "firefox",
+			"width": 390,
+			"scenario": "recommendation empty state",
+			"overflow": false
+		}
+	]
+}

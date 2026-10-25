@@ -1,0 +1,35 @@
+{
+	"validated_on": "2026-10-24",
+	"rate_entry_fade_ms": 0,
+	"historical_note": "These samples predate restoration of the intentional 150-ms fade on 2026-10-25; they do not measure the restored UI.",
+	"environment": "Local production preview, Chromium, one worker",
+	"metric": "Milliseconds from actual click to first animation frame with visible card / enabled rating control",
+	"conditions": "Ready session, complete interaction snapshots, route code warmed by hover; intercepted APIs; cover completion excluded",
+	"acceptance_ms": 200,
+	"rounding_decimal_places": 1,
+	"scenarios": [
+		{
+			"mode": "disk-cache",
+			"first_card_ms": [102.2, 81.1, 148.5, 113.4, 115.2],
+			"usable_action_ms": [102.2, 81.1, 148.6, 113.4, 115.2],
+			"feed_reads": 1,
+			"feed_responses": 0,
+			"generation_writes": 0
+		},
+		{
+			"mode": "prepared",
+			"first_card_ms": [135.9, 74.3, 129.2, 115.2, 127.5],
+			"usable_action_ms": [136, 74.3, 129.2, 115.2, 127.5],
+			"feed_reads": 1,
+			"generation_writes": 0
+		},
+		{
+			"mode": "warm-navigation",
+			"first_card_ms": [79.4, 130.1, 118.7, 109.2, 120.9],
+			"usable_action_ms": [79.4, 130.2, 118.7, 109.2, 120.9],
+			"feed_reads": 1,
+			"generation_writes": 0
+		}
+	],
+	"scope": "Controlled local acceptance only; excludes deployed measurements, real cache-hit rate and Supabase latency"
+}

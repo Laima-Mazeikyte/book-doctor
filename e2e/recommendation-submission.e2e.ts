@@ -63,13 +63,17 @@ async function setup(page: Page, create: (route: Route, attempt: number) => Prom
 		}
 		if (table === 'user_ratings')
 			return route.fulfill({
+				headers: { 'content-range': '*/10', 'access-control-expose-headers': 'content-range' },
 				json: books.slice(0, 10).map((book) => ({
 					book_id: book.book_id,
 					book_rating: 4,
 					books: { ...book, book_name: book.title }
 				}))
 			});
-		return route.fulfill({ json: [] });
+		return route.fulfill({
+			json: [],
+			headers: { 'content-range': '*/0', 'access-control-expose-headers': 'content-range' }
+		});
 	});
 	await page.route('**/api/**', (route) => {
 		const url = new URL(route.request().url());

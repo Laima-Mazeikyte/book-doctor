@@ -46,7 +46,7 @@
 	interface Props {
 		ratedEntries: RatedEntry[];
 		summaryHooks?: RatingsBarSummaryHooks;
-		/** Optional committed count for the bottom trigger badge; drawer contents still use live data. */
+		/** Optional display count for the bottom trigger badge; drawer contents still use live data. */
 		triggerDisplayCount?: number;
 		/** When true, badge shows a sync indicator instead of a count (session/library bootstrap). */
 		countsPending?: boolean;
@@ -272,17 +272,11 @@
 		return t('shared.recommendationCard.seeSummaryCoverAriaLabelTitleOnly', { title: book.title });
 	}
 
-	let drawerSyncState: 'pending' | 'failed' | null = $derived.by(() => {
-		if ($ratingsSyncMeta.queuedCount === 0) return null;
-		if ($ratingsSyncMeta.isFlushing || $ratingsSyncMeta.failedCount === 0) return 'pending';
-		return 'failed';
-	});
-
-	let drawerSyncText = $derived.by(() => {
-		if (drawerSyncState === 'failed') return t('shared.ratingsBar.retryNeeded');
-		if (drawerSyncState === 'pending') return t('shared.ratingsBar.syncing');
-		return '';
-	});
+	const drawerSaveFailed = $derived(
+		$ratingsSyncMeta.queuedCount > 0 &&
+			!$ratingsSyncMeta.isFlushing &&
+			$ratingsSyncMeta.failedCount > 0
+	);
 
 	const triggerBadgeCount = $derived(
 		!libraryIdsReady && ratingsAvailable
@@ -967,27 +961,20 @@
 						{t('shared.ratingsBar.yourRatings')}
 					</h2>
 				{/if}
-				{#if drawerSyncState}
-					<div
-						class="ratings-drawer__header-sync"
-						class:ratings-drawer__header-sync--failed={drawerSyncState === 'failed'}
-					>
+				{#if drawerSaveFailed}
+					<div class="ratings-drawer__header-sync ratings-drawer__header-sync--failed">
 						<div class="ratings-drawer__sync-status">
 							<span
-								class="ratings-drawer__sync-indicator"
-								class:ratings-drawer__sync-indicator--pending={drawerSyncState === 'pending'}
-								class:ratings-drawer__sync-indicator--failed={drawerSyncState === 'failed'}
+								class="ratings-drawer__sync-indicator ratings-drawer__sync-indicator--failed"
 								aria-hidden="true"
 							>
-								{#if drawerSyncState === 'failed'}!{/if}
+								!
 							</span>
-							<span class="ratings-drawer__sync-text">{drawerSyncText}</span>
+							<span class="ratings-drawer__sync-text">{t('shared.ratingsBar.retryNeeded')}</span>
 						</div>
-						{#if drawerSyncState === 'failed'}
-							<Button variant="tertiary" compact type="button" onclick={retryPendingRatings}>
-								{t('shared.ratingsBar.syncRatings')}
-							</Button>
-						{/if}
+						<Button variant="tertiary" compact type="button" onclick={retryPendingRatings}>
+							{t('shared.ratingsBar.syncRatings')}
+						</Button>
 					</div>
 				{/if}
 			</div>
@@ -1128,17 +1115,6 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-	}
-	@keyframes ratings-bar-sync-pulse {
-		0%,
-		100% {
-			opacity: 0.55;
-			transform: scale(0.92);
-		}
-		50% {
-			opacity: 1;
-			transform: scale(1);
-		}
 	}
 
 	.ratings-drawer-overlay {
@@ -1382,10 +1358,6 @@
 		width: 0.75rem;
 		height: 0.75rem;
 		border-radius: 999px;
-	}
-	.ratings-drawer__sync-indicator--pending {
-		background: color-mix(in srgb, var(--color-book-rating-star) 72%, var(--color-bg));
-		animation: ratings-bar-sync-pulse 1.4s ease-in-out infinite;
 	}
 	.ratings-drawer__sync-indicator--failed {
 		background: var(--color-danger-tonal-bg);

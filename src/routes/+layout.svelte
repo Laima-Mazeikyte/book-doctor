@@ -18,6 +18,7 @@
 	import { page } from '$app/state';
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
+	import FontPreloads from '$lib/components/FontPreloads.svelte';
 	import { t } from '$lib/copy';
 	import SkipLink from '$lib/components/SkipLink.svelte';
 	import AppHeader from '$lib/components/AppHeader.svelte';
@@ -34,6 +35,7 @@
 	} from '$lib/feed/browseFeedWarm';
 	import { isRateShellPath } from '$lib/navigation/rateShell';
 	import { getSupabase } from '$lib/supabase';
+	import { createBrowserRateFeedController, setRateFeedContext } from '$lib/feed/rateFeedContext';
 	import {
 		authStore,
 		authReady,
@@ -43,6 +45,7 @@
 	} from '$lib/stores/auth';
 	import { shortlistSavePromptStore } from '$lib/stores/shortlistSavePrompt';
 	import {
+		LIBRARY_ID_COLLECTIONS,
 		clearUserLibraryHydration,
 		registerUserLibraryDetailsLoader,
 		registerUserLibraryIdsLoader,
@@ -50,9 +53,8 @@
 		unregisterUserLibraryDetailsLoader,
 		unregisterUserLibraryIdsLoader
 	} from '$lib/stores/userLibrary';
-	import { ratingsStore } from '$lib/stores/ratings';
 	import { libraryLoads } from '$lib/stores/libraryLoads';
-	import { readLibraryCache, writeLibraryCache } from '$lib/stores/libraryCache';
+	import { createLibrarySnapshotController } from '$lib/stores/librarySnapshot';
 	import {
 		recommendationsCountStore,
 		refreshRecommendationsCountFromApi
@@ -70,6 +72,27 @@
 	} from '$lib/auth/user-library-loaders';
 
 	let { children } = $props();
+
+	// Context keeps mutable feed data inside this layout, including during SSR.
+	const rateFeed = createBrowserRateFeedController();
+	setRateFeedContext(rateFeed);
+	onMount(() => {
+		let previousOwner: string | null = null;
+		const unsubscribe = authStore.subscribe(({ user, session }) => {
+			const owner = session && user ? user.id : null;
+			if (!owner && previousOwner) rateFeed.clearPersisted(previousOwner);
+			previousOwner = owner;
+			rateFeed.setOwner(owner, {
+				retainPublicBooks: user?.is_anonymous === true
+			});
+		});
+		window.addEventListener('pagehide', rateFeed.flushSnapshot);
+		return () => {
+			unsubscribe();
+			window.removeEventListener('pagehide', rateFeed.flushSnapshot);
+		};
+	});
+	onDestroy(() => rateFeed.destroy());
 
 	let bugModalOpen = $state(false);
 	let bugModalRestoreFocusTarget = $state<HTMLElement | null>(null);
@@ -146,6 +169,20 @@
 	const libraryHydratedForUserId = { current: null as string | null };
 	let recommendationsCountLoadedForUserId: string | null = null;
 	let activeLibraryLoadRequestId = 0;
+	const librarySnapshots = createLibrarySnapshotController(async () => {
+		const supabase = getSupabase();
+		const user = get(authStore).user;
+		if (!supabase || !user?.id || librarySaves.getOwner() !== user.id) return;
+		rateFeed.invalidatePrepared();
+		activeLibraryLoadRequestId = startUserLibraryIdsLoad(
+			supabase,
+			user.id,
+			libraryCoordinator,
+			libraryHydratedForUserId
+		);
+		await libraryLoads.retry(LIBRARY_ID_COLLECTIONS);
+	});
+	onMount(() => librarySnapshots.mount());
 
 	function reloadLibraryForCurrentUser(): void {
 		const supabase = getSupabase();
@@ -165,6 +202,7 @@
 	onMount(() => {
 		librarySaves.initialize();
 		const unsubscribeSaved = librarySaves.onBookSaved(() => {
+			rateFeed.invalidatePrepared();
 			const owner = librarySaves.getOwner();
 			void librarySaves
 				.flush()
@@ -274,11 +312,13 @@
 		const hasUser = !!(session && user);
 
 		if (!hasUser) {
+			librarySnapshots.activate(null);
 			libraryCoordinator.nextRequest();
+			const previousUserId = persistenceUserId.current;
 			persistenceUserId.current = null;
 			libraryHydratedForUserId.current = null;
 			recommendationsCountLoadedForUserId = null;
-			resetUserLibraryOnSignOut(hadUserBefore);
+			resetUserLibraryOnSignOut(hadUserBefore, previousUserId);
 			bookmarksPageStore.reset();
 			if (hadUserBefore && !isAuthTransitionActive()) {
 				recommendationsPageStore.reset();
@@ -293,11 +333,9 @@
 
 		const pathname = page.url.pathname;
 		if (libraryHydratedForUserId.current !== user.id) {
-			// Paint the rated library instantly from the local cache, then revalidate from the server.
+			// Restore complete interaction collections before starting background revalidation.
 			bookmarksPageStore.ensureUser(user.id);
-			const cachedRatings = readLibraryCache(user.id) ?? [];
-			ratingsStore.hydrateFromCache(cachedRatings);
-			if (cachedRatings.length) libraryLoads.markSnapshot(user.id, ['ratings', 'ratedDetails']);
+			librarySnapshots.activate(user.id);
 			activeLibraryLoadRequestId = startUserLibraryIdsLoad(
 				supabase,
 				user.id,
@@ -317,31 +355,13 @@
 			});
 		}
 	});
-
-	// Persist a compact snapshot of the rated library (5 fields) so the next load paints instantly.
-	// Debounced, and only non-empty snapshots are written — a transient empty state or a failed
-	// server load never clobbers a good cache.
-	const ratedBooksForCache = ratingsStore.ratedBooks;
-	$effect(() => {
-		const user = $authStore.user;
-		const entries = $ratedBooksForCache;
-		if (!user || entries.length === 0) return;
-		const snapshot = entries.map(({ book, rating }) => ({
-			id: book.id,
-			book_id: book.book_id,
-			title: book.title,
-			author: book.author,
-			rating
-		}));
-		const timer = setTimeout(() => writeLibraryCache(user.id, snapshot), 800);
-		return () => clearTimeout(timer);
-	});
 </script>
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
+<FontPreloads />
 <SkipLink />
 {#if page.url.pathname === '/rate'}
 	<a

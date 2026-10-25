@@ -1,6 +1,7 @@
 import { get, writable } from 'svelte/store';
 import type { Book } from '$lib/types/book';
 import { librarySaves } from './librarySaves';
+import type { CachedBookId } from './libraryCache';
 
 export interface PlanToReadPersistence {
 	add(bookId: string, signal?: AbortSignal): void | Promise<void>;
@@ -51,6 +52,10 @@ function createPlanToReadStore() {
 		getBook(bookId: string) {
 			return get(details).get(bookId);
 		},
+		getSnapshot(): CachedBookId[] | null {
+			const entries = [...get(values)].map((id) => ({ id, book_id: idToUlid.get(id) ?? '' }));
+			return entries.some((entry) => !entry.book_id) ? null : entries;
+		},
 		setPersistence(p: PlanToReadPersistence | null, userId?: string) {
 			librarySaves.setWriter(
 				'bookmark',
@@ -80,6 +85,7 @@ function createPlanToReadStore() {
 		},
 		toggle(bookId: string, bookUlid?: string, book?: Book) {
 			const ulid = bookUlid ?? idToUlid.get(bookId);
+			if (ulid) idToUlid.set(bookId, ulid);
 			const value = !get(values).has(bookId);
 			values.update((current) => {
 				const next = new Set(current);

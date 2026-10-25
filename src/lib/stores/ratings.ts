@@ -2,7 +2,7 @@ import { derived, get, writable } from 'svelte/store';
 import type { Book, RatingValue } from '$lib/types/book';
 import { coverUrlForBookId } from '$lib/book-cover';
 import { notInterestedStore } from './notInterested';
-import type { CachedRatedBook } from './libraryCache';
+import type { CachedRatedBook, LibrarySnapshotCollections } from './libraryCache';
 import { librarySaves } from './librarySaves';
 
 export interface RatingsPersistence {
@@ -14,6 +14,7 @@ export type RatingSyncState = 'saved' | 'pending' | 'failed' | 'idle';
 function createRatingsStore() {
 	const values = writable<Map<string, RatingValue>>(new Map());
 	const details = writable<Map<string, Book>>(new Map());
+	let idToUlid = new Map<string, string>();
 	const ratedBooks = derived([values, details], ([$values, $details]) =>
 		[...$values].flatMap(([id, rating]) => {
 			const book = $details.get(id);
@@ -44,6 +45,7 @@ function createRatingsStore() {
 			const next = new Map(current);
 			for (const c of changes) {
 				if (!c.bookId) continue;
+				idToUlid.set(c.bookId, c.bookUlid);
 				if (c.value === null) next.delete(c.bookId);
 				else next.set(c.bookId, c.value as RatingValue);
 			}
@@ -65,6 +67,7 @@ function createRatingsStore() {
 		if (snapshot.ownerId !== owner) {
 			owner = snapshot.ownerId;
 			appliedRevision = -1;
+			idToUlid.clear();
 			values.set(new Map());
 			details.set(new Map());
 		}
@@ -90,6 +93,7 @@ function createRatingsStore() {
 			);
 		},
 		setRatedBooksDetails(books: Map<string, Book>, readRevision = librarySaves.getRevision()) {
+			for (const book of books.values()) idToUlid.set(book.id, book.book_id);
 			details.set(new Map(books));
 			overlay(readRevision);
 		},
@@ -101,13 +105,16 @@ function createRatingsStore() {
 		},
 		hydrate(
 			entries: Array<{ bookId: string; rating: RatingValue }>,
-			readRevision = librarySaves.getRevision()
+			readRevision = librarySaves.getRevision(),
+			mapping?: Map<string, string>
 		) {
+			if (mapping) idToUlid = new Map(mapping);
 			values.set(new Map(entries.map((e) => [e.bookId, e.rating])));
 			overlay(readRevision);
 		},
 		hydrateFromCache(entries: CachedRatedBook[]) {
 			if (!entries.length) return;
+			idToUlid = new Map(entries.map((entry) => [entry.id, entry.book_id]));
 			values.set(new Map(entries.map((e) => [e.id, e.rating])));
 			details.set(
 				new Map(
@@ -125,6 +132,22 @@ function createRatingsStore() {
 			);
 			overlay(-1);
 		},
+		getSnapshot(): LibrarySnapshotCollections['ratings'] | null {
+			const entries = [...get(values)].map(([id, rating]) => ({
+				id,
+				book_id: idToUlid.get(id) ?? '',
+				rating
+			}));
+			if (entries.some((entry) => !entry.book_id)) return null;
+			const books = get(ratedBooks).map(({ book, rating }) => ({
+				id: book.id,
+				book_id: book.book_id,
+				title: book.title,
+				author: book.author,
+				rating
+			}));
+			return { entries, books };
+		},
 		flushPending() {
 			return librarySaves.flush('rating');
 		},
@@ -132,6 +155,7 @@ function createRatingsStore() {
 			return librarySaves.retryFailed();
 		},
 		setRating(bookId: string, value: RatingValue, bookUlid?: string, book?: Book) {
+			if (bookUlid) idToUlid.set(bookId, bookUlid);
 			values.update((current) =>
 				current.has(bookId)
 					? new Map(current).set(bookId, value)
@@ -160,6 +184,7 @@ function createRatingsStore() {
 			if (!preservePending) librarySaves.discard('rating');
 			values.set(new Map());
 			details.set(new Map());
+			idToUlid.clear();
 		}
 	};
 }

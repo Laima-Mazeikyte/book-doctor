@@ -59,7 +59,6 @@
 	import {
 		FEED_BATCH_BROWSE_DWELL_MS,
 		FEED_NEAR_BOTTOM_PX,
-		FEED_REQUEST_BATCH_SIZE,
 		FEED_REQUEST_CREATE_COOLDOWN_MS
 	} from '$lib/feed/constants';
 	import {
@@ -71,13 +70,17 @@
 		type FeedPaginationPhase
 	} from '$lib/feed/feedPaginationController';
 	import { insertFeedRequestRow, pollCuratedFeedRequest } from '$lib/feed/warmCuratedFeed';
+	import { createBrowserRateFeedController, getRateFeedContext } from '$lib/feed/rateFeedContext';
+	import type {
+		GeneratedRateFeed,
+		LatestFeedStateResponse,
+		RateFeedEntry,
+		RateFeedSource
+	} from '$lib/feed/rateFeedController';
 	import {
 		MIN_INTERACTIONS_FOR_RATE_FEED,
 		feedStateMeetsInteractionThreshold,
-		meetsRateFeedInteractionThreshold,
-		shouldRequestInitialPersonalizedFeed,
-		shouldShowLatestRateFeed,
-		type LatestRateFeedMode
+		meetsRateFeedInteractionThreshold
 	} from '$lib/rate/feedEligibility';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
@@ -85,20 +88,10 @@
 	const SCROLL_THRESHOLD = 60;
 	const EMPTY_PAGE_CHAIN_MAX = 25;
 
-	type LatestFeedMode = LatestRateFeedMode;
-	type LatestFeedStateResponse = {
-		mode: LatestFeedMode;
-		books: Book[];
-		request_id: string | null;
-		latest_request_id: string | null;
-		latest_request_status: string | null;
-		latest_request_error_message: string | null;
-		ratings_count: number;
-		interaction_count?: number;
-		eligible_for_feed?: boolean;
-		status: string;
-		error_message: string | null;
-	};
+	const sharedRateFeed = getRateFeedContext();
+	const rateFeed = sharedRateFeed ?? createBrowserRateFeedController();
+	let rateEntry = $state.raw<RateFeedEntry | null>(null);
+	let pageMounted = $state(false);
 	type FeedRequestInsertResult =
 		| { kind: 'created'; requestId: string }
 		| { kind: 'cooldown'; remainingMs: number }
@@ -172,8 +165,11 @@
 	let savedScrollY = $state(0);
 
 	/** Aborts any in-flight curated-feed polling when the page is torn down (e.g. navigation). */
-	const feedPollAbort = new AbortController();
+	let feedPollAbort = new AbortController();
 	onDestroy(() => {
+		pageMounted = false;
+		rateFeed.leave(rateEntry);
+		if (!sharedRateFeed) rateFeed.destroy();
 		feedPollAbort.abort();
 		clearFeedPaginationCooldownRetry();
 		clearFeedScrollProgressRaf();
@@ -478,13 +474,14 @@
 	let headerVisible = $state(true);
 
 	// ── Main list ───────────────────────────────────────────────────────────────
-	let popularBooks = $state<Book[]>([]);
+	const popularBooks = $derived($rateFeed.activeBooks);
 	let nextOffset = $state(0);
 	let hasMore = $state(true);
 	let popularSeed = $state<string | null>(null);
-	let loadingInitial = $state(true);
+	const loadingInitial = $derived(!pageMounted || rateEntry === null || $rateFeed.loadingInitial);
 	let loadingMore = $state(false);
 	let popularError = $state<string | null>(null);
+	let popularPaginationFailed = $state(false);
 
 	let startedFromLatestFeed = $state(false);
 	let lastAppendWasFeed = $state(false);
@@ -496,10 +493,6 @@
 	const feedBatchMountedAt = $derived(feedPagination.batchMountedAt);
 	let feedPaginationCooldownRetryTimer: ReturnType<typeof setTimeout> | null = null;
 	let feedScrollProgressRaf = 0;
-	/** Cold `loadInitialMainList` used Top 100 because no access token was ready in time; retry feed once auth exists. */
-	let mainListFellBackDueToMissingAuthToken = $state(false);
-	let initialListDecisionSettled = $state(false);
-	let initialMainListLoadInFlight: Promise<void> | null = null;
 	let feedBatchRequestInFlight = false;
 	/** Deferred Top 100 reload while the search overlay is open. */
 	let pendingMainListTop100Reset = $state(false);
@@ -533,7 +526,11 @@
 	 * nudge them to rate a book instead.
 	 */
 	const belowThresholdListEnd = $derived(
-		popularBooks.length > 0 && !startedFromLatestFeed && !canRequestPersonalizedFeed && !hasMore
+		popularBooks.length > 0 &&
+			!startedFromLatestFeed &&
+			!canRequestPersonalizedFeed &&
+			!hasMore &&
+			!popularPaginationFailed
 	);
 
 	const showFeedUnlockHint = $derived(belowThresholdListEnd && !loadingInitial && !loadingMore);
@@ -589,6 +586,7 @@
 	}
 
 	function onLibraryMutationForFeed() {
+		rateFeed.invalidatePrepared();
 		if (!meetsFeedInteractionThreshold()) {
 			if (startedFromLatestFeed || lastAppendWasFeed) {
 				void resetMainListToTop100();
@@ -740,8 +738,8 @@
 				return;
 			}
 			if (!feedOnly) {
-				if (!more) return;
-				void loadPopular(next, 0);
+				// Library IDs may still be loading, or remote interactions may have changed.
+				// Keep an admitted curated grid; an automatic observer must not replace it.
 				return;
 			}
 			if (!feedEligible) return;
@@ -960,34 +958,16 @@
 	const canOpenStartedRecommendations = $derived($recommendationSubmission.error === 'open');
 	beforeNavigate(({ to }) => recommendationSubmission.leave(to?.url ?? null));
 	onDestroy(() => recommendationSubmission.destroy());
-	/** Recommendations use the library only after every intended change has saved. */
-	const librarySyncedForRecommendations = $derived(
-		$librarySaves.queuedCount === 0 && !$librarySaves.isFlushing
-	);
+	// Routine saves stay invisible. Submission flushes pending work before creating a request.
 	const recommendationsSubmitBlocked = $derived(
 		recommendationsSubmitting ||
 			(!canOpenStartedRecommendations &&
-				(!librarySyncedForRecommendations || !libraryIdsReady || !canGetRecommendations))
-	);
-	/** Matches ratings drawer: pending vs failed copy for the bottom CTA. */
-	const recommendationsSubmitSyncFailed = $derived(
-		!librarySyncedForRecommendations &&
-			$librarySaves.queuedCount > 0 &&
-			!$librarySaves.isFlushing &&
-			$librarySaves.failedCount > 0
-	);
-	/** Shown on the recommendations CTA and the sub-threshold hint while the queue is non-empty. */
-	const recommendationsOffQueueLabel = $derived(
-		$librarySaves.isFlushing || $librarySaves.failedCount === 0
-			? t('librarySaves.saving')
-			: t('librarySaves.retryNeeded')
+				(!libraryIdsReady || !canGetRecommendations || $librarySaves.failedCount > 0))
 	);
 	const recommendationsSubmitLabel = $derived(
 		canOpenStartedRecommendations
 			? t('recommendations.submission.open')
-			: librarySyncedForRecommendations
-				? t('rate.getRecommendations')
-				: recommendationsOffQueueLabel
+			: t('rate.getRecommendations')
 	);
 	type BottomBarDisplayState = {
 		userId: string | null;
@@ -1002,12 +982,7 @@
 		canGetRecommendations: false,
 		recommendationsLabel: ''
 	});
-	let bottomBarConfirmedRatedCount = $state(0);
-	let bottomBarDisplayUserId = $state<string | null>(null);
 	const bottomBarUserId = $derived($authStore.user?.id ?? null);
-	const librarySaveFailedForRecommendations = $derived(
-		$librarySaves.queuedCount > 0 && !$librarySaves.isFlushing && $librarySaves.failedCount > 0
-	);
 
 	function recommendationsLabelForCount(count: number): string {
 		const remaining = Math.max(0, MIN_RATINGS_FOR_RECOMMENDATIONS - count);
@@ -1016,32 +991,14 @@
 		return t('rate.remainingToRecommend_other', { remaining });
 	}
 
-	function recommendationsDisplayCount(): number {
-		if (librarySyncedForRecommendations) return ratedCount;
-		if (librarySaveFailedForRecommendations) return bottomBarConfirmedRatedCount;
-		if (ratedCount >= MIN_RATINGS_FOR_RECOMMENDATIONS) {
-			return MIN_RATINGS_FOR_RECOMMENDATIONS - 1;
-		}
-		return ratedCount;
-	}
-
 	$effect(() => {
 		const userId = bottomBarUserId;
-		if (bottomBarDisplayUserId !== userId) {
-			bottomBarDisplayUserId = userId;
-			bottomBarConfirmedRatedCount = 0;
-		}
 		if (sessionBootstrapPending) return;
-		if (librarySyncedForRecommendations && bottomBarConfirmedRatedCount !== ratedCount) {
-			bottomBarConfirmedRatedCount = ratedCount;
-		}
-		const recommendationCount = recommendationsDisplayCount();
 		const nextState = {
 			userId,
 			triggerCount: ratedCount,
-			canGetRecommendations:
-				librarySyncedForRecommendations && ratedCount >= MIN_RATINGS_FOR_RECOMMENDATIONS,
-			recommendationsLabel: recommendationsLabelForCount(recommendationCount)
+			canGetRecommendations,
+			recommendationsLabel: recommendationsLabelForCount(ratedCount)
 		};
 		if (
 			bottomBarDisplayState.triggerCount === nextState.triggerCount &&
@@ -1063,15 +1020,11 @@
 	}
 
 	async function fetchLatestFeedState(token: string): Promise<LatestFeedStateResponse> {
-		const url = new URL(resolve('/api/feed/latest'), location.href);
-		url.searchParams.set('limit', String(FEED_REQUEST_BATCH_SIZE));
-		const res = await fetch(url.toString(), {
-			headers: { Authorization: `Bearer ${token}` }
-		});
-		if (!res.ok) {
-			throw new Error(`Failed to load latest feed state: HTTP ${res.status}`);
-		}
-		return (await res.json()) as LatestFeedStateResponse;
+		const userId = get(authStore).user?.id;
+		if (!userId) throw new Error('Missing feed identity');
+		const payload = await rateFeed.prepare({ userId, accessToken: token }, { force: true });
+		if (!payload) throw new Error('Feed identity changed');
+		return payload;
 	}
 
 	function mainListKey(book: Book): string {
@@ -1090,24 +1043,22 @@
 	}
 
 	/** Assign main list from API payload; append keeps the rendered keyspace unique. */
-	function setMainListBooks(incoming: Book[], mode: 'replace' | 'append'): Book[] {
+	function setMainListBooks(
+		incoming: Book[],
+		mode: 'replace' | 'append',
+		source?: RateFeedSource,
+		entry = rateEntry
+	): Book[] {
 		const eligibleBooks = filterReactedBooksForRateFeed(incoming);
-		if (mode === 'replace') {
-			popularBooks = eligibleBooks;
-			return eligibleBooks;
-		}
-
-		const existing = new Set(popularBooks.map(mainListKey));
-		const appended = eligibleBooks.filter((book) => !existing.has(mainListKey(book)));
-		popularBooks = [...popularBooks, ...appended];
-		return appended;
+		return rateFeed.setActiveBooks(entry, eligibleBooks, mode, source);
 	}
 
 	async function insertFeedRequestRowWithCooldown(
 		supabase: ReturnType<typeof getSupabase>,
-		userId: string
+		userId: string,
+		entry = rateEntry
 	): Promise<FeedRequestInsertResult> {
-		if (!supabase) return { kind: 'failed' };
+		if (!supabase || !rateFeed.isCurrentEntry(entry)) return { kind: 'failed' };
 		const now = Date.now();
 		const remainingMs = feedRequestCooldownRemaining(
 			feedPagination,
@@ -1118,16 +1069,27 @@
 			return { kind: 'cooldown', remainingMs };
 		}
 		const requestId = await insertFeedRequestRow(supabase, userId);
+		if (!rateFeed.isCurrentEntry(entry)) return { kind: 'failed' };
 		if (requestId == null) return { kind: 'failed' };
+		rateFeed.invalidatePrepared();
 		dispatchFeedPagination({ type: 'REQUEST_CREATED', now: Date.now() });
 		return { kind: 'created', requestId };
 	}
 
-	function commitInitialCuratedChoice(books: Book[]) {
-		initialListDecisionSettled = true;
-		mainListFellBackDueToMissingAuthToken = false;
+	function commitInitialCuratedChoice(
+		books: Book[],
+		requestId: string | null,
+		entry: RateFeedEntry,
+		persist = true
+	) {
+		if (!rateFeed.isCurrentEntry(entry)) return;
 		startedFromLatestFeed = true;
-		const committedBooks = setMainListBooks(books, 'replace');
+		const committedBooks = setMainListBooks(
+			books,
+			'replace',
+			{ kind: 'curated', requestId },
+			entry
+		);
 		lastAppendWasFeed = true;
 		dispatchFeedPagination({
 			type: 'ENTER_FEED',
@@ -1136,11 +1098,13 @@
 			now: Date.now()
 		});
 		hasMore = true;
+		if (persist) rateFeed.rememberActive(entry, { kind: 'curated', requestId });
 	}
 
 	function clearFeedPaginationMode() {
 		startedFromLatestFeed = false;
 		lastAppendWasFeed = false;
+		popularPaginationFailed = false;
 		dispatchFeedPagination({ type: 'RESET' });
 		popularError = null;
 	}
@@ -1168,12 +1132,13 @@
 	}
 
 	async function commitInitialTop100Choice(
-		skipInitialLoading: boolean,
+		entry: RateFeedEntry,
 		opts?: { preservePersonalizedFeedMode?: boolean }
 	) {
-		initialListDecisionSettled = true;
+		if (!rateFeed.isCurrentEntry(entry)) return;
 		startedFromLatestFeed = false;
-		await loadPopular(0, 0, { skipInitialLoading });
+		await loadPopular(0, 0);
+		if (!rateFeed.isCurrentEntry(entry)) return;
 		if (opts?.preservePersonalizedFeedMode === true && meetsFeedInteractionThreshold()) {
 			startedFromLatestFeed = true;
 		}
@@ -1246,9 +1211,12 @@
 		if (searchSessionFeedRefreshInFlightPromise != null) return;
 		const sid = searchFeedSessionId;
 		const p = refreshMainFeedAfterSearchSession({ sid });
-		searchSessionFeedRefreshInFlightPromise = p.finally(() => {
-			searchSessionFeedRefreshInFlightPromise = null;
+		const pending = p.finally(() => {
+			if (searchSessionFeedRefreshInFlightPromise === pending) {
+				searchSessionFeedRefreshInFlightPromise = null;
+			}
 		});
+		searchSessionFeedRefreshInFlightPromise = pending;
 	}
 
 	/**
@@ -1257,14 +1225,16 @@
 	 */
 	async function refreshMainFeedAfterSearchSession(opts: { sid: number }) {
 		const { sid } = opts;
+		const entry = rateEntry;
+		const current = () => sid === searchFeedSessionId && rateFeed.isCurrentEntry(entry);
 
 		try {
 			await resolveAccessToken({ lazyAnonymous: true });
-			if (sid !== searchFeedSessionId) return;
+			if (!current()) return;
 			await tick();
 
 			await librarySaves.flush();
-			if (sid !== searchFeedSessionId) return;
+			if (!current()) return;
 
 			const token = get(authStore).session?.access_token ?? null;
 			if (!token) return;
@@ -1273,15 +1243,16 @@
 			const user = get(authStore).user;
 			if (!supabase || !user?.id) return;
 
-			if (sid !== searchFeedSessionId) return;
+			if (!current()) return;
 			if (!meetsFeedInteractionThreshold()) return;
-			const insertResult = await insertFeedRequestRowWithCooldown(supabase, user.id);
-			if (sid !== searchFeedSessionId) return;
+			const insertResult = await insertFeedRequestRowWithCooldown(supabase, user.id, entry);
+			if (!current()) return;
 
 			if (insertResult.kind !== 'created') return;
 
 			await pollCuratedFeedRequest(insertResult.requestId, token, feedPollAbort.signal);
-			if (sid !== searchFeedSessionId) return;
+			if (!current()) return;
+			rateFeed.invalidatePrepared();
 		} catch (e) {
 			console.error('[rate] refreshMainFeedAfterSearchSession', e);
 		}
@@ -1306,120 +1277,96 @@
 	}
 
 	async function commitInitialExhaustedFeedChoice(
-		skipInitialLoading: boolean,
+		entry: RateFeedEntry,
 		feedState: LatestFeedStateResponse
-	): Promise<boolean> {
-		if (!shouldRequestInitialPersonalizedFeed(feedState)) return false;
+	): Promise<GeneratedRateFeed | null> {
+		if (!rateFeed.isCurrentEntry(entry)) return null;
 		const token = get(authStore).session?.access_token ?? null;
 		const supabase = getSupabase();
 		const user = get(authStore).user;
-		if (!token || !supabase || !user?.id) return false;
+		if (!token || !supabase || !user?.id) return null;
 		await librarySaves.flush();
+		if (!rateFeed.isCurrentEntry(entry)) return null;
 
 		const requestId =
 			resolveExhaustedFeedRefreshRequestId(feedState) ??
-			(await insertFeedRequestRowWithCooldown(supabase, user.id).then((result) =>
+			(await insertFeedRequestRowWithCooldown(supabase, user.id, entry).then((result) =>
 				result.kind === 'created' ? result.requestId : null
 			));
-		if (requestId == null) return false;
+		if (requestId == null || !rateFeed.isCurrentEntry(entry)) return null;
 
 		const outcome = await pollCuratedFeedRequest(requestId, token, feedPollAbort.signal);
+		if (!rateFeed.isCurrentEntry(entry)) return null;
 		if (outcome.kind === 'completed' && outcome.books.length > 0) {
-			commitInitialCuratedChoice(outcome.books);
-			return true;
+			return { books: outcome.books, requestId };
 		}
-		return false;
+		return null;
 	}
 
-	async function loadInitialMainListInternal(listOpts?: { skipInitialLoading?: boolean }) {
-		const skip = listOpts?.skipInitialLoading === true;
-		if (!skip) {
-			loadingInitial = true;
-		}
+	async function loadInitialMainList(entry: RateFeedEntry) {
 		popularError = null;
-
 		try {
 			const token = await resolveAccessToken();
-			if (!token) {
-				mainListFellBackDueToMissingAuthToken = true;
-				await commitInitialTop100Choice(skip);
-				scheduleLibraryHydrationAfterFirstList();
-				return;
-			}
-
-			mainListFellBackDueToMissingAuthToken = false;
-			const data = await fetchLatestFeedState(token);
-
-			if (!feedStateMeetsInteractionThreshold(data)) {
-				await commitInitialTop100Choice(skip);
-				scheduleLibraryHydrationAfterFirstList();
-				return;
-			}
-
-			if (shouldShowLatestRateFeed(data)) {
-				commitInitialCuratedChoice(data.books);
-				scheduleLibraryHydrationAfterFirstList();
-				return;
-			}
-
-			if (shouldRequestInitialPersonalizedFeed(data)) {
-				const refreshed = await commitInitialExhaustedFeedChoice(skip, data);
-				if (refreshed) {
+			if (!rateFeed.isCurrentEntry(entry)) return;
+			const identity =
+				token && entry.ownerId ? { userId: entry.ownerId, accessToken: token } : null;
+			// Let the layout restore interaction snapshots before admitting disk candidates.
+			await tick();
+			if (!rateFeed.isCurrentEntry(entry)) return;
+			if (identity && isUserLibraryIdsReady(identity.userId, get(userLibraryHydrationStore))) {
+				const cached = rateFeed.restoreInitial(entry, filterReactedBooksForRateFeed);
+				if (
+					cached &&
+					(cached.source.kind === 'curated'
+						? meetsFeedInteractionThreshold()
+						: !meetsFeedInteractionThreshold())
+				) {
+					if (cached.source.kind === 'curated') {
+						commitInitialCuratedChoice(cached.books, cached.source.requestId, entry, false);
+					} else {
+						setMainListBooks(cached.books, 'replace', cached.source, entry);
+						popularSeed = cached.source.seed;
+						nextOffset = cached.source.nextOffset;
+						hasMore = cached.source.hasMore;
+					}
+					// A refresh prepares a future list; it cannot run initial generation or replace this one.
+					void rateFeed.prepare(identity).catch(() => undefined);
 					scheduleLibraryHydrationAfterFirstList();
 					return;
 				}
-				await commitInitialTop100Choice(skip, { preservePersonalizedFeedMode: true });
-				scheduleLibraryHydrationAfterFirstList();
-				return;
 			}
-
-			await commitInitialTop100Choice(skip);
-			scheduleLibraryHydrationAfterFirstList();
-		} catch {
-			await commitInitialTop100Choice(skip);
-			scheduleLibraryHydrationAfterFirstList();
+			const choice = await rateFeed.resolveInitial(
+				entry,
+				identity,
+				(data) => commitInitialExhaustedFeedChoice(entry, data),
+				filterReactedBooksForRateFeed
+			);
+			if (!rateFeed.isCurrentEntry(entry) || !choice) return;
+			if (choice.kind === 'curated') {
+				commitInitialCuratedChoice(choice.books, choice.requestId, entry);
+			} else {
+				await commitInitialTop100Choice(entry, choice);
+			}
+			if (rateFeed.isCurrentEntry(entry)) scheduleLibraryHydrationAfterFirstList();
 		} finally {
-			if (!skip) {
-				loadingInitial = false;
-			}
+			rateFeed.setInitialLoading(entry, false);
 		}
 	}
-
-	function loadInitialMainList(listOpts?: { skipInitialLoading?: boolean }) {
-		if (initialMainListLoadInFlight != null) {
-			return initialMainListLoadInFlight;
-		}
-		const p = loadInitialMainListInternal(listOpts).finally(() => {
-			if (initialMainListLoadInFlight === p) {
-				initialMainListLoadInFlight = null;
-			}
-		});
-		initialMainListLoadInFlight = p;
-		return p;
-	}
-
-	$effect(() => {
-		if (!browser) return;
-		if (initialListDecisionSettled) return;
-		if (!mainListFellBackDueToMissingAuthToken) return;
-		if (!$authStore.session?.access_token) return;
-		if (isSearching) return;
-		if (loadingInitial) return;
-		void loadInitialMainList();
-	});
 
 	async function loadPopular(
 		offset: number,
 		depth: number,
 		loadOpts?: { skipInitialLoading?: boolean }
 	) {
+		const entry = rateEntry;
+		if (!rateFeed.isCurrentEntry(entry)) return;
 		if (depth > EMPTY_PAGE_CHAIN_MAX) {
 			hasMore = false;
 			return;
 		}
 		const skipInit = offset === 0 && loadOpts?.skipInitialLoading === true;
 		if (offset === 0 && !skipInit) {
-			loadingInitial = true;
+			rateFeed.setInitialLoading(entry, true);
 		} else if (offset !== 0) {
 			loadingMore = true;
 		}
@@ -1438,9 +1385,11 @@
 			}
 			const data: { books: Book[]; nextOffset: number; hasMore: boolean; seed?: string } =
 				await res.json();
+			if (!rateFeed.isCurrentEntry(entry)) return;
 
 			const mode = offset === 0 ? 'replace' : 'append';
-			setMainListBooks(data.books, mode);
+			popularPaginationFailed = false;
+			setMainListBooks(data.books, mode, { kind: 'popular', requestId: null }, entry);
 			if (offset === 0 && data.seed) popularSeed = data.seed;
 
 			nextOffset = data.nextOffset;
@@ -1448,27 +1397,69 @@
 			dispatchFeedPagination({ type: 'RESET' });
 
 			hasMore = data.hasMore ?? data.books.length > 0;
+			if (
+				entry.ownerId &&
+				isUserLibraryIdsReady(entry.ownerId, get(userLibraryHydrationStore)) &&
+				!meetsFeedInteractionThreshold()
+			) {
+				rateFeed.rememberActive(entry, {
+					kind: 'popular',
+					requestId: null,
+					seed: popularSeed,
+					nextOffset,
+					hasMore
+				});
+			}
 
 			if (data.books.length === 0 && hasMore) {
 				await loadPopular(data.nextOffset, depth + 1);
 				return;
 			}
 		} catch {
-			popularError = t('rate.errors.loadBooks');
-			if (offset > 0) hasMore = false;
-		} finally {
-			if (offset === 0 && !skipInit) {
-				loadingInitial = false;
-			} else if (offset !== 0) {
-				loadingMore = false;
+			if (!rateFeed.isCurrentEntry(entry)) return;
+			popularError = t(offset > 0 ? 'rate.errors.loadMoreBooks' : 'rate.errors.loadBooks');
+			if (offset > 0) {
+				popularPaginationFailed = true;
+				hasMore = false;
 			}
+		} finally {
+			if (rateFeed.isCurrentEntry(entry)) {
+				if (offset === 0 && !skipInit) {
+					rateFeed.setInitialLoading(entry, false);
+				} else if (offset !== 0) {
+					loadingMore = false;
+				}
+			}
+		}
+	}
+
+	function pauseIneligibleFeedPagination() {
+		hasMore = false;
+		dispatchFeedPagination({ type: 'LOAD_FAILED', now: Date.now() });
+	}
+
+	function commitCuratedAppend(entry: RateFeedEntry, incoming: Book[], requestId: string | null) {
+		const batchStartIndex = popularBooks.length;
+		const books = setMainListBooks(incoming, 'append', { kind: 'curated', requestId }, entry);
+		const transition = dispatchFeedPagination({
+			type: 'LOAD_COMPLETED',
+			appendedCount: books.length,
+			batchStartIndex,
+			now: Date.now()
+		});
+		hasMore = books.length > 0 || transition.phase !== 'exhausted';
+		if (books.length > 0) {
+			lastAppendWasFeed = true;
+			rateFeed.rememberActive(entry, { kind: 'curated', requestId });
 		}
 	}
 
 	async function loadCuratedFeedBatch() {
 		if (feedBatchRequestInFlight || loadingMore || loadingInitial) return;
+		const entry = rateEntry;
+		if (!rateFeed.isCurrentEntry(entry)) return;
 		if (!meetsFeedInteractionThreshold()) {
-			await resetMainListToTop100();
+			pauseIneligibleFeedPagination();
 			return;
 		}
 		dispatchFeedPagination({ type: 'LOAD_STARTED', now: Date.now() });
@@ -1480,15 +1471,18 @@
 				// ratings that unlocked the feed are persisted — and a session exists — before the
 				// backend generates it, otherwise it sees a below-threshold user and skips.
 				await ensureAnonymousSessionIfNeeded();
+				if (!rateFeed.isCurrentEntry(entry)) return;
 			}
 			await librarySaves.flush();
+			if (!rateFeed.isCurrentEntry(entry)) return;
 
 			const supabase = getSupabase();
 			const token = await resolveAccessToken({ lazyAnonymous: !startedFromLatestFeed });
+			if (!rateFeed.isCurrentEntry(entry)) return;
 			const user = get(authStore).user;
 			if (!supabase || !token || !user?.id) {
 				dispatchFeedPagination({ type: 'LOAD_FAILED', now: Date.now() });
-				popularError = t('rate.errors.loadBooks');
+				popularError = t('rate.errors.loadMoreBooks');
 				hasMore = false;
 				return;
 			}
@@ -1496,17 +1490,33 @@
 			let requestId: string | null = null;
 			try {
 				const feedState = await fetchLatestFeedState(token);
+				if (!rateFeed.isCurrentEntry(entry)) return;
 				if (!feedStateMeetsInteractionThreshold(feedState)) {
-					await resetMainListToTop100();
+					pauseIneligibleFeedPagination();
+					return;
+				}
+				const activeIds = new Set(popularBooks.map((book) => book.book_id));
+				const available = filterReactedBooksForRateFeed(feedState.books).filter(
+					(book) => !activeIds.has(book.book_id)
+				);
+				if (available.length > 0) {
+					commitCuratedAppend(entry, available, feedState.request_id);
 					return;
 				}
 				requestId = resolveExhaustedFeedRefreshRequestId(feedState);
 			} catch (e) {
+				if (!rateFeed.isCurrentEntry(entry)) return;
 				console.error('[rate] loadCuratedFeedBatch latest state:', e);
+				// Persisted pointers cannot authorize polling or generation when live status is unknown.
+				dispatchFeedPagination({ type: 'LOAD_FAILED', now: Date.now() });
+				popularError = t('rate.errors.loadMoreBooks');
+				hasMore = false;
+				return;
 			}
 
 			if (requestId == null) {
-				const insertResult = await insertFeedRequestRowWithCooldown(supabase, user.id);
+				const insertResult = await insertFeedRequestRowWithCooldown(supabase, user.id, entry);
+				if (!rateFeed.isCurrentEntry(entry)) return;
 				if (insertResult.kind === 'cooldown') {
 					dispatchFeedPagination({
 						type: 'COOLDOWN_BLOCKED',
@@ -1517,7 +1527,7 @@
 				}
 				if (insertResult.kind === 'failed') {
 					dispatchFeedPagination({ type: 'LOAD_FAILED', now: Date.now() });
-					popularError = t('rate.errors.loadBooks');
+					popularError = t('rate.errors.loadMoreBooks');
 					hasMore = false;
 					return;
 				}
@@ -1527,46 +1537,38 @@
 			loadingMore = true;
 
 			const outcome = await pollCuratedFeedRequest(requestId, token, feedPollAbort.signal);
+			if (!rateFeed.isCurrentEntry(entry)) return;
 			if (outcome.kind === 'aborted') return;
+			rateFeed.invalidatePrepared();
 
 			if (!meetsFeedInteractionThreshold()) {
-				await resetMainListToTop100();
+				pauseIneligibleFeedPagination();
 				return;
 			}
 
 			if (outcome.kind === 'completed') {
-				const batchStartIndex = popularBooks.length;
-				const books = setMainListBooks(outcome.books, 'append');
-				const transition = dispatchFeedPagination({
-					type: 'LOAD_COMPLETED',
-					appendedCount: books.length,
-					batchStartIndex,
-					now: Date.now()
-				});
-				if (books.length === 0) {
-					hasMore = transition.phase !== 'exhausted';
-				} else {
-					hasMore = true;
-					lastAppendWasFeed = true;
-				}
+				commitCuratedAppend(entry, outcome.books, requestId);
 				return;
 			}
 
 			dispatchFeedPagination({ type: 'LOAD_FAILED', now: Date.now() });
-			popularError = t('rate.errors.loadBooks');
+			popularError = t('rate.errors.loadMoreBooks');
 			hasMore = false;
 		} catch (e) {
+			if (!rateFeed.isCurrentEntry(entry)) return;
 			console.error('[rate] loadCuratedFeedBatch:', e);
 			if (!meetsFeedInteractionThreshold()) {
-				await resetMainListToTop100();
+				pauseIneligibleFeedPagination();
 				return;
 			}
 			dispatchFeedPagination({ type: 'LOAD_FAILED', now: Date.now() });
-			popularError = t('rate.errors.loadBooks');
+			popularError = t('rate.errors.loadMoreBooks');
 			hasMore = false;
 		} finally {
-			loadingMore = false;
-			feedBatchRequestInFlight = false;
+			if (rateFeed.isCurrentEntry(entry)) {
+				loadingMore = false;
+				feedBatchRequestInFlight = false;
+			}
 		}
 	}
 
@@ -1675,6 +1677,7 @@
 	}
 
 	onMount(() => {
+		pageMounted = true;
 		inertSupported = typeof HTMLElement !== 'undefined' && 'inert' in HTMLElement.prototype;
 
 		const syncPrefetch = () => {
@@ -1684,9 +1687,54 @@
 		window.addEventListener('resize', syncPrefetch);
 		window.visualViewport?.addEventListener('resize', syncPrefetch);
 
+		let unsubscribeOwner = () => {};
 		void (async () => {
 			await waitForAuthReady();
-			void loadInitialMainList();
+			if (!pageMounted) return;
+			let previousOwner: string | null | undefined;
+			unsubscribeOwner = authStore.subscribe(({ user, session }) => {
+				const ownerId = session && user ? user.id : null;
+				if (ownerId === previousOwner) return;
+				const firstOwner = previousOwner === undefined;
+				const lazyAnonymous = previousOwner === null && user?.is_anonymous === true;
+				// Lazy anonymous sign-in keeps an already visible public Top 100 list.
+				const retainPublic = lazyAnonymous && $rateFeed.activeSource?.kind === 'popular';
+				const publicBooks = retainPublic ? $rateFeed.activeBooks : null;
+				previousOwner = ownerId;
+				rateFeed.leave(rateEntry);
+				feedPollAbort.abort();
+				feedPollAbort = new AbortController();
+				clearFeedPaginationCooldownRetry();
+				clearFeedScrollProgressRaf();
+				resetSearchSessionFeedFlags();
+				searchSessionFeedRefreshInFlightPromise = null;
+				if (!firstOwner && !lazyAnonymous) {
+					searchRequestGeneration++;
+					searchResults = [];
+					searchQuery = '';
+					debouncedQuery = '';
+				}
+				pendingMainListTop100Reset = false;
+				loadingMore = false;
+				feedBatchRequestInFlight = false;
+				rateFeed.setOwner(ownerId, { retainPublicBooks: retainPublic });
+				rateEntry = rateFeed.enter();
+				if (publicBooks) {
+					// This is the same visible public list. Keep its just-interacted card for undo.
+					rateFeed.setActiveBooks(rateEntry, publicBooks, 'replace', {
+						kind: 'popular',
+						requestId: null
+					});
+					rateFeed.setInitialLoading(rateEntry, false);
+					scheduleLibraryHydrationAfterFirstList();
+					return;
+				}
+				clearFeedPaginationMode();
+				popularSeed = null;
+				nextOffset = 0;
+				hasMore = true;
+				void loadInitialMainList(rateEntry);
+			});
 		})();
 
 		const handleScroll = () => {
@@ -1717,6 +1765,7 @@
 		window.addEventListener('popstate', onWindowPopstate);
 
 		return () => {
+			unsubscribeOwner();
 			window.removeEventListener('scroll', handleScroll);
 			window.removeEventListener('resize', syncPrefetch);
 			window.visualViewport?.removeEventListener('resize', syncPrefetch);
@@ -1859,29 +1908,12 @@
 				</div>
 			{:else if bottomBarDisplayState.canGetRecommendations || recommendationsSubmitting || canOpenStartedRecommendations}
 				<div class="rate-page__recommendations-cta">
-					{#snippet recommendationsCtaSyncIcon()}
-						<RatingsSyncDot variant={recommendationsSubmitSyncFailed ? 'failed' : 'pending'} />
-					{/snippet}
 					<Button
 						variant="primary"
 						pill
-						class="rate-page__recommendations-submit{!librarySyncedForRecommendations
-							? ' rate-page__recommendations-submit--syncing'
-							: ''}{recommendationsSubmitSyncFailed
-							? ' rate-page__recommendations-submit--sync-failed'
-							: ''}"
-						icon={!librarySyncedForRecommendations &&
-						!canOpenStartedRecommendations &&
-						!recommendationsSubmitting
-							? recommendationsCtaSyncIcon
-							: undefined}
+						class="rate-page__recommendations-submit"
 						aria-disabled={recommendationsSubmitBlocked ? 'true' : undefined}
-						aria-busy={recommendationsSubmitting ||
-						(!canOpenStartedRecommendations &&
-							!librarySyncedForRecommendations &&
-							!recommendationsSubmitSyncFailed)
-							? 'true'
-							: undefined}
+						aria-busy={recommendationsSubmitting ? 'true' : undefined}
 						onclick={(e) => {
 							if (recommendationsSubmitBlocked) {
 								e.preventDefault();
@@ -1907,25 +1939,11 @@
 			{:else}
 				<div class="rate-page__recommendations-hint-wrap">
 					<div
-						class="btn btn--primary btn--pill rate-page__recommendations-hint{!librarySyncedForRecommendations
-							? ' rate-page__recommendations-hint--syncing'
-							: ''}{recommendationsSubmitSyncFailed
-							? ' rate-page__recommendations-hint--sync-failed'
-							: ''}"
+						class="btn btn--primary btn--pill rate-page__recommendations-hint"
 						role="status"
 						aria-live="polite"
-						aria-busy={!librarySyncedForRecommendations && !recommendationsSubmitSyncFailed
-							? 'true'
-							: undefined}
 					>
-						{#if !librarySyncedForRecommendations}
-							<RatingsSyncDot variant={recommendationsSubmitSyncFailed ? 'failed' : 'pending'} />
-						{/if}
-						<span class="btn__label">
-							{librarySyncedForRecommendations
-								? bottomBarDisplayState.recommendationsLabel
-								: recommendationsOffQueueLabel}
-						</span>
+						<span class="btn__label">{bottomBarDisplayState.recommendationsLabel}</span>
 					</div>
 				</div>
 			{/if}

@@ -90,16 +90,48 @@ it('renders real catalog evidence, expands author books, and keeps missing featu
 
 it('connects save, rating, and not-interested actions through the existing library stores', async () => {
 	const screen = render(BookDetailPage, props);
+	const cover = document.querySelector('.book-cover')!;
+	expect(getComputedStyle(cover).opacity).toBe('1');
 	await screen.getByRole('button', { name: 'Save book', exact: true }).click();
 	expect(planToReadStore.has(book.id)).toBe(true);
 	await screen.getByRole('button', { name: 'Rate 5 of 5 stars' }).click();
 	expect(get(ratingsStore).get(book.id)).toBe(5);
 	await screen.getByRole('button', { name: 'Not interested', exact: true }).click();
 	expect(notInterestedStore.has(book.book_id)).toBe(true);
+	expect(getComputedStyle(cover).opacity).toBe('0.3');
+	expect(getComputedStyle(document.querySelector('.library-actions')!).opacity).toBe('1');
 	expect(planToReadStore.has(book.id)).toBe(false);
 	expect(get(ratingsStore).has(book.id)).toBe(false);
 	await screen.getByRole('button', { name: 'Rate 4 of 5 stars' }).click();
 	expect(notInterestedStore.has(book.book_id)).toBe(false);
+	expect(getComputedStyle(cover).opacity).toBe('1');
+	screen.unmount();
+});
+
+it('shows the cover immediately, then fades it when saved dismissal state arrives', async () => {
+	const screen = render(BookDetailPage, {
+		...props,
+		book: { ...book, coverUrl: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg"/%3E' }
+	});
+	const cover = document.querySelector('.book-cover')!;
+	const image = document.querySelector('.book-cover img');
+	expect(image).not.toBeNull();
+	expect(getComputedStyle(cover).opacity).toBe('1');
+	notInterestedStore.hydrate([book.book_id]);
+	await tick();
+	expect(getComputedStyle(cover).opacity).toBe('0.3');
+	expect(document.querySelector('.book-cover img')).toBe(image);
+	await screen.getByRole('button', { name: 'Marked not interested', exact: true }).click();
+	expect(getComputedStyle(cover).opacity).toBe('1');
+	screen.unmount();
+});
+
+it('uses known dismissal state on first render, including the cover fallback', async () => {
+	notInterestedStore.hydrate([book.book_id]);
+	const screen = render(BookDetailPage, props);
+	expect(document.querySelector('.cover-fallback')).not.toBeNull();
+	expect(getComputedStyle(document.querySelector('.book-cover')!).opacity).toBe('0.3');
+	await expect.element(screen.getByRole('heading', { name: book.title })).toBeVisible();
 	screen.unmount();
 });
 

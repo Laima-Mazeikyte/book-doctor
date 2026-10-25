@@ -24,6 +24,7 @@ beforeEach(() => {
 	failure = false;
 	count = 49;
 	fixture.client = createClient('https://author-books.test', 'public-test-key', {
+		db: { retry: false },
 		auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
 		global: {
 			fetch: async (input) => {

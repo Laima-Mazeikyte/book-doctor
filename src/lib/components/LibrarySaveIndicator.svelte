@@ -6,13 +6,10 @@
 	const change = $derived(
 		$librarySaves.changes.find((c) => c.bookUlid === bookUlid && c.kind === kind)
 	);
-	const label = $derived(
-		change?.status === 'failed' ? t('librarySaves.unsaved') : t('librarySaves.saving')
-	);
 </script>
 
-{#if change}
-	<span role="img" aria-label={label} title={label}>
-		<RatingsSyncDot variant={change.status === 'failed' ? 'failed' : 'pending'} />
+{#if change?.status === 'failed'}
+	<span role="img" aria-label={t('librarySaves.unsaved')} title={t('librarySaves.unsaved')}>
+		<RatingsSyncDot variant="failed" />
 	</span>
 {/if}

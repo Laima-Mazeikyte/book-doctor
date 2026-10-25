@@ -15,7 +15,7 @@ const books = Array.from({ length: 16 }, (_, index) => ({
 }));
 type ReadKind = 'ratings' | 'ratedDetails' | 'bookmarks' | 'dismissals' | 'bookmarkDetails';
 
-async function setup(page: Page, failures: ReadKind[], cached = false) {
+async function setup(page: Page, failures: ReadKind[], cached: boolean | 'complete' = false) {
 	const session = {
 		access_token: 'library-load-test-token',
 		token_type: 'bearer',
@@ -36,7 +36,24 @@ async function setup(page: Page, failures: ReadKind[], cached = false) {
 	await page.addInitScript(
 		({ authKey, session, books, cached, userId }) => {
 			localStorage.setItem(authKey, JSON.stringify(session));
-			if (cached)
+			if (cached === 'complete') {
+				const rated = books.slice(0, 10).map((book) => ({ ...book, rating: 4 }));
+				localStorage.setItem(
+					`book-doctor:library-cache:v2:${userId}`,
+					JSON.stringify({
+						version: 2,
+						ownerId: userId,
+						collections: {
+							ratings: {
+								entries: rated.map(({ id, book_id, rating }) => ({ id, book_id, rating })),
+								books: rated
+							},
+							bookmarks: [{ id: books[10].id, book_id: books[10].book_id }],
+							dismissals: [books[11].book_id]
+						}
+					})
+				);
+			} else if (cached)
 				localStorage.setItem(
 					`book-doctor:library-cache:v1:${userId}`,
 					JSON.stringify(books.slice(0, 10).map((book) => ({ ...book, rating: 4 })))
@@ -48,13 +65,24 @@ async function setup(page: Page, failures: ReadKind[], cached = false) {
 		failures: new Set(failures),
 		reads: new Map<ReadKind, number>(),
 		writes: 0,
-		generations: 0
+		generations: 0,
+		holdIds: null as Promise<void> | null,
+		holdWrites: null as Promise<void> | null
 	};
 	async function read(kind: ReadKind, route: Route, data: unknown) {
 		state.reads.set(kind, (state.reads.get(kind) ?? 0) + 1);
+		if (['ratings', 'bookmarks', 'dismissals'].includes(kind)) await state.holdIds;
 		return state.failures.has(kind)
 			? route.fulfill({ status: 503, json: { message: 'Temporarily unavailable', code: 'TEST' } })
-			: route.fulfill({ json: data });
+			: route.fulfill({
+					json: data,
+					headers: Array.isArray(data)
+						? {
+								'content-range': `*/${data.length}`,
+								'access-control-expose-headers': 'content-range'
+							}
+						: {}
+				});
 	}
 	await page.route('**/auth/v1/**', (route) => route.fulfill({ json: session }));
 	await page.route('**/rest/v1/**', async (route) => {
@@ -68,6 +96,7 @@ async function setup(page: Page, failures: ReadKind[], cached = false) {
 			}
 			if (table === 'feed_requests') return route.fulfill({ json: { id: 7 } });
 			state.writes++;
+			await state.holdWrites;
 			return route.fulfill({ status: 204, body: '' });
 		}
 		if (table === 'user_ratings')
@@ -233,4 +262,143 @@ test('missing book details preserve the known rating count and do not block reco
 			.locator('#rate-bottom-bar')
 			.getByRole('button', { name: 'Get Book Recommendations', exact: true })
 	).toBeEnabled();
+});
+
+test('complete snapshots enable immediate actions while ID revalidation is held, and an older response preserves the action', async ({
+	page
+}) => {
+	const state = await setup(page, [], 'complete');
+	let release!: () => void;
+	state.holdIds = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	await page.goto(`${base}/rate`, { waitUntil: 'domcontentloaded' });
+	const card = page.locator(`.book-card[data-book-id="${books[12].id}"]`);
+	await expect(card).toBeVisible();
+	await expect(page.locator(`.book-card[data-book-id="${books[11].id}"]`)).toHaveCount(0);
+	await expect(card.locator('.book-card__star').nth(4)).toBeEnabled();
+	await expect(card.getByRole('button', { name: 'Add to Bookmarks', exact: true })).toBeEnabled();
+	await card.locator('.book-card__star').nth(4).click();
+	await expect.poll(() => state.writes).toBe(1);
+	await expect(card.locator('.book-card__star').nth(4)).toHaveAttribute('aria-pressed', 'true');
+	expect(state.reads.get('ratings')).toBe(1);
+	state.holdIds = null;
+	release();
+	await expect(page.locator('#rate-bottom-bar').getByTestId('library-load-notice')).toHaveCount(0);
+	await expect(card.locator('.book-card__star').nth(4)).toHaveAttribute('aria-pressed', 'true');
+	await expect
+		.poll(async () =>
+			page.evaluate((userId) => {
+				const raw = localStorage.getItem(`book-doctor:library-cache:v2:${userId}`);
+				return raw ? JSON.parse(raw).collections.ratings.entries.length : 0;
+			}, userId)
+		)
+		.toBe(11);
+});
+
+test('a complete cached library stays actionable after revalidation fails', async ({ page }) => {
+	await setup(page, ['ratings', 'bookmarks', 'dismissals'], 'complete');
+	await page.goto(`${base}/rate`, { waitUntil: 'domcontentloaded' });
+	const card = page.locator(`.book-card[data-book-id="${books[12].id}"]`);
+	await expect(card.locator('.book-card__star').first()).toBeEnabled();
+	const notice = page.locator('#rate-bottom-bar').getByTestId('library-load-notice');
+	await expect(notice.getByRole('button', { name: 'Retry', exact: true })).toBeVisible({
+		timeout: 20_000
+	});
+	await expect(card.locator('.book-card__star').first()).toBeEnabled();
+	await expect(card.getByRole('button', { name: 'Add to Bookmarks', exact: true })).toBeEnabled();
+	await expect(page.locator(`.book-card[data-book-id="${books[11].id}"]`)).toHaveCount(0);
+	const cached = await page.evaluate(
+		(userId) => JSON.parse(localStorage.getItem(`book-doctor:library-cache:v2:${userId}`)!),
+		userId
+	);
+	expect(cached.collections.ratings.entries).toHaveLength(10);
+	expect(cached.collections.bookmarks).toHaveLength(1);
+	expect(cached.collections.dismissals).toEqual([books[11].book_id]);
+});
+
+test('a real cross-tab cache change revalidates this account while preserving pending intent and mounted cards', async ({
+	page,
+	context
+}) => {
+	const state = await setup(page, []);
+	await page.goto(`${base}/rate`, { waitUntil: 'domcontentloaded' });
+	await expect(
+		page.locator('#rate-bottom-bar').getByRole('button', {
+			name: 'Get Book Recommendations',
+			exact: true
+		})
+	).toBeEnabled();
+	const card = page.locator(`.book-card[data-book-id="${books[12].id}"]`);
+	let release!: () => void;
+	state.holdWrites = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	await card.getByRole('button', { name: 'Add to Bookmarks', exact: true }).click();
+	await expect.poll(() => state.writes).toBe(1);
+	await page.evaluate(() => {
+		(window as unknown as { snapshotCards: Element[] }).snapshotCards = [
+			...document.querySelectorAll('.book-card')
+		];
+	});
+	const peer = await context.newPage();
+	await peer.route('**/*', (route) =>
+		route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Storage peer</title>' })
+	);
+	await peer.goto(base);
+	const initialReads = state.reads.get('ratings') ?? 0;
+	await peer.evaluate(() =>
+		localStorage.setItem('book-doctor:library-cache:v2:another-account', '{}')
+	);
+	await page.waitForTimeout(250);
+	expect(state.reads.get('ratings')).toBe(initialReads);
+	await peer.evaluate((userId) => {
+		localStorage.setItem(
+			`book-doctor:library-cache:v2:${userId}`,
+			JSON.stringify({
+				version: 2,
+				ownerId: userId,
+				collections: { dismissals: ['remote-newer'] }
+			})
+		);
+	}, userId);
+	await expect.poll(() => state.reads.get('ratings')).toBe(initialReads + 1);
+	await expect(
+		card.getByRole('button', { name: 'Remove from Bookmarks', exact: true })
+	).toBeVisible();
+	await expect
+		.poll(async () =>
+			page.evaluate((userId) => {
+				const raw = localStorage.getItem(`book-doctor:library-cache:v2:${userId}`);
+				return raw ? JSON.parse(raw).collections.bookmarks?.length : 0;
+			}, userId)
+		)
+		.toBe(2);
+	expect(
+		await page.evaluate(() => {
+			const original = (window as unknown as { snapshotCards: Element[] }).snapshotCards;
+			const current = [...document.querySelectorAll('.book-card')];
+			return (
+				current.length === original.length &&
+				current.every((node, index) => node === original[index])
+			);
+		})
+	).toBe(true);
+	const pending = await page.evaluate(
+		(userId) =>
+			JSON.parse(localStorage.getItem(`book-doctor:library-pending:v1:${userId}`) ?? '[]'),
+		userId
+	);
+	expect(pending).toHaveLength(1);
+	state.holdWrites = null;
+	release();
+	await expect
+		.poll(async () =>
+			page.evaluate(
+				(userId) => localStorage.getItem(`book-doctor:library-pending:v1:${userId}`),
+				userId
+			)
+		)
+		.toBeNull();
+	await peer.close();
 });

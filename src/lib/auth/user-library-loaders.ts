@@ -180,6 +180,48 @@ async function resolveUuidMapForRows(
 	return fetchUuidByUlid(supabase, ulids, isStale, signal);
 }
 
+/** Exact totals detect API row caps; only a full successful read may establish completeness. */
+async function readCompleteLibraryRows<T extends { book_id: string }>(
+	supabase: SupabaseClient,
+	table: 'user_ratings' | 'user_bookmarks' | 'user_not_interested',
+	userId: string,
+	selection: string,
+	signal: AbortSignal
+): Promise<T[]> {
+	const rows: T[] = [];
+	let total: number | null = null;
+	do {
+		let query = supabase.from(table).select(selection, { count: 'exact' }).eq('user_id', userId);
+		if (table === 'user_ratings') query = query.order('updated_at', { ascending: false });
+		const result = await query
+			.order('book_id', { ascending: true })
+			.range(rows.length, rows.length + 499)
+			.abortSignal(signal);
+		checkResult(result);
+		if (
+			!Number.isSafeInteger(result.count) ||
+			result.count === null ||
+			result.count < 0 ||
+			(total !== null && total !== result.count) ||
+			!Array.isArray(result.data)
+		) {
+			throw new Error('Could not confirm a complete library snapshot.');
+		}
+		total = result.count;
+		if (result.data.length === 0 && rows.length < total)
+			throw new Error('The library response ended before all books were loaded.');
+		rows.push(...(result.data as unknown as T[]));
+	} while (rows.length < total);
+	if (
+		rows.length !== total ||
+		rows.some((row) => typeof row.book_id !== 'string' || !row.book_id) ||
+		new Set(rows.map((row) => row.book_id)).size !== rows.length
+	) {
+		throw new Error('The library changed while loading. Please retry.');
+	}
+	return rows;
+}
+
 export async function loadUserLibraryIds(
 	supabase: SupabaseClient,
 	userId: string,
@@ -193,23 +235,26 @@ export async function loadUserLibraryIds(
 		'ratings',
 		async (signal) => {
 			const readRevision = librarySaves.getRevision();
-			const result = await supabase
-				.from('user_ratings')
-				.select('book_id, book_rating, books(id, book_id)')
-				.order('updated_at', { ascending: false })
-				.order('book_id', { ascending: true })
-				.eq('user_id', userId)
-				.abortSignal(signal);
-			checkResult(result);
-			const rows = (result.data ?? []) as unknown as RatingIdRow[];
+			const rows = await readCompleteLibraryRows<RatingIdRow>(
+				supabase,
+				'user_ratings',
+				userId,
+				'book_id, book_rating, books(id, book_id)',
+				signal
+			);
 			const mapping = await resolveUuidMapForRows(supabase, rows, () => !isCurrent(), signal);
 			const entries = rows.map((row) => {
 				const bookId = bookUuidFromJoinRow(row, mapping);
 				if (!bookId) throw new Error('Could not resolve a rated book.');
+				if (![1, 2, 3, 4, 5].includes(row.book_rating)) throw new Error('Invalid book rating.');
 				return { bookId, rating: row.book_rating };
 			});
 			return () => {
-				ratingsStore.hydrate(entries, readRevision);
+				ratingsStore.hydrate(
+					entries,
+					readRevision,
+					new Map(rows.map((row, index) => [entries[index].bookId, bookmarkUlidFromRow(row)]))
+				);
 				scheduleUserLibraryDetailsLoad(userId);
 			};
 		},
@@ -221,13 +266,13 @@ export async function loadUserLibraryIds(
 		'bookmarks',
 		async (signal) => {
 			const readRevision = librarySaves.getRevision();
-			const result = await supabase
-				.from('user_bookmarks')
-				.select('book_id, books(id, book_id)')
-				.eq('user_id', userId)
-				.abortSignal(signal);
-			checkResult(result);
-			const rows = (result.data ?? []) as unknown as BookIdJoinRow[];
+			const rows = await readCompleteLibraryRows<BookIdJoinRow>(
+				supabase,
+				'user_bookmarks',
+				userId,
+				'book_id, books(id, book_id)',
+				signal
+			);
 			const mapping = await resolveUuidMapForRows(supabase, rows, () => !isCurrent(), signal);
 			const resolved = rows.map((row) => {
 				const uuid = bookUuidFromJoinRow(row, mapping);
@@ -249,17 +294,16 @@ export async function loadUserLibraryIds(
 		'dismissals',
 		async (signal) => {
 			const readRevision = librarySaves.getRevision();
-			const result = await supabase
-				.from('user_not_interested')
-				.select('book_id')
-				.eq('user_id', userId)
-				.abortSignal(signal);
-			checkResult(result);
+			const rows = await readCompleteLibraryRows(
+				supabase,
+				'user_not_interested',
+				userId,
+				'book_id',
+				signal
+			);
 			return () =>
 				notInterestedStore.hydrate(
-					(result.data ?? [])
-						.map((row) => row.book_id)
-						.filter((id): id is string => typeof id === 'string'),
+					rows.map((row) => row.book_id),
 					readRevision
 				);
 		},
@@ -301,24 +345,16 @@ async function loadUserLibraryDetailsBody(
 	const isStale = () => coordinator.isStale(requestId) || librarySaves.getOwner() !== userId;
 	const readRevision = librarySaves.getRevision();
 
-	const {
-		data: rows,
-		error: ratingsError,
-		status
-	} = await supabase
-		.from('user_ratings')
-		.select(
-			`book_id, book_rating, books(id, book_id, book_name, author, year, summary, ${BOOK_GENRE_TYPE_SELECT})`
-		)
-		.eq('user_id', userId)
-		.order('updated_at', { ascending: false })
-		.abortSignal(signal);
+	const rawRows = await readCompleteLibraryRows(
+		supabase,
+		'user_ratings',
+		userId,
+		`book_id, book_rating, books(id, book_id, book_name, author, year, summary, ${BOOK_GENRE_TYPE_SELECT})`,
+		signal
+	);
 
 	if (isStale()) return () => {};
 
-	if (ratingsError) throw Object.assign(new Error(ratingsError.message), { status });
-
-	const rawRows = rows ?? [];
 	const unresolvedDetailUlids = unresolvedBookUlids(
 		rawRows as Array<{ book_id: string; books?: { id?: unknown } | null }>
 	);
@@ -443,12 +479,15 @@ export function reloadUserLibraryAfterMigration(
 	attachLibraryPersistence(supabase, userId, persistenceUserId);
 	void librarySaves.flush().catch(() => undefined);
 	// Drop any stale (e.g. anonymous) library cache; the account's cache is rebuilt after this load.
-	clearLibraryCache();
+	clearLibraryCache(userId);
 	hydratedForUserId.current = null;
 	return startUserLibraryIdsLoad(supabase, userId, coordinator, hydratedForUserId);
 }
 
-export function resetUserLibraryOnSignOut(hadUserBefore: { current: boolean }): void {
+export function resetUserLibraryOnSignOut(
+	hadUserBefore: { current: boolean },
+	userId?: string | null
+): void {
 	ratingsStore.setPersistence(null);
 	planToReadStore.setPersistence(null);
 	notInterestedStore.setPersistence(null);
@@ -456,7 +495,7 @@ export function resetUserLibraryOnSignOut(hadUserBefore: { current: boolean }): 
 		ratingsStore.reset(true);
 		planToReadStore.reset(true);
 		notInterestedStore.reset(true);
-		clearLibraryCache();
+		if (userId) clearLibraryCache(userId);
 	}
 	hadUserBefore.current = false;
 }

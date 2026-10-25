@@ -119,13 +119,9 @@
 		showQualityEvidence = false
 	}: Props = $props();
 	const overlaySaveBlocked = $derived(
-		notInterestedOverlay === 'new-rec' &&
-			($librarySaves.queuedCount > 0 || $librarySaves.isFlushing)
+		notInterestedOverlay === 'new-rec' && $librarySaves.failedCount > 0
 	);
 	const overlayBusy = $derived(notInterestedOverlayBusy || overlaySaveBlocked);
-	const overlaySaving = $derived(
-		notInterestedOverlayBusy || (overlaySaveBlocked && $librarySaves.failedCount === 0)
-	);
 
 	const showSummaryRemoveSlot = $derived(canRemoveRatingInSheet || reserveSummaryRemoveLayoutSlot);
 	const summaryRemoveLayoutOnly = $derived(
@@ -399,7 +395,7 @@
 									variant="primary"
 									pill
 									aria-disabled={overlayBusy ? 'true' : undefined}
-									aria-busy={overlaySaving ? 'true' : undefined}
+									aria-busy={notInterestedOverlayBusy ? 'true' : undefined}
 									onclick={(e) => {
 										if (overlayBusy) {
 											e.preventDefault();
@@ -413,13 +409,7 @@
 									{:else}
 										<RecommendationSubmitLabel
 											busy={notInterestedOverlayBusy}
-											label={overlaySaveBlocked
-												? t(
-														$librarySaves.failedCount
-															? 'librarySaves.retryNeeded'
-															: 'librarySaves.saving'
-													)
-												: t('recommendations.shortlist.getNewRecommendations')}
+											label={t('recommendations.shortlist.getNewRecommendations')}
 										/>
 									{/if}
 								</Button>

@@ -1,22 +1,13 @@
-# sv
+# Book Doctor
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+The SvelteKit frontend for browsing, rating, and receiving book recommendations.
 
-## Creating a project
+## Requirements
 
-If you're seeing this, you've probably already done this step. Congrats!
+- **Node 22.12 or later**, required by the current Vite and Supabase dependencies.
+- **pnpm 9.15.9**, as declared in `package.json`.
 
-```sh
-# create a new project
-npx sv create my-app
-```
-
-To recreate this project with the same configuration:
-
-```sh
-# recreate this project
-pnpm dlx sv@0.12.7 create --template minimal --types ts --add prettier eslint vitest="usages:unit,component" playwright sveltekit-adapter="adapter:netlify" --install pnpm .
-```
+For the rate-entry changes, start with the [developer testing handoff](scripts/diagnostics/rate-entry-developer-handoff.md). It covers the shared database, test commands, expected UI behavior, and the open performance target.
 
 ## Environment variables
 
@@ -25,6 +16,8 @@ Copy `.env.example` to `.env` and fill in the values:
 - `VITE_SUPABASE_URL` – your Supabase project URL
 - `VITE_SUPABASE_ANON_KEY` – your Supabase anon/public key
 - `PUBLIC_BUNNY_COVERS_BASE` – Bunny.net pull zone base URL for book covers (e.g. `https://your-pullzone.b-cdn.net`). Cover images are requested as `{base}/{book_id}-720.avif`, where `book_id` is the ULID catalog ID. Optional; if unset, covers are omitted.
+
+The browser also supports `PUBLIC_SUPABASE_URL` and `PUBLIC_SUPABASE_ANON_KEY`; the server currently requires the `VITE_*` pair above. If both pairs are configured, point them at the same Supabase project. Use the existing shared project and a separate test account for this branch. Its `get_rate_feed_bootstrap` RPC is already installed; do not replay the migration or reset the shared database to start local testing.
 
 ### Password reset (forgot password)
 
@@ -35,12 +28,24 @@ The app sends recovery links to **`/auth/reset-password`** on your site origin. 
 Install dependencies and start the dev server (this project uses [pnpm](https://pnpm.io)):
 
 ```sh
-pnpm install
+pnpm install --frozen-lockfile
 pnpm run dev
 
 # or start the server and open the app in a new browser tab
 pnpm run dev -- --open
 ```
+
+For an existing checkout with a running Vite server, stop that server normally after installing dependencies, restart with `pnpm dev --force`, and fully reload the browser. This rebuilds optimized dependencies after the Supabase SDK upgrade without clearing the stored session or pending saves.
+
+## Checking changes
+
+```sh
+pnpm exec playwright install chromium
+pnpm run check
+pnpm exec vitest run
+```
+
+See the [testing handoff](scripts/diagnostics/rate-entry-developer-handoff.md#automated-checks) for focused end-to-end commands and the separate production-preview timing benchmark.
 
 ## Building
 
@@ -49,4 +54,4 @@ pnpm run build
 pnpm run preview
 ```
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+The project uses the Netlify adapter. Production deployment and reconciliation of the manually installed feed migration are deferred; local testing does not require either operation.

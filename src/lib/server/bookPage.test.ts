@@ -75,6 +75,7 @@ describe('public book page loading', () => {
 	it('loads the book and characteristics together without waiting for other books by the author', async () => {
 		const reads: URL[] = [];
 		const client = createClient('https://book-page.test', 'public-test-key', {
+			db: { retry: false },
 			auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
 			global: {
 				fetch: async (input) => {

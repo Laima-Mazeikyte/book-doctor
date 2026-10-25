@@ -109,6 +109,7 @@ en:
       statusResults: '{{count}} results'
     errors:
       loadBooks: 'Could not load books right now. Try again later.'
+      loadMoreBooks: 'Couldn’t load more books. Try again.'
       searchFailed: 'Search failed. Please try again.'
     emptySearch: "No books found for '{{query}}'."
     loadMoreBooks: 'Load more books'

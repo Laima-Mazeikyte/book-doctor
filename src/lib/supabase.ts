@@ -25,6 +25,7 @@ export function getSupabase(): SupabaseClient | null {
 		);
 		return null;
 	}
-	_client = createClient(url, key);
+	// Library loading owns retries; avoid adding SDK backoff to the same reads.
+	_client = createClient(url, key, { db: { retry: false } });
 	return _client;
 }

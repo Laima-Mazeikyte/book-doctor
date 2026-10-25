@@ -103,7 +103,11 @@
 						opaque || e.secureConnectionStart === 0 ? null : e.connectEnd - e.secureConnectionStart,
 					transferBytes: e.transferSize,
 					fromCache: e.transferSize === 0 && e.decodedBodySize > 0,
-					opaqueTiming: opaque
+					opaqueTiming: opaque,
+					serverTiming: Array.from(e.serverTiming ?? [], ({ name, duration }) => ({
+						name,
+						duration
+					}))
 				};
 			})
 			.sort((a, b) => a.start - b.start);
@@ -305,6 +309,8 @@
 		if (live.armed) return console.log('[feedProbe] already watching');
 		live.armed = true;
 		live.t0 = performance.now();
+		live.fetches = [];
+		live.dom = [];
 
 		const nativeFetch = window.fetch;
 		window.fetch = function (...args) {
@@ -317,6 +323,18 @@
 					rec.dur = Math.round(rec.end - rec.start);
 					rec.status = res.status;
 					rec.nfRequestId = res.headers.get('x-nf-request-id') ?? undefined;
+					rec.serverTiming = res.headers.get('server-timing') ?? undefined;
+					if (rec.role === 'API-FEED-LATEST' || rec.role === 'API-FEED') {
+						void res
+							.clone()
+							.json()
+							.then((payload) => {
+								rec.mode = payload.mode;
+								rec.feedStatus = payload.status;
+								rec.bookCount = payload.books?.length;
+							})
+							.catch(() => {});
+					}
 					return res;
 				},
 				(err) => {
@@ -337,6 +355,25 @@
 				'color:#06c'
 			);
 		};
+		const onClick = (event) => {
+			const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
+			if (
+				!anchor ||
+				event.button !== 0 ||
+				event.metaKey ||
+				event.ctrlKey ||
+				event.shiftKey ||
+				event.altKey
+			)
+				return;
+			const target = new URL(anchor.href, location.href);
+			if (target.origin !== location.origin || !target.pathname.endsWith('/rate')) return;
+			live.t0 = performance.now();
+			live.fetches = [];
+			live.dom = [];
+			mark('start-rating-click');
+		};
+		document.addEventListener('click', onClick, true);
 		// BookCardGridSkeleton and the real grid are both `ul.rate-page__list.book-card-grid`;
 		// only the skeleton carries aria-busy. That flag flipping off *is* `loadingInitial = false`.
 		const observer = new MutationObserver(() => {
@@ -355,6 +392,7 @@
 		live.stop = () => {
 			window.fetch = nativeFetch;
 			observer.disconnect();
+			document.removeEventListener('click', onClick, true);
 			live.armed = false;
 		};
 
@@ -468,6 +506,16 @@
 		}));
 		console.log('%c— stage breakdown —', 'font-weight:bold');
 		console.table(stages);
+		const serverTimings = rows.flatMap((r) =>
+			r.serverTiming.map(({ name, duration }) => ({ request: r.url, query: name, ms: duration }))
+		);
+		if (serverTimings.length) {
+			console.log(
+				'%c— server timings (overlapping queries; do not add them) —',
+				'font-weight:bold'
+			);
+			console.table(serverTimings);
+		}
 
 		// --- waterfall -------------------------------------------------------
 		console.log('%c— app requests (waterfall) —', 'font-weight:bold');
@@ -551,13 +599,31 @@
 		if (live.fetches.length) {
 			console.log('%c— live watch() capture —', 'font-weight:bold');
 			console.table(
-				live.fetches.map(({ url, role, dur, status, nfRequestId }) => ({
-					role,
-					url,
-					dur,
-					status,
-					nfRequestId
-				}))
+				live.fetches.map(
+					({
+						url,
+						role,
+						start,
+						dur,
+						status,
+						nfRequestId,
+						mode,
+						feedStatus,
+						bookCount,
+						serverTiming
+					}) => ({
+						role,
+						url,
+						startedAtMs: Math.round(start - live.t0),
+						dur,
+						status,
+						nfRequestId,
+						mode,
+						feedStatus,
+						bookCount,
+						serverTiming
+					})
+				)
 			);
 			console.table(live.dom);
 		}
@@ -568,6 +634,7 @@
 			navType: n?.type ?? null,
 			doc: { ttfb: docTtfb, total: docTotal, transferSize: n?.transferSize ?? null },
 			stages,
+			serverTimings,
 			appRequests: app.map(({ role, url, start, dur, ttfb, dns, tls, transferBytes }) => ({
 				role,
 				url,
@@ -591,7 +658,9 @@
 				slowest: Math.max(0, ...imgs.map((i) => i.dur))
 			},
 			contributions: Object.fromEntries(contributions.map(([k, v]) => [k, Math.round(v)])),
-			live: live.fetches.length ? { fetches: live.fetches, dom: live.dom } : undefined
+			live: live.fetches.length
+				? { timeOrigin: live.t0, fetches: live.fetches, dom: live.dom }
+				: undefined
 		};
 		console.log('%c[feedProbe] feedProbe.copy() copies this run as JSON.', 'color:#888');
 		return lastReport;

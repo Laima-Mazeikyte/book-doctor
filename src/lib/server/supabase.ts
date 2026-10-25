@@ -8,7 +8,8 @@ if (!supabaseUrl || !supabaseKey) {
 	throw new Error('Missing Supabase environment variables');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+// Preserve prompt endpoint failures instead of adding SDK database-read backoff.
+export const supabase = createClient(supabaseUrl, supabaseKey, { db: { retry: false } });
 
 /**
  * Create a Supabase client that uses the user's JWT when provided (e.g. in Authorization header).
@@ -17,6 +18,7 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
 export function createSupabaseWithAuth(accessToken: string | null): SupabaseClient {
 	if (!accessToken) return supabase;
 	return createClient(supabaseUrl, supabaseKey, {
+		db: { retry: false },
 		global: { headers: { Authorization: `Bearer ${accessToken}` } }
 	});
 }
