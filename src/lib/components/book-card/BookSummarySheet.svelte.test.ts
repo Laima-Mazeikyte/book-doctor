@@ -9,6 +9,7 @@ import type { Session } from '@supabase/supabase-js';
 const book: Book = {
 	id: 'uuid-book-1',
 	book_id: '01KR2ADTNG29NSQV23VAGV8FXB',
+	slug: 'a-book-an-author',
 	title: 'A book',
 	author: 'An author',
 	summary: 'A complete summary'
@@ -95,7 +96,7 @@ it('links the title directly to the full page and leaves corrections on that pag
 	});
 	await expect
 		.element(rendered.getByRole('link', { name: book.title, exact: true }))
-		.toHaveAttribute('href', `/books/${book.book_id}/a-book`);
+		.toHaveAttribute('href', `/books/${book.slug}`);
 	await expect
 		.element(rendered.getByRole('link', { name: 'View book page →', exact: true }))
 		.not.toBeInTheDocument();

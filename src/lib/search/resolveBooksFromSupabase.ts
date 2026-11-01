@@ -1,8 +1,8 @@
-import { BOOK_GENRE_TYPE_SELECT, type BookGenreSlotRow } from '$lib/book-catalog-fields';
+import { BOOK_CATALOG_SELECT } from '$lib/book-catalog-fields';
 import type { Book } from '$lib/types/book';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { mapBookRowToBook } from './mapBookRowToBook';
+import { mapBookRowToBook, type BookCatalogRow } from './mapBookRowToBook';
 
 /**
  * Load catalog rows for the given ULID `book_id`s and return `Book` instances
@@ -16,7 +16,7 @@ export async function resolveBooksByIdsInOrder(
 
 	const { data, error } = await supabase
 		.from('books')
-		.select(`id, book_id, book_name, author, summary, year, ${BOOK_GENRE_TYPE_SELECT}`)
+		.select(BOOK_CATALOG_SELECT)
 		.in('book_id', bookIds);
 
 	if (error) {
@@ -24,10 +24,9 @@ export async function resolveBooksByIdsInOrder(
 	}
 
 	const byBookId = new Map<string, Book>(
-		(data ?? []).map((b) => {
-			const row = b as typeof b & BookGenreSlotRow & { type?: string | null };
-			return [b.book_id, mapBookRowToBook(row)] as const;
-		})
+		((data ?? []) as unknown as BookCatalogRow[]).map(
+			(row) => [row.book_id, mapBookRowToBook(row)] as const
+		)
 	);
 
 	return bookIds.map((id) => byBookId.get(id)).filter((b): b is Book => b != null);

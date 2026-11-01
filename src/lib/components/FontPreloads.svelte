@@ -20,7 +20,7 @@
 		'/rate/recommendations': [variable, bold],
 		'/rate/recommendations/shortlist': [variable, bold],
 		'/rate/recommendations/filtered': [variable, bold, semibold],
-		'/books/[book_id]/[[slug]]': [bold, variable, medium],
+		'/books/[slug]': [bold, variable, medium],
 		'/auth/reset-password': [bold, regular],
 		'/lab': [variable, bold],
 		'/lab/book-search': [variable, semibold],

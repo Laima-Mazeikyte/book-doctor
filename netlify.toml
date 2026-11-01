@@ -1,3 +1,6 @@
+[build]
+  command = "pnpm run build"
+
 [build.environment]
   # These are intentionally public/publishable values that Vite inlines into the
   # client bundle at build time. Omit them from secrets scanning so the deploy

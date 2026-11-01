@@ -129,7 +129,11 @@
 		el?.focus({ preventScroll: true });
 	}
 
-	const isShortlistShell = $derived(page.url.pathname === '/rate/recommendations/shortlist');
+	const isErrorPage = $derived(page.status >= 400);
+	const isLandingShell = $derived(page.url.pathname === '/' || isErrorPage);
+	const isShortlistShell = $derived(
+		!isErrorPage && page.url.pathname === '/rate/recommendations/shortlist'
+	);
 
 	const showSaveAccountPrompt = $derived.by(() => {
 		if (!$shortlistSavePromptStore || !$authReady || !$isAnonymousOrSignedOut) return false;
@@ -143,7 +147,7 @@
 	 */
 	const isBookGridShell = $derived.by(() => {
 		const pathname = page.url.pathname;
-		if (isShortlistShell) return false;
+		if (isShortlistShell || isErrorPage) return false;
 		return (
 			pathname === '/my-bookshelf' ||
 			pathname === '/not-interested' ||
@@ -156,6 +160,7 @@
 	});
 
 	const showAppFooter = $derived.by(() => {
+		if (isErrorPage) return true;
 		const pathname = page.url.pathname;
 		if (isShortlistShell) return false;
 		if (pathname === '/rate/recommendations' || pathname === '/rate/recommendations/filtered')
@@ -374,7 +379,7 @@
 {/if}
 <div
 	class="app-chrome"
-	class:app-chrome--landing={page.url.pathname === '/'}
+	class:app-chrome--landing={isLandingShell}
 	class:app-chrome--lab-index={page.url.pathname === '/lab'}
 	class:app-chrome--shortlist={isShortlistShell}
 	class:app-chrome--author-connections={page.url.pathname === '/lab/author-connections'}
@@ -386,8 +391,8 @@
 	{/if}
 	<main
 		id="main"
-		class:rate-page={page.url.pathname === '/rate'}
-		class:landing-page={page.url.pathname === '/'}
+		class:rate-page={!isErrorPage && page.url.pathname === '/rate'}
+		class:landing-page={isLandingShell}
 		class:shortlist-page-main={isShortlistShell}
 		class:main-book-grid-shell={isBookGridShell}
 	>

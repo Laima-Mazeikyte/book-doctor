@@ -14,12 +14,22 @@ describe('book reading characteristics', () => {
 			bookCharacteristics({ pace_value: 0.8, vocabulary_value: 0.2, depth_value: 0.2 }).labels.map(
 				(item) => item.label
 			)
-		).toEqual(['Unhurried', 'Accessible', 'Light']);
+		).toEqual(['Introspective', 'Accessible', 'Light']);
 		expect(
 			bookCharacteristics({ depth_value: 0.8, discussion_potential_value: 0.8 }).labels.map(
 				(item) => item.label
 			)
 		).toEqual(['Deep', 'Thought-provoking']);
+	});
+	it('labels only the cozy end of atmosphere, using the inclusive low threshold', () => {
+		for (const atmosphere_value of [0, 0.2]) {
+			expect(bookCharacteristics({ atmosphere_value }).labels.map((item) => item.label)).toEqual([
+				'Cozy'
+			]);
+		}
+		for (const atmosphere_value of [0.21, 0.5, 0.8, 1, null, NaN, -0.1, 1.1]) {
+			expect(bookCharacteristics({ atmosphere_value }).labels).toEqual([]);
+		}
 	});
 	it('does not label low violence, low spice, low originality, or middle scores', () => {
 		const result = bookCharacteristics({
@@ -37,6 +47,18 @@ describe('book reading characteristics', () => {
 				(item) => item.label
 			)
 		).toEqual(['Graphic', 'Explicit']);
+	});
+	it('labels high background knowledge as Specialized, independently of thematic depth', () => {
+		for (const entry_barrier_value of [0.8, 1]) {
+			expect(
+				bookCharacteristics({ entry_barrier_value, depth_value: 0.2 }).labels.map(
+					(item) => item.label
+				)
+			).toEqual(['Light', 'Specialized']);
+		}
+		for (const entry_barrier_value of [0, 0.2, 0.79, null, NaN, -0.1, 1.1]) {
+			expect(bookCharacteristics({ entry_barrier_value }).labels).toEqual([]);
+		}
 	});
 	it('distinguishes missing or invalid evidence from measured middle scores', () => {
 		expect(bookCharacteristics(null).availableDimensions).toBe(0);

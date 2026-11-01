@@ -275,12 +275,16 @@ export function validateManifest(manifest: ProminenceManifest, expectedAuthorCou
 	}
 }
 
-export async function loadRelease(): Promise<Release> {
+export async function loadRelease(signal?: AbortSignal): Promise<Release> {
 	const base = resolveProminenceArtifactBase(env.PUBLIC_AUTHOR_PROMINENCE_BASE);
-	const webRoot = await resolveWebRoot(base, env.PUBLIC_AUTHOR_PROMINENCE_VERSION);
+	const webRoot = await resolveWebRoot(base, env.PUBLIC_AUTHOR_PROMINENCE_VERSION, signal);
+	const options = signal ? { signal } : undefined;
 	const [manifest, authorsPayload] = await Promise.all([
-		fetchJson<ProminenceManifest>(joinUrl(base, webRoot, 'manifest.json')),
-		fetchJson<{ columns: string[]; rows: unknown[][] }>(joinUrl(base, webRoot, 'authors.json'))
+		fetchJson<ProminenceManifest>(joinUrl(base, webRoot, 'manifest.json'), options),
+		fetchJson<{ columns: string[]; rows: unknown[][] }>(
+			joinUrl(base, webRoot, 'authors.json'),
+			options
+		)
 	]);
 	validateManifest(manifest);
 	const population = buildPopulation(authorsPayload, manifest);

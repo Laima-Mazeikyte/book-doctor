@@ -1,4 +1,5 @@
 import type { Book, QualityBand } from '$lib/types/book';
+import { cachedBookAnnotations } from '$lib/books/annotations';
 
 export const RATE_FEED_CACHE_PREFIX = 'book-doctor:rate-feed:v1:';
 export const RATE_FEED_CACHE_MAX_AGE_MS = 24 * 60 * 60_000;
@@ -43,7 +44,9 @@ function book(value: unknown): Book | null {
 		!identifier(value.id) ||
 		!identifier(value.book_id) ||
 		!string(value.title, 2000) ||
-		!string(value.author, 2000)
+		!string(value.author, 2000) ||
+		!value.title.trim() ||
+		!value.author.trim()
 	)
 		return null;
 	const result: Book = {
@@ -53,6 +56,7 @@ function book(value: unknown): Book | null {
 		author: value.author
 	};
 	for (const [key, limit] of [
+		['slug', 2000],
 		['summary', 100_000],
 		['year', 64],
 		['type', 200],
@@ -94,7 +98,7 @@ function book(value: unknown): Book | null {
 			return null;
 		result.qualityBand = value.qualityBand as QualityBand | null;
 	}
-	return result;
+	return { ...result, ...cachedBookAnnotations(value) };
 }
 
 /** A cache contains display candidates and pagination hints, never credentials or generation state. */

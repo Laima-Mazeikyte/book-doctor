@@ -39,13 +39,17 @@ export function artifactBase(configured: string | undefined, devFallback: string
  * Resolve the active web root. A pinned version is deterministic and avoids caching
  * concerns around a mutable pointer; without one we fall back to `current_release.json`.
  */
-export async function resolveWebRoot(base: string, pinnedVersion?: string): Promise<string> {
+export async function resolveWebRoot(
+	base: string,
+	pinnedVersion?: string,
+	signal?: AbortSignal
+): Promise<string> {
 	const pinned = pinnedVersion?.trim();
 	if (pinned) return `versions/${trimSlashes(pinned)}/web`;
 
 	const pointer = await fetchJson<{ web_root?: string; version?: string }>(
 		joinUrl(base, 'current_release.json'),
-		{ cache: 'no-cache' }
+		{ cache: 'no-cache', ...(signal ? { signal } : {}) }
 	);
 	if (pointer.web_root) return trimSlashes(pointer.web_root);
 	if (pointer.version) return `versions/${trimSlashes(pointer.version)}/web`;

@@ -1,0 +1,19 @@
+-- One-time maintenance after the supplied physical inspection confirmed ~51% heap free space.
+-- Foreground alternative only. Prefer compact-book-catalog-background.sql for this
+-- shared project because earlier long-running Dashboard requests timed out. Do not run both.
+-- SQL Editor: Database / postgres. Run during a quiet maintenance window only.
+-- This takes an ACCESS EXCLUSIVE lock: book reads/writes, including production, wait.
+-- First check available PHYSICAL disk space in the Dashboard: the old table/indexes
+-- coexist with their replacements; WAL and temporary files can need additional space.
+-- The 500 MB database allowance is not a measurement of available physical disk.
+-- Rewrites only public.books and rebuilds its indexes; no logical book values are changed.
+-- Actual recovered bytes and duration must be measured; no guaranteed recovery amount.
+-- SKIP_LOCKED skips a busy table rather than waiting for its initial exclusive lock.
+-- A successful statement can therefore mean skipped work; verify sizes afterward.
+-- Run this single command by itself, without BEGIN/COMMIT or other SQL statements.
+-- After a Dashboard timeout/NetworkError, inspect book-catalog-maintenance-status.sql
+-- before retrying. A disconnected browser alone does not establish server completion.
+-- Once finished, rerun verify-book-annotations.sql, verify-book-urls.sql,
+-- verify-book-series.sql and supabase-storage-inventory.sql.
+-- https://www.postgresql.org/docs/17/sql-vacuum.html
+vacuum (full, analyze, skip_locked) public.books;

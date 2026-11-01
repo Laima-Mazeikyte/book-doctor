@@ -1,0 +1,48 @@
+{
+	"schemaVersion": 1,
+	"catalogRelease": "v3",
+	"generatedAt": "2026-10-31T01:49:27.749Z",
+	"origin": "https://unread.world",
+	"source": {
+		"host": "obkbdcbvxyenfecdbvsz.supabase.co",
+		"table": "public.books",
+		"fields": ["book_id", "slug"],
+		"highWatermark": "01KSBH5RYV94ZW3K8JEM30Y84Y",
+		"identitySha256": "4536d9817928139c9b1f711ae11c1632bb8fb2be193927ce86aa4ad9bb7858b6",
+		"consistency": "Two matching ordered keyset reads of all IDs/slugs and unchanged high watermark; generate between catalog publications."
+	},
+	"bookCount": 118097,
+	"pageCount": 2,
+	"files": [
+		{
+			"name": "sitemap-books-1.xml",
+			"locations": 50000,
+			"bytes": 4407165,
+			"sha256": "ed350003421a9bec1fc4165dfbc594dfadf31919cc9805c78f8ebb2d8eda0dfa"
+		},
+		{
+			"name": "sitemap-books-2.xml",
+			"locations": 50000,
+			"bytes": 4339039,
+			"sha256": "42c91fd8970bb91fdc99989785b17d4b776f3e06e7f9ff9c567d2e04875bf505"
+		},
+		{
+			"name": "sitemap-books-3.xml",
+			"locations": 18097,
+			"bytes": 1597496,
+			"sha256": "cfda799fd21ae3a7a2ea39c254a15ecef352f444a69e12a481b06984e96c42ea"
+		},
+		{
+			"name": "sitemap-pages.xml",
+			"locations": 2,
+			"bytes": 205,
+			"sha256": "f383e506a02929bf71f984e38d4a2d053177c4559f1d32d68d580051c045957f"
+		},
+		{
+			"name": "sitemap.xml",
+			"locations": 4,
+			"bytes": 412,
+			"sha256": "dac0519691458818bfe6dbbdc0f24b303a89736a79e002a7deb75a585c47d5b7"
+		}
+	]
+}

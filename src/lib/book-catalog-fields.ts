@@ -1,9 +1,15 @@
+import { CHARACTERISTIC_SELECT } from '$lib/books/characteristics';
+import { BOOK_RANKING_SELECT, BOOK_KEYWORD_SELECT } from '$lib/books/annotations';
+
 /** PostgREST `select` fragment for catalog genre slots and `type` (see `public.books`). */
 export const BOOK_GENRE_TYPE_SELECT =
 	'genre1, genre2, genre3, genre4, genre5, genre6, genre7, type' as const;
 
 /** PostgREST `select` fragment for public book-quality evidence (see `public.books`). */
 export const BOOK_QUALITY_SELECT = 'quality_band' as const;
+
+/** Shared by direct reads, joins, and browser catalog resolution. Awards are detail-only. */
+export const BOOK_CATALOG_SELECT = `id, book_id, slug, book_name, author, summary, year, ${BOOK_GENRE_TYPE_SELECT}, ${BOOK_QUALITY_SELECT}, ${CHARACTERISTIC_SELECT}, ${BOOK_RANKING_SELECT}, ${BOOK_KEYWORD_SELECT}`;
 
 export type BookGenreSlotRow = {
 	genre1?: string | null;

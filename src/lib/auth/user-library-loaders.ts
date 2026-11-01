@@ -4,14 +4,8 @@ import {
 	fetchUuidByUlid,
 	type BookIdJoinRow
 } from '$lib/auth/book-id-resolver';
-import {
-	BOOK_GENRE_TYPE_SELECT,
-	catalogTypeFromRow,
-	genresFromGenreColumns,
-	pickGenreTypeFields,
-	type BookGenreSlotRow
-} from '$lib/book-catalog-fields';
-import { coverUrlForBookId } from '$lib/book-cover';
+import { BOOK_CATALOG_SELECT, type BookGenreSlotRow } from '$lib/book-catalog-fields';
+import { mapBookRowToBook, type BookCatalogRow } from '$lib/search/mapBookRowToBook';
 import { librarySaves } from '$lib/stores/librarySaves';
 import { notInterestedStore } from '$lib/stores/notInterested';
 import { planToReadStore } from '$lib/stores/planToRead';
@@ -349,7 +343,7 @@ async function loadUserLibraryDetailsBody(
 		supabase,
 		'user_ratings',
 		userId,
-		`book_id, book_rating, books(id, book_id, book_name, author, year, summary, ${BOOK_GENRE_TYPE_SELECT})`,
+		`book_id, book_rating, books(${BOOK_CATALOG_SELECT})`,
 		signal
 	);
 
@@ -359,39 +353,20 @@ async function loadUserLibraryDetailsBody(
 		rawRows as Array<{ book_id: string; books?: { id?: unknown } | null }>
 	);
 	let bookIdByUlid: Record<string, string> = {};
-	let fallbackBooks: Array<
-		{
-			id: string;
-			book_id: string;
-			book_name: string;
-			author: string;
-			year?: number;
-			summary?: string | null;
-		} & BookGenreSlotRow & { type?: string | null }
-	> = [];
+	let fallbackBooks: BookCatalogRow[] = [];
 
 	if (unresolvedDetailUlids.length > 0) {
 		const { data: bookRows, error: bookError } = await supabase
 			.from('books')
-			.select(`id, book_id, book_name, author, year, summary, ${BOOK_GENRE_TYPE_SELECT}`)
+			.select(BOOK_CATALOG_SELECT)
 			.in('book_id', unresolvedDetailUlids)
 			.abortSignal(signal);
 		if (bookError) throw bookError;
 		if (isStale()) return () => {};
 		if (bookRows) {
-			bookIdByUlid = Object.fromEntries(bookRows.map((b) => [b.book_id, String(b.id)])) as Record<
-				string,
-				string
-			>;
-			fallbackBooks = bookRows.map((b) => ({
-				id: String(b.id),
-				book_id: b.book_id,
-				book_name: b.book_name ?? '',
-				author: b.author ?? '',
-				year: b.year,
-				summary: b.summary ?? undefined,
-				...pickGenreTypeFields(b as BookGenreSlotRow & { type?: string | null })
-			}));
+			const rows = bookRows as unknown as BookCatalogRow[];
+			bookIdByUlid = Object.fromEntries(rows.map((b) => [b.book_id, String(b.id)]));
+			fallbackBooks = rows.map((b) => ({ ...b, id: String(b.id) }));
 		}
 	}
 
@@ -419,33 +394,14 @@ async function loadUserLibraryDetailsBody(
 		if (rowWithBooks.books?.id != null && rowWithBooks.books?.book_name != null) {
 			const b = rowWithBooks.books;
 			const detailBookId = b.book_id ?? rowWithBooks.book_id;
-			const type = catalogTypeFromRow(b);
-			detailsMap.set(uuid, {
-				id: uuid,
-				book_id: detailBookId,
-				title: b.book_name ?? '',
-				author: b.author ?? '',
-				coverUrl: coverUrlForBookId(detailBookId),
-				year: b.year != null ? String(b.year) : undefined,
-				summary: b.summary ?? undefined,
-				genres: genresFromGenreColumns(b),
-				...(type ? { type } : {})
-			});
+			detailsMap.set(
+				uuid,
+				mapBookRowToBook({ ...b, id: uuid, book_id: detailBookId } as BookCatalogRow)
+			);
 		} else if (fallbackBooks.length > 0) {
 			const fb = fallbackBooks.find((f) => f.id === uuid || f.book_id === rowWithBooks.book_id);
 			if (fb) {
-				const type = catalogTypeFromRow(fb);
-				detailsMap.set(uuid, {
-					id: uuid,
-					book_id: fb.book_id,
-					title: fb.book_name,
-					author: fb.author,
-					coverUrl: coverUrlForBookId(fb.book_id),
-					year: fb.year != null ? String(fb.year) : undefined,
-					summary: fb.summary ?? undefined,
-					genres: genresFromGenreColumns(fb),
-					...(type ? { type } : {})
-				});
+				detailsMap.set(uuid, mapBookRowToBook(fb as BookCatalogRow));
 			}
 		}
 	}

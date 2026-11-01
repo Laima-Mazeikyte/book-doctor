@@ -8,7 +8,11 @@ const book: Book = {
 	book_id: '01KR2ADTNG29NSQV23VAGV8FXB',
 	title: 'A book',
 	author: 'An author',
-	qualityBand: 'top_5_percent'
+	qualityBand: 'top_5_percent',
+	distinctions: {
+		book: { percent: 5, subject: 'book', rank: 50, populationCount: 1000, version: 'v1' },
+		author: null
+	}
 };
 
 it('renders quality evidence in the top-10 shortlist detail', async () => {
@@ -30,9 +34,7 @@ it('renders quality evidence in the top-10 shortlist detail', async () => {
 		}
 	});
 
-	await expect
-		.element(rendered.getByTestId('book-quality-evidence'))
-		.toHaveTextContent('Global catalog standing: Top 5% of catalog');
+	await expect.element(rendered.getByTestId('book-annotations')).toHaveTextContent('Top 5% book');
 	await expect
 		.element(
 			rendered.getByText('Matches your interest in introspective storytelling', { exact: true })

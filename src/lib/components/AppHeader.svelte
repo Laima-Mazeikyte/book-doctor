@@ -515,6 +515,11 @@
 	}
 	.app-header__account {
 		position: relative;
+		/* Match the login controls while session restoration leaves this slot empty. */
+		min-height: calc(
+			var(--chrome-menu-padding-block) * 2 + var(--typ-interactive-2-font-size) *
+				var(--typ-interactive-2-line-height)
+		);
 	}
 	.app-header__auth-actions {
 		display: none;

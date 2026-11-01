@@ -176,7 +176,11 @@
 {#snippet headerTextBlock()}
 	<div class="book-card__summary-header-text">
 		<h3 class="book-card__summary-sheet-title typ-h3" id={summaryTitleId}>
-			<a href={resolve(bookPath(book))}>{book.title}</a>
+			{#if book.slug}
+				<a href={resolve(bookPath(book))}>{book.title}</a>
+			{:else}
+				{book.title}
+			{/if}
 		</h3>
 
 		{#if showAuthorInSheetMeta || book.year}

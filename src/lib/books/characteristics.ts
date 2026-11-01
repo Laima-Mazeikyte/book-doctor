@@ -1,6 +1,6 @@
 /** Existing public.books columns, verified against the live catalog. */
 export const CHARACTERISTIC_SELECT =
-	'pace_value,vocabulary_value,depth_value,originality_value,discussion_potential_value,violence_value,spice_value';
+	'pace_value,vocabulary_value,depth_value,originality_value,discussion_potential_value,violence_value,spice_value,atmosphere_value,entry_barrier_value';
 
 export type CharacteristicRow = {
 	pace_value?: number | null;
@@ -10,6 +10,8 @@ export type CharacteristicRow = {
 	discussion_potential_value?: number | null;
 	violence_value?: number | null;
 	spice_value?: number | null;
+	atmosphere_value?: number | null;
+	entry_barrier_value?: number | null;
 };
 
 export interface ReadingCharacteristic {
@@ -31,7 +33,10 @@ const dimensions: {
 	{
 		column: 'pace_value',
 		low: { label: 'Fast-paced', description: 'An action-driven reading experience.' },
-		high: { label: 'Unhurried', description: 'A measured, introspective reading experience.' }
+		high: {
+			label: 'Introspective',
+			description: 'A focus on characters\u2019 inner thoughts and feelings.'
+		}
 	},
 	{
 		column: 'vocabulary_value',
@@ -50,6 +55,17 @@ const dimensions: {
 	{
 		column: 'discussion_potential_value',
 		high: { label: 'Thought-provoking', description: 'Ideas and questions that invite discussion.' }
+	},
+	{
+		column: 'atmosphere_value',
+		low: { label: 'Cozy', description: 'A cozy, comforting atmosphere.' }
+	},
+	{
+		column: 'entry_barrier_value',
+		high: {
+			label: 'Specialized',
+			description: 'Prior knowledge of the subject or its references helps.'
+		}
 	}
 ];
 
@@ -64,4 +80,16 @@ export function bookCharacteristics(row: CharacteristicRow | null) {
 		if (label) labels.push(label);
 	}
 	return { labels, availableDimensions, totalDimensions: dimensions.length };
+}
+
+export function characteristicsFromLabels(value: unknown): ReadingCharacteristic[] {
+	if (!Array.isArray(value)) return [];
+	const labels = new Set(
+		value.flatMap((item) =>
+			item && typeof item === 'object' && 'label' in item ? [item.label] : []
+		)
+	);
+	return dimensions.flatMap(({ low, high }) =>
+		[low, high].filter((item): item is ReadingCharacteristic => !!item && labels.has(item.label))
+	);
 }

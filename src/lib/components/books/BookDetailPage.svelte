@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
 	import BookCorrection from '$lib/components/book-card/BookCorrection.svelte';
@@ -7,7 +7,11 @@
 	import { Bookmark, BookOpen, ChevronDown, LockKeyhole, Star, ThumbsDown } from 'lucide-svelte';
 	import type { Book, RatingValue } from '$lib/types/book';
 	import { bookPath } from '$lib/books/bookUrl';
-	import type { bookCharacteristics } from '$lib/books/characteristics';
+	import BookAnnotations from './BookAnnotations.svelte';
+	import BookAwards from './BookAwards.svelte';
+	import BookSeries from './BookSeries.svelte';
+	import BookConnections from './BookConnections.svelte';
+	import type { BookSeries as BookSeriesData } from '$lib/books/series';
 	import { authStore, authReady } from '$lib/stores/auth';
 	import { ratingsStore } from '$lib/stores/ratings';
 	import LibrarySaveIndicator from '$lib/components/LibrarySaveIndicator.svelte';
@@ -24,24 +28,22 @@
 		removeBookRating,
 		toggleNotInterested
 	} from '$lib/stores/libraryActions';
-	import { filterRatedLikedBookPrecedents } from '$lib/recommendations/likedBookPrecedents';
-	import type { RecommendationsUniquePayload } from '$lib/stores/recommendationsPage';
 
 	interface Props {
 		book: Book;
 		canonicalUrl: string;
-		characteristics: ReturnType<typeof bookCharacteristics>;
+		series?: BookSeriesData | null;
 	}
-	let { book, canonicalUrl, characteristics }: Props = $props();
-	let coverFailed = $state(false);
+	let { book, canonicalUrl, series = null }: Props = $props();
+	let coverFailedFor = $state<string | null>(null);
+	let coverReadyFor = $state<string | null>(null);
+	const seriesImagesReady = $derived(coverReadyFor === book.book_id);
 	let authorExpanded = $state(false);
 	let authorBooks = $state<Book[]>([]);
 	let authorBooksTruncated = $state(false);
 	let authorBooksStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
 	let authorController: AbortController | null = null;
 	const failedAuthorCovers = new SvelteSet<string>();
-	let referenceBooks = $state<Book[]>([]);
-	let referencesStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
 	const ratingOptions: RatingValue[] = [1, 2, 3, 4, 5];
 	const rating = $derived($ratingsStore.get(book.id) ?? 0);
 	const saved = $derived($planToReadStore.has(book.id));
@@ -55,25 +57,39 @@
 		);
 	}
 	const hasReadingHistory = $derived($ratingsStore.size >= 10);
-	const likedReferences = $derived(
-		filterRatedLikedBookPrecedents(referenceBooks, $ratingsStore)
-			.filter((item) => item.book_id !== book.book_id)
-			.slice(0, 3)
-	);
-	const qualityLabel = $derived(
-		book.qualityBand === 'top_0_1_percent'
-			? 'Top 0.1% overall'
-			: book.qualityBand === 'top_1_percent'
-				? 'Top 1% overall'
-				: book.qualityBand === 'top_5_percent'
-					? 'Top 5% overall'
-					: null
-	);
 	const description = $derived(
 		book.summary?.trim()
 			? book.summary.trim().replace(/\s+/g, ' ').slice(0, 200)
 			: `Explore ${book.title}${book.author ? ` by ${book.author}` : ''} on unread.`
 	);
+
+	function releaseSeriesImagesAfterCover(node: HTMLElement) {
+		const bookId = book.book_id;
+		let released = false;
+		let firstFrame = 0;
+		let secondFrame = 0;
+		const release = () => {
+			if (released) return;
+			released = true;
+			// Give the main cover a paint opportunity before adding thumbnail requests.
+			firstFrame = requestAnimationFrame(() => {
+				secondFrame = requestAnimationFrame(() => (coverReadyFor = bookId));
+			});
+		};
+		// Capture also handles an error before the image becomes the fallback.
+		node.addEventListener('load', release, true);
+		node.addEventListener('error', release, true);
+		const image = node.querySelector('img');
+		if (!image || image.complete) release();
+		return {
+			destroy() {
+				node.removeEventListener('load', release, true);
+				node.removeEventListener('error', release, true);
+				cancelAnimationFrame(firstFrame);
+				cancelAnimationFrame(secondFrame);
+			}
+		};
+	}
 
 	async function loadAuthorBooks() {
 		if (authorBooksStatus === 'loading' || authorBooksStatus === 'ready') return;
@@ -103,32 +119,18 @@
 
 	onDestroy(() => authorController?.abort());
 
-	// Existing recommendation evidence remains private, account-scoped, and separate from
-	// public catalog characteristics. No new match-score or similarity contract is assumed.
 	$effect(() => {
-		const token = $authStore.session?.access_token;
-		const bookId = book.book_id;
-		const ready = libraryReady && hasReadingHistory;
-		referenceBooks = [];
-		referencesStatus = 'idle';
-		if (!token || !ready) return;
-		const controller = new AbortController();
-		referencesStatus = 'loading';
-		void fetch(resolve('/api/recommendations/unique'), {
-			headers: { Authorization: `Bearer ${token}` },
-			signal: controller.signal
-		})
-			.then(async (response) => {
-				if (!response.ok) throw new Error('Unable to load reference books');
-				const payload: RecommendationsUniquePayload = await response.json();
-				if (controller.signal.aborted) return;
-				referenceBooks = payload.likedBookPrecedentsByBookId?.[bookId] ?? [];
-				referencesStatus = 'ready';
-			})
-			.catch(() => {
-				if (!controller.signal.aborted) referencesStatus = 'error';
-			});
-		return () => controller.abort();
+		// The page now survives book changes so the series strip can stay mounted.
+		void book.book_id;
+		untrack(() => {
+			authorController?.abort();
+			authorController = null;
+			authorExpanded = false;
+			authorBooks = [];
+			authorBooksTruncated = false;
+			authorBooksStatus = 'idle';
+			failedAuthorCovers.clear();
+		});
 	});
 </script>
 
@@ -148,48 +150,36 @@
 	{/if}
 </svelte:head>
 
-{#snippet bookLink(item: Book)}
-	<a class="mini-book" href={resolve(bookPath(item))}>
-		{#if item.coverUrl}
-			<img
-				src={item.coverUrl}
-				alt=""
-				loading="lazy"
-				onerror={(event) => {
-					(event.currentTarget as HTMLImageElement).style.display = 'none';
-				}}
-			/>
-		{:else}
-			<span class="mini-cover"><BookOpen size={22} aria-hidden="true" /></span>
-		{/if}
-		<span><strong>{item.title}</strong><span class="muted">{item.author}</span></span>
-	</a>
-{/snippet}
-
 <article class="book-page">
 	<LibraryLoadNotice collections={['ratings', 'bookmarks', 'dismissals']} />
 	<div class="book-layout">
 		<div class="cover-column">
-			<div class="book-cover" class:book-cover--not-interested={dismissed}>
-				{#if book.coverUrl && !coverFailed}
-					<img
-						src={book.coverUrl}
-						alt={`Cover of ${book.title}`}
-						fetchpriority="high"
-						onerror={() => (coverFailed = true)}
-					/>
-				{:else}
-					<div class="cover-fallback">
-						<BookOpen size={40} aria-hidden="true" /><span>{book.title}</span><small
-							>{book.author}</small
-						>
-					</div>
-				{/if}
-			</div>
+			{#key book.book_id}
+				<div
+					class="book-cover"
+					class:book-cover--not-interested={dismissed}
+					use:releaseSeriesImagesAfterCover
+				>
+					{#if book.coverUrl && coverFailedFor !== book.book_id}
+						<img
+							src={book.coverUrl}
+							alt={`Cover of ${book.title}`}
+							fetchpriority="high"
+							onerror={() => (coverFailedFor = book.book_id)}
+						/>
+					{:else}
+						<div class="cover-fallback">
+							<BookOpen size={40} aria-hidden="true" /><span>{book.title}</span><small
+								>{book.author}</small
+							>
+						</div>
+					{/if}
+				</div>
+			{/key}
 			<div class="library-actions">
 				<button
 					class="action-button save-button"
-					disabled={!actionReady('dismissal')}
+					disabled={!actionReady('bookmark')}
 					aria-pressed={saved}
 					onclick={() => toggleBookmarked(book)}
 					><Bookmark
@@ -201,7 +191,7 @@
 						: 'Save book'}</button
 				>
 				<fieldset
-					disabled={!libraryReady}
+					disabled={!actionReady('rating')}
 					aria-label={rating ? `Your rating: ${rating} of 5` : 'Book rating'}
 				>
 					<div class="rating-stars">
@@ -259,9 +249,10 @@
 						{:else if authorBooks.length}
 							<div class="author-cover-grid">
 								{#each authorBooks as item (item.book_id)}
+									<!-- eslint-disable svelte/no-navigation-without-resolve -- The populated branch uses resolve; older cached records deliberately have no href. -->
 									<a
 										class="author-book-cover"
-										href={resolve(bookPath(item))}
+										href={item.slug ? resolve(bookPath(item)) : undefined}
 										aria-label={item.title}
 										title={item.title}
 									>
@@ -277,6 +268,7 @@
 											<BookOpen size={24} aria-hidden="true" />
 										{/if}
 									</a>
+									<!-- eslint-enable svelte/no-navigation-without-resolve -->
 								{/each}
 							</div>
 							{#if authorBooksTruncated}<p class="muted">
@@ -287,28 +279,27 @@
 							</p>{/if}
 					</section>
 				{/if}
-			{:else}<p class="muted">Author information coming soon</p>{/if}
+			{/if}
 
-			<ul class="metadata" aria-label="Book details">
-				<li>{book.year || 'Publication year coming soon'}</li>
-				{#if book.type}<li>{book.type}</li>{/if}
-				{#each book.genres ?? [] as genre (genre)}<li>{genre}</li>{/each}
-				{#if !book.genres?.length}<li>Genre information coming soon</li>{/if}
-			</ul>
-			{#if characteristics.labels.length || qualityLabel}
-				<ul class="metadata book-highlights" aria-label="Book characteristics and distinctions">
-					{#each characteristics.labels as characteristic (characteristic.label)}
-						<li>{characteristic.label}</li>
-					{/each}
-					{#if qualityLabel}<li>{qualityLabel}</li>{/if}
+			{#if book.year || book.type || book.genres?.length}
+				<ul class="metadata" aria-label="Book details">
+					{#if book.year}<li>{book.year}</li>{/if}
+					{#if book.type}<li>{book.type}</li>{/if}
+					{#each book.genres ?? [] as genre (genre)}<li>{genre}</li>{/each}
 				</ul>
 			{/if}
-			<p class="muted series-placeholder">Series information coming soon</p>
+			<BookAnnotations {book} />
+			{#if series}{#key series.title}<BookSeries
+						{series}
+						currentBookId={book.book_id}
+						imagesReady={seriesImagesReady}
+					/>{/key}{/if}
 			<div class="synopsis">
 				{#if book.summary?.trim()}<p>{book.summary}</p>{:else}<p class="muted">
-						Synopsis coming soon
+						No description available.
 					</p>{/if}
 			</div>
+			<BookAwards awards={book.awards} />
 		</div>
 
 		<aside class="personal-column" aria-label="Book recommendations">
@@ -321,18 +312,7 @@
 					<a href={resolve('/rate')}>Rate books →</a>
 				{/if}
 
-				<h2 class="reference-heading">Similar to books you’ve enjoyed</h2>
-				{#if !libraryReady || referencesStatus === 'loading'}<p class="muted" role="status">
-						Loading reference books…
-					</p>
-				{:else if likedReferences.length}
-					<div class="reference-books">
-						{#each likedReferences as item (item.book_id)}{@render bookLink(item)}{/each}
-					</div>
-				{:else if referencesStatus === 'error'}<p class="muted">
-						Reference books are temporarily unavailable.
-					</p>
-				{:else}<p class="muted">Book connections coming soon</p>{/if}
+				<BookConnections bookId={book.book_id} imagesReady={seriesImagesReady} />
 			</section>
 
 			<section class="premium-panel" aria-labelledby="premium-title">
@@ -443,6 +423,9 @@
 		font-weight: 500;
 		margin: 0 0 0.75rem;
 	}
+	.book-information {
+		min-width: 0;
+	}
 	.book-information h1 {
 		margin-bottom: 0.5rem;
 		font-size: clamp(2.2rem, 3.8vw, 4rem);
@@ -497,9 +480,6 @@
 		padding-right: 0.8rem;
 		margin-right: 0.8rem;
 	}
-	.series-placeholder {
-		margin-block: 0.5rem 1.5rem;
-	}
 	.synopsis {
 		font-size: 1.15rem;
 		line-height: 1.65;
@@ -508,11 +488,7 @@
 	.synopsis p {
 		margin: 0;
 	}
-	.book-highlights {
-		margin-top: 0.75rem;
-		color: var(--color-text);
-		font-weight: 500;
-	}
+
 	.muted {
 		color: var(--color-text-muted);
 		line-height: 1.6;
@@ -534,45 +510,6 @@
 		font-size: 1.7rem;
 		line-height: 1.25;
 		margin: 0 0 1rem;
-	}
-	.reference-heading {
-		font-size: 1.2rem;
-		margin-top: 1.75rem;
-	}
-	.reference-books {
-		display: grid;
-		gap: 1rem;
-		margin-block: 1rem;
-	}
-	.mini-book {
-		display: flex;
-		align-items: start;
-		gap: 0.7rem;
-		text-decoration: none;
-		min-width: 0;
-	}
-	.mini-book img,
-	.mini-cover {
-		width: 3.2rem;
-		aspect-ratio: 2 / 3;
-		object-fit: cover;
-		border-radius: var(--radius-sm);
-		flex-shrink: 0;
-	}
-	.mini-cover {
-		display: grid;
-		place-items: center;
-		background: var(--color-bg-muted);
-	}
-	.mini-book strong {
-		display: block;
-		font-family: var(--font-family-content);
-		font-size: 1rem;
-		font-weight: 400;
-	}
-	.mini-book .muted {
-		display: block;
-		font-size: 0.75rem;
 	}
 	.library-actions {
 		display: grid;

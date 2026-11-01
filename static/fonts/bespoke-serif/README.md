@@ -11,7 +11,7 @@ Use only under the license terms supplied with your download.
 static/fonts/bespoke-serif/
 ├── README.md
 ├── bespoke-serif.css    # @font-face rules (paths assume this folder is served as /fonts/bespoke-serif/)
-└── fonts/               # woff2, woff, ttf, eot
+└── fonts/               # WOFF2 web fonts only
 ```
 
 Files in `static/` are served from the site root. This bundle is available at:
@@ -73,3 +73,7 @@ Axis: **`wght`**, range **300–800**.
 ## Optional cleanup
 
 For smaller deploys you can keep only `.woff2` (and optionally `.woff`) in `fonts/` and remove the matching `url(...)` lines from `bespoke-serif.css`. Modern browsers do not need `.eot` or `.ttf` for web delivery.
+
+The web bundle retains WOFF2 source files only. EOT/WOFF/TTF copies and their CSS
+fallbacks were removed during the November 1, 2026 cleanup. Font families, weights,
+preloads, license notices and display policies are unchanged.

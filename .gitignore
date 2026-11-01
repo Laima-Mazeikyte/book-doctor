@@ -37,3 +37,6 @@ temp
 .example data
 .docs
 .autofixer-payload.json
+
+# Generated Vitest browser screenshots
+.vitest-attachments/

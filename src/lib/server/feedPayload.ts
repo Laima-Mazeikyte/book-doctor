@@ -1,20 +1,11 @@
 import { FEED_REQUEST_BATCH_SIZE } from '$lib/feed/constants';
-import { type BookGenreSlotRow } from '$lib/book-catalog-fields';
+import type { Book } from '$lib/types/book';
+import type { BookCatalogRow } from '$lib/search/mapBookRowToBook';
 import type { LatestRateFeedMode } from '$lib/rate/feedEligibility';
 import { mapBookRowToBook } from '$lib/search/mapBookRowToBook';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-export type FeedBookPayload = {
-	id: string;
-	book_id: string;
-	title: string;
-	author: string;
-	coverUrl?: string;
-	summary?: string;
-	year?: string;
-	genres?: string[];
-	type?: string;
-};
+export type FeedBookPayload = Book;
 
 export type FeedJsonResponse = {
 	status: string;
@@ -43,15 +34,7 @@ export class FeedAccessError extends Error {
 	}
 }
 
-type EligibleFeedBookRow = {
-	id: string;
-	book_id: string;
-	book_name: string | null;
-	author: string | null;
-	summary: string | null;
-	year: number | null;
-	rank: number;
-} & BookGenreSlotRow & { type?: string | null };
+type EligibleFeedBookRow = BookCatalogRow & { rank: number };
 
 type LatestRateFeedBootstrap = Omit<LatestEligibleRateFeedPayload, 'books'> & {
 	books: EligibleFeedBookRow[];
@@ -104,7 +87,7 @@ export async function loadLatestEligibleRateFeed(
 	async function readBootstrap() {
 		const started = performance.now();
 		try {
-			return await supabase.rpc('get_rate_feed_bootstrap', { p_limit: limit });
+			return await supabase.rpc('get_rate_feed_bootstrap_annotated', { p_limit: limit });
 		} finally {
 			recordTiming?.('feed_bootstrap', performance.now() - started);
 		}
@@ -112,7 +95,7 @@ export async function loadLatestEligibleRateFeed(
 
 	const { data, error, status } = await readBootstrap();
 	if (error) {
-		console.error('[feed] get_rate_feed_bootstrap failed:', error);
+		console.error('[feed] get_rate_feed_bootstrap_annotated failed:', error);
 		if (status === 401 || status === 403) throw new FeedAccessError(status);
 		throw new Error('Failed to load latest eligible feed');
 	}
@@ -143,13 +126,13 @@ async function loadEligibleFeedBooks(
 	requestId: string,
 	limit: number
 ): Promise<FeedBookPayload[]> {
-	const { data, error } = await supabase.rpc('get_eligible_feed_books', {
+	const { data, error } = await supabase.rpc('get_eligible_feed_books_annotated', {
 		p_request_id: requestId,
 		p_limit: limit
 	});
 
 	if (error) {
-		console.error('[feed] get_eligible_feed_books failed:', error);
+		console.error('[feed] get_eligible_feed_books_annotated failed:', error);
 		throw new Error('Failed to load eligible feed books');
 	}
 
@@ -158,7 +141,7 @@ async function loadEligibleFeedBooks(
 
 /**
  * Build feed JSON for a single feed_requests.id (same behavior as GET /api/feed?request_id=).
- * Eligibility is enforced in Postgres via get_eligible_feed_books.
+ * Eligibility is enforced in Postgres via get_eligible_feed_books_annotated.
  */
 export async function buildFeedPayloadForRequest(
 	supabase: SupabaseClient,

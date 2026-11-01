@@ -3,76 +3,63 @@ import type { Book } from '$lib/types/book';
 import { createClient } from '@supabase/supabase-js';
 
 const fixture = vi.hoisted(() => ({
-	from: vi.fn(),
-	query: {
-		select: vi.fn(),
-		eq: vi.fn(),
-		neq: vi.fn(),
-		order: vi.fn(),
-		maybeSingle: vi.fn(),
-		limit: vi.fn()
-	}
+	rpc: vi.fn()
 }));
-vi.mock('$lib/server/supabase', () => ({ supabase: { from: fixture.from } }));
-import { load } from '../../routes/books/[book_id]/[[slug]]/+page.server';
+vi.mock('$lib/server/supabase', () => ({ supabase: { rpc: fixture.rpc } }));
+import { load } from '../../routes/books/[slug]/+page.server';
 
 const book: Book = {
 	id: 'uuid',
 	book_id: '01KR2ADTNG29NSQV23VAGV8FXB',
+	slug: 'the-test-book-an-author',
 	title: 'The Test Book',
 	author: 'An Author'
 };
-function event(path = `/books/${book.book_id}/the-test-book`) {
+function event(path = `/books/${book.slug}`) {
 	return {
-		params: { book_id: path.split('/')[2], slug: path.split('/')[3] },
+		params: { slug: path.split('/')[2] },
 		url: new URL(path, 'https://unread.example')
 	} as Parameters<typeof load>[0];
 }
 
 beforeEach(() => {
 	vi.resetAllMocks();
-	fixture.from.mockReturnValue(fixture.query);
-	for (const key of ['select', 'eq', 'neq', 'order'] as const)
-		fixture.query[key].mockReturnValue(fixture.query);
-	fixture.query.limit.mockResolvedValue({ data: [], error: null });
-	fixture.query.maybeSingle.mockResolvedValue({
+	fixture.rpc.mockResolvedValue({
 		data: {
-			id: book.id,
-			book_id: book.book_id,
-			book_name: book.title,
-			author: book.author,
-			pace_value: 0.8
+			book: {
+				id: book.id,
+				book_id: book.book_id,
+				slug: book.slug,
+				book_name: book.title,
+				author: book.author,
+				pace_value: 0.8
+			},
+			series: null
 		},
 		error: null
 	});
 });
 
 describe('public book page loading', () => {
-	it('redirects missing, outdated, and lowercase identity URLs to the canonical URL', async () => {
-		for (const path of [
-			`/books/${book.book_id}`,
-			`/books/${book.book_id}/old-title?source=share`,
-			`/books/${book.book_id.toLowerCase()}/the-test-book`
-		]) {
-			await expect(load(event(path))).rejects.toMatchObject({
-				status: 308,
-				location: `/books/${book.book_id}/the-test-book${path.includes('?') ? '?source=share' : ''}`
-			});
-		}
-		expect(fixture.from).toHaveBeenCalledTimes(3);
-		expect(fixture.query.limit).not.toHaveBeenCalled();
+	it('retains the catalog public address and uses its slug for the lookup', async () => {
+		await expect(load(event())).resolves.toMatchObject({
+			canonicalUrl: `https://unread.example/books/${book.slug}`
+		});
+		expect(fixture.rpc).toHaveBeenCalledExactlyOnceWith('get_book_detail_with_series', {
+			p_slug: book.slug
+		});
 	});
 	it('returns 404 for malformed and absent books, and 503 for catalog outages', async () => {
-		await expect(load(event('/books/invalid/title'))).rejects.toMatchObject({ status: 404 });
-		expect(fixture.from).not.toHaveBeenCalled();
-		fixture.query.maybeSingle.mockResolvedValue({ data: null, error: null });
+		await expect(load(event('/books/invalid_slug'))).rejects.toMatchObject({ status: 404 });
+		expect(fixture.rpc).not.toHaveBeenCalled();
+		fixture.rpc.mockResolvedValue({ data: null, error: null });
 		await expect(load(event())).rejects.toMatchObject({ status: 404 });
-		fixture.query.maybeSingle.mockResolvedValue({ data: null, error: { message: 'unavailable' } });
+		fixture.rpc.mockResolvedValue({ data: null, error: { message: 'unavailable' } });
 		await expect(load(event())).rejects.toMatchObject({ status: 503 });
-		fixture.query.maybeSingle.mockRejectedValue(new Error('Connection lost'));
+		fixture.rpc.mockRejectedValue(new Error('Connection lost'));
 		await expect(load(event())).rejects.toMatchObject({ status: 503 });
 	});
-	it('loads the book and characteristics together without waiting for other books by the author', async () => {
+	it('loads book metadata and series members in a single request without ranking-derived membership', async () => {
 		const reads: URL[] = [];
 		const client = createClient('https://book-page.test', 'public-test-key', {
 			db: { retry: false },
@@ -84,25 +71,49 @@ describe('public book page loading', () => {
 					// An author query never completes; it must not gate opening the book.
 					if (url.searchParams.has('author')) return new Promise(() => {});
 					return Response.json({
-						id: book.id,
-						book_id: book.book_id,
-						book_name: book.title,
-						author: book.author,
-						pace_value: 0.8
+						book: {
+							id: book.id,
+							book_id: book.book_id,
+							slug: book.slug,
+							book_name: book.title,
+							author: book.author,
+							pace_value: 0.8,
+							atmosphere_value: 0.2,
+							entry_barrier_value: 0.8,
+							book_ranking: null
+						},
+						series: {
+							title: 'Example Series (An Author)',
+							number: 1.5,
+							members: [{ book_id: book.book_id, slug: book.slug, title: book.title, number: 1.5 }]
+						}
 					});
 				}
 			}
 		});
-		fixture.from.mockImplementation((table: string) => client.from(table));
+		fixture.rpc.mockImplementation((name: string, args: Record<string, unknown>) =>
+			client.rpc(name, args)
+		);
 		await expect(load(event())).resolves.toMatchObject({
-			book,
-			characteristics: { labels: [{ label: 'Unhurried' }], availableDimensions: 1 },
-			canonicalUrl: `https://unread.example/books/${book.book_id}/the-test-book`
+			book: {
+				...book,
+				characteristics: [{ label: 'Introspective' }, { label: 'Cozy' }, { label: 'Specialized' }]
+			},
+			canonicalUrl: `https://unread.example/books/${book.slug}`,
+			series: {
+				title: 'Example Series (An Author)',
+				number: 1.5,
+				members: [{ book_id: book.book_id, slug: book.slug, title: book.title, number: 1.5 }]
+			}
 		});
-		expect(fixture.from).toHaveBeenCalledTimes(1);
+		expect(fixture.rpc).toHaveBeenCalledExactlyOnceWith('get_book_detail_with_series', {
+			p_slug: book.slug
+		});
 		expect(reads).toHaveLength(1);
-		expect(reads[0].searchParams.get('select')).toContain('book_name');
-		expect(reads[0].searchParams.get('select')).toContain('pace_value');
-		expect(reads[0].searchParams.get('book_id')).toBe(`eq.${book.book_id}`);
+		expect(reads[0].pathname).toBe('/rest/v1/rpc/get_book_detail_with_series');
+	});
+	it('keeps the book available without inventing membership from a ranking tooltip', async () => {
+		const result = (await load(event())) as { series: unknown };
+		expect(result.series).toBeNull();
 	});
 });

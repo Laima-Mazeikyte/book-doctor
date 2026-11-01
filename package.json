@@ -9,7 +9,10 @@
 	},
 	"scripts": {
 		"dev": "vite dev",
-		"build": "vite build",
+		"build": "pnpm run sitemap:check && vite build",
+		"sitemap:generate": "node scripts/sitemaps.mjs generate",
+		"sitemap:check": "node scripts/sitemaps.mjs check",
+		"test:sitemaps": "node --test scripts/sitemaps.test.mjs",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
@@ -20,6 +23,10 @@
 		"test": "pnpm run test:unit -- --run && pnpm run test:e2e",
 		"test:e2e": "playwright test",
 		"test:corrections:db": "node scripts/test-book-corrections-db.mjs",
+		"test:annotations:db": "node scripts/test-book-annotations-db.mjs",
+		"test:book-slugs:db": "node scripts/test-book-slugs-db.mjs",
+		"test:catalog-maintenance:db": "node scripts/test-book-catalog-maintenance-db.mjs",
+		"prepare:annotations": "node scripts/prepare-book-annotation-import.mjs",
 		"seed:top100": "node scripts/seed-top-100.mjs > supabase/seed_top_100_books.sql"
 	},
 	"devDependencies": {

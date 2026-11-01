@@ -1,6 +1,12 @@
 # App microcopy – edit strings here. Use {{variable}} for interpolation in code.
 # To add a locale later, add another top-level key (e.g. es:, fr:) with the same structure.
 en:
+  errors:
+    notFoundLabel: '404 / Page not found'
+    unavailableTitle: 'A brief intermission.'
+    unavailableDescription: 'Something went wrong while opening this page. Please try again shortly.'
+    status: 'Error {{status}}'
+    backHome: 'Back to home'
   librarySaves:
     noticeLabel: 'Unsaved library changes'
     failed: 'Couldn’t save {{changes}}.'

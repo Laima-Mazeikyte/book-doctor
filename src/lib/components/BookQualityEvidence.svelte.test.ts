@@ -1,43 +1,27 @@
 import { expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import BookQualityEvidence from './BookQualityEvidence.svelte';
-import type { Book, QualityBand } from '$lib/types/book';
-
-const book: Book = {
-	id: 'uuid-book-1',
-	book_id: '01KR2ADTNG29NSQV23VAGV8FXB',
-	title: 'A book',
-	author: 'An author'
-};
-
-const visibleBands: Array<[QualityBand, string]> = [
-	['top_0_1_percent', 'Top 0.1% of catalog'],
-	['top_1_percent', 'Top 1% of catalog'],
-	['top_5_percent', 'Top 5% of catalog'],
-	['top_10_percent', 'Top 10% of catalog'],
-	['top_25_percent', 'Top 25% of catalog']
-];
-
-it('renders the global catalog label for every visible band', async () => {
-	for (const [qualityBand, label] of visibleBands) {
-		const rendered = render(BookQualityEvidence, {
-			props: { book: { ...book, qualityBand } }
-		});
-
-		await expect
-			.element(rendered.getByTestId('book-quality-evidence'))
-			.toHaveTextContent(`Global catalog standing: ${label}`);
-		rendered.unmount();
-	}
+import type { Book } from '$lib/types/book';
+const book: Book = { id: 'uuid', book_id: 'ulid', title: 'Book', author: 'Author' };
+it('uses the shared stored book and author badges in the drawer renderer', async () => {
+	const screen = render(BookQualityEvidence, {
+		book: {
+			...book,
+			distinctions: {
+				book: { percent: 1, subject: 'book', rank: 10, populationCount: 1000, version: 'v1' },
+				author: { percent: 10, subject: 'author', rank: 100, populationCount: 1000, version: 'v1' }
+			}
+		}
+	});
+	await expect.element(screen.getByText('Top 1% book', { exact: true })).toBeVisible();
+	await expect.element(screen.getByText('Top 10% Author', { exact: true })).toBeVisible();
+	expect(document.querySelector('[data-testid="book-annotations"]')?.textContent).not.toContain(
+		'Global catalog'
+	);
+	screen.unmount();
 });
-
-it('renders no distinction for insufficient or below-top-25 evidence', async () => {
-	for (const qualityBand of [null, 'below_top_25'] as const) {
-		const rendered = render(BookQualityEvidence, {
-			props: { book: { ...book, qualityBand } }
-		});
-
-		expect(document.querySelector('[data-testid="book-quality-evidence"]')).toBeNull();
-		rendered.unmount();
-	}
+it('does not fall back to the old quality band when stored annotations are missing', () => {
+	const screen = render(BookQualityEvidence, { book: { ...book, qualityBand: 'top_1_percent' } });
+	expect(document.querySelector('[data-testid="book-annotations"]')).toBeNull();
+	screen.unmount();
 });

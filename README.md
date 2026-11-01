@@ -7,7 +7,13 @@ The SvelteKit frontend for browsing, rating, and receiving book recommendations.
 - **Node 22.12 or later**, required by the current Vite and Supabase dependencies.
 - **pnpm 9.15.9**, as declared in `package.json`.
 
-For the rate-entry changes, start with the [developer testing handoff](scripts/diagnostics/rate-entry-developer-handoff.md). It covers the shared database, test commands, expected UI behavior, and the open performance target.
+For the rate-entry changes, start with the [developer testing handoff](docs/development.md). It covers the shared database, test commands, expected UI behavior, and the open performance target.
+
+Book-page content, series navigation and personalized familiar-book connections are
+implemented locally. The shared v3 database installation is complete; do not replay
+backfills or reset it for development. See [catalog publication](docs/operations/catalog.md),
+[connections](docs/operations/connections.md), [sitemaps](docs/operations/sitemaps.md),
+and [remaining book-page work](docs/book-page.md) for the v4 release steps.
 
 ## Environment variables
 
@@ -45,7 +51,7 @@ pnpm run check
 pnpm exec vitest run
 ```
 
-See the [testing handoff](scripts/diagnostics/rate-entry-developer-handoff.md#automated-checks) for focused end-to-end commands and the separate production-preview timing benchmark.
+See the [testing handoff](docs/development.md) for focused end-to-end commands and the separate production-preview timing benchmark.
 
 ## Building
 

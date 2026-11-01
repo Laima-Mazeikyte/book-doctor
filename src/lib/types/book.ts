@@ -1,7 +1,13 @@
+import type { ReadingCharacteristic } from '$lib/books/characteristics';
+import type { BookDistinctions } from '$lib/books/distinctions';
+import type { BookAward } from '$lib/books/annotations';
+
 export interface Book {
 	id: string;
 	/** ULID business/catalog ID; used for persistence and Bunny cover filenames. */
 	book_id: string;
+	/** Permanent public address; absent only in older/minimal cached display records. */
+	slug?: string;
 	title: string;
 	author: string;
 	coverUrl?: string;
@@ -11,8 +17,13 @@ export interface Book {
 	genres?: string[];
 	/** Catalog `books.type` when present; reserved for future UI. */
 	type?: string;
-	/** Authoritative public quality band; null means no public distinction. */
+	/** Legacy catalog field retained for existing payloads; never a badge fallback. */
 	qualityBand?: QualityBand | null;
+	characteristics?: ReadingCharacteristic[];
+	keywords?: string[];
+	distinctions?: BookDistinctions;
+	/** Full detail responses include awards; list/feed responses omit this array. */
+	awards?: BookAward[] | null;
 }
 
 export type RatingValue = 1 | 2 | 3 | 4 | 5;

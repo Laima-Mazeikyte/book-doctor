@@ -1,6 +1,7 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { type BookGenreSlotRow } from '$lib/book-catalog-fields';
+import { BOOK_CATALOG_SELECT } from '$lib/book-catalog-fields';
+import type { BookCatalogRow } from '$lib/search/mapBookRowToBook';
 import { mapBookRowToBook } from '$lib/search/mapBookRowToBook';
 import { supabase, createSupabaseWithAuth } from '$lib/server/supabase';
 
@@ -32,14 +33,7 @@ function shuffleWithSeed<T>(arr: T[], seedStr: string): T[] {
 	return out;
 }
 
-type BookRow = {
-	id: string;
-	book_id: string;
-	book_name: string | null;
-	author: string;
-	summary: string | null;
-	year: number | null;
-} & BookGenreSlotRow & { type?: string | null };
+type BookRow = BookCatalogRow;
 
 type Top100CatalogRow = BookRow & {
 	genre: string;
@@ -53,9 +47,11 @@ function mapRowToBook(b: BookRow) {
 async function loadTop100Catalog(accessToken: string | null): Promise<Top100CatalogRow[]> {
 	if (accessToken) {
 		const supabaseAuth = createSupabaseWithAuth(accessToken);
-		const { data, error: rpcError } = await supabaseAuth.rpc('get_eligible_top_100_books');
+		const { data, error: rpcError } = await supabaseAuth.rpc(
+			'get_eligible_top_100_books_annotated'
+		);
 		if (rpcError) {
-			console.error('[popular] get_eligible_top_100_books failed:', rpcError);
+			console.error('[popular] get_eligible_top_100_books_annotated failed:', rpcError);
 			throw new Error('Failed to load books');
 		}
 		return (data ?? []) as Top100CatalogRow[];
@@ -63,9 +59,7 @@ async function loadTop100Catalog(accessToken: string | null): Promise<Top100Cata
 
 	const { data: rows, error: dbError } = await supabase
 		.from('top_100_books')
-		.select(
-			'book_id, genre, display_order, books(id, book_id, book_name, author, summary, year, genre1, genre2, genre3, genre4, genre5, genre6, genre7, type)'
-		)
+		.select(`book_id, genre, display_order, books(${BOOK_CATALOG_SELECT})`)
 		.order('display_order', { ascending: true });
 
 	if (dbError) {

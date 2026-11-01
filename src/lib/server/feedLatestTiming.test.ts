@@ -167,7 +167,7 @@ describe('latest feed unified RPC', () => {
 		expect(fixture.createWithAuth).toHaveBeenCalledExactlyOnceWith('fixture-token');
 		expect(calls).toEqual([
 			{
-				path: '/rest/v1/rpc/get_rate_feed_bootstrap',
+				path: '/rest/v1/rpc/get_rate_feed_bootstrap_annotated',
 				method: 'POST',
 				body: { p_limit: 50 },
 				authorization: 'Bearer fixture-token'
@@ -242,8 +242,8 @@ describe('latest feed unified RPC', () => {
 						...bookRow,
 						id: 'second-book',
 						book_id: 'second-ulid',
-						book_name: null,
-						author: null,
+						book_name: 'Second book',
+						author: 'Second author',
 						summary: null,
 						year: null,
 						rank: 1
@@ -258,7 +258,7 @@ describe('latest feed unified RPC', () => {
 			'first-book',
 			'second-book'
 		]);
-		expect(payload.books[1]).toMatchObject({ title: '', author: '' });
+		expect(payload.books[1]).toMatchObject({ title: 'Second book', author: 'Second author' });
 		expect(payload.books[1]).not.toHaveProperty('summary');
 		expect(payload.books[1]).not.toHaveProperty('year');
 	});
@@ -361,7 +361,9 @@ describe('latest feed unified RPC', () => {
 		{ ...bootstrap(), mode: 'unexpected_mode' },
 		{ ...bootstrap(), ratings_count: undefined },
 		{ ...bootstrap(), books: null },
-		{ ...bootstrap(), books: [{ book_id: 'missing-uuid' }] }
+		{ ...bootstrap(), books: [{ book_id: 'missing-uuid' }] },
+		{ ...bootstrap(), books: [{ ...bookRow, book_name: null }] },
+		{ ...bootstrap(), books: [{ ...bookRow, author: '' }] }
 	])(
 		'fails malformed RPC responses as load errors rather than empty feeds: %j',
 		async (payload) => {

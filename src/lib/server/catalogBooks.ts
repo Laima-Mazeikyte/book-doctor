@@ -1,4 +1,4 @@
-import { BOOK_GENRE_TYPE_SELECT, BOOK_QUALITY_SELECT } from '$lib/book-catalog-fields';
+import { BOOK_CATALOG_SELECT } from '$lib/book-catalog-fields';
 import { mapBookRowToBook, type BookCatalogRow } from '$lib/search/mapBookRowToBook';
 import type { Book } from '$lib/types/book';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -6,8 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 const CATALOG_BATCH_SIZE = 100;
 const MAX_CONCURRENT_CATALOG_BATCHES = 3;
 
-export const CATALOG_SELECT =
-	`id, book_id, book_name, author, summary, year, ${BOOK_GENRE_TYPE_SELECT}, ${BOOK_QUALITY_SELECT}` as const;
+export const CATALOG_SELECT = BOOK_CATALOG_SELECT;
 
 function uniqueIds(bookIds: string[]): string[] {
 	return [...new Set(bookIds)];

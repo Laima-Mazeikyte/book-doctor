@@ -11,6 +11,11 @@ const baseRow: BookCatalogRow = {
 };
 
 describe('mapBookRowToBook quality evidence', () => {
+	it('preserves the stored public slug despite a corrected title', () => {
+		expect(
+			mapBookRowToBook({ ...baseRow, slug: 'original-title-author', book_name: 'Corrected title' })
+		).toMatchObject({ slug: 'original-title-author', title: 'Corrected title' });
+	});
 	it('maps the authoritative band from a catalog row', () => {
 		const book = mapBookRowToBook({
 			...baseRow,

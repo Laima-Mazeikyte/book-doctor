@@ -16,6 +16,7 @@ const snapshot = (overrides: Partial<CachedRateFeed> = {}): CachedRateFeed => ({
 		{
 			id: 'uuid',
 			book_id: 'ulid',
+			slug: 'stored-title-author',
 			title: 'Title',
 			author: 'Author',
 			coverUrl: 'https://covers.example/ulid.avif',

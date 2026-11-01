@@ -70,17 +70,25 @@ function validate(manifest: BookRankingManifest): void {
 	}
 }
 
-export async function loadRelease(): Promise<Release> {
+export async function loadRelease(signal?: AbortSignal): Promise<Release> {
 	const base = resolveBookRankingArtifactBase(env.PUBLIC_BOOK_RANKINGS_BASE);
-	const webRoot = await resolveWebRoot(base);
-	const manifest = await fetchJson<BookRankingManifest>(joinUrl(base, webRoot, 'manifest.json'));
+	const webRoot = await resolveWebRoot(base, undefined, signal);
+	const manifest = await fetchJson<BookRankingManifest>(
+		joinUrl(base, webRoot, 'manifest.json'),
+		signal ? { signal } : undefined
+	);
 	validate(manifest);
 	return { base, webRoot, manifest };
 }
 
-export async function loadDataset(release: Release, mode: RankingMode): Promise<BookPopulation> {
+export async function loadDataset(
+	release: Release,
+	mode: RankingMode,
+	signal?: AbortSignal
+): Promise<BookPopulation> {
 	const payload = await fetchJson<RankingPayload>(
-		joinUrl(release.base, release.webRoot, release.manifest.datasets[mode])
+		joinUrl(release.base, release.webRoot, release.manifest.datasets[mode]),
+		signal ? { signal } : undefined
 	);
 	return buildPopulation(payload, release.manifest, mode);
 }
