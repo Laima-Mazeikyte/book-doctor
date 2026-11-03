@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import { page } from 'vitest/browser';
 import { tick } from 'svelte';
 import { get } from 'svelte/store';
 import type { Session } from '@supabase/supabase-js';
@@ -324,7 +323,7 @@ it('keeps the book visible during a failed author lookup and retries on demand',
 	await screen.getByRole('button', { name: book.author, exact: true }).click();
 	await expect
 		.element(screen.getByRole('alert'))
-		.toHaveTextContent('Couldn’t load books by this author.');
+		.toHaveTextContent('Couldn’t load other books by this author.');
 	await expect.element(screen.getByRole('heading', { name: book.title })).toBeVisible();
 	await screen.getByRole('button', { name: 'Retry', exact: true }).click();
 	await expect.element(screen.getByRole('link', { name: /Another Book/ })).toBeVisible();
@@ -332,234 +331,7 @@ it('keeps the book visible during a failed author lookup and retries on demand',
 	screen.unmount();
 });
 
-it('keeps all author covers mounted, moves the current-book highlight, and preserves scroll', async () => {
-	await page.viewport(390, 844);
-	const coverUrl = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-	const collection = [
-		book,
-		other,
-		...Array.from({ length: 46 }, (_, index) => ({
-			...book,
-			id: `uuid-volume-${index}`,
-			book_id: `01${String(index).padStart(24, '0')}`,
-			slug: `volume-${index}`,
-			title: `Volume ${index}`,
-			coverUrl
-		}))
-	];
-	const fetchMock = vi
-		.fn()
-		.mockResolvedValue(Response.json({ books: collection, truncated: false }));
-	vi.stubGlobal('fetch', fetchMock);
-	const screen = render(BookDetailPage, props);
-	try {
-		await screen.getByRole('button', { name: book.author, exact: true }).click();
-		await expect.element(screen.getByRole('link', { name: 'Volume 0', exact: true })).toBeVisible();
-		const panel = document.querySelector<HTMLElement>('.author-books')!;
-		// Component tests do not load the app's theme variables.
-		panel.style.setProperty('--color-text', '#202020');
-		const retainedLink = panel.querySelector('a[aria-label="Volume 0"]')!;
-		const retainedCover = retainedLink.querySelector('img');
-		const links = [...panel.querySelectorAll('a')];
-		const currentLink = panel.querySelector(`a[href="/books/${book.slug}"]`)!;
-		expect(currentLink.getAttribute('aria-current')).toBe('page');
-		expect(currentLink.classList.contains('author-book-cover--selected')).toBe(true);
-		expect(getComputedStyle(currentLink).boxShadow).not.toBe('none');
-		await expect
-			.element(
-				screen.getByRole('heading', {
-					name: `Books by ${book.author}`,
-					exact: true
-				})
-			)
-			.toBeVisible();
-		panel.scrollTop = 190;
-		panel.dispatchEvent(new Event('scroll'));
-		const scrollTop = panel.scrollTop;
-		expect(scrollTop).toBeGreaterThan(0);
-		const pageScroll = window.scrollY;
-		expect(panel.querySelectorAll('a')).toHaveLength(48);
-		expect(panel.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
-		for (const link of panel.querySelectorAll('a')) {
-			expect(link.hasAttribute('data-sveltekit-noscroll')).toBe(true);
-		}
-		await screen.rerender({ book: other });
-		await expect
-			.element(screen.getByRole('button', { name: other.author, exact: true }))
-			.toHaveAttribute('aria-expanded', 'true');
-		expect(document.querySelector('.author-books')).toBe(panel);
-		expect(panel.scrollTop).toBe(scrollTop);
-		expect(window.scrollY).toBe(pageScroll);
-		expect(panel.querySelector('a[aria-label="Volume 0"]')).toBe(retainedLink);
-		expect(retainedLink.querySelector('img')).toBe(retainedCover);
-		expect(panel.querySelector(`a[href="/books/${book.slug}"]`)).toBe(currentLink);
-		expect(currentLink.hasAttribute('aria-current')).toBe(false);
-		expect(currentLink.classList.contains('author-book-cover--selected')).toBe(false);
-		const selectedLink = panel.querySelector(`a[href="/books/${other.slug}"]`)!;
-		expect(selectedLink.getAttribute('aria-current')).toBe('page');
-		expect(selectedLink.classList.contains('author-book-cover--selected')).toBe(true);
-		expect(getComputedStyle(selectedLink).boxShadow).not.toBe('none');
-		for (const [index, link] of panel.querySelectorAll('a').entries()) {
-			expect(link).toBe(links[index]);
-		}
-		expect(panel.querySelectorAll('a')).toHaveLength(48);
-		expect(panel.textContent).not.toContain('Showing 48 books');
-		expect(fetchMock).toHaveBeenCalledTimes(1);
-		expect(
-			new URL(String(fetchMock.mock.calls[0][0]), location.origin).searchParams.has('exclude')
-		).toBe(false);
-		// Closing and navigating to another title must retain the reader's choice.
-		await screen.getByRole('button', { name: book.author, exact: true }).click();
-		await screen.rerender({ book });
-		expect(document.querySelector('.author-books')).toBeNull();
-		await expect
-			.element(screen.getByRole('button', { name: book.author, exact: true }))
-			.toHaveAttribute('aria-expanded', 'false');
-		await screen.getByRole('button', { name: book.author, exact: true }).click();
-		expect(document.querySelector('.author-books')?.scrollTop).toBe(scrollTop);
-		expect(fetchMock).toHaveBeenCalledTimes(1);
-	} finally {
-		screen.unmount();
-		await page.viewport(1280, 900);
-	}
-});
-
-it.each([false, true])(
-	'caps the author list at 48, includes the current book, and reports truncation %s',
-	async (truncated) => {
-		const collection = [
-			book,
-			other,
-			...Array.from({ length: 46 }, (_, index) => ({
-				...book,
-				id: `uuid-${index}`,
-				book_id: `01${String(index).padStart(24, '0')}`,
-				slug: `volume-${index}`,
-				title: `Volume ${index}`
-			}))
-		];
-		const fetchMock = vi.fn().mockResolvedValue(Response.json({ books: collection, truncated }));
-		vi.stubGlobal('fetch', fetchMock);
-		const screen = render(BookDetailPage, props);
-		await screen.getByRole('button', { name: book.author, exact: true }).click();
-		await expect
-			.element(screen.getByRole('link', { name: other.title, exact: true }))
-			.toBeVisible();
-		expect(document.querySelectorAll('.author-book-cover')).toHaveLength(48);
-		expect(document.querySelector('.author-books')?.textContent?.includes('Showing 48 books')).toBe(
-			truncated
-		);
-		await screen.rerender({ book: other });
-		expect(document.querySelectorAll('.author-book-cover')).toHaveLength(48);
-		expect(document.querySelector('.author-books')?.textContent?.includes('Showing 48 books')).toBe(
-			truncated
-		);
-		// The current title can also be outside the retained chronological window.
-		const laterBook = {
-			...other,
-			id: 'uuid-later',
-			book_id: '01KR2ADTNG29NSQV23VAGV8FXD',
-			slug: 'later-book',
-			title: 'Later Book'
-		};
-		await screen.rerender({ book: laterBook });
-		expect(document.querySelectorAll('.author-book-cover')).toHaveLength(48);
-		expect(
-			document.querySelector('.author-book-cover[aria-current="page"]')?.getAttribute('aria-label')
-		).toBe(laterBook.title);
-		expect(document.querySelector('.author-books')?.textContent).toContain('Showing 48 books');
-		expect(
-			[...document.querySelectorAll('.author-book-cover')]
-				.slice(0, 47)
-				.map((link) => link.getAttribute('aria-label'))
-		).toEqual(collection.slice(0, 47).map((item) => item.title));
-		expect(
-			document.querySelector('.author-book-cover:last-child')?.getAttribute('aria-current')
-		).toBe('page');
-		expect(fetchMock).toHaveBeenCalledTimes(1);
-		screen.unmount();
-	}
-);
-
-it('keeps a pending author lookup alive across same-author navigation and highlights the latest book', async () => {
-	let finish!: (response: Response) => void;
-	const fetchMock = vi.fn<typeof fetch>(
-		() =>
-			new Promise((resolve) => {
-				finish = resolve;
-			})
-	);
-	vi.stubGlobal('fetch', fetchMock);
-	const screen = render(BookDetailPage, props);
-	await screen.getByRole('button', { name: book.author, exact: true }).click();
-	const signal = fetchMock.mock.calls[0][1]?.signal;
-	await screen.rerender({ book: other });
-	expect(signal?.aborted).toBe(false);
-	await expect.element(screen.getByRole('status')).toHaveTextContent('Loading books…');
-	finish(Response.json({ books: [book, other], truncated: false }));
-	await expect.element(screen.getByRole('link', { name: book.title, exact: true })).toBeVisible();
-	expect(document.querySelectorAll('.author-book-cover')).toHaveLength(2);
-	expect(
-		document.querySelector('.author-book-cover[aria-current="page"]')?.getAttribute('href')
-	).toBe(`/books/${other.slug}`);
-	expect(fetchMock).toHaveBeenCalledTimes(1);
-	screen.unmount();
-	expect(signal?.aborted).toBe(true);
-});
-
-it('discards old-author results even when they arrive after the new author collection', async () => {
-	let finishOld!: (response: Response) => void;
-	const newBook = { ...other, author: 'Another Author' };
-	const newAuthorOther = { ...book, author: newBook.author };
-	const fetchMock = vi
-		.fn<typeof fetch>()
-		.mockImplementationOnce(
-			() =>
-				new Promise((resolve) => {
-					finishOld = resolve;
-				})
-		)
-		.mockResolvedValue(Response.json({ books: [newBook, newAuthorOther], truncated: false }));
-	vi.stubGlobal('fetch', fetchMock);
-	const screen = render(BookDetailPage, props);
-	await screen.getByRole('button', { name: book.author, exact: true }).click();
-	const oldSignal = fetchMock.mock.calls[0][1]?.signal;
-	await screen.rerender({ book: newBook });
-	expect(oldSignal?.aborted).toBe(true);
-	await expect
-		.element(screen.getByRole('button', { name: newBook.author, exact: true }))
-		.toHaveAttribute('aria-expanded', 'false');
-	await screen.getByRole('button', { name: newBook.author, exact: true }).click();
-	await expect.element(screen.getByRole('link', { name: book.title, exact: true })).toBeVisible();
-	finishOld(Response.json({ books: [], truncated: false }));
-	await tick();
-	await expect.element(screen.getByRole('link', { name: book.title, exact: true })).toBeVisible();
-	// Returning to an earlier author starts a fresh, closed section.
-	await screen.rerender({ book });
-	expect(document.querySelector('.author-books')).toBeNull();
-	await screen.getByRole('button', { name: book.author, exact: true }).click();
-	expect(fetchMock).toHaveBeenCalledTimes(3);
-	screen.unmount();
-});
-
-it.each([false, true])(
-	'includes and highlights the current book even when the collection is empty: %s',
-	async (empty) => {
-		vi.stubGlobal(
-			'fetch',
-			vi.fn().mockResolvedValue(Response.json({ books: empty ? [] : [book], truncated: false }))
-		);
-		const screen = render(BookDetailPage, props);
-		await screen.getByRole('button', { name: book.author, exact: true }).click();
-		await expect.element(screen.getByRole('link', { name: book.title, exact: true })).toBeVisible();
-		expect(document.querySelectorAll('.author-book-cover')).toHaveLength(1);
-		expect(document.querySelector('.author-book-cover')?.getAttribute('aria-current')).toBe('page');
-		expect(document.querySelector('.author-book-cover--selected')).not.toBeNull();
-		screen.unmount();
-	}
-);
-
-it('aborts the old author lookup on an author change and resets book-specific correction and cover state', async () => {
+it('aborts the old author lookup and resets the correction editor and failed main cover on a book change', async () => {
 	let finish: ((response: Response) => void) | undefined;
 	const fetchMock = vi.fn<typeof fetch>(
 		() =>
@@ -582,7 +354,7 @@ it('aborts the old author lookup on an author change and resets book-specific co
 	await expect.element(screen.getByRole('button', { name: 'Title', exact: true })).toBeVisible();
 	const signal = fetchMock.mock.calls[0][1]?.signal;
 	await screen.rerender({
-		book: { ...other, author: 'Another Author', coverUrl },
+		book: { ...other, coverUrl },
 		canonicalUrl: `https://unread.example/books/${other.slug}`
 	});
 	expect(signal?.aborted).toBe(true);

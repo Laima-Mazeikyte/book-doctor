@@ -9,9 +9,6 @@ Start with [development/testing](../../docs/development.md) and
 - [Database maintenance](../../docs/operations/database-maintenance.md): scripts/maintenance/
 - [Book-page behavior and pending features](../../docs/book-page.md)
 - [Backend annotation contract](../../docs/backend/book-annotations.md)
-- [Book-discovery catalog schema export](../catalog/export-book-discovery-schema.sql):
-  columns, indexes, SELECT policies, table grants and effective API read access;
-  one read-only metadata query; share its `schema_sql` result with backend.
 
 This folder retains reusable read-only feed/schema/latency diagnostics and browser
 probes. SQL intended for Logs Explorer uses a different dialect/source from Database

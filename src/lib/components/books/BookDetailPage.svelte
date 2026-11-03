@@ -1,10 +1,9 @@
 <script lang="ts">
-	import { onDestroy, tick, untrack } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
 	import BookCorrection from '$lib/components/book-card/BookCorrection.svelte';
 	import { resolve } from '$app/paths';
-	import { navigating } from '$app/state';
 	import { Bookmark, BookOpen, ChevronDown, LockKeyhole, Star, ThumbsDown } from 'lucide-svelte';
 	import type { Book, RatingValue } from '$lib/types/book';
 	import { bookPath } from '$lib/books/bookUrl';
@@ -40,30 +39,10 @@
 	let coverReadyFor = $state<string | null>(null);
 	const seriesImagesReady = $derived(coverReadyFor === book.book_id);
 	let authorExpanded = $state(false);
-	const author = $derived(book.author);
-	const currentBookId = $derived(book.book_id);
-	let authorCollection = $state<Book[]>([]);
-	let authorCollectionTruncated = $state(false);
-	const authorHasCurrentBook = $derived(
-		authorCollection.some((item) => item.book_id === currentBookId)
-	);
-	const authorBooks = $derived(
-		authorHasCurrentBook ? authorCollection : [...authorCollection.slice(0, 47), book]
-	);
-	const authorBooksTruncated = $derived(
-		authorCollectionTruncated || (!authorHasCurrentBook && authorCollection.length === 48)
-	);
-	const pendingAuthorBook = $derived(
-		navigating.to
-			? authorBooks.find(
-					(item) => item.slug && resolve(bookPath(item)) === navigating.to?.url.pathname
-				)
-			: undefined
-	);
+	let authorBooks = $state<Book[]>([]);
+	let authorBooksTruncated = $state(false);
 	let authorBooksStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
 	let authorController: AbortController | null = null;
-	let authorPanel = $state<HTMLElement>();
-	let authorScrollTop = 0;
 	const failedAuthorCovers = new SvelteSet<string>();
 	const ratingOptions: RatingValue[] = [1, 2, 3, 4, 5];
 	const rating = $derived($ratingsStore.get(book.id) ?? 0);
@@ -117,20 +96,19 @@
 		authorController = new AbortController();
 		const controller = authorController;
 		authorBooksStatus = 'loading';
-		const requestedAuthor = author;
-		const params = new URLSearchParams({ author: requestedAuthor });
+		const params = new URLSearchParams({ author: book.author, exclude: book.book_id });
 		try {
 			const response = await fetch(`${resolve('/api/books/by-author')}?${params}`, {
 				signal: controller.signal
 			});
 			if (!response.ok) throw new Error('Unable to load author books');
 			const payload: { books: Book[]; truncated: boolean } = await response.json();
-			if (controller.signal.aborted || requestedAuthor !== author) return;
-			authorCollection = payload.books.slice(0, 48);
-			authorCollectionTruncated = payload.truncated || payload.books.length > 48;
+			if (controller.signal.aborted) return;
+			authorBooks = payload.books;
+			authorBooksTruncated = payload.truncated;
 			authorBooksStatus = 'ready';
 		} catch {
-			if (!controller.signal.aborted && requestedAuthor === author) authorBooksStatus = 'error';
+			if (!controller.signal.aborted) authorBooksStatus = 'error';
 		}
 	}
 
@@ -139,33 +117,18 @@
 		if (authorExpanded) void loadAuthorBooks();
 	}
 
-	function restoreAuthorScroll(node: HTMLElement) {
-		node.scrollTop = authorScrollTop;
-	}
-
-	$effect.pre(() => {
-		void currentBookId;
-		const panel = untrack(() => authorPanel);
-		if (!panel) return;
-		const scrollTop = panel.scrollTop;
-		void tick().then(() => {
-			if (panel.isConnected) panel.scrollTop = scrollTop;
-		});
-	});
-
 	onDestroy(() => authorController?.abort());
 
 	$effect(() => {
-		// Track the derived author value so same-author book changes retain this state.
-		void author;
+		// The page now survives book changes so the series strip can stay mounted.
+		void book.book_id;
 		untrack(() => {
 			authorController?.abort();
 			authorController = null;
 			authorExpanded = false;
-			authorCollection = [];
-			authorCollectionTruncated = false;
+			authorBooks = [];
+			authorBooksTruncated = false;
 			authorBooksStatus = 'idle';
-			authorScrollTop = 0;
 			failedAuthorCovers.clear();
 		});
 	});
@@ -276,34 +239,20 @@
 					{book.author}<ChevronDown size={18} aria-hidden="true" />
 				</button>
 				{#if authorExpanded}
-					<section
-						bind:this={authorPanel}
-						use:restoreAuthorScroll
-						onscroll={(event) => (authorScrollTop = event.currentTarget.scrollTop)}
-						id="author-books"
-						class="author-books"
-						aria-label={`Books by ${book.author} in publication order`}
-					>
-						<h2 class="eyebrow author-books-title">Books by {book.author}</h2>
-						<p class="muted author-books-subtitle">in publication order</p>
+					<section id="author-books" class="author-books" aria-label={`More by ${book.author}`}>
+						<h2 class="eyebrow">More by {book.author}</h2>
 						{#if authorBooksStatus === 'loading'}
-							<p class="muted" role="status">Loading books…</p>
+							<p class="muted" role="status">Loading other books…</p>
 						{:else if authorBooksStatus === 'error'}
-							<p class="muted" role="alert">Couldn’t load books by this author.</p>
+							<p class="muted" role="alert">Couldn’t load other books by this author.</p>
 							<button class="text-button" onclick={() => void loadAuthorBooks()}>Retry</button>
-						{:else}
+						{:else if authorBooks.length}
 							<div class="author-cover-grid">
 								{#each authorBooks as item (item.book_id)}
 									<!-- eslint-disable svelte/no-navigation-without-resolve -- The populated branch uses resolve; older cached records deliberately have no href. -->
 									<a
 										class="author-book-cover"
-										class:author-book-cover--selected={pendingAuthorBook
-											? pendingAuthorBook.book_id === item.book_id
-											: item.book_id === currentBookId}
 										href={item.slug ? resolve(bookPath(item)) : undefined}
-										data-sveltekit-noscroll
-										aria-current={item.book_id === currentBookId ? 'page' : undefined}
-										aria-busy={pendingAuthorBook?.book_id === item.book_id ? 'true' : undefined}
 										aria-label={item.title}
 										title={item.title}
 									>
@@ -323,9 +272,11 @@
 								{/each}
 							</div>
 							{#if authorBooksTruncated}<p class="muted">
-									Showing 48 books from this catalog.
+									Showing the first 48 other books in this catalog.
 								</p>{/if}
-						{/if}
+						{:else}<p class="muted">
+								No other books by this author are available in the catalog yet.
+							</p>{/if}
 					</section>
 				{/if}
 			{/if}
@@ -499,12 +450,6 @@
 		grid-template-columns: repeat(auto-fill, minmax(4rem, 1fr));
 		gap: 0.75rem;
 	}
-	.author-books-title {
-		margin-bottom: 0.25rem;
-	}
-	.author-books-subtitle {
-		margin: 0 0 0.75rem;
-	}
 	.author-book-cover {
 		display: grid;
 		place-items: center;
@@ -520,10 +465,6 @@
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
-	}
-	.author-book-cover--selected {
-		border-color: var(--color-text);
-		box-shadow: 0 0 0 1px var(--color-text);
 	}
 	.metadata {
 		display: flex;

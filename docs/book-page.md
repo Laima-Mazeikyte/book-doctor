@@ -45,21 +45,12 @@ visits skip speculation and hover/focus intent takes precedence. During navigati
 only the selected-cover outline moves: no visible dimming, spinner or loading label.
 The same-series strip and image elements stay mounted, preserve horizontal position,
 and do not recenter. Series clicks preserve vertical scroll. A different series gets
-a fresh strip. Author expansion, loaded covers, in-flight requests and panel scroll
-persist across books with the exact same catalog author. Author-cover clicks preserve
-page scroll. Switching authors resets the section and aborts old requests; late
-responses are ignored. Reloads start with the author section closed.
+a fresh strip. Author expansion/fetch state resets on book changes and old requests abort.
 
 Titles retain the original responsive CSS and natural wrapping. Adaptive title
 fitting was explicitly reverted; longer titles can move subsequent content. Author
-books remain fetched only after the author is clicked. One bounded chronological
-author collection is reused during same-author navigation. A subtitle states
-publication order (oldest first, unknown years last). The current book stays in the
-list, marked with aria-current and the same outline as a selected series cover.
-At most 48 covers appear, with a truncation notice when needed; if the current book
-falls outside the first 48, it follows the earliest 47. Manually closing the section
-retains its collection and scroll position. No public catalog directory or
-server-side author-books request is required for this release.
+books remain fetched only after the author is clicked. No public catalog directory
+or server-side author-books request is required for this release.
 
 ## Personalized familiar-book connections
 
