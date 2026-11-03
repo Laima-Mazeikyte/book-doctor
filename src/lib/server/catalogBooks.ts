@@ -2,6 +2,7 @@ import { BOOK_GENRE_TYPE_SELECT } from '$lib/book-catalog-fields';
 import { mapBookRowToBook, type BookCatalogRow } from '$lib/search/mapBookRowToBook';
 import type { Book } from '$lib/types/book';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { readBookIdBatches } from '$lib/supabase/pagination';
 
 export async function fetchBooksByUlidsInOrder(
 	supabase: SupabaseClient,
@@ -9,10 +10,12 @@ export async function fetchBooksByUlidsInOrder(
 ): Promise<Book[]> {
 	if (orderedBookIds.length === 0) return [];
 
-	const { data: booksData, error: booksError } = await supabase
-		.from('books')
-		.select(`id, book_id, book_name, author, summary, year, ${BOOK_GENRE_TYPE_SELECT}`)
-		.in('book_id', orderedBookIds);
+	const { data: booksData, error: booksError } = await readBookIdBatches(orderedBookIds, (ids) =>
+		supabase
+			.from('books')
+			.select(`id, book_id, book_name, author, summary, year, ${BOOK_GENRE_TYPE_SELECT}`)
+			.in('book_id', ids)
+	);
 
 	if (booksError) throw booksError;
 
@@ -29,10 +32,12 @@ export async function fetchBooksByUlids(
 ): Promise<Book[]> {
 	if (bookIds.length === 0) return [];
 
-	const { data: booksData, error: booksError } = await supabase
-		.from('books')
-		.select(`id, book_id, book_name, author, summary, year, ${BOOK_GENRE_TYPE_SELECT}`)
-		.in('book_id', bookIds);
+	const { data: booksData, error: booksError } = await readBookIdBatches(bookIds, (ids) =>
+		supabase
+			.from('books')
+			.select(`id, book_id, book_name, author, summary, year, ${BOOK_GENRE_TYPE_SELECT}`)
+			.in('book_id', ids)
+	);
 
 	if (booksError) throw booksError;
 

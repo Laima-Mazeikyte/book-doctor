@@ -3,16 +3,21 @@ import type { RequestHandler } from './$types';
 import { fetchBooksByUlidsInOrder } from '$lib/server/catalogBooks';
 import { requireAccessToken } from '$lib/server/requestAuth';
 import { createSupabaseWithAuth } from '$lib/server/supabase';
+import { readAllPages } from '$lib/supabase/pagination';
 
 /** Returns full book details for the current user's not-interested list. */
 export const GET: RequestHandler = async ({ request }) => {
 	const accessToken = requireAccessToken(request);
 	const supabase = createSupabaseWithAuth(accessToken);
 
-	const { data: rows, error: selectError } = await supabase
-		.from('user_not_interested')
-		.select('book_id, created_at')
-		.order('created_at', { ascending: false });
+	const { data: rows, error: selectError } = await readAllPages((from, to) =>
+		supabase
+			.from('user_not_interested')
+			.select('book_id, created_at')
+			.order('created_at', { ascending: false })
+			.order('book_id', { ascending: true })
+			.range(from, to)
+	);
 
 	if (selectError) {
 		console.error(selectError);

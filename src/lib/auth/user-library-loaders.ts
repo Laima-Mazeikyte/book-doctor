@@ -24,6 +24,7 @@ import {
 } from '$lib/stores/userLibrary';
 import type { Book, RatingValue } from '$lib/types/book';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { readAllPages, readBookIdBatches } from '$lib/supabase/pagination';
 
 type RatingIdRow = BookIdJoinRow & {
 	book_rating: RatingValue;
@@ -174,6 +175,8 @@ export async function loadUserLibraryIds(
 ): Promise<void> {
 	try {
 		await loadUserLibraryIdsBody(supabase, userId, requestId, coordinator);
+	} catch (error) {
+		console.error('[library] Failed to load library ids:', error);
 	} finally {
 		if (!coordinator.isStale(requestId)) {
 			markUserLibraryIdsReady(userId);
@@ -190,16 +193,38 @@ async function loadUserLibraryIdsBody(
 	const isStale = () => coordinator.isStale(requestId);
 
 	const [ratingsResult, bookmarksResult, notInterestedResult] = await Promise.all([
-		supabase
-			.from('user_ratings')
-			.select('book_id, book_rating, books(id, book_id)')
-			// Drives the bookshelf "Newest" order: most recently rated/re-rated first, with
-			// book_id as a stable tiebreaker so batch imports (shared updated_at) don't shuffle.
-			.order('updated_at', { ascending: false })
-			.order('book_id', { ascending: true })
-			.eq('user_id', userId),
-		supabase.from('user_bookmarks').select('book_id, books(id, book_id)').eq('user_id', userId),
-		supabase.from('user_not_interested').select('book_id').eq('user_id', userId)
+		readAllPages(
+			(from, to) =>
+				supabase
+					.from('user_ratings')
+					.select('book_id, book_rating, books(id, book_id)')
+					// Stable order even when batch imports share updated_at.
+					.order('updated_at', { ascending: false })
+					.order('book_id', { ascending: true })
+					.eq('user_id', userId)
+					.range(from, to),
+			isStale
+		),
+		readAllPages(
+			(from, to) =>
+				supabase
+					.from('user_bookmarks')
+					.select('book_id, books(id, book_id)')
+					.eq('user_id', userId)
+					.order('book_id', { ascending: true })
+					.range(from, to),
+			isStale
+		),
+		readAllPages(
+			(from, to) =>
+				supabase
+					.from('user_not_interested')
+					.select('book_id')
+					.eq('user_id', userId)
+					.order('book_id', { ascending: true })
+					.range(from, to),
+			isStale
+		)
 	]);
 
 	if (isStale()) return;
@@ -268,6 +293,8 @@ export async function loadUserLibraryDetails(
 ): Promise<void> {
 	try {
 		await loadUserLibraryDetailsBody(supabase, userId, requestId, coordinator);
+	} catch (error) {
+		console.error('[library] Failed to load rated book details:', error);
 	} finally {
 		if (!coordinator.isStale(requestId)) {
 			markUserLibraryDetailsReady(userId);
@@ -283,13 +310,19 @@ async function loadUserLibraryDetailsBody(
 ): Promise<void> {
 	const isStale = () => coordinator.isStale(requestId);
 
-	const { data: rows, error: ratingsError } = await supabase
-		.from('user_ratings')
-		.select(
-			`book_id, book_rating, books(id, book_id, book_name, author, year, summary, ${BOOK_GENRE_TYPE_SELECT})`
-		)
-		.eq('user_id', userId)
-		.order('updated_at', { ascending: false });
+	const { data: rows, error: ratingsError } = await readAllPages(
+		(from, to) =>
+			supabase
+				.from('user_ratings')
+				.select(
+					`book_id, book_rating, books(id, book_id, book_name, author, year, summary, ${BOOK_GENRE_TYPE_SELECT})`
+				)
+				.eq('user_id', userId)
+				.order('updated_at', { ascending: false })
+				.order('book_id', { ascending: true })
+				.range(from, to),
+		isStale
+	);
 
 	if (isStale()) return;
 
@@ -315,11 +348,17 @@ async function loadUserLibraryDetailsBody(
 	> = [];
 
 	if (unresolvedDetailUlids.length > 0) {
-		const { data: bookRows } = await supabase
-			.from('books')
-			.select(`id, book_id, book_name, author, year, summary, ${BOOK_GENRE_TYPE_SELECT}`)
-			.in('book_id', unresolvedDetailUlids);
+		const { data: bookRows, error: booksError } = await readBookIdBatches(
+			unresolvedDetailUlids,
+			(ids) =>
+				supabase
+					.from('books')
+					.select(`id, book_id, book_name, author, year, summary, ${BOOK_GENRE_TYPE_SELECT}`)
+					.in('book_id', ids),
+			isStale
+		);
 		if (isStale()) return;
+		if (booksError) throw booksError;
 		if (bookRows) {
 			bookIdByUlid = Object.fromEntries(bookRows.map((b) => [b.book_id, String(b.id)])) as Record<
 				string,

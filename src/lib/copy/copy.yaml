@@ -60,6 +60,15 @@ en:
     loadError: "Couldn't load your bookshelf right now. Please refresh to try again."
     emptyBookmarked: 'No bookmarked books yet. Titles you save stay here even if you also rate them.'
     emptyNotInterested: 'No books marked as not interested yet.'
+    search:
+      placeholders:
+        rated: 'Search rated books by title or author'
+        bookmarked: 'Search bookmarks by title or author'
+        not-interested: 'Search not interested books by title or author'
+      noResults:
+        rated: 'No rated books match your search.'
+        bookmarked: 'No bookmarks match your search.'
+        not-interested: 'No books marked as not interested match your search.'
     tabs:
       ariaLabel: 'Filter your shelf'
       rated: 'Rated'
@@ -68,8 +77,10 @@ en:
     sort:
       label: 'Sort'
       ariaLabel: 'Sort books on your shelf'
-      newest: 'Newest'
-      oldest: 'Oldest'
+      newest: 'Recently added'
+      oldest: 'First added'
+      yearNewest: 'Newest first'
+      yearOldest: 'Oldest first'
       ratingHigh: 'Highest rating'
       ratingLow: 'Lowest rating'
 

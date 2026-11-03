@@ -392,6 +392,7 @@ function createRatingsStore() {
 						book_id: e.book_id,
 						title: e.title,
 						author: e.author,
+						year: e.year,
 						coverUrl: coverUrlForBookId(e.book_id)
 					}
 				])
