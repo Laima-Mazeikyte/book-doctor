@@ -276,7 +276,7 @@
 		}
 	});
 
-	// Persist a compact snapshot of the rated library (5 fields) so the next load paints instantly.
+	// Persist a compact snapshot, including years for sorting, so the next load paints instantly.
 	// Debounced, and only non-empty snapshots are written — a transient empty state or a failed
 	// server load never clobbers a good cache.
 	const ratedBooksForCache = ratingsStore.ratedBooks;
@@ -289,6 +289,7 @@
 			book_id: book.book_id,
 			title: book.title,
 			author: book.author,
+			year: book.year,
 			rating
 		}));
 		const timer = setTimeout(() => writeLibraryCache(user.id, snapshot), 800);

@@ -13,21 +13,20 @@
 	import { bookmarksPageStore } from '$lib/stores/bookmarksPage';
 	import { recommendationsCountStore } from '$lib/stores/recommendationsCount';
 	import { ratedSummarySheetKeepAlive } from '$lib/stores/ratedSummarySheetKeepAlive';
-	import {
-		isUserLibraryDetailsReady,
-		userLibraryHydrationStore
-	} from '$lib/stores/userLibrary';
+	import { isUserLibraryDetailsReady, userLibraryHydrationStore } from '$lib/stores/userLibrary';
 	import BookCard from '$lib/components/BookCard.svelte';
 	import BookCardGridSkeleton from '$lib/components/BookCardGridSkeleton.svelte';
+	import SearchBar from '$lib/components/SearchBar.svelte';
+	import ShelfSortMenu from '$lib/components/ShelfSortMenu.svelte';
 	import {
 		coverPriorityFor,
 		estimateGridColumns,
 		trackGridColumns
 	} from '$lib/components/book-card/coverPriority';
 	import NavStyleTabList from '$lib/components/NavStyleTabList.svelte';
-	import { ChevronDown } from 'lucide-svelte';
 	import { t } from '$lib/copy';
 	import type { Book, RatingValue } from '$lib/types/book';
+	import { createShelfSearch } from '$lib/search/shelfSearch';
 
 	/** Rendered column count for the bookshelf grid — drives cover eager/lazy priority. */
 	let gridColumns = $state(estimateGridColumns());
@@ -38,7 +37,14 @@
 	const LS_FILTER_KEY = 'book-doctor:my-bookshelf-filter';
 	const LS_SORT_KEY = 'book-doctor:my-bookshelf-sort';
 
-	const SHELF_SORT_IDS = ['newest', 'oldest', 'rating-high', 'rating-low'] as const;
+	const SHELF_SORT_IDS = [
+		'newest',
+		'oldest',
+		'year-newest',
+		'year-oldest',
+		'rating-high',
+		'rating-low'
+	] as const;
 	type ShelfSortId = (typeof SHELF_SORT_IDS)[number];
 
 	function isValidShelfSortId(s: string | null | undefined): s is ShelfSortId {
@@ -65,7 +71,22 @@
 		return 'newest';
 	}
 
-	/** Recency order is list order; rating sorts use `ratings` (0 = unrated). Ties keep recency order. */
+	function publicationYear(book: Book): number | null {
+		const value = book.year?.trim() ?? '';
+		if (!/^-?\d+$/.test(value)) return null;
+		const year = Number(value);
+		return Number.isSafeInteger(year) && year !== 0 ? year : null;
+	}
+
+	function comparePublicationYears(a: Book, b: Book, order: 'year-newest' | 'year-oldest'): number {
+		const yearA = publicationYear(a);
+		const yearB = publicationYear(b);
+		if (yearA === null) return yearB === null ? 0 : 1;
+		if (yearB === null) return -1;
+		return order === 'year-newest' ? yearB - yearA : yearA - yearB;
+	}
+
+	/** Recency order is list order; ties keep recency order and unknown years always sort last. */
 	function sortBooksByShelfOrder(
 		books: Book[],
 		order: ShelfSortId,
@@ -77,6 +98,13 @@
 
 		const baseIdx = new Map(books.map((book, i) => [book.id, i]));
 		const ratingOf = (id: string) => ratings.get(id) ?? 0;
+		if (order === 'year-newest' || order === 'year-oldest') {
+			return arr.sort(
+				(a, b) =>
+					comparePublicationYears(a, b, order) ||
+					(baseIdx.get(a.id) ?? 0) - (baseIdx.get(b.id) ?? 0)
+			);
+		}
 
 		if (order === 'rating-high') {
 			arr.sort((a, b) => {
@@ -103,6 +131,12 @@
 
 	let activeFilter = $state<FilterId>('rated');
 	let sortOrder = $state<ShelfSortId>(readSortFromLs());
+	let shelfSearch = $state<Record<FilterId, string>>({
+		rated: '',
+		bookmarked: '',
+		'not-interested': ''
+	});
+	const shelfSearchQuery = $derived(shelfSearch[activeFilter].trim().toLowerCase());
 
 	// Canonical reactive rated-book list (rating values joined with book details). Reading this —
 	// instead of hand-joining $ratingsStore + getRatedBook — is what keeps the list rebuilding as
@@ -134,6 +168,14 @@
 						if (diff !== 0) return diff;
 						return (baseIdx.get(a.book.id) ?? 0) - (baseIdx.get(b.book.id) ?? 0);
 					});
+					entries = sorted;
+				} else if (sortOrder === 'year-newest' || sortOrder === 'year-oldest') {
+					const order = sortOrder;
+					sorted.sort(
+						(a, b) =>
+							comparePublicationYears(a.book, b.book, order) ||
+							(baseIdx.get(a.book.id) ?? 0) - (baseIdx.get(b.book.id) ?? 0)
+					);
 					entries = sorted;
 				} else {
 					sorted.sort((a, b) => {
@@ -315,29 +357,39 @@
 		{ id: 'bookmarked' as FilterId, label: t('rated.tabs.bookmarked') },
 		{ id: 'not-interested' as FilterId, label: t('rated.tabs.notInterested') }
 	]);
+	const searchPlaceholder = $derived(t(`rated.search.placeholders.${activeFilter}`));
 
-	const sortOptionLabel = $derived.by((): string => {
-		switch (sortOrder) {
-			case 'newest':
-				return t('rated.sort.newest');
-			case 'oldest':
-				return t('rated.sort.oldest');
-			case 'rating-high':
-				return t('rated.sort.ratingHigh');
-			case 'rating-low':
-				return t('rated.sort.ratingLow');
-			default: {
-				const _x: never = sortOrder;
-				return _x;
-			}
-		}
-	});
+	const sortOptions: { value: ShelfSortId; label: string }[] = $derived([
+		{ value: 'newest', label: t('rated.sort.newest') },
+		{ value: 'oldest', label: t('rated.sort.oldest') },
+		{ value: 'year-newest', label: t('rated.sort.yearNewest') },
+		{ value: 'year-oldest', label: t('rated.sort.yearOldest') },
+		{ value: 'rating-high', label: t('rated.sort.ratingHigh') },
+		{ value: 'rating-low', label: t('rated.sort.ratingLow') }
+	]);
 
 	const bookmarkTabBooks = $derived(
 		bookmarkBooks.filter((b) => !isNotInterested(b, notInterestedIds))
 	);
 
 	const niTabBooks = $derived(niBooks.filter((b) => $notInterestedStore.has(b.book_id)));
+	const ratedSearchBooks = $derived.by(() => {
+		const keep = $ratedSummarySheetKeepAlive;
+		return keep && !ratedBooksForPartition.some((book) => book.id === keep.bookId)
+			? [...ratedBooksForPartition, keep.book]
+			: ratedBooksForPartition;
+	});
+	const ratedSearchIndex = $derived(createShelfSearch(ratedSearchBooks));
+	const bookmarkSearchIndex = $derived(createShelfSearch(bookmarkTabBooks));
+	const niSearchIndex = $derived(createShelfSearch(niTabBooks));
+	const activeSearchIndex = $derived(
+		activeFilter === 'rated'
+			? ratedSearchIndex
+			: activeFilter === 'bookmarked'
+				? bookmarkSearchIndex
+				: niSearchIndex
+	);
+	const matchingBookIds = $derived(activeSearchIndex.matchingIds(shelfSearchQuery));
 
 	const sortedBookmarkTabBooks = $derived.by(() =>
 		sortBooksByShelfOrder(bookmarkTabBooks, sortOrder, $ratingsStore)
@@ -360,11 +412,16 @@
 		activeFilter === 'rated' && ratedHydrating && ratedDisplayEntries.length === 0
 	);
 
-	const currentListBooks = $derived.by((): Book[] => {
+	const currentShelfBooks = $derived.by((): Book[] => {
 		if (activeFilter === 'rated') return ratedDisplayEntries.map((e) => e.book);
 		if (activeFilter === 'bookmarked') return sortedBookmarkTabBooks;
 		return sortedNiTabBooks;
 	});
+	const currentListBooks = $derived(
+		matchingBookIds === null
+			? currentShelfBooks
+			: currentShelfBooks.filter((book) => matchingBookIds.has(book.id))
+	);
 
 	function setSortOrder(next: ShelfSortId) {
 		sortOrder = next;
@@ -402,7 +459,7 @@
 			niBooks = niBooks.filter((b) => b.book_id !== book.book_id);
 			if (!bookmarkBooks.some((b) => b.id === book.id)) {
 				const rest = bookmarkBooks.filter((b) => b.id !== book.id);
-				bookmarkBooks = sortOrder === 'oldest' ? [...rest, book] : [book, ...rest];
+				bookmarkBooks = [book, ...rest];
 				bookmarksPageStore.setBooks(bookmarkBooks);
 			}
 		}
@@ -427,7 +484,7 @@
 			}
 			{
 				const rest = niBooks.filter((b) => b.id !== book.id);
-				niBooks = sortOrder === 'oldest' ? [...rest, book] : [book, ...rest];
+				niBooks = [book, ...rest];
 			}
 		} else if (wasNotInterested && !nowNotInterested) {
 			niBooks = niBooks.filter((b) => b.book_id !== book.book_id);
@@ -449,6 +506,14 @@
 <div class="bookshelf-page">
 	<h1 class="bookshelf-page__title typ-display2 typ-display2--content">{t('rated.title')}</h1>
 
+	<div class="bookshelf-page__search">
+		<SearchBar
+			bind:value={shelfSearch[activeFilter]}
+			placeholder={searchPlaceholder}
+			ariaLabel={searchPlaceholder}
+		/>
+	</div>
+
 	<div class="bookshelf-page__tabs-wrap">
 		<NavStyleTabList
 			ariaLabel={t('rated.tabs.ariaLabel')}
@@ -462,25 +527,14 @@
 		/>
 		<div class="bookshelf-page__tabs-sort-divider" aria-hidden="true"></div>
 		<div class="bookshelf-page__sort">
-			<span class="bookshelf-page__sort-sizer" aria-hidden="true">{sortOptionLabel}</span>
-			<select
-				id="bookshelf-sort"
-				class="bookshelf-page__sort-select"
-				aria-label={t('rated.sort.ariaLabel')}
+			<ShelfSortMenu
+				options={sortOptions}
 				value={sortOrder}
-				onchange={(e) => {
-					const v = (e.currentTarget as HTMLSelectElement).value;
-					if (isValidShelfSortId(v)) setSortOrder(v);
+				ariaLabel={t('rated.sort.ariaLabel')}
+				onChange={(value) => {
+					if (isValidShelfSortId(value)) setSortOrder(value);
 				}}
-			>
-				<option value="newest">{t('rated.sort.newest')}</option>
-				<option value="oldest">{t('rated.sort.oldest')}</option>
-				<option value="rating-high">{t('rated.sort.ratingHigh')}</option>
-				<option value="rating-low">{t('rated.sort.ratingLow')}</option>
-			</select>
-			<span class="bookshelf-page__sort-chevron" aria-hidden="true">
-				<ChevronDown size={18} strokeWidth={2} />
-			</span>
+			/>
 		</div>
 	</div>
 
@@ -501,6 +555,10 @@
 			<p class="bookshelf-page__empty">{t('rated.emptyBookmarked')}</p>
 		{:else if activeFilter === 'not-interested' && niTabBooks.length === 0}
 			<p class="bookshelf-page__empty">{t('rated.emptyNotInterested')}</p>
+		{:else if currentListBooks.length === 0}
+			<p class="bookshelf-page__empty" role="status">
+				{t(`rated.search.noResults.${activeFilter}`)}
+			</p>
 		{:else}
 			<ul
 				class="bookshelf-page__list book-card-grid"
@@ -508,7 +566,7 @@
 				use:trackGridColumns={(c) => (gridColumns = c)}
 			>
 				{#if activeFilter === 'rated'}
-					{#each ratedDisplayEntries as { book }, i (book.id)}
+					{#each currentListBooks as book, i (book.id)}
 						<li>
 							<BookCard
 								context="rated"
@@ -568,6 +626,12 @@
 		align-self: stretch;
 		min-width: 0;
 	}
+	.bookshelf-page__search {
+		width: 100%;
+		min-width: 0;
+		max-width: min(48rem, 100%);
+		margin: 0 auto var(--space-5);
+	}
 	.bookshelf-page__tabs-wrap {
 		display: flex;
 		flex-wrap: nowrap;
@@ -606,82 +670,9 @@
 		}
 	}
 	.bookshelf-page__sort {
-		position: relative;
 		display: inline-flex;
-		align-items: stretch;
 		flex-shrink: 0;
 		max-width: 100%;
-		vertical-align: middle;
-		border-radius: var(--radius-pill);
-		background: transparent;
-		cursor: pointer;
-		transition: background 0.15s ease;
-	}
-	.bookshelf-page__sort:hover {
-		background: var(--color-interactive-hover-subtle);
-	}
-	/**
-	 * Sizer width = selected label only (native `<select>` uses widest option otherwise).
-	 * Padding matches `.nav-style-tabs__tab` + `space-1` + 18px chevron (like label + gap + count).
-	 */
-	.bookshelf-page__sort-sizer {
-		display: inline-block;
-		padding: var(--chrome-menu-padding-block)
-			calc(var(--chrome-menu-padding-inline) + var(--space-1) + 1.125rem)
-			var(--chrome-menu-padding-block) var(--chrome-menu-padding-inline);
-		font-family: var(--typ-interactive-2-font-family);
-		font-size: var(--typ-interactive-2-font-size);
-		font-weight: var(--typ-interactive-2-font-weight);
-		line-height: var(--typ-interactive-2-line-height);
-		letter-spacing: var(--typ-interactive-2-letter-spacing);
-		white-space: nowrap;
-		visibility: hidden;
-		pointer-events: none;
-	}
-	.bookshelf-page__sort-select {
-		appearance: none;
-		-webkit-appearance: none;
-		position: absolute;
-		inset: 0;
-		box-sizing: border-box;
-		width: 100%;
-		height: 100%;
-		margin: 0;
-		min-width: 0;
-		padding: var(--chrome-menu-padding-block)
-			calc(var(--chrome-menu-padding-inline) + var(--space-1) + 1.125rem)
-			var(--chrome-menu-padding-block) var(--chrome-menu-padding-inline);
-		font-family: var(--typ-interactive-2-font-family);
-		font-size: var(--typ-interactive-2-font-size);
-		font-weight: var(--typ-interactive-2-font-weight);
-		line-height: var(--typ-interactive-2-line-height);
-		letter-spacing: var(--typ-interactive-2-letter-spacing);
-		color: var(--color-text-muted);
-		background: transparent;
-		border: none;
-		border-radius: inherit;
-		cursor: pointer;
-		transition: color 0.15s ease;
-	}
-	.bookshelf-page__sort:hover .bookshelf-page__sort-select {
-		color: var(--color-text);
-	}
-	/** Match `.nav-style-tabs__tab:focus-visible`. */
-	.bookshelf-page__sort-select:focus-visible {
-		outline: 2px solid var(--color-focus);
-		outline-offset: 2px;
-	}
-	.bookshelf-page__sort-chevron {
-		position: absolute;
-		right: var(--chrome-menu-padding-inline);
-		top: 50%;
-		transform: translateY(-50%);
-		display: flex;
-		color: var(--color-text-muted);
-		pointer-events: none;
-	}
-	.bookshelf-page__sort:hover .bookshelf-page__sort-chevron {
-		color: var(--color-text);
 	}
 	.bookshelf-page__loading {
 		margin: 0 0 var(--space-3) 0;
