@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { readBookIdBatches } from '$lib/supabase/pagination';
 
 export type BookIdJoinRow = {
 	book_id: string;
@@ -33,11 +34,17 @@ export async function fetchUuidByUlid(
 ): Promise<Record<string, string>> {
 	if (bookIds.length === 0) return {};
 
-	const query = supabase.from('books').select('id, book_id').in('book_id', bookIds);
-	const { data: bookRows, error } = await (signal ? query.abortSignal(signal) : query);
-	if (error) throw error;
+	const { data: bookRows, error } = await readBookIdBatches(
+		bookIds,
+		(ids) => {
+			const query = supabase.from('books').select('id, book_id').in('book_id', ids);
+			return signal ? query.abortSignal(signal) : query;
+		},
+		isStale
+	);
 
 	if (isStale()) return {};
+	if (error) throw error;
 
 	return Object.fromEntries((bookRows ?? []).map((b) => [b.book_id, String(b.id)])) as Record<
 		string,

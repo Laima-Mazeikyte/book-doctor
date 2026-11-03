@@ -4,8 +4,8 @@ import type { RatingValue } from '$lib/types/book';
  * Local snapshot of the user's rated library, persisted to localStorage so the bookshelf can
  * paint instantly on load (stale-while-revalidate) instead of waiting for the network.
  *
- * Deliberately minimal — only the fields the grid card renders. `coverUrl` is re-derived from
- * `book_id` on read; genres/summary/year are fetched on demand when a book is expanded.
+ * Deliberately minimal — fields used to render and sort the shelf. `coverUrl` is re-derived
+ * from `book_id` on read; genres/summary are fetched on demand when a book is expanded.
  */
 
 const KEY_PREFIX = 'book-doctor:library-cache:v1:';
@@ -37,6 +37,7 @@ export interface CachedRatedBook {
 	book_id: string;
 	title: string;
 	author: string;
+	year?: string;
 	rating: RatingValue;
 }
 
@@ -74,7 +75,8 @@ export function readLibraryCache(userId: string | null | undefined): CachedRated
 				book_id: c.book_id,
 				title: c.title,
 				author: c.author,
-				rating: c.rating
+				rating: c.rating,
+				...(typeof c.year === 'string' ? { year: c.year } : {})
 			});
 		}
 		return out;
@@ -163,7 +165,8 @@ function validRatings(value: unknown): value is NonNullable<LibrarySnapshotColle
 				typeof row.title === 'string' &&
 				row.title.length <= 2000 &&
 				typeof row.author === 'string' &&
-				row.author.length <= 2000
+				row.author.length <= 2000 &&
+				(row.year === undefined || (typeof row.year === 'string' && row.year.length <= 20))
 			);
 		},
 		(row) => row.id

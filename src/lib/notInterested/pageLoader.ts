@@ -308,6 +308,35 @@ const loader = {
 		if (!entry.nextCursor) return;
 		return startNextPage(order);
 	},
+	/** Search and non-recency sorts need the complete collection; ordinary browsing stays paged. */
+	async ensureAllLoaded(
+		order: NotInterestedOrder,
+		isCancelled: () => boolean = () => false
+	): Promise<void> {
+		await waitForAuthReady();
+		const accountId = syncAccount();
+		if (!accountId || isCancelled()) return;
+		await this.ensureLoaded(order);
+		if (activeAccountId !== accountId || isCancelled()) return;
+		const entry = entries[order];
+		const generation = entry.generation;
+		while (
+			!isCancelled() &&
+			isCurrent(order, entry, accountId, generation) &&
+			entry.loaded &&
+			!entry.error &&
+			entry.nextCursor
+		) {
+			const previousCursor = entry.nextCursor;
+			await this.loadMore(order);
+			if (!isCurrent(order, entry, accountId, generation)) return;
+			if (!entry.error && entry.nextCursor === previousCursor) {
+				entry.error = 'Failed to advance the not interested page.';
+				publish();
+				return;
+			}
+		}
+	},
 	async retry(order: NotInterestedOrder): Promise<void> {
 		await waitForAuthReady();
 		syncAccount();

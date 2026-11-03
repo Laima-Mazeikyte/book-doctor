@@ -79,6 +79,16 @@ afterEach(() => {
 });
 
 describe('complete interaction snapshot restoration', () => {
+	it('preserves publication years through the current snapshot cache and restoration', () => {
+		writeLibrarySnapshot(owner, {
+			ratings: { entries: [rating], books: [{ ...rating, year: '1984' }] }
+		});
+		restoreLibrarySnapshot(owner);
+		expect(get(ratingsStore.ratedBooks)[0].book.year).toBe('1984');
+		persistLibrarySnapshot(owner);
+		expect(readLibrarySnapshot(owner).ratings?.books[0].year).toBe('1984');
+	});
+
 	it('enables actions from complete collections, including exclusions and bookmark removal mappings', () => {
 		complete();
 		restoreLibrarySnapshot(owner);

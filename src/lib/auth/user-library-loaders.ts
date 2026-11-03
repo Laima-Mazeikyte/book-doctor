@@ -15,6 +15,7 @@ import { markUserLibraryIdsStarted, scheduleUserLibraryDetailsLoad } from '$lib/
 import { libraryLoads } from '$lib/stores/libraryLoads';
 import type { Book, RatingValue } from '$lib/types/book';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { readBookIdBatches } from '$lib/supabase/pagination';
 
 type RatingIdRow = BookIdJoinRow & {
 	book_rating: RatingValue;
@@ -356,11 +357,12 @@ async function loadUserLibraryDetailsBody(
 	let fallbackBooks: BookCatalogRow[] = [];
 
 	if (unresolvedDetailUlids.length > 0) {
-		const { data: bookRows, error: bookError } = await supabase
-			.from('books')
-			.select(BOOK_CATALOG_SELECT)
-			.in('book_id', unresolvedDetailUlids)
-			.abortSignal(signal);
+		const { data: bookRows, error: bookError } = await readBookIdBatches(
+			unresolvedDetailUlids,
+			(ids) =>
+				supabase.from('books').select(BOOK_CATALOG_SELECT).in('book_id', ids).abortSignal(signal),
+			isStale
+		);
 		if (bookError) throw bookError;
 		if (isStale()) return () => {};
 		if (bookRows) {

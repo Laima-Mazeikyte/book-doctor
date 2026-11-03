@@ -125,6 +125,7 @@ function createRatingsStore() {
 							book_id: e.book_id,
 							title: e.title,
 							author: e.author,
+							year: e.year,
 							coverUrl: coverUrlForBookId(e.book_id)
 						}
 					])
@@ -144,6 +145,7 @@ function createRatingsStore() {
 				book_id: book.book_id,
 				title: book.title,
 				author: book.author,
+				...(book.year !== undefined ? { year: book.year } : {}),
 				rating
 			}));
 			return { entries, books };

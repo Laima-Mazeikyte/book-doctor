@@ -47,6 +47,94 @@ afterEach(() => {
 });
 
 describe('not interested page loader', () => {
+	it('keeps browsing paged and loads every remaining page when a complete collection is requested', async () => {
+		const fetchMock = vi.mocked(fetch);
+		fetchMock
+			.mockResolvedValueOnce(response({ books: [book], nextCursor: 'cursor-1' }))
+			.mockResolvedValueOnce(
+				response({ books: [{ ...book, id: 'uuid-2', book_id: 'ni-2' }], nextCursor: 'cursor-2' })
+			)
+			.mockResolvedValueOnce(
+				response({ books: [{ ...book, id: 'uuid-3', book_id: 'ni-3' }], nextCursor: null })
+			);
+		await notInterestedPageLoader.ensureLoaded('newest');
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		await Promise.all([
+			notInterestedPageLoader.ensureAllLoaded('newest'),
+			notInterestedPageLoader.ensureAllLoaded('newest')
+		]);
+		expect(fetchMock).toHaveBeenCalledTimes(3);
+		expect(notInterestedPageLoader.getSnapshot('newest').books.map((book) => book.id)).toEqual([
+			'uuid-1',
+			'uuid-2',
+			'uuid-3'
+		]);
+		expect(notInterestedPageLoader.getSnapshot('newest').nextCursor).toBeNull();
+		await notInterestedPageLoader.ensureAllLoaded('newest');
+		expect(fetchMock).toHaveBeenCalledTimes(3);
+	});
+
+	it('stops complete loading on a failed page and can resume after retry', async () => {
+		const fetchMock = vi.mocked(fetch);
+		fetchMock
+			.mockResolvedValueOnce(response({ books: [book], nextCursor: 'cursor-1' }))
+			.mockResolvedValueOnce({ ok: false, status: 403 } as Response)
+			.mockResolvedValueOnce(
+				response({ books: [{ ...book, id: 'uuid-2', book_id: 'ni-2' }], nextCursor: 'cursor-2' })
+			)
+			.mockResolvedValueOnce(
+				response({ books: [{ ...book, id: 'uuid-3', book_id: 'ni-3' }], nextCursor: null })
+			);
+		await notInterestedPageLoader.ensureAllLoaded('newest');
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		expect(notInterestedPageLoader.getSnapshot('newest')).toMatchObject({
+			books: [book],
+			nextCursor: 'cursor-1'
+		});
+		expect(notInterestedPageLoader.getSnapshot('newest').error).toBeTruthy();
+		await notInterestedPageLoader.ensureAllLoaded('newest');
+		expect(fetchMock).toHaveBeenCalledTimes(4);
+		expect(notInterestedPageLoader.getSnapshot('newest').books).toHaveLength(3);
+		expect(notInterestedPageLoader.getSnapshot('newest').error).toBeNull();
+	});
+
+	it('stops fetching remaining pages when the search is cancelled', async () => {
+		const fetchMock = vi.mocked(fetch);
+		let cancelled = false;
+		fetchMock.mockImplementation(async () => {
+			cancelled = true;
+			return response({ books: [book], nextCursor: 'cursor-1' });
+		});
+		await notInterestedPageLoader.ensureAllLoaded('newest', () => cancelled);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(notInterestedPageLoader.getSnapshot('newest').nextCursor).toBe('cursor-1');
+	});
+
+	it('does not continue a complete read into a different account', async () => {
+		const fetchMock = vi.mocked(fetch);
+		let release!: (value: Response) => void;
+		fetchMock.mockReturnValue(
+			new Promise((resolve) => {
+				release = resolve;
+			})
+		);
+		const loading = notInterestedPageLoader.ensureAllLoaded('newest');
+		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+		setSession('user-2', 'token-2');
+		release(response({ books: [book], nextCursor: 'cursor-1' }));
+		await loading;
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(notInterestedPageLoader.getSnapshot('newest').books).toEqual([]);
+	});
+
+	it('reports a repeated cursor instead of fetching forever', async () => {
+		const fetchMock = vi.mocked(fetch);
+		fetchMock.mockResolvedValue(response({ books: [book], nextCursor: 'stuck-cursor' }));
+		await notInterestedPageLoader.ensureAllLoaded('newest');
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		expect(notInterestedPageLoader.getSnapshot('newest').error).toBeTruthy();
+	});
+
 	it('retries temporary failures three times and starts a fresh cycle when revisited', async () => {
 		vi.useFakeTimers();
 		const fetchMock = vi.mocked(fetch);

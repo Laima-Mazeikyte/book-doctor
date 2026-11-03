@@ -8,9 +8,10 @@
 	interface Props {
 		state: NotInterestedPageState;
 		order: NotInterestedOrder;
+		onRetry?: () => Promise<void>;
 	}
 
-	let { state, order }: Props = $props();
+	let { state, order, onRetry }: Props = $props();
 
 	const loadingMore = $derived(state.loading && state.loaded);
 	const showFooter = $derived(Boolean(state.error || state.nextCursor || loadingMore));
@@ -24,7 +25,7 @@
 				<Button
 					variant="tertiary"
 					compact
-					onclick={() => void notInterestedPageLoader.retry(order)}
+					onclick={() => void (onRetry ? onRetry() : notInterestedPageLoader.retry(order))}
 				>
 					{t('notInterested.retry')}
 				</Button>
