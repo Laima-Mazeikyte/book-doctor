@@ -45,12 +45,21 @@ visits skip speculation and hover/focus intent takes precedence. During navigati
 only the selected-cover outline moves: no visible dimming, spinner or loading label.
 The same-series strip and image elements stay mounted, preserve horizontal position,
 and do not recenter. Series clicks preserve vertical scroll. A different series gets
-a fresh strip. Author expansion/fetch state resets on book changes and old requests abort.
+a fresh strip. Author expansion, loaded covers, in-flight requests and panel scroll
+persist across books with the exact same catalog author. Author-cover clicks preserve
+page scroll. Switching authors resets the section and aborts old requests; late
+responses are ignored. Reloads start with the author section closed.
 
 Titles retain the original responsive CSS and natural wrapping. Adaptive title
 fitting was explicitly reverted; longer titles can move subsequent content. Author
-books remain fetched only after the author is clicked. No public catalog directory
-or server-side author-books request is required for this release.
+books remain fetched only after the author is clicked. One bounded chronological
+author collection is reused during same-author navigation. A subtitle states
+publication order (oldest first, unknown years last). The current book stays in the
+list, marked with aria-current and the same outline as a selected series cover.
+At most 48 covers appear, with a truncation notice when needed; if the current book
+falls outside the first 48, it follows the earliest 47. Manually closing the section
+retains its collection and scroll position. No public catalog directory or
+server-side author-books request is required for this release.
 
 ## Personalized familiar-book connections
 
@@ -62,11 +71,45 @@ changes fetch fresh results. Sign-out clears results; stale responses are ignore
 Empty/unavailable targets omit the section. No ten-rating gate applies to connections.
 See [installation and v4 release steps](operations/connections.md).
 
+## Public book discovery
+
+"Similar experience" and "A different direction" use one public get_book_discovery
+RPC per book visit, after auth restoration and the main-cover paint gate. Both
+lists include live display metadata; no second catalog request or server-side
+page-loading dependency is added. Results from old navigation are aborted/ignored.
+Empty sections are omitted. Failed requests show a small message and explicit retry.
+
+Each section selects up to three books from the existing five candidates. Unread
+books come first; when fewer than three are unread, already-rated books fill the
+remaining slots. Server order is preserved within both groups. Familiar books use
+the same card presentation with no read-status label. Selection uses exact public
+ULIDs from the current library and happens locally when its rating-ID snapshot is available;
+it does not wait for full book metadata or make another request. Until that snapshot
+is available, shared public results remain usable. Account changes clear the old
+reader's prioritization immediately; token refresh and library edits do not refetch the
+public lists. Saved-to-read books remain eligible. Covers use 200px variants, fixed
+dimensions, lazy loading, async decoding and low priority.
+
+Section headings appear without subtitles. The generic shared-profile reason is
+not repeated on individual cards. Supported
+departure codes become short relative descriptions, such as "More introspective"
+or "Toward fantasy"; unknown codes omit the explanation while preserving the book.
+No similarity percentages or personal-fit predictions are shown. Canonical groups
+share lists: different series volumes may return identical recommendations.
+
+The user installed and verified book-discovery-gower-xquad-v1-b4ac45d4e9cc against
+v3 on November 3, 2026: 74,530 canonical groups, 37,930 aliases, 112,460 matched IDs,
+two unmatched aliases, and 17.23 MiB. The corrected Dashboard verification uses
+[an explicit book ID](../scripts/catalog/verify-book-discovery.sql), since the
+backend's original verifier can lose its session setting across ROLLBACK and
+compare two empty responses. Preserve the ignored backend package for recovery.
+Before production, obtain the matching v4 dataset, stage/activate it, and repeat
+RPC/browser checks; a catalog upload alone does not update the precomputed lists.
+
 ## Remaining product sections
 
 1. Match score: define and expose reader fit; adjacency is not a personal-fit percentage.
 2. "More like this, but...": actual modifier queries and premium access behavior.
-3. Similar experience / A different direction: candidate-selection and result display.
 
 These still contain placeholders. They are separate from the completed connections
 feature and from search-discovery requirements.
@@ -92,3 +135,11 @@ main-cover gate preserved request ordering in 24 simulated runs without a consis
 added main-cover opening delay in the sampled series. This is not a production latency
 guarantee. Main content, cover completion and personalized RPC timing are distinct.
 Backend model quality and catalog correctness are not established by UI tests.
+
+Discovery validation covers response contracts, stale navigation, account-scoped
+local filtering, reserves, retry/empty states and cover ordering. Fresh signed-out
+desktop/mobile browsers exercised the installed Supabase RPC for The Hunger Games
+and The Way of Kings: one discovery request per tested visit, six visible links,
+200px low-priority lazy covers and no horizontal overflow. Link navigation was
+checked. Signed-in filtering was tested with synthetic library state; these checks
+do not establish production latency or reader-rated recommendation quality.

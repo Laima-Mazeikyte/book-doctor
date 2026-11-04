@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { onDestroy, untrack } from 'svelte';
+	import { onDestroy, tick, untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
 	import BookCorrection from '$lib/components/book-card/BookCorrection.svelte';
 	import { resolve } from '$app/paths';
+	import { navigating } from '$app/state';
 	import { Bookmark, BookOpen, ChevronDown, LockKeyhole, Star, ThumbsDown } from 'lucide-svelte';
 	import type { Book, RatingValue } from '$lib/types/book';
 	import { bookPath } from '$lib/books/bookUrl';
@@ -11,6 +12,7 @@
 	import BookAwards from './BookAwards.svelte';
 	import BookSeries from './BookSeries.svelte';
 	import BookConnections from './BookConnections.svelte';
+	import BookDiscovery from './BookDiscovery.svelte';
 	import type { BookSeries as BookSeriesData } from '$lib/books/series';
 	import { authStore, authReady } from '$lib/stores/auth';
 	import { ratingsStore } from '$lib/stores/ratings';
@@ -39,10 +41,30 @@
 	let coverReadyFor = $state<string | null>(null);
 	const seriesImagesReady = $derived(coverReadyFor === book.book_id);
 	let authorExpanded = $state(false);
-	let authorBooks = $state<Book[]>([]);
-	let authorBooksTruncated = $state(false);
+	const author = $derived(book.author);
+	const currentBookId = $derived(book.book_id);
+	let authorCollection = $state<Book[]>([]);
+	let authorCollectionTruncated = $state(false);
+	const authorHasCurrentBook = $derived(
+		authorCollection.some((item) => item.book_id === currentBookId)
+	);
+	const authorBooks = $derived(
+		authorHasCurrentBook ? authorCollection : [...authorCollection.slice(0, 47), book]
+	);
+	const authorBooksTruncated = $derived(
+		authorCollectionTruncated || (!authorHasCurrentBook && authorCollection.length === 48)
+	);
+	const pendingAuthorBook = $derived(
+		navigating.to
+			? authorBooks.find(
+					(item) => item.slug && resolve(bookPath(item)) === navigating.to?.url.pathname
+				)
+			: undefined
+	);
 	let authorBooksStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
 	let authorController: AbortController | null = null;
+	let authorPanel = $state<HTMLElement>();
+	let authorScrollTop = 0;
 	const failedAuthorCovers = new SvelteSet<string>();
 	const ratingOptions: RatingValue[] = [1, 2, 3, 4, 5];
 	const rating = $derived($ratingsStore.get(book.id) ?? 0);
@@ -96,19 +118,20 @@
 		authorController = new AbortController();
 		const controller = authorController;
 		authorBooksStatus = 'loading';
-		const params = new URLSearchParams({ author: book.author, exclude: book.book_id });
+		const requestedAuthor = author;
+		const params = new URLSearchParams({ author: requestedAuthor });
 		try {
 			const response = await fetch(`${resolve('/api/books/by-author')}?${params}`, {
 				signal: controller.signal
 			});
 			if (!response.ok) throw new Error('Unable to load author books');
 			const payload: { books: Book[]; truncated: boolean } = await response.json();
-			if (controller.signal.aborted) return;
-			authorBooks = payload.books;
-			authorBooksTruncated = payload.truncated;
+			if (controller.signal.aborted || requestedAuthor !== author) return;
+			authorCollection = payload.books.slice(0, 48);
+			authorCollectionTruncated = payload.truncated || payload.books.length > 48;
 			authorBooksStatus = 'ready';
 		} catch {
-			if (!controller.signal.aborted) authorBooksStatus = 'error';
+			if (!controller.signal.aborted && requestedAuthor === author) authorBooksStatus = 'error';
 		}
 	}
 
@@ -117,18 +140,33 @@
 		if (authorExpanded) void loadAuthorBooks();
 	}
 
+	function restoreAuthorScroll(node: HTMLElement) {
+		node.scrollTop = authorScrollTop;
+	}
+
+	$effect.pre(() => {
+		void currentBookId;
+		const panel = untrack(() => authorPanel);
+		if (!panel) return;
+		const scrollTop = panel.scrollTop;
+		void tick().then(() => {
+			if (panel.isConnected) panel.scrollTop = scrollTop;
+		});
+	});
+
 	onDestroy(() => authorController?.abort());
 
 	$effect(() => {
-		// The page now survives book changes so the series strip can stay mounted.
-		void book.book_id;
+		// Track the derived author value so same-author book changes retain this state.
+		void author;
 		untrack(() => {
 			authorController?.abort();
 			authorController = null;
 			authorExpanded = false;
-			authorBooks = [];
-			authorBooksTruncated = false;
+			authorCollection = [];
+			authorCollectionTruncated = false;
 			authorBooksStatus = 'idle';
+			authorScrollTop = 0;
 			failedAuthorCovers.clear();
 		});
 	});
@@ -239,20 +277,34 @@
 					{book.author}<ChevronDown size={18} aria-hidden="true" />
 				</button>
 				{#if authorExpanded}
-					<section id="author-books" class="author-books" aria-label={`More by ${book.author}`}>
-						<h2 class="eyebrow">More by {book.author}</h2>
+					<section
+						bind:this={authorPanel}
+						use:restoreAuthorScroll
+						onscroll={(event) => (authorScrollTop = event.currentTarget.scrollTop)}
+						id="author-books"
+						class="author-books"
+						aria-label={`Books by ${book.author} in publication order`}
+					>
+						<h2 class="eyebrow author-books-title">Books by {book.author}</h2>
+						<p class="muted author-books-subtitle">in publication order</p>
 						{#if authorBooksStatus === 'loading'}
-							<p class="muted" role="status">Loading other books…</p>
+							<p class="muted" role="status">Loading books…</p>
 						{:else if authorBooksStatus === 'error'}
-							<p class="muted" role="alert">Couldn’t load other books by this author.</p>
+							<p class="muted" role="alert">Couldn’t load books by this author.</p>
 							<button class="text-button" onclick={() => void loadAuthorBooks()}>Retry</button>
-						{:else if authorBooks.length}
+						{:else}
 							<div class="author-cover-grid">
 								{#each authorBooks as item (item.book_id)}
 									<!-- eslint-disable svelte/no-navigation-without-resolve -- The populated branch uses resolve; older cached records deliberately have no href. -->
 									<a
 										class="author-book-cover"
+										class:author-book-cover--selected={pendingAuthorBook
+											? pendingAuthorBook.book_id === item.book_id
+											: item.book_id === currentBookId}
 										href={item.slug ? resolve(bookPath(item)) : undefined}
+										data-sveltekit-noscroll
+										aria-current={item.book_id === currentBookId ? 'page' : undefined}
+										aria-busy={pendingAuthorBook?.book_id === item.book_id ? 'true' : undefined}
 										aria-label={item.title}
 										title={item.title}
 									>
@@ -272,11 +324,9 @@
 								{/each}
 							</div>
 							{#if authorBooksTruncated}<p class="muted">
-									Showing the first 48 other books in this catalog.
+									Showing 48 books from this catalog.
 								</p>{/if}
-						{:else}<p class="muted">
-								No other books by this author are available in the catalog yet.
-							</p>{/if}
+						{/if}
 					</section>
 				{/if}
 			{/if}
@@ -329,24 +379,7 @@
 			</section>
 		</aside>
 
-		<div class="discovery-sections">
-			<section aria-labelledby="similar-title">
-				<h2 id="similar-title">Similar experience</h2>
-				<p class="muted">Different stories, a similar reading experience.</p>
-				<div class="discovery-placeholder">
-					<BookOpen size={24} aria-hidden="true" />
-					<p>Similar-experience recommendations coming soon</p>
-				</div>
-			</section>
-			<section aria-labelledby="different-title">
-				<h2 id="different-title">A different direction</h2>
-				<p class="muted">Explore a departure with a meaningful connection to this book.</p>
-				<div class="discovery-placeholder">
-					<BookOpen size={24} aria-hidden="true" />
-					<p>Different-direction recommendations coming soon</p>
-				</div>
-			</section>
-		</div>
+		<BookDiscovery bookId={book.book_id} imagesReady={seriesImagesReady} />
 	</div>
 	<div class="book-correction"><BookCorrection {book} /></div>
 </article>
@@ -450,6 +483,12 @@
 		grid-template-columns: repeat(auto-fill, minmax(4rem, 1fr));
 		gap: 0.75rem;
 	}
+	.author-books-title {
+		margin-bottom: 0.25rem;
+	}
+	.author-books-subtitle {
+		margin: 0 0 0.75rem;
+	}
 	.author-book-cover {
 		display: grid;
 		place-items: center;
@@ -465,6 +504,10 @@
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
+	}
+	.author-book-cover--selected {
+		border-color: var(--color-text);
+		box-shadow: 0 0 0 1px var(--color-text);
 	}
 	.metadata {
 		display: flex;
@@ -569,8 +612,7 @@
 		color: var(--color-text);
 		cursor: pointer;
 	}
-	.premium-panel h2,
-	.discovery-sections h2 {
+	.premium-panel h2 {
 		font-size: 1.5rem;
 		line-height: 1.2;
 	}
@@ -595,30 +637,6 @@
 		border-radius: var(--radius-sm);
 		color: var(--color-text-muted);
 	}
-	.discovery-sections {
-		grid-column: 1 / 3;
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 1.5rem;
-		padding-top: 1.5rem;
-		border-top: 1px solid var(--color-border);
-	}
-	.discovery-sections > section + section {
-		border-left: 1px solid var(--color-border);
-		padding-left: 1.5rem;
-	}
-	.discovery-placeholder {
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-		min-height: 7rem;
-		padding: 1rem;
-		border: 1px dashed var(--color-border);
-		border-radius: var(--radius-sm);
-		color: var(--color-text-muted);
-		font-family: var(--font-family-interactive);
-		font-size: 0.85rem;
-	}
 	button:focus-visible,
 	a:focus-visible {
 		outline: 2px solid var(--color-focus);
@@ -634,9 +652,6 @@
 			grid-row: auto;
 			grid-template-columns: 1.5fr 1fr;
 		}
-		.discovery-sections {
-			grid-column: 1 / -1;
-		}
 	}
 	@media (max-width: 600px) {
 		.book-layout {
@@ -646,15 +661,9 @@
 			max-width: 11rem;
 			margin-inline: auto;
 		}
-		.personal-column,
-		.discovery-sections {
+		.personal-column {
 			grid-column: 1;
 			grid-template-columns: 1fr;
-		}
-		.discovery-sections > section + section {
-			border-left: 0;
-			border-top: 1px solid var(--color-border);
-			padding: 1.5rem 0 0;
 		}
 		.profile-panel,
 		.premium-panel {

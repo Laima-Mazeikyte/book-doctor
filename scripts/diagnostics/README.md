@@ -9,6 +9,14 @@ Start with [development/testing](../../docs/development.md) and
 - [Database maintenance](../../docs/operations/database-maintenance.md): scripts/maintenance/
 - [Book-page behavior and pending features](../../docs/book-page.md)
 - [Backend annotation contract](../../docs/backend/book-annotations.md)
+- [Book-discovery catalog schema export](../catalog/export-book-discovery-schema.sql):
+  columns, indexes, SELECT policies, table grants and effective API read access;
+  one read-only metadata query; share its `schema_sql` result with backend.
+- [Book-discovery installation preflight](../catalog/check-book-discovery-installation.sql):
+  read-only admin, catalog-policy and index checks before the Dashboard installer.
+- [Book-discovery verification](../catalog/verify-book-discovery.sql):
+  explicit supported-book lookup, API-role parity and private-table access checks;
+  no cross-transaction session settings.
 
 This folder retains reusable read-only feed/schema/latency diagnostics and browser
 probes. SQL intended for Logs Explorer uses a different dialect/source from Database
