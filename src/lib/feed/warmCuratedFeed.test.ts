@@ -1,12 +1,34 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { createClient } from '@supabase/supabase-js';
-import { FEED_TIMEOUT_MS, insertFeedRequestRow, pollCuratedFeedRequest } from './warmCuratedFeed';
+import {
+	FEED_POLL_MS,
+	FEED_TIMEOUT_MS,
+	insertFeedRequestRow,
+	pollCuratedFeedRequest
+} from './warmCuratedFeed';
 import { REQUEST_TIMEOUT_MS, RequestTimeoutError } from '$lib/requests/timeout';
 
 vi.mock('$app/paths', () => ({ resolve: (path: string) => path }));
 afterEach(() => {
 	vi.useRealTimers();
 	vi.unstubAllGlobals();
+});
+
+it('checks a pending job every second and stops immediately on completion', async () => {
+	vi.useFakeTimers();
+	const fetcher = vi
+		.fn()
+		.mockImplementationOnce(async () => Response.json({ status: 'processing' }))
+		.mockImplementationOnce(async () => Response.json({ status: 'completed', books: [] }));
+	vi.stubGlobal('fetch', fetcher);
+	const pending = pollCuratedFeedRequest('FeedRunA', 'token');
+	await vi.advanceTimersByTimeAsync(999);
+	expect(fetcher).toHaveBeenCalledTimes(1);
+	await vi.advanceTimersByTimeAsync(1);
+	expect(FEED_POLL_MS).toBe(1000);
+	await expect(pending).resolves.toEqual({ kind: 'completed', books: [] });
+	await vi.advanceTimersByTimeAsync(10_000);
+	expect(fetcher).toHaveBeenCalledTimes(2);
 });
 
 it('returns only the public ID from a newly inserted feed and uses it for polling', async () => {

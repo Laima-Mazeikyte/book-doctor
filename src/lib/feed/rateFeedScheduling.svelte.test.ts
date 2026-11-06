@@ -18,6 +18,7 @@ import RateFeedHarness from './test-support/RateFeedHarness.svelte';
 import { createRateFeedCache, RATE_FEED_CACHE_PREFIX, type RateFeedCache } from './rateFeedCache';
 import { libraryLoads } from '$lib/stores/libraryLoads';
 import { librarySaves } from '$lib/stores/librarySaves';
+import { bookSummarySheetHistory } from '$lib/stores/bookSummarySheetHistory';
 
 vi.mock('$app/navigation', () => ({
 	afterNavigate: vi.fn(),
@@ -93,6 +94,7 @@ describe('rate feed progress scheduling', () => {
 	let rendered: ReturnType<typeof render> | undefined;
 	let observers: Array<{ notify: () => void; disconnected: boolean }>;
 	let sharedController: RateFeedController | undefined;
+	let gridStyle: HTMLStyleElement;
 
 	function sharedFeed(cache?: RateFeedCache) {
 		const readLatest = vi.fn().mockResolvedValue(feedPayload());
@@ -116,6 +118,11 @@ describe('rate feed progress scheduling', () => {
 	}
 
 	beforeEach(() => {
+		// This harness does not mount the app layout, which normally supplies the grid CSS.
+		gridStyle = document.createElement('style');
+		gridStyle.textContent =
+			'.virtual-feed { display: grid; grid-template-columns: repeat(5, 200px); gap: 8px; }';
+		document.head.append(gridStyle);
 		vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
 		vi.setSystemTime(10_000);
 		visibleCards = 5;
@@ -189,6 +196,8 @@ describe('rate feed progress scheduling', () => {
 
 	afterEach(() => {
 		rendered?.unmount();
+		bookSummarySheetHistory.set(null);
+		gridStyle.remove();
 		rendered = undefined;
 		sharedController?.destroy();
 		sharedController = undefined;
@@ -206,7 +215,8 @@ describe('rate feed progress scheduling', () => {
 		const addListener = vi.spyOn(window, 'addEventListener');
 		rendered = render(RatePage);
 		await frames();
-		expect(cardMeasurements).toBe(50);
+		expect(cardMeasurements).toBeGreaterThanOrEqual(50);
+		const initialMeasurements = cardMeasurements;
 		const observerCount = observers.length;
 		const scrollListeners = () =>
 			addListener.mock.calls.filter(([type]) => type === 'scroll').length;
@@ -215,14 +225,15 @@ describe('rate feed progress scheduling', () => {
 		visibleCards = 10;
 		window.dispatchEvent(new Event('scroll'));
 		await frames();
-		expect(cardMeasurements).toBe(100);
+		expect(cardMeasurements - initialMeasurements).toBeGreaterThanOrEqual(50);
+		expect(cardMeasurements - initialMeasurements).toBeLessThanOrEqual(55);
 		expect(observers.length).toBe(observerCount);
 		expect(scrollListeners()).toBe(listenerCount);
 		await vi.advanceTimersByTimeAsync(2000);
 		await frames();
-		expect(cardMeasurements).toBe(150);
+		const settledMeasurements = cardMeasurements;
 		await frames();
-		expect(cardMeasurements).toBe(150);
+		expect(cardMeasurements).toBe(settledMeasurements);
 		expect(observers.length).toBe(observerCount);
 		expect(insertFeedRequestRow).not.toHaveBeenCalled();
 	});
@@ -317,6 +328,56 @@ describe('rate feed progress scheduling', () => {
 		expect(document.querySelectorAll('[data-testid="test-book-card"]').length).toBe(50);
 		expect(readLatest).toHaveBeenCalledTimes(1);
 		expect(insertFeedRequestRow).not.toHaveBeenCalled();
+	});
+
+	it.each(['summary', 'hidden'] as const)(
+		'pauses automatic generation while %s and resumes on return',
+		async (pause) => {
+			visibleCards = 25;
+			rendered = render(RatePage);
+			await frames();
+			const visibility = vi.spyOn(document, 'visibilityState', 'get');
+			if (pause === 'summary')
+				bookSummarySheetHistory.set({
+					ownerId: 'sheet',
+					bookUlid: books[0].book_id,
+					applyClose: () => {}
+				});
+			else {
+				visibility.mockReturnValue('hidden');
+				document.dispatchEvent(new Event('visibilitychange'));
+			}
+			await frames();
+			await vi.advanceTimersByTimeAsync(3000);
+			await frames();
+			expect(insertFeedRequestRow).not.toHaveBeenCalled();
+			if (pause === 'summary') bookSummarySheetHistory.set(null);
+			else {
+				visibility.mockReturnValue('visible');
+				document.dispatchEvent(new Event('visibilitychange'));
+			}
+			await frames(5);
+			expect(insertFeedRequestRow).toHaveBeenCalledTimes(1);
+		}
+	);
+
+	it('checks paused browsing again after a slow latest-state read, before creating a job', async () => {
+		const { controller, readLatest } = sharedFeed();
+		visibleCards = 25;
+		rendered = render(RateFeedHarness, { controller });
+		await frames();
+		const read = pendingRead();
+		readLatest.mockReturnValueOnce(read.promise);
+		await vi.advanceTimersByTimeAsync(2000);
+		await frames();
+		document.querySelector<HTMLButtonElement>('.search-bar__trigger')!.click();
+		await frames();
+		read.resolve(feedPayload());
+		await frames(5);
+		expect(insertFeedRequestRow).not.toHaveBeenCalled();
+		document.querySelector<HTMLButtonElement>('.rate-search-overlay__icon-btn')!.click();
+		await frames(5);
+		expect(insertFeedRequestRow).toHaveBeenCalledTimes(1);
 	});
 
 	it.each(['reordered', 'empty', 'failed'] as const)(
@@ -500,6 +561,31 @@ describe('rate feed progress scheduling', () => {
 		const nodes = Array.from(document.querySelectorAll('[data-testid="test-book-card"]'));
 		expect(nodes.length).toBe(49);
 		expect(nodes[0].textContent).toBe('Book 1');
+	});
+
+	it('retains Load more at the checkpoint when reentry falls back to public books, and honors that click', async () => {
+		const { controller, readLatest } = sharedFeed();
+		controller.browsing.observe(Array.from({ length: 100 }, (_, i) => `seen-${i}`));
+		readLatest.mockResolvedValue({
+			...feedPayload([]),
+			mode: 'feed_error',
+			latest_request_status: 'failed'
+		});
+		vi.mocked(fetch).mockResolvedValue({
+			ok: true,
+			json: async () => ({ books, nextOffset: 50, hasMore: false })
+		} as Response);
+		rendered = render(RateFeedHarness, { controller });
+		await frames(5);
+		await vi.advanceTimersByTimeAsync(2000);
+		await frames();
+		expect(insertFeedRequestRow).not.toHaveBeenCalled();
+		expect(document.querySelectorAll('[data-testid="test-book-card"]')).toHaveLength(50);
+		const button = document.querySelector<HTMLButtonElement>('.rate-page__load-more-card')!;
+		expect(button.textContent?.trim()).toBe('Load more');
+		button.click();
+		await frames(5);
+		expect(insertFeedRequestRow).toHaveBeenCalledTimes(1);
 	});
 
 	it('keeps an admitted curated grid while library IDs have not arrived', async () => {

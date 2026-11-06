@@ -8,6 +8,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/stores';
 	import BookCard from '$lib/components/BookCard.svelte';
+	import VirtualFeedGrid from '$lib/feed/VirtualFeedGrid.svelte';
 	import {
 		coverPriorityFor,
 		estimateGridColumns,
@@ -57,18 +58,13 @@
 	} from '$lib/rateSearchExternalNav';
 	import { searchBooks, searchBooksByAuthor, SEARCH_MIN_QUERY_LENGTH } from '$lib/search';
 	import { nextRateSearchModeAfterQueryChange } from '$lib/search/rateSearchAuthorMode';
-	import {
-		FEED_BATCH_BROWSE_DWELL_MS,
-		FEED_NEAR_BOTTOM_PX,
-		FEED_REQUEST_CREATE_COOLDOWN_MS
-	} from '$lib/feed/constants';
+	import { FEED_BATCH_BROWSE_DWELL_MS, FEED_REQUEST_CREATE_COOLDOWN_MS } from '$lib/feed/constants';
 	import {
 		feedRequestCooldownRemaining,
 		initialFeedPaginationState,
 		transitionFeedPagination,
 		type FeedPaginationCommand,
-		type FeedPaginationEvent,
-		type FeedPaginationPhase
+		type FeedPaginationEvent
 	} from '$lib/feed/feedPaginationController';
 	import { insertFeedRequestRow, pollCuratedFeedRequest } from '$lib/feed/warmCuratedFeed';
 	import { createBrowserRateFeedController, getRateFeedContext } from '$lib/feed/rateFeedContext';
@@ -91,6 +87,7 @@
 
 	const sharedRateFeed = getRateFeedContext();
 	const rateFeed = sharedRateFeed ?? createBrowserRateFeedController();
+	const feedBrowsing = rateFeed.browsing;
 	let rateEntry = $state.raw<RateFeedEntry | null>(null);
 	let pageMounted = $state(false);
 	type FeedRequestInsertResult =
@@ -176,17 +173,6 @@
 		clearFeedScrollProgressRaf();
 	});
 
-	/** Bumped when a new search overlay session starts; stale feed refreshes ignore flag writes. */
-	let searchFeedSessionId = $state(0);
-	/** First qualifying mutation consumed the one in-session warm-feed attempt. */
-	let searchSessionFeedRefreshIssued = $state(false);
-	let searchSessionFeedRefreshInFlightPromise: Promise<void> | null = null;
-
-	function resetSearchSessionFeedFlags() {
-		searchFeedSessionId += 1;
-		searchSessionFeedRefreshIssued = false;
-	}
-
 	function captureFeedScrollForSearchReturn() {
 		if (searchOverlayOpen) return;
 		savedScrollY = Math.max(savedScrollY, window.scrollY);
@@ -236,9 +222,6 @@
 		if (shouldPush) {
 			// eslint-disable-next-line svelte/no-navigation-without-resolve -- preserve search in shallow routing
 			pushState(`${resolve('/rate')}${get(page).url.search}`, { rateSearchLayer: true });
-		}
-		if (!wasOpen) {
-			resetSearchSessionFeedFlags();
 		}
 		searchOverlayOpen = true;
 		await queueFocusOverlaySearch();
@@ -407,11 +390,7 @@
 
 		const q = nav.to.url.searchParams.get('q')?.trim();
 		if (q) {
-			const wasOpen = searchOverlayOpen;
 			searchOverlayOpen = true;
-			if (!wasOpen) {
-				resetSearchSessionFeedFlags();
-			}
 			const authorAnchor = consumeRateAuthorSearch();
 			if (authorAnchor && authorAnchor.toLowerCase() === q.toLowerCase()) {
 				searchMode = 'author';
@@ -499,6 +478,13 @@
 	let pendingMainListTop100Reset = $state(false);
 
 	let mainListPrefetchPx = $state(600);
+	let documentVisible = $state(true);
+	const feedCheckpoint = $derived($feedBrowsing.checkpoint);
+	const feedAutomaticPaused = $derived(
+		searchOverlayOpen || !!$bookSummarySheetHistory || !documentVisible
+	);
+	let lastFeedScrollSample: { y: number; at: number; columns: number } | null = null;
+	let feedRowsPerSecond = 0;
 
 	/** Rendered column counts for the feed and search grids — drive cover eager/lazy priority. */
 	let feedGridColumns = $state(estimateGridColumns());
@@ -539,10 +525,7 @@
 	const showMainListLoadMoreTile = $derived.by(() => {
 		if (popularBooks.length === 0 || loadingInitial) return false;
 		if (belowThresholdListEnd) return false;
-		return (
-			!hasMore ||
-			(paginationFeedOnly && lastAppendWasFeed && feedPagination.phase === 'creditPending')
-		);
+		return !hasMore || (paginationFeedOnly && feedCheckpoint);
 	});
 
 	function clearFeedPaginationCooldownRetry() {
@@ -562,7 +545,7 @@
 	function runFeedPaginationCommands(commands: FeedPaginationCommand[]) {
 		for (const command of commands) {
 			if (command.type === 'REQUEST_LOAD') {
-				void loadCuratedFeedBatch();
+				void loadCuratedFeedBatch({ manual: feedPagination.manualLoadPending });
 			} else if (command.type === 'SCHEDULE_COOLDOWN_RETRY') {
 				clearFeedPaginationCooldownRetry();
 				feedPaginationCooldownRetryTimer = setTimeout(() => {
@@ -575,18 +558,16 @@
 		}
 	}
 
-	function dispatchFeedPagination(event: FeedPaginationEvent): {
-		previousPhase: FeedPaginationPhase;
-		phase: FeedPaginationPhase;
-	} {
-		const previousPhase = feedPagination.phase;
+	function dispatchFeedPagination(event: FeedPaginationEvent) {
 		const transition = transitionFeedPagination(feedPagination, event);
 		feedPagination = transition.state;
 		runFeedPaginationCommands(transition.commands);
-		return { previousPhase, phase: feedPagination.phase };
+		return transition.state;
 	}
 
 	function onLibraryMutationForFeed() {
+		feedBrowsing.interact();
+		scheduleFeedScrollProgressMeasurement();
 		rateFeed.invalidatePrepared();
 		if (!meetsFeedInteractionThreshold()) {
 			if (startedFromLatestFeed || lastAppendWasFeed) {
@@ -598,7 +579,6 @@
 			// First time crossing the interaction threshold this session: enter personalized-feed
 			// mode now but leave the current Top 100 in place. The first curated batch is fetched
 			// lazily on the next load-more / scroll-to-bottom, so the user's scroll position is kept.
-			if (searchOverlayOpen) return; // the search overlay runs its own feed-refresh path
 			startedFromLatestFeed = true;
 			if (!hasMore) {
 				hasMore = true;
@@ -610,15 +590,6 @@
 	/** Explicit “load more” — same loaders as infinite scroll; does not change rating / not-interested revival rules. */
 	function handleManualLoadMoreBooks() {
 		if (loadingMore || loadingInitial) return;
-		if (!lastAppendWasFeed) {
-			// Promoted into feed mode but still showing Top 100: load the first curated batch here.
-			if (paginationFeedOnly) {
-				void loadCuratedFeedBatch();
-				return;
-			}
-			void loadPopular(nextOffset, 0);
-			return;
-		}
 		if (paginationFeedOnly) {
 			if (!meetsFeedInteractionThreshold()) return;
 			dispatchFeedPagination({ type: 'MANUAL_LOAD', now: Date.now() });
@@ -641,62 +612,55 @@
 
 	const SEARCH_SCROLL_LOAD_THRESHOLD_PX = 360;
 
-	function sentinelIsWithinPrefetchMargin(): boolean {
-		if (!browser || !sentinelEl) return false;
-		const rect = sentinelEl.getBoundingClientRect();
-		return rect.top <= window.innerHeight + mainListPrefetchPx;
-	}
-
-	function dispatchFeedPrefetchIfSentinelVisible() {
-		if (loadingMore || loadingInitial || searchOverlayOpen) return;
-		if (!paginationFeedOnly || !lastAppendWasFeed || !canRequestPersonalizedFeed) return;
-		if (feedPagination.phase !== 'readyToPrefetch') return;
-		if (sentinelIsWithinPrefetchMargin()) {
-			dispatchFeedPagination({ type: 'SENTINEL_PREFETCH', now: Date.now() });
-		}
-	}
-
 	function measureFeedScrollProgress() {
-		if (!browser || !mainListEl) return;
-		if (
-			!paginationFeedOnly ||
-			!lastAppendWasFeed ||
-			feedPagination.phase !== 'creditPending' ||
-			searchOverlayOpen
-		) {
-			return;
-		}
+		if (!browser || !mainListEl || feedAutomaticPaused) return;
+		if (!paginationFeedOnly || !lastAppendWasFeed) return;
 
-		const batchStartIndex = Math.max(0, feedPagination.batchStartIndex);
-		const batchEndIndex = Math.min(
-			batchStartIndex + Math.max(0, feedPagination.batchSize),
-			popularBooks.length
-		);
-		if (batchEndIndex <= batchStartIndex) return;
-
-		let maxSeenIndex = feedPagination.maxSeenIndex;
-		for (let i = batchStartIndex; i < batchEndIndex; i += 1) {
-			const child = mainListEl.children.item(i);
-			if (!(child instanceof HTMLElement)) continue;
+		let maxVisibleIndex = -1;
+		let rowHeight = 0;
+		const visibleIds: string[] = [];
+		for (const child of mainListEl.querySelectorAll<HTMLElement>('[data-feed-book]')) {
+			const index = Number(child.dataset.feedIndex);
 			const rect = child.getBoundingClientRect();
+			rowHeight ||= rect.height;
 			if (rect.bottom > 0 && rect.top < window.innerHeight) {
-				maxSeenIndex = i;
+				maxVisibleIndex = Math.max(maxVisibleIndex, index);
+				const book = popularBooks[index];
+				if (book) visibleIds.push(book.book_id);
 			}
 		}
+		feedBrowsing.observe(visibleIds);
 
-		const nearBottom =
-			window.scrollY + window.innerHeight >=
-			document.documentElement.scrollHeight - FEED_NEAR_BOTTOM_PX;
-		const transition = dispatchFeedPagination({
-			type: 'BROWSE_PROGRESS',
-			maxSeenIndex,
-			nearBottom,
-			columns: feedGridColumns,
-			now: Date.now()
-		});
-		if (transition.previousPhase !== 'readyToPrefetch' && transition.phase === 'readyToPrefetch') {
-			dispatchFeedPrefetchIfSentinelVisible();
+		const now = Date.now();
+		const columns = Math.max(1, feedGridColumns);
+		const stride = Math.max(1, rowHeight + (parseFloat(getComputedStyle(mainListEl).rowGap) || 0));
+		const y = window.scrollY;
+		if (lastFeedScrollSample && lastFeedScrollSample.columns === columns) {
+			const elapsed = now - lastFeedScrollSample.at;
+			const distance = y - lastFeedScrollSample.y;
+			if (elapsed > 0 && elapsed <= 1500 && distance > 0) {
+				const speed = Math.min(20, distance / stride / (elapsed / 1000));
+				feedRowsPerSecond = feedRowsPerSecond * 0.5 + speed * 0.5;
+			} else if (elapsed > 1500 || distance < 0) {
+				feedRowsPerSecond = 0;
+			}
+		} else {
+			feedRowsPerSecond = 0;
 		}
+		lastFeedScrollSample = { y, at: now, columns };
+		dispatchFeedPagination({
+			type: 'BROWSE_PROGRESS',
+			maxVisibleIndex,
+			columns,
+			remainingRows: Math.max(
+				0,
+				Math.ceil(popularBooks.length / columns) - Math.ceil((maxVisibleIndex + 1) / columns)
+			),
+			viewportRows: window.innerHeight / stride,
+			rowsPerSecond: feedRowsPerSecond,
+			automaticAllowed: !get(feedBrowsing).checkpoint,
+			now
+		});
 	}
 
 	function scheduleFeedScrollProgressMeasurement() {
@@ -707,105 +671,72 @@
 		});
 	}
 
-	/**
-	 * Preload observer (~3 viewports) starts the next page early; strict bottom observer (0px)
-	 * covers the case where feed credit opens after the sentinel was already in the prefetch zone.
-	 * Feed mode still requires controller credit (except the first curated batch).
-	 */
+	// Public Top 100 pages still use the sentinel. Personalized batches have one scheduler below.
 	$effect(() => {
-		if (!sentinelEl) return;
-		const prefetch = mainListPrefetchPx;
+		if (
+			!sentinelEl ||
+			lastAppendWasFeed ||
+			feedAutomaticPaused ||
+			feedPaginationPhase === 'cooldown'
+		)
+			return;
 		const next = nextOffset;
 		const more = hasMore;
 		const loading = loadingMore;
 		const initial = loadingInitial;
-		const overlayBlocksFeed = searchOverlayOpen;
 		const feedOnly = paginationFeedOnly;
-		const lastFeed = lastAppendWasFeed;
-		const feedEligible = canRequestPersonalizedFeed;
-		const feedPhase = feedPaginationPhase;
-
-		const tryLoadFromSentinel = (type: 'SENTINEL_PREFETCH' | 'SENTINEL_BOTTOM') => {
-			if (loading || initial || overlayBlocksFeed) return;
-			if (!lastFeed) {
-				if (!more) return;
-				// In personalized-feed mode but no curated batch appended yet (just promoted, or an
-				// exhausted-feed fallback): fetch the first curated batch instead of more Top 100.
-				if (feedOnly) {
-					void loadCuratedFeedBatch();
-				} else {
-					void loadPopular(next, 0);
-				}
-				return;
-			}
-			if (!feedOnly) {
-				// Library IDs may still be loading, or remote interactions may have changed.
-				// Keep an admitted curated grid; an automatic observer must not replace it.
-				return;
-			}
-			if (!feedEligible) return;
-			if (feedPhase === 'exhausted') return;
-			dispatchFeedPagination({ type, now: Date.now() });
-		};
-
-		const preloadObserver = new IntersectionObserver(
+		const observer = new IntersectionObserver(
 			(entries) => {
-				if (!entries[0].isIntersecting) return;
-				tryLoadFromSentinel('SENTINEL_PREFETCH');
+				if (!entries[0].isIntersecting || !more || loading || initial || feedAutomaticPaused)
+					return;
+				if (feedOnly) void loadCuratedFeedBatch({ manual: feedPagination.manualLoadPending });
+				else void loadPopular(next, 0);
 			},
-			{ rootMargin: `0px 0px ${prefetch}px 0px` }
+			{ rootMargin: `0px 0px ${mainListPrefetchPx}px 0px` }
 		);
-
-		const strictBottomObserver = new IntersectionObserver(
-			(entries) => {
-				if (!entries[0].isIntersecting) return;
-				tryLoadFromSentinel('SENTINEL_BOTTOM');
-			},
-			{ rootMargin: '0px' }
-		);
-
-		preloadObserver.observe(sentinelEl);
-		strictBottomObserver.observe(sentinelEl);
-		return () => {
-			preloadObserver.disconnect();
-			strictBottomObserver.disconnect();
-		};
+		observer.observe(sentinelEl);
+		return () => observer.disconnect();
 	});
 
 	$effect(() => {
 		if (!browser) return;
 		const list = mainListEl;
-		const active =
-			paginationFeedOnly &&
-			lastAppendWasFeed &&
-			feedPaginationPhase === 'creditPending' &&
-			!searchOverlayOpen;
-		const batchStartIndex = feedBatchStartIndex;
-		const batchSize = feedBatchSize;
+		const active = paginationFeedOnly && lastAppendWasFeed && !feedAutomaticPaused;
+		const phase = feedPaginationPhase;
 		const batchMountedAt = feedBatchMountedAt;
-		const columns = feedGridColumns;
+		void feedBatchStartIndex;
+		void feedBatchSize;
+		void feedGridColumns;
 		void popularBooks.length;
-		void batchStartIndex;
-		void batchSize;
-		void columns;
+		void feedCheckpoint;
 		if (!active || !list) {
+			lastFeedScrollSample = null;
+			feedRowsPerSecond = 0;
 			clearFeedScrollProgressRaf();
 			return;
 		}
 
 		const onScrollOrResize = () => scheduleFeedScrollProgressMeasurement();
+		const onResize = () => {
+			lastFeedScrollSample = null;
+			feedRowsPerSecond = 0;
+			scheduleFeedScrollProgressMeasurement();
+		};
 		window.addEventListener('scroll', onScrollOrResize, { passive: true });
-		window.addEventListener('resize', onScrollOrResize);
-		window.visualViewport?.addEventListener('resize', onScrollOrResize);
+		window.addEventListener('resize', onResize);
+		window.visualViewport?.addEventListener('resize', onResize);
 		queueMicrotask(onScrollOrResize);
-		// Recheck once at the dwell deadline, even if the user stops scrolling beforehand.
+		// No polling of viewport geometry while idle; just one check when the batch dwell expires.
 		const remainingDwellMs = batchMountedAt + FEED_BATCH_BROWSE_DWELL_MS - Date.now();
-		const dwellTimer = remainingDwellMs > 0 ? setTimeout(onScrollOrResize, remainingDwellMs) : null;
+		const dwellTimer =
+			phase === 'creditPending' && remainingDwellMs > 0
+				? setTimeout(onScrollOrResize, remainingDwellMs)
+				: null;
 		return () => {
 			if (dwellTimer !== null) clearTimeout(dwellTimer);
 			window.removeEventListener('scroll', onScrollOrResize);
-			window.removeEventListener('resize', onScrollOrResize);
-			window.visualViewport?.removeEventListener('resize', onScrollOrResize);
+			window.removeEventListener('resize', onResize);
+			window.visualViewport?.removeEventListener('resize', onResize);
 			clearFeedScrollProgressRaf();
 		};
 	});
@@ -1028,10 +959,6 @@
 		return payload;
 	}
 
-	function mainListKey(book: Book): string {
-		return `book:${book.book_id}`;
-	}
-
 	function filterReactedBooksForRateFeed(books: Book[]): Book[] {
 		const ratings = get(ratingsStore);
 		const notInterested = get(notInterestedStore);
@@ -1158,12 +1085,6 @@
 		await tick();
 	}
 
-	async function runSearchSessionFeedRefreshAfterLibraryMutation() {
-		await ensureAnonymousSessionIfNeeded();
-		if (!meetsFeedInteractionThreshold()) return;
-		scheduleSearchSessionFeedRefresh();
-	}
-
 	function handleMainListAfterRate() {
 		onLibraryMutationForFeed();
 		void ensureAnonymousSessionIfNeeded();
@@ -1171,12 +1092,8 @@
 
 	function handleRateBookmark(book: Book) {
 		toggleBookmarked(book);
-		if (searchOverlayOpen) {
-			void runSearchSessionFeedRefreshAfterLibraryMutation();
-		} else {
-			onLibraryMutationForFeed();
-			void ensureAnonymousSessionIfNeeded();
-		}
+		onLibraryMutationForFeed();
+		void ensureAnonymousSessionIfNeeded();
 	}
 
 	function handleRateBookRating(book: Book, value: RatingValue): void {
@@ -1191,79 +1108,6 @@
 		toggleNotInterested(book);
 		onLibraryMutationForFeed();
 		void ensureAnonymousSessionIfNeeded();
-		if (searchOverlayOpen) {
-			void runSearchSessionFeedRefreshAfterLibraryMutation();
-		}
-	}
-
-	function handleSearchAfterRate() {
-		onLibraryMutationForFeed();
-		void runSearchSessionFeedRefreshAfterLibraryMutation();
-	}
-
-	function handleSearchNotInterested(book: Book) {
-		toggleNotInterested(book);
-		onLibraryMutationForFeed();
-		void runSearchSessionFeedRefreshAfterLibraryMutation();
-	}
-
-	function scheduleSearchSessionFeedRefresh() {
-		if (!searchOverlayOpen) return;
-		if (!meetsFeedInteractionThreshold()) return;
-		if (searchSessionFeedRefreshIssued) return;
-		searchSessionFeedRefreshIssued = true;
-		beginSearchSessionFeedRefresh();
-	}
-
-	function beginSearchSessionFeedRefresh() {
-		if (searchSessionFeedRefreshInFlightPromise != null) return;
-		const sid = searchFeedSessionId;
-		const p = refreshMainFeedAfterSearchSession({ sid });
-		const pending = p.finally(() => {
-			if (searchSessionFeedRefreshInFlightPromise === pending) {
-				searchSessionFeedRefreshInFlightPromise = null;
-			}
-		});
-		searchSessionFeedRefreshInFlightPromise = pending;
-	}
-
-	/**
-	 * Persist ratings, insert one `feed_requests` row per search session, and poll until complete.
-	 * This intentionally does not replace the current visible `/rate` list mid-session.
-	 */
-	async function refreshMainFeedAfterSearchSession(opts: { sid: number }) {
-		const { sid } = opts;
-		const entry = rateEntry;
-		const current = () => sid === searchFeedSessionId && rateFeed.isCurrentEntry(entry);
-
-		try {
-			await resolveAccessToken({ lazyAnonymous: true });
-			if (!current()) return;
-			await tick();
-
-			await librarySaves.flush();
-			if (!current()) return;
-
-			const token = get(authStore).session?.access_token ?? null;
-			if (!token) return;
-
-			const supabase = getSupabase();
-			const user = get(authStore).user;
-			if (!supabase || !user?.id) return;
-
-			if (!current()) return;
-			if (!meetsFeedInteractionThreshold()) return;
-			const insertResult = await insertFeedRequestRowWithCooldown(supabase, user.id, entry);
-			if (!current()) return;
-
-			if (insertResult.kind !== 'created') return;
-
-			await pollCuratedFeedRequest(insertResult.requestId, token, feedPollAbort.signal);
-			if (!current()) return;
-			rateFeed.invalidatePrepared();
-		} catch (e) {
-			console.error('[rate] refreshMainFeedAfterSearchSession', e);
-		}
 	}
 
 	function scheduleLibraryHydrationAfterFirstList() {
@@ -1296,6 +1140,11 @@
 		await librarySaves.flush();
 		if (!rateFeed.isCurrentEntry(entry)) return null;
 
+		if (
+			(feedAutomaticPaused || get(feedBrowsing).checkpoint) &&
+			!resolveExhaustedFeedRefreshRequestId(feedState)
+		)
+			return null;
 		const requestId =
 			resolveExhaustedFeedRefreshRequestId(feedState) ??
 			(await insertFeedRequestRowWithCooldown(supabase, user.id, entry).then((result) =>
@@ -1470,8 +1319,16 @@
 		}
 	}
 
-	async function loadCuratedFeedBatch() {
-		if (feedBatchRequestInFlight || loadingMore || loadingInitial) return;
+	async function loadCuratedFeedBatch({ manual = false } = {}) {
+		if (
+			feedBatchRequestInFlight ||
+			loadingMore ||
+			loadingInitial ||
+			feedAutomaticPaused ||
+			feedPagination.phase === 'cooldown'
+		)
+			return;
+		if (!manual && get(feedBrowsing).checkpoint) return;
 		const entry = rateEntry;
 		if (!rateFeed.isCurrentEntry(entry)) return;
 		if (!meetsFeedInteractionThreshold()) {
@@ -1480,7 +1337,13 @@
 		}
 		dispatchFeedPagination({ type: 'LOAD_STARTED', now: Date.now() });
 		feedBatchRequestInFlight = true;
+		loadingMore = true;
 		popularError = null;
+		const deferIfPaused = () => {
+			if (!feedAutomaticPaused && (manual || !get(feedBrowsing).checkpoint)) return false;
+			dispatchFeedPagination({ type: 'LOAD_DEFERRED' });
+			return true;
+		};
 		try {
 			if (!lastAppendWasFeed) {
 				// First curated batch this session (promotion or exhausted-feed fallback): make sure the
@@ -1531,6 +1394,8 @@
 			}
 
 			if (requestId == null) {
+				await librarySaves.flush();
+				if (!rateFeed.isCurrentEntry(entry) || deferIfPaused()) return;
 				const insertResult = await insertFeedRequestRowWithCooldown(supabase, user.id, entry);
 				if (!rateFeed.isCurrentEntry(entry)) return;
 				if (insertResult.kind === 'cooldown') {
@@ -1549,8 +1414,6 @@
 				}
 				requestId = insertResult.requestId;
 			}
-
-			loadingMore = true;
 
 			const outcome = await pollCuratedFeedRequest(requestId, token, feedPollAbort.signal);
 			if (!rateFeed.isCurrentEntry(entry)) return;
@@ -1587,6 +1450,7 @@
 			if (rateFeed.isCurrentEntry(entry)) {
 				loadingMore = false;
 				feedBatchRequestInFlight = false;
+				scheduleFeedScrollProgressMeasurement();
 			}
 		}
 	}
@@ -1697,6 +1561,11 @@
 
 	onMount(() => {
 		pageMounted = true;
+		const syncVisibility = () => {
+			documentVisible = document.visibilityState !== 'hidden';
+		};
+		syncVisibility();
+		document.addEventListener('visibilitychange', syncVisibility);
 		inertSupported = typeof HTMLElement !== 'undefined' && 'inert' in HTMLElement.prototype;
 
 		const syncPrefetch = () => {
@@ -1725,8 +1594,6 @@
 				feedPollAbort = new AbortController();
 				clearFeedPaginationCooldownRetry();
 				clearFeedScrollProgressRaf();
-				resetSearchSessionFeedFlags();
-				searchSessionFeedRefreshInFlightPromise = null;
 				if (!firstOwner && !lazyAnonymous) {
 					searchRequestGeneration++;
 					searchResults = [];
@@ -1785,6 +1652,7 @@
 
 		return () => {
 			unsubscribeOwner();
+			document.removeEventListener('visibilitychange', syncVisibility);
 			window.removeEventListener('scroll', handleScroll);
 			window.removeEventListener('resize', syncPrefetch);
 			window.visualViewport?.removeEventListener('resize', syncPrefetch);
@@ -1836,47 +1704,54 @@
 						ariaLive="polite"
 					/>
 				{:else}
-					<ul
-						bind:this={mainListEl}
-						class="rate-page__list book-card-grid"
-						use:trackGridColumns={(c) => (feedGridColumns = c)}
+					{#snippet feedLoadMore()}
+						<button
+							type="button"
+							class="rate-page__load-more-card typ-interactive-1"
+							onclick={handleManualLoadMoreBooks}
+							disabled={loadingMore || loadingInitial}
+							aria-busy={loadingMore || loadingInitial ? 'true' : undefined}
+							aria-label={t('rate.loadMoreBooksAriaLabel')}
+						>
+							{t('rate.loadMoreBooks')}
+						</button>
+					{/snippet}
+					<VirtualFeedGrid
+						books={popularBooks}
+						ownerId={rateEntry?.ownerId ?? null}
+						bind:element={mainListEl}
+						pinnedBookUlid={$bookSummarySheetHistory?.bookUlid}
+						onColumnsChange={(columns) => (feedGridColumns = columns)}
+						onLayout={scheduleFeedScrollProgressMeasurement}
+						onAnchorChange={(top) => {
+							if (searchOverlayOpen) savedScrollY = top;
+						}}
+						tail={showMainListLoadMoreTile ? feedLoadMore : undefined}
 					>
-						{#each popularBooks as book, i (mainListKey(book))}
-							<li>
-								<BookCard
-									context="rate"
-									{book}
-									coverPriority={coverPriorityFor(i, feedGridColumns)}
-									onSearchAuthor={handleSearchAuthor}
-									bookmarked={$planToReadStore.has(book.id)}
-									onBookmark={() => handleRateBookmark(book)}
-									onRate={(_, value) => handleRateBookRating(book, value)}
-									onRemoveRating={() => handleRateBookRemoveRating(book)}
-									notInterested={$notInterestedStore.has(book.book_id)}
-									onNotInterested={() => handleMainListNotInterested(book)}
-									onAfterRate={handleMainListAfterRate}
-								/>
-							</li>
-						{/each}
-						{#if showMainListLoadMoreTile}
-							<li class="book-card-grid__cell rate-page__load-more-cell">
-								<button
-									type="button"
-									class="rate-page__load-more-card typ-interactive-1"
-									onclick={handleManualLoadMoreBooks}
-									disabled={loadingMore || loadingInitial}
-									aria-busy={loadingMore || loadingInitial ? 'true' : undefined}
-									aria-label={t('rate.loadMoreBooksAriaLabel')}
-								>
-									{t('rate.loadMoreBooks')}
-								</button>
-							</li>
-						{/if}
-					</ul>
+						{#snippet children(book, coverPriority, coverUnavailable)}
+							<BookCard
+								context="rate"
+								{book}
+								{coverPriority}
+								{coverUnavailable}
+								onSearchAuthor={handleSearchAuthor}
+								bookmarked={$planToReadStore.has(book.id)}
+								onBookmark={() => handleRateBookmark(book)}
+								onRate={(_, value) => handleRateBookRating(book, value)}
+								onRemoveRating={() => handleRateBookRemoveRating(book)}
+								notInterested={$notInterestedStore.has(book.book_id)}
+								onNotInterested={() => handleMainListNotInterested(book)}
+								onAfterRate={handleMainListAfterRate}
+							/>
+						{/snippet}
+					</VirtualFeedGrid>
 
 					{#if loadingMore}
 						<div class="rate-page__spinner-wrap rate-page__spinner-wrap--bottom" aria-live="polite">
 							<Spinner />
+							<span
+								>{t(paginationFeedOnly ? 'rate.findingNextBooks' : 'rate.aria.loadingBooks')}</span
+							>
 						</div>
 					{/if}
 
@@ -1904,10 +1779,8 @@
 				summaryHooks={{
 					onSearchAuthor: handleSearchAuthor,
 					onBookmark: (book) => handleRateBookmark(book),
-					onNotInterested: (book) =>
-						searchOverlayOpen ? handleSearchNotInterested(book) : handleMainListNotInterested(book),
-					onAfterRate: () =>
-						searchOverlayOpen ? handleSearchAfterRate() : handleMainListAfterRate()
+					onNotInterested: (book) => handleMainListNotInterested(book),
+					onAfterRate: () => handleMainListAfterRate()
 				}}
 			/>
 			<LibraryLoadNotice collections={['ratings', 'bookmarks', 'dismissals']} />
@@ -2045,8 +1918,8 @@
 											onRate={(_, value) => handleRateBookRating(book, value)}
 											onRemoveRating={() => handleRateBookRemoveRating(book)}
 											notInterested={$notInterestedStore.has(book.book_id)}
-											onNotInterested={() => handleSearchNotInterested(book)}
-											onAfterRate={() => handleSearchAfterRate()}
+											onNotInterested={() => handleMainListNotInterested(book)}
+											onAfterRate={() => handleMainListAfterRate()}
 										/>
 									</li>
 								{/each}
@@ -2125,12 +1998,6 @@
 	.rate-page__empty {
 		color: var(--color-text-muted);
 		margin: var(--space-4) 0;
-	}
-
-	.rate-page__load-more-cell {
-		display: flex;
-		min-width: 0;
-		min-height: 0;
 	}
 
 	.rate-page__load-more-card {
@@ -2348,6 +2215,7 @@
 	}
 	.rate-page__spinner-wrap--bottom {
 		padding: var(--space-6) var(--space-4);
+		gap: var(--space-2);
 	}
 
 	.rate-page__sentinel {

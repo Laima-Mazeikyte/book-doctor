@@ -128,8 +128,9 @@ en:
       loadMoreBooks: 'Couldn’t load more books. Try again.'
       searchFailed: 'Search failed. Please try again.'
     emptySearch: "No books found for '{{query}}'."
-    loadMoreBooks: 'Load more books'
+    loadMoreBooks: 'Load more'
     loadMoreBooksAriaLabel: 'Load more books into the list'
+    findingNextBooks: 'Finding your next books…'
     feedUnlockHint: 'Rate a book to unlock your personalized feed'
     aria:
       searching: 'Searching…'

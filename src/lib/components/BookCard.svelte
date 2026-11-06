@@ -50,7 +50,8 @@
 		notInterested = false,
 		onNotInterested,
 		onAfterRate,
-		coverPriority = 'eager'
+		coverPriority = 'eager',
+		coverUnavailable = false
 	}: BookCardListProps = $props();
 
 	const isRateContext = $derived(context === 'rate');
@@ -73,7 +74,7 @@
 	const displayRating = $derived(
 		hoverRating > 0 ? hoverRating : isRateContext ? (ratingFromStore ?? 0) : (currentRating ?? 0)
 	);
-	const showCoverImage = $derived(Boolean(book.coverUrl) && !coverImageFailed);
+	const showCoverImage = $derived(Boolean(book.coverUrl) && !coverImageFailed && !coverUnavailable);
 	const summarySheetKeepAlive = $derived(context === 'rated' || context === 'recommendations');
 	const summaryPanelId = $derived(`book-summary-panel-${book.book_id}`);
 

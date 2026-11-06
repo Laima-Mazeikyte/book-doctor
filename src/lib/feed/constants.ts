@@ -10,14 +10,11 @@ export const FEED_REQUEST_CREATE_COOLDOWN_MS = 2000;
 /** Minimum dwell time before scroll progress can unlock the next automatic feed request. */
 export const FEED_BATCH_BROWSE_DWELL_MS = 2000;
 
-/** Row progress through the current feed batch needed before prefetching another batch. */
-export const FEED_BATCH_PROGRESS_FULL = 0.45;
+/** Browsing runway to cover generation, polling, and network time. */
+export const FEED_PREFETCH_RUNWAY_SECONDS = 7;
 
-/** Lower row progress accepted when the user is already near the bottom of the list. */
-export const FEED_BATCH_PROGRESS_NEAR_BOTTOM = 0.25;
-
-/** Distance from document bottom that counts as near-bottom browse progress. */
-export const FEED_NEAR_BOTTOM_PX = 800;
+/** Automatic loading becomes an explicit Load more after this many new visible books. */
+export const FEED_BROWSE_CHECKPOINT = 100;
 
 /** Consecutive duplicate/empty feed appends before auto-pagination stops. */
 export const FEED_MAX_CONSECUTIVE_EMPTY_APPENDS = 2;

@@ -7,6 +7,7 @@ import {
 } from '$lib/rate/feedEligibility';
 import type { Book } from '$lib/types/book';
 import { FEED_READ_TIMEOUT_MS } from './constants';
+import { createFeedBrowsingSession } from './feedBrowsingSession';
 import {
 	RATE_FEED_CACHE_MAX_BOOKS,
 	type CachedRateFeed,
@@ -92,6 +93,7 @@ export function createRateFeedController({
 		refreshError: null
 	});
 	let state = empty(null);
+	const browsing = createFeedBrowsingSession();
 	const store = writable(state);
 	let ownerGeneration = 0;
 	let snapshotRevision = 0;
@@ -140,6 +142,7 @@ export function createRateFeedController({
 
 	function setOwner(ownerId: string | null, { retainPublicBooks = false } = {}) {
 		if (destroyed || state.ownerId === ownerId) return;
+		browsing.reset();
 		flushSnapshot();
 		const publicBooks =
 			retainPublicBooks && state.ownerId === null && state.activeSource?.kind === 'popular'
@@ -361,6 +364,7 @@ export function createRateFeedController({
 
 	return {
 		subscribe: store.subscribe,
+		browsing,
 		setOwner,
 		prepare,
 		enter,

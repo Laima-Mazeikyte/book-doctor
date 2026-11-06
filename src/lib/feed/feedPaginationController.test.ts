@@ -2,257 +2,160 @@ import { describe, expect, it } from 'vitest';
 import {
 	initialFeedPaginationState,
 	transitionFeedPagination,
-	type FeedPaginationCommand,
-	type FeedPaginationState
+	feedRequestCooldownRemaining,
+	type FeedPaginationEvent
 } from './feedPaginationController';
 
-function transition(
-	state: FeedPaginationState,
-	event: Parameters<typeof transitionFeedPagination>[1]
-) {
-	return transitionFeedPagination(state, event).state;
-}
+const enter = (start = 0, size = 50) =>
+	transitionFeedPagination(initialFeedPaginationState(), {
+		type: 'ENTER_FEED',
+		batchStartIndex: start,
+		batchSize: size,
+		now: 1000
+	}).state;
+const progress = (
+	overrides: Partial<Extract<FeedPaginationEvent, { type: 'BROWSE_PROGRESS' }>> = {}
+) => ({
+	type: 'BROWSE_PROGRESS' as const,
+	maxVisibleIndex: 24,
+	columns: 5,
+	remainingRows: 5,
+	viewportRows: 2.5,
+	rowsPerSecond: 0,
+	automaticAllowed: true,
+	now: 3000,
+	...overrides
+});
 
-function commands(
-	state: FeedPaginationState,
-	event: Parameters<typeof transitionFeedPagination>[1]
-) {
-	return transitionFeedPagination(state, event).commands;
-}
-
-describe('feedPaginationController', () => {
-	it('enters creditPending when a feed batch is armed', () => {
-		const state = transition(initialFeedPaginationState(), {
-			type: 'ENTER_FEED',
-			batchStartIndex: 100,
-			batchSize: 50,
-			now: 1000
-		});
-
+describe('feed pagination scheduling', () => {
+	it('starts with browsing required and waits for dwell even at the bottom', () => {
+		const state = enter();
 		expect(state.phase).toBe('creditPending');
-		expect(state.batchStartIndex).toBe(100);
-		expect(state.batchSize).toBe(50);
-		expect(state.maxSeenIndex).toBe(99);
-	});
-
-	it('does not grant browse credit before dwell time passes', () => {
-		let state = transition(initialFeedPaginationState(), {
-			type: 'ENTER_FEED',
-			batchStartIndex: 0,
-			batchSize: 50,
-			now: 1000
-		});
-
-		state = transition(state, {
-			type: 'BROWSE_PROGRESS',
-			maxSeenIndex: 49,
-			nearBottom: true,
-			columns: 5,
-			now: 2500
-		});
-
-		expect(state.phase).toBe('creditPending');
-	});
-
-	it('grants browse credit after enough row progress and dwell', () => {
-		let state = transition(initialFeedPaginationState(), {
-			type: 'ENTER_FEED',
-			batchStartIndex: 0,
-			batchSize: 50,
-			now: 1000
-		});
-
-		state = transition(state, {
-			type: 'BROWSE_PROGRESS',
-			maxSeenIndex: 24,
-			nearBottom: false,
-			columns: 5,
-			now: 3100
-		});
-
-		expect(state.phase).toBe('readyToPrefetch');
-	});
-
-	it('keeps unchanged browse progress stable but still checks the dwell deadline', () => {
-		let state = transition(initialFeedPaginationState(), {
-			type: 'ENTER_FEED',
-			batchStartIndex: 0,
-			batchSize: 50,
-			now: 1000
-		});
-		const progress = {
-			type: 'BROWSE_PROGRESS' as const,
-			maxSeenIndex: 24,
-			nearBottom: false,
-			columns: 5
-		};
-		state = transition(state, { ...progress, now: 1500 });
-		expect(transition(state, { ...progress, now: 2999 })).toBe(state);
-		expect(transition(state, { ...progress, now: 3000 }).phase).toBe('readyToPrefetch');
-	});
-
-	it('keeps insufficient progress stable after the dwell deadline', () => {
-		const state = transition(initialFeedPaginationState(), {
-			type: 'ENTER_FEED',
-			batchStartIndex: 0,
-			batchSize: 50,
-			now: 1000
-		});
 		expect(
-			transition(state, {
-				type: 'BROWSE_PROGRESS',
-				maxSeenIndex: -1,
-				nearBottom: false,
-				columns: 5,
-				now: 3000
-			})
-		).toBe(state);
+			transitionFeedPagination(
+				state,
+				progress({ maxVisibleIndex: 49, remainingRows: 0, now: 2999 })
+			).commands
+		).toEqual([]);
 	});
-
-	it('does not replace repeated sentinel state or suppress a ready load command', () => {
-		const pending = transition(initialFeedPaginationState(), {
-			type: 'ENTER_FEED',
-			batchStartIndex: 0,
-			batchSize: 50,
-			now: 1000
-		});
-		const waiting = transition(pending, { type: 'SENTINEL_PREFETCH', now: 1100 });
-		expect(transition(waiting, { type: 'SENTINEL_BOTTOM', now: 1200 })).toBe(waiting);
-		const ready = { ...waiting, phase: 'readyToPrefetch' as const };
-		const result = transitionFeedPagination(ready, { type: 'SENTINEL_PREFETCH', now: 3200 });
-		expect(result.state).toBe(ready);
-		expect(result.commands).toEqual([{ type: 'REQUEST_LOAD' }]);
-	});
-
-	it('grants browse credit with lower progress near the bottom', () => {
-		let state = transition(initialFeedPaginationState(), {
-			type: 'ENTER_FEED',
-			batchStartIndex: 100,
-			batchSize: 50,
-			now: 1000
-		});
-
-		state = transition(state, {
-			type: 'BROWSE_PROGRESS',
-			maxSeenIndex: 114,
-			nearBottom: true,
-			columns: 5,
-			now: 3100
-		});
-
-		expect(state.phase).toBe('readyToPrefetch');
-	});
-
-	it('requests a load only when ready to prefetch', () => {
-		const pending = transition(initialFeedPaginationState(), {
-			type: 'ENTER_FEED',
-			batchStartIndex: 0,
-			batchSize: 50,
-			now: 1000
-		});
-		expect(commands(pending, { type: 'SENTINEL_PREFETCH', now: 3200 })).toEqual([]);
-
-		const ready = transition(pending, {
-			type: 'BROWSE_PROGRESS',
-			maxSeenIndex: 24,
-			nearBottom: false,
-			columns: 5,
-			now: 3200
-		});
-		expect(commands(ready, { type: 'SENTINEL_PREFETCH', now: 3300 })).toEqual([
+	it('requests with browsing runway without needing a bottom sentinel', () => {
+		expect(transitionFeedPagination(enter(), progress()).commands).toEqual([
 			{ type: 'REQUEST_LOAD' }
-		] satisfies FeedPaginationCommand[]);
+		]);
 	});
-
-	it('manual load bypasses browse credit', () => {
-		const pending = transition(initialFeedPaginationState(), {
-			type: 'ENTER_FEED',
-			batchStartIndex: 0,
-			batchSize: 50,
-			now: 1000
-		});
-
-		const result = transitionFeedPagination(pending, { type: 'MANUAL_LOAD', now: 1200 });
-
-		expect(result.state.phase).toBe('readyToPrefetch');
-		expect(result.commands).toContainEqual({ type: 'REQUEST_LOAD' });
+	it('does not start while too many rows remain', () => {
+		expect(transitionFeedPagination(enter(), progress({ remainingRows: 8 })).commands).toEqual([]);
 	});
-
-	it('schedules a cooldown retry and requests after cooldown elapses when sentinel still wants load', () => {
-		let state = transition(initialFeedPaginationState(), {
-			type: 'ENTER_FEED',
-			batchStartIndex: 0,
-			batchSize: 50,
-			now: 1000
+	it('adapts to speed but caps anticipation at 60% of the new batch', () => {
+		const mobile = enter();
+		const fast = progress({
+			columns: 2,
+			maxVisibleIndex: 19,
+			remainingRows: 15,
+			viewportRows: 2,
+			rowsPerSecond: 10
 		});
-		state = transition(state, {
-			type: 'BROWSE_PROGRESS',
-			maxSeenIndex: 24,
-			nearBottom: false,
-			columns: 5,
-			now: 3200
+		expect(transitionFeedPagination(mobile, { ...fast, rowsPerSecond: 0 }).commands).toEqual([]);
+		expect(transitionFeedPagination(mobile, fast).commands).toEqual([{ type: 'REQUEST_LOAD' }]);
+		expect(transitionFeedPagination(mobile, { ...fast, remainingRows: 16 }).commands).toEqual([]);
+	});
+	it('requires the newest batch to enter the viewport, even on short batches', () => {
+		expect(
+			transitionFeedPagination(enter(50, 3), progress({ maxVisibleIndex: 49, remainingRows: 0 }))
+				.commands
+		).toEqual([]);
+		expect(
+			transitionFeedPagination(enter(50, 3), progress({ maxVisibleIndex: 50, remainingRows: 0 }))
+				.commands
+		).toEqual([{ type: 'REQUEST_LOAD' }]);
+	});
+	it('never automatically loads at the checkpoint', () => {
+		expect(
+			transitionFeedPagination(enter(), progress({ automaticAllowed: false, remainingRows: 0 }))
+				.commands
+		).toEqual([]);
+	});
+	it('manual Load more bypasses dwell and checkpoint for one batch', () => {
+		const manual = transitionFeedPagination(enter(), { type: 'MANUAL_LOAD', now: 1100 });
+		expect(manual.commands).toEqual([{ type: 'REQUEST_LOAD' }]);
+		const appended = transitionFeedPagination(manual.state, {
+			type: 'LOAD_COMPLETED',
+			appendedCount: 50,
+			batchStartIndex: 50,
+			now: 4000
 		});
-		state = transition(state, { type: 'SENTINEL_BOTTOM', now: 3300 });
-
-		const blocked = transitionFeedPagination(state, {
+		expect(appended.state.manualLoadPending).toBe(false);
+		expect(
+			transitionFeedPagination(
+				appended.state,
+				progress({ automaticAllowed: false, now: 7000, maxVisibleIndex: 99, remainingRows: 0 })
+			).commands
+		).toEqual([]);
+	});
+	it('does not issue another request during generation, cooldown, or an error', () => {
+		for (const phase of ['loading', 'cooldown', 'exhausted'] as const) {
+			expect(transitionFeedPagination({ ...enter(), phase }, progress()).commands).toEqual([]);
+		}
+		for (const phase of ['loading', 'cooldown'] as const) {
+			expect(
+				transitionFeedPagination({ ...enter(), phase }, { type: 'MANUAL_LOAD', now: 3000 }).commands
+			).toEqual([]);
+		}
+	});
+	it('reassesses foreground/checkpoint after cooldown instead of blindly retrying', () => {
+		const blocked = transitionFeedPagination(enter(), {
 			type: 'COOLDOWN_BLOCKED',
 			remainingMs: 500,
-			now: 3300
-		});
-		expect(blocked.state.phase).toBe('cooldown');
-		expect(blocked.commands).toEqual([{ type: 'SCHEDULE_COOLDOWN_RETRY', delayMs: 500 }]);
-
-		const elapsed = transitionFeedPagination(blocked.state, {
-			type: 'COOLDOWN_ELAPSED',
-			now: 3800
-		});
-		expect(elapsed.state.phase).toBe('readyToPrefetch');
-		expect(elapsed.commands).toEqual([{ type: 'REQUEST_LOAD' }]);
-	});
-
-	it('stops auto-pagination after repeated empty appends', () => {
-		let state = transition(initialFeedPaginationState(), {
-			type: 'ENTER_FEED',
-			batchStartIndex: 0,
-			batchSize: 50,
-			now: 1000
-		});
-
-		state = transition(state, {
-			type: 'LOAD_COMPLETED',
-			appendedCount: 0,
-			batchStartIndex: 50,
-			now: 2000
-		});
-		expect(state.phase).toBe('readyToPrefetch');
-
-		state = transition(state, {
-			type: 'LOAD_COMPLETED',
-			appendedCount: 0,
-			batchStartIndex: 50,
 			now: 3000
 		});
-		expect(state.phase).toBe('exhausted');
-	});
-
-	it('partial appends arm a new browse-credit batch instead of exhausting', () => {
-		let state = transition(initialFeedPaginationState(), {
-			type: 'ENTER_FEED',
-			batchStartIndex: 0,
-			batchSize: 50,
-			now: 1000
+		expect(blocked.commands).toEqual([{ type: 'SCHEDULE_COOLDOWN_RETRY', delayMs: 500 }]);
+		const elapsed = transitionFeedPagination(blocked.state, {
+			type: 'COOLDOWN_ELAPSED',
+			now: 3500
 		});
-
-		state = transition(state, {
+		expect(elapsed.commands).toEqual([]);
+		expect(
+			transitionFeedPagination(elapsed.state, progress({ automaticAllowed: false })).commands
+		).toEqual([]);
+	});
+	it('preserves manual intent if browsing pauses before a job starts', () => {
+		let state = transitionFeedPagination(enter(), { type: 'MANUAL_LOAD', now: 1100 }).state;
+		state = transitionFeedPagination(state, { type: 'LOAD_DEFERRED' }).state;
+		expect(transitionFeedPagination(state, progress({ automaticAllowed: false })).commands).toEqual(
+			[{ type: 'REQUEST_LOAD' }]
+		);
+	});
+	it('arms a new dwell on every append and stops after repeated empty responses', () => {
+		const result = transitionFeedPagination(enter(), {
 			type: 'LOAD_COMPLETED',
 			appendedCount: 12,
 			batchStartIndex: 50,
-			now: 3000
+			now: 4000
 		});
-
-		expect(state.phase).toBe('creditPending');
-		expect(state.batchStartIndex).toBe(50);
-		expect(state.batchSize).toBe(12);
-		expect(state.consecutiveEmptyAppends).toBe(0);
+		expect(result.state).toMatchObject({
+			batchStartIndex: 50,
+			batchSize: 12,
+			batchMountedAt: 4000,
+			phase: 'creditPending'
+		});
+		let state = result.state;
+		for (let i = 0; i < 2; i++)
+			state = transitionFeedPagination(state, {
+				type: 'LOAD_COMPLETED',
+				appendedCount: 0,
+				batchStartIndex: 62,
+				now: 6000
+			}).state;
+		expect(state.phase).toBe('exhausted');
+		expect(transitionFeedPagination(state, { type: 'MANUAL_LOAD', now: 7000 }).commands).toEqual([
+			{ type: 'REQUEST_LOAD' }
+		]);
+	});
+	it('keeps insertion cooldown and clears state on reset', () => {
+		const created = transitionFeedPagination(enter(), { type: 'REQUEST_CREATED', now: 3000 }).state;
+		expect(feedRequestCooldownRemaining(created, 3500, 2000)).toBe(1500);
+		expect(transitionFeedPagination(created, { type: 'RESET' }).state).toEqual(
+			initialFeedPaginationState()
+		);
 	});
 });

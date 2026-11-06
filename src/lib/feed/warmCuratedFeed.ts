@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Book } from '$lib/types/book';
 
 /** Match rate page feed polling. */
-export const FEED_POLL_MS = 3000;
+export const FEED_POLL_MS = 1000;
 export const FEED_TIMEOUT_MS = 60_000;
 
 export type CuratedFeedPollResult =

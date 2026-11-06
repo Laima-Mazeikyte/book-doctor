@@ -1,27 +1,20 @@
 import {
 	FEED_BATCH_BROWSE_DWELL_MS,
-	FEED_BATCH_PROGRESS_FULL,
-	FEED_BATCH_PROGRESS_NEAR_BOTTOM,
+	FEED_PREFETCH_RUNWAY_SECONDS,
+	FEED_REQUEST_BATCH_SIZE,
 	FEED_MAX_CONSECUTIVE_EMPTY_APPENDS
-} from '$lib/feed/constants';
+} from './constants';
 
-export type FeedPaginationPhase =
-	| 'idle'
-	| 'creditPending'
-	| 'readyToPrefetch'
-	| 'loading'
-	| 'cooldown'
-	| 'exhausted';
+export type FeedPaginationPhase = 'idle' | 'creditPending' | 'loading' | 'cooldown' | 'exhausted';
 
 export type FeedPaginationState = {
 	phase: FeedPaginationPhase;
 	batchStartIndex: number;
 	batchSize: number;
 	batchMountedAt: number;
-	maxSeenIndex: number;
 	lastRequestCreatedAt: number;
 	consecutiveEmptyAppends: number;
-	sentinelWantsLoad: boolean;
+	manualLoadPending: boolean;
 };
 
 export type FeedPaginationEvent =
@@ -29,15 +22,17 @@ export type FeedPaginationEvent =
 	| { type: 'RESET' }
 	| {
 			type: 'BROWSE_PROGRESS';
-			maxSeenIndex: number;
-			nearBottom: boolean;
+			maxVisibleIndex: number;
 			columns: number;
+			remainingRows: number;
+			viewportRows: number;
+			rowsPerSecond: number;
+			automaticAllowed: boolean;
 			now: number;
 	  }
-	| { type: 'SENTINEL_PREFETCH'; now: number }
-	| { type: 'SENTINEL_BOTTOM'; now: number }
 	| { type: 'MANUAL_LOAD'; now: number }
 	| { type: 'LOAD_STARTED'; now: number }
+	| { type: 'LOAD_DEFERRED' }
 	| { type: 'REQUEST_CREATED'; now: number }
 	| { type: 'LOAD_COMPLETED'; appendedCount: number; batchStartIndex: number; now: number }
 	| { type: 'LOAD_FAILED'; now: number }
@@ -49,21 +44,15 @@ export type FeedPaginationCommand =
 	| { type: 'SCHEDULE_COOLDOWN_RETRY'; delayMs: number }
 	| { type: 'CLEAR_COOLDOWN_RETRY' };
 
-export type FeedPaginationTransition = {
-	state: FeedPaginationState;
-	commands: FeedPaginationCommand[];
-};
-
 export function initialFeedPaginationState(): FeedPaginationState {
 	return {
 		phase: 'idle',
 		batchStartIndex: 0,
 		batchSize: 0,
 		batchMountedAt: 0,
-		maxSeenIndex: -1,
 		lastRequestCreatedAt: 0,
 		consecutiveEmptyAppends: 0,
-		sentinelWantsLoad: false
+		manualLoadPending: false
 	};
 }
 
@@ -71,83 +60,91 @@ export function feedRequestCooldownRemaining(
 	state: FeedPaginationState,
 	now: number,
 	cooldownMs: number
-): number {
+) {
 	return Math.max(0, cooldownMs - (now - state.lastRequestCreatedAt));
 }
 
+/** A single decision based on the visible grid, rather than a second bottom-sentinel gate. */
 export function transitionFeedPagination(
 	state: FeedPaginationState,
 	event: FeedPaginationEvent
-): FeedPaginationTransition {
+): { state: FeedPaginationState; commands: FeedPaginationCommand[] } {
 	switch (event.type) {
 		case 'RESET':
 			return { state: initialFeedPaginationState(), commands: [{ type: 'CLEAR_COOLDOWN_RETRY' }] };
-
 		case 'ENTER_FEED':
 			return {
 				state: armBatch(state, event.batchStartIndex, event.batchSize, event.now),
 				commands: [{ type: 'CLEAR_COOLDOWN_RETRY' }]
 			};
-
-		case 'BROWSE_PROGRESS':
-			return {
-				state: applyBrowseProgress(state, event),
-				commands: []
-			};
-
-		case 'SENTINEL_PREFETCH':
-		case 'SENTINEL_BOTTOM':
-			return sentinelWantsLoad(state);
-
+		case 'BROWSE_PROGRESS': {
+			if (state.phase !== 'creditPending') return { state, commands: [] };
+			const batchRows = Math.ceil(
+				Math.min(state.batchSize, FEED_REQUEST_BATCH_SIZE) / Math.max(1, event.columns)
+			);
+			// Keep two viewport heights available, or seven seconds at recent speed.
+			// Never request before entering the newest batch or while over 60% of it remains.
+			const runwayRows = Math.min(
+				Math.ceil(batchRows * 0.6),
+				Math.max(
+					2,
+					Math.ceil(event.viewportRows * 2),
+					Math.ceil(event.rowsPerSecond * FEED_PREFETCH_RUNWAY_SECONDS)
+				)
+			);
+			const ready =
+				state.manualLoadPending ||
+				(event.automaticAllowed &&
+					event.now - state.batchMountedAt >= FEED_BATCH_BROWSE_DWELL_MS &&
+					event.maxVisibleIndex >= state.batchStartIndex &&
+					event.remainingRows <= runwayRows);
+			return { state, commands: ready ? [{ type: 'REQUEST_LOAD' }] : [] };
+		}
 		case 'MANUAL_LOAD':
-			return {
-				state: { ...state, phase: 'readyToPrefetch', sentinelWantsLoad: true },
-				commands: [{ type: 'CLEAR_COOLDOWN_RETRY' }, { type: 'REQUEST_LOAD' }]
-			};
-
+			if (state.phase === 'loading' || state.phase === 'cooldown') return { state, commands: [] };
+			return { state: { ...state, manualLoadPending: true }, commands: [{ type: 'REQUEST_LOAD' }] };
 		case 'LOAD_STARTED':
 			return {
-				state: { ...state, phase: 'loading', sentinelWantsLoad: false },
+				state: { ...state, phase: 'loading' },
 				commands: [{ type: 'CLEAR_COOLDOWN_RETRY' }]
 			};
-
+		case 'LOAD_DEFERRED':
+		case 'COOLDOWN_ELAPSED':
+			// The route measures again and checks visibility/checkpoint before any retry.
+			return { state: { ...state, phase: 'creditPending' }, commands: [] };
 		case 'REQUEST_CREATED':
+			return { state: { ...state, lastRequestCreatedAt: event.now }, commands: [] };
+		case 'LOAD_COMPLETED': {
+			if (event.appendedCount > 0)
+				return {
+					state: armBatch(state, event.batchStartIndex, event.appendedCount, event.now),
+					commands: [{ type: 'CLEAR_COOLDOWN_RETRY' }]
+				};
+			const consecutiveEmptyAppends = state.consecutiveEmptyAppends + 1;
 			return {
-				state: { ...state, lastRequestCreatedAt: event.now },
+				state: {
+					...state,
+					consecutiveEmptyAppends,
+					manualLoadPending: false,
+					phase:
+						consecutiveEmptyAppends >= FEED_MAX_CONSECUTIVE_EMPTY_APPENDS
+							? 'exhausted'
+							: 'creditPending'
+				},
 				commands: []
 			};
-
-		case 'LOAD_COMPLETED':
-			return loadCompleted(state, event);
-
+		}
 		case 'LOAD_FAILED':
 			return {
-				state: { ...state, phase: 'exhausted', sentinelWantsLoad: false },
+				state: { ...state, phase: 'exhausted', manualLoadPending: false },
 				commands: [{ type: 'CLEAR_COOLDOWN_RETRY' }]
 			};
-
 		case 'COOLDOWN_BLOCKED':
 			return {
-				state: { ...state, phase: 'cooldown', sentinelWantsLoad: true },
+				state: { ...state, phase: 'cooldown' },
 				commands: [{ type: 'SCHEDULE_COOLDOWN_RETRY', delayMs: Math.max(0, event.remainingMs) }]
 			};
-
-		case 'COOLDOWN_ELAPSED': {
-			const next = { ...state, phase: 'readyToPrefetch' as const };
-			return {
-				state: next,
-				commands: state.sentinelWantsLoad ? [{ type: 'REQUEST_LOAD' }] : []
-			};
-		}
 	}
-}
-
-function sentinelWantsLoad(state: FeedPaginationState): FeedPaginationTransition {
-	const next = state.sentinelWantsLoad ? state : { ...state, sentinelWantsLoad: true };
-	if (state.phase !== 'readyToPrefetch') {
-		return { state: next, commands: [] };
-	}
-	return { state: next, commands: [{ type: 'REQUEST_LOAD' }] };
 }
 
 function armBatch(
@@ -156,77 +153,13 @@ function armBatch(
 	batchSize: number,
 	now: number
 ): FeedPaginationState {
-	const safeStart = Math.max(0, batchStartIndex);
-	const safeSize = Math.max(0, batchSize);
 	return {
 		...state,
-		phase: safeSize > 0 ? 'creditPending' : 'readyToPrefetch',
-		batchStartIndex: safeStart,
-		batchSize: safeSize,
+		phase: 'creditPending',
+		batchStartIndex: Math.max(0, batchStartIndex),
+		batchSize: Math.max(0, batchSize),
 		batchMountedAt: now,
-		maxSeenIndex: safeStart - 1,
 		consecutiveEmptyAppends: 0,
-		sentinelWantsLoad: false
+		manualLoadPending: false
 	};
-}
-
-function applyBrowseProgress(
-	state: FeedPaginationState,
-	event: Extract<FeedPaginationEvent, { type: 'BROWSE_PROGRESS' }>
-): FeedPaginationState {
-	if (state.phase !== 'creditPending' || state.batchSize <= 0) return state;
-
-	const maxSeenIndex = Math.max(state.maxSeenIndex, event.maxSeenIndex);
-	const next = maxSeenIndex === state.maxSeenIndex ? state : { ...state, maxSeenIndex };
-	if (event.now - state.batchMountedAt < FEED_BATCH_BROWSE_DWELL_MS) return next;
-
-	const progress = batchProgressByRows({
-		batchStartIndex: state.batchStartIndex,
-		batchSize: state.batchSize,
-		maxSeenIndex,
-		columns: event.columns
-	});
-	const hasCredit =
-		progress >= FEED_BATCH_PROGRESS_FULL ||
-		(event.nearBottom && progress >= FEED_BATCH_PROGRESS_NEAR_BOTTOM);
-
-	return hasCredit ? { ...next, phase: 'readyToPrefetch' } : next;
-}
-
-function loadCompleted(
-	state: FeedPaginationState,
-	event: Extract<FeedPaginationEvent, { type: 'LOAD_COMPLETED' }>
-): FeedPaginationTransition {
-	if (event.appendedCount > 0) {
-		return {
-			state: armBatch(state, event.batchStartIndex, event.appendedCount, event.now),
-			commands: [{ type: 'CLEAR_COOLDOWN_RETRY' }]
-		};
-	}
-
-	const consecutiveEmptyAppends = state.consecutiveEmptyAppends + 1;
-	const exhausted = consecutiveEmptyAppends >= FEED_MAX_CONSECUTIVE_EMPTY_APPENDS;
-	return {
-		state: {
-			...state,
-			phase: exhausted ? 'exhausted' : 'readyToPrefetch',
-			consecutiveEmptyAppends,
-			sentinelWantsLoad: !exhausted
-		},
-		commands: []
-	};
-}
-
-function batchProgressByRows(args: {
-	batchStartIndex: number;
-	batchSize: number;
-	maxSeenIndex: number;
-	columns: number;
-}): number {
-	if (args.batchSize <= 0) return 0;
-	const columns = Math.max(1, Math.floor(args.columns) || 1);
-	const seenItems = Math.max(0, args.maxSeenIndex - args.batchStartIndex + 1);
-	const seenRows = Math.ceil(Math.min(seenItems, args.batchSize) / columns);
-	const totalRows = Math.ceil(args.batchSize / columns);
-	return totalRows > 0 ? seenRows / totalRows : 0;
 }

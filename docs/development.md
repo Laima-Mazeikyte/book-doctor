@@ -83,6 +83,55 @@ pnpm exec playwright test -c playwright.rate-entry.config.ts --grep "entry timin
 
 The timing tests retain the original under-200-ms assertions. The last recorded restored-fade run failed all three timing scenarios because some samples exceeded that threshold. A full invocation of the dedicated config includes those assertions and may therefore fail despite passing behavior checks. Preserve the transition and report the timing results; do not treat the historical zero-fade measurements as current acceptance or relax the assertions to make the run pass.
 
+## Feed virtualization
+
+The main `/rate` grid keeps small feeds through 100 books mounted normally. Longer
+feeds render whole rows around the viewport with two viewport heights of extra
+rows above and below. Spacers preserve the complete list height; focused rows and
+the row owning an open summary stay mounted separately. All loaded book records
+remain in the existing feed controller, and the persisted cache retains its
+existing 100-book limit.
+
+`VirtualFeedGrid.svelte` measures the actual responsive grid and restores a book
+anchor after reflow. Its scoped lifecycle disables document scroll anchoring so
+the footer cannot pull the viewport to newly appended books. Feed progress uses
+logical book indices rather than DOM-child positions. Request sizes, exclusions,
+and search-result rendering retain their existing behavior.
+
+The focused browser fixture in `e2e/rate-feed-virtualization.e2e.ts` uses 1,000
+mocked loaded books and checks mounted-card bounds, interactions after remount,
+summary history across resizing, author-search return, and pagination in a long list.
+It creates no real generation jobs. Component and geometry tests live beside the
+virtual grid under `src/lib/feed`.
+
+## Feed request scheduling
+
+Personalized pagination uses the actual visible grid rather than a bottom sentinel.
+After a two-second dwell and entry into the newest batch, it requests one batch
+with roughly seven seconds of browsing runway, estimated from recent forward
+scrolling. The minimum buffer is two viewport heights, capped at 60% of a normal
+50-book batch. Reflows and pauses discard the speed estimate. Returning to older
+cards does not authorize another batch. Completed jobs are checked every second;
+request creation retains its cooldown, timeout, and uncertain-insert protection.
+
+Search, an open summary, and a hidden document pause new automatic jobs. Existing
+jobs finish normally. The scheduler checks these conditions again after asynchronous
+reads and pending-save flushes, immediately before inserting a job. Search feedback
+uses this same scheduler rather than a separate generation path. Initial loading
+can still join an existing pending job; it does not create one while browsing is paused.
+
+After 100 distinct books enter the viewport without feedback, pagination shows
+only **Load more**. Overscan and revisits do not count. Each click permits one
+batch; only a library interaction resumes automatic loading. An already running
+job may complete. The checkpoint belongs to the layout controller in memory, so
+navigation away and back retains it, while reloads and account changes reset it.
+It is not written to local storage. Seen-ID tracking stops at the checkpoint.
+
+`e2e/rate-feed-scheduling.e2e.ts` covers early requests, one-batch lookahead,
+checkpoint/manual loading, navigation, exclusions after feedback during generation,
+and explicit retries. It shares mocked auth, database, and API fixtures with the
+virtualization tests in `e2e/rate-feed.fixture.ts`; no real jobs or saves are sent.
+
 ## Manual checks
 
 | Check                                                                                    | Expected result                                                                                                                                                                               |

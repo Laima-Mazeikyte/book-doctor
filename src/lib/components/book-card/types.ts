@@ -39,4 +39,6 @@ export type BookCardListProps = {
 	onAfterRate?: (book: Book) => void;
 	/** Cover-image loading tier from grid position (eager/high/lazy). Defaults to `eager`. */
 	coverPriority?: CoverPriority;
+	/** A feed window remembers failed covers when an offscreen card is remounted. */
+	coverUnavailable?: boolean;
 };
