@@ -1,3 +1,4 @@
+import { withRequestTimeout } from '$lib/server/requestTimeout';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { fetchBooksByUlidsInOrder } from '$lib/server/catalogBooks';
@@ -9,9 +10,9 @@ import {
 	createUserLibraryPostHandler
 } from '$lib/server/userLibraryMutations';
 
-export const GET: RequestHandler = async ({ request }) => {
+export const GET: RequestHandler = withRequestTimeout(async ({ request }, signal) => {
 	const accessToken = requireAccessToken(request);
-	const supabase = createSupabaseWithAuth(accessToken);
+	const supabase = createSupabaseWithAuth(accessToken, signal);
 
 	const { data: rows, error: selectError } = await readAllPages((from, to) =>
 		supabase
@@ -42,7 +43,7 @@ export const GET: RequestHandler = async ({ request }) => {
 		console.error(booksError);
 		throw error(500, 'Failed to load bookmarked books');
 	}
-};
+});
 
 export const POST = createUserLibraryPostHandler('user_bookmarks', 'Failed to add bookmark');
 export const DELETE = createUserLibraryDeleteHandler('user_bookmarks', 'Failed to remove bookmark');

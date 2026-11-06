@@ -77,7 +77,7 @@ const output = {
 };
 writeFileSync(
 	new URL('../src/lib/recommendations/filter-options.generated.json', import.meta.url),
-	`${JSON.stringify(output, null, 2)}\n`
+	`${JSON.stringify(output, null, '\t')}\n`
 );
 writeFileSync(
 	new URL('../static/recommendation-authors.json', import.meta.url),

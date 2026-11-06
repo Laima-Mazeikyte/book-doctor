@@ -12,6 +12,7 @@ vi.mock('$lib/server/supabase', () => ({
 let reads: URL[];
 let failure: boolean;
 let count: number;
+let rowPatch: Record<string, unknown>;
 function event(query = `author=${encodeURIComponent('An Author')}`) {
 	return { url: new URL(`http://localhost/api/books/by-author?${query}`) } as Parameters<
 		typeof GET
@@ -22,6 +23,7 @@ beforeEach(() => {
 	reads = [];
 	failure = false;
 	count = 49;
+	rowPatch = {};
 	fixture.client = createClient('https://author-books.test', 'public-test-key', {
 		db: { retry: false },
 		auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
@@ -32,10 +34,10 @@ beforeEach(() => {
 				if (failure) return Response.json({ message: 'Database unavailable' }, { status: 500 });
 				return Response.json(
 					Array.from({ length: count }, (_, index) => ({
-						id: `uuid-${index}`,
-						book_id: `book-${index}`,
-						book_name: `Book ${index}`,
-						author: 'An Author'
+						book_id: `01${String(index).padStart(24, '0')}`,
+						slug: `book-${index}`,
+						title: `Book ${index}`,
+						...rowPatch
 					}))
 				);
 			}
@@ -49,10 +51,15 @@ it('loads 48 author books plus a truncation sentinel in chronological order with
 	const payload = await response.json();
 	expect(response.status).toBe(200);
 	expect(payload.books).toHaveLength(48);
-	expect(payload.books[0]).toMatchObject({ title: 'Book 0', author: 'An Author' });
+	expect(payload.books[0]).toEqual({
+		book_id: '01000000000000000000000000',
+		slug: 'book-0',
+		title: 'Book 0'
+	});
 	expect(payload.truncated).toBe(true);
 	expect(reads).toHaveLength(1);
 	expect(reads[0].searchParams.get('author')).toBe('eq.An Author');
+	expect(reads[0].searchParams.get('select')).toBe('book_id,slug,title:book_name');
 	expect(reads[0].searchParams.has('book_id')).toBe(false);
 	expect(reads[0].searchParams.get('order')).toBe('year.asc.nullslast,book_name.asc,book_id.asc');
 	expect(reads[0].searchParams.get('limit')).toBe('49');
@@ -72,6 +79,41 @@ it('returns a successful empty collection when no author books are found', async
 	count = 0;
 	expect(await (await GET(event())).json()).toEqual({ books: [], truncated: false });
 });
+
+it('keeps the response minimal even if an upstream row includes extra metadata', async () => {
+	count = 1;
+	rowPatch = {
+		id: 'internal-uuid',
+		author: 'An Author',
+		summary: 'Unused synopsis',
+		year: 2020,
+		coverUrl: 'https://covers.example/book-720.avif',
+		genres: ['Fantasy'],
+		characteristics: [{ label: 'Deep' }],
+		keywords: ['Magic'],
+		distinctions: { book: null, author: null }
+	};
+	expect(await (await GET(event())).json()).toEqual({
+		books: [{ book_id: '01000000000000000000000000', slug: 'book-0', title: 'Book 0' }],
+		truncated: false
+	});
+});
+
+it.each([
+	{ book_id: null },
+	{ book_id: '' },
+	{ slug: null },
+	{ slug: '   ' },
+	{ title: null },
+	{ title: '' }
+])(
+	'rejects malformed core identity rather than returning a partial author collection: %j',
+	async (patch) => {
+		count = 1;
+		rowPatch = patch;
+		await expect(GET(event())).rejects.toThrow('Invalid author-book catalog identity');
+	}
+);
 
 it('propagates lookup failures for a retry instead of reporting no other books', async () => {
 	failure = true;

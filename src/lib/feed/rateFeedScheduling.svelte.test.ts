@@ -24,7 +24,8 @@ vi.mock('$app/navigation', () => ({
 	beforeNavigate: vi.fn(),
 	goto: vi.fn(),
 	pushState: vi.fn(),
-	replaceState: vi.fn()
+	replaceState: vi.fn(),
+	preloadData: vi.fn().mockResolvedValue({ status: 200 })
 }));
 vi.mock('$app/paths', () => ({ resolve: (path: string) => path }));
 vi.mock('$app/stores', async () => ({

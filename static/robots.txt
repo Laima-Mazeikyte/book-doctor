@@ -1,5 +1,5 @@
-# allow crawling everything by default
+# Public books and pages are crawlable; personalized discovery is an application route.
 User-agent: *
-Disallow:
+Disallow: /discover
 
 Sitemap: https://unread.world/sitemap.xml

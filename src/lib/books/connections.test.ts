@@ -59,10 +59,10 @@ it('calls the authenticated RPC without a user ID and preserves server order and
 	const signal = new AbortController().signal;
 	const result = await loadBookConnections(api.supabase, target, signal);
 	expect(api.rpc).toHaveBeenCalledWith('get_book_connections', { p_book_id: target, p_limit: 3 });
-	expect(api.rpcResult).toHaveBeenCalledWith(signal);
+	expect(api.rpcResult).toHaveBeenCalledWith(expect.any(AbortSignal));
 	expect(api.select).toHaveBeenCalledWith('id,book_id,slug,book_name,author');
 	expect(api.lookup).toHaveBeenCalledWith('book_id', [second.book_id, first.book_id]);
-	expect(api.metadataResult).toHaveBeenCalledWith(signal);
+	expect(api.metadataResult).toHaveBeenCalledWith(api.rpcResult.mock.calls[0][0]);
 	expect(result).toEqual([
 		{ book: second, rating: 2 },
 		{ book: first, rating: 5 }
@@ -159,4 +159,27 @@ it('does not start metadata resolution after cancellation and rejects late metad
 	await expect(
 		loadBookConnections(next.supabase, target, nextController.signal)
 	).rejects.toMatchObject({ name: 'AbortError' });
+});
+
+it('shares a deadline across selection and metadata, and ignores late metadata', async () => {
+	vi.useFakeTimers();
+	const api = client();
+	const parent = new AbortController();
+	api.rpcResult.mockImplementation(async () => {
+		await new Promise((resolve) => setTimeout(resolve, 12_000));
+		return { data: payload, error: null };
+	});
+	api.metadataResult.mockImplementation(() => new Promise(() => {}));
+	try {
+		const pending = loadBookConnections(api.supabase, target, parent.signal);
+		const assertion = expect(pending).rejects.toMatchObject({ name: 'RequestTimeoutError' });
+		await vi.advanceTimersByTimeAsync(15_000);
+		await assertion;
+		expect(api.metadataResult).toHaveBeenCalledTimes(1);
+		expect(api.metadataResult.mock.calls[0][0].aborted).toBe(true);
+		expect(parent.signal.aborted).toBe(false);
+		expect(vi.getTimerCount()).toBe(0);
+	} finally {
+		vi.useRealTimers();
+	}
 });

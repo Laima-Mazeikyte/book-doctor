@@ -1,3 +1,9 @@
+import {
+	withTimeout,
+	wait,
+	RequestTimeoutError,
+	LARGE_REQUEST_TIMEOUT_MS
+} from '$lib/requests/timeout';
 import { getSupabase } from '$lib/supabase';
 import type { GoodreadsImportItem, ImportJobResult } from './types';
 
@@ -34,28 +40,38 @@ export async function createImportJob(
 	const supabase = getSupabase();
 	if (!supabase) return { id: null, error: new Error('Supabase client not available') };
 
-	const { data, error } = await supabase
-		.from(JOBS_TABLE)
-		.insert({ user_id: userId, items, status: 'pending' })
-		.select('id')
-		.single();
+	try {
+		const { data, error } = await withTimeout(
+			(signal) =>
+				supabase
+					.from(JOBS_TABLE)
+					.insert({ user_id: userId, items, status: 'pending' })
+					.select('id')
+					.abortSignal(signal)
+					.single(),
+			{ timeoutMs: LARGE_REQUEST_TIMEOUT_MS }
+		);
 
-	if (error) return { id: null, error: new Error(error.message) };
-	return { id: data.id as string, error: null };
+		if (error) return { id: null, error: new Error(error.message) };
+		return { id: data.id as string, error: null };
+	} catch (error) {
+		return { id: null, error: error instanceof Error ? error : new Error('Import unavailable') };
+	}
 }
 
 /** One-shot read of a job's result columns. */
 export async function fetchJobResult(
-	id: string
+	id: string,
+	signal?: AbortSignal
 ): Promise<{ result: ImportJobResult | null; error: Error | null }> {
 	const supabase = getSupabase();
 	if (!supabase) return { result: null, error: new Error('Supabase client not available') };
 
-	const { data, error } = await supabase
-		.from(JOBS_TABLE)
-		.select(RESULT_COLUMNS)
-		.eq('id', id)
-		.single();
+	const { data, error } = await withTimeout(
+		(signal) =>
+			supabase.from(JOBS_TABLE).select(RESULT_COLUMNS).eq('id', id).abortSignal(signal).single(),
+		{ signal }
+	);
 
 	if (error) return { result: null, error: new Error(error.message) };
 	return { result: normalizeResult(data), error: null };
@@ -75,33 +91,37 @@ export interface PollOptions {
 	signal?: AbortSignal;
 }
 
-const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-
 /**
  * Poll the job row until the map-server flips status to 'done'/'error', or we time out.
  * The job keeps running server-side after a timeout — callers surface a "still importing" state.
  */
 export async function pollImportJob(id: string, options: PollOptions = {}): Promise<PollOutcome> {
-	const {
-		intervalMs = POLL_INTERVAL_MS,
-		timeoutMs = POLL_TIMEOUT_MS,
-		sleep = defaultSleep,
-		signal
-	} = options;
+	const { intervalMs = POLL_INTERVAL_MS, timeoutMs = POLL_TIMEOUT_MS, sleep, signal } = options;
 
-	const deadline = Date.now() + timeoutMs;
+	try {
+		return await withTimeout(
+			async (signal): Promise<PollOutcome> => {
+				while (true) {
+					if (signal?.aborted) return { status: 'timeout' };
 
-	while (Date.now() < deadline) {
-		if (signal?.aborted) return { status: 'timeout' };
+					const { result, error } = await fetchJobResult(id, signal);
+					signal.throwIfAborted();
+					if (error) return { status: 'failed', error };
+					if (result && result.status !== 'pending') {
+						return { status: result.status, result };
+					}
 
-		const { result, error } = await fetchJobResult(id);
-		if (error) return { status: 'failed', error };
-		if (result && result.status !== 'pending') {
-			return { status: result.status, result };
-		}
-
-		await sleep(intervalMs);
+					if (sleep) await sleep(intervalMs);
+					else await wait(intervalMs, signal);
+				}
+			},
+			{ timeoutMs, signal }
+		);
+	} catch (error) {
+		if (error instanceof RequestTimeoutError || signal?.aborted) return { status: 'timeout' };
+		return {
+			status: 'failed',
+			error: error instanceof Error ? error : new Error('Unable to check import')
+		};
 	}
-
-	return { status: 'timeout' };
 }

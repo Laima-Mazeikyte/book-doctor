@@ -1,3 +1,4 @@
+import { withTimeout } from '$lib/requests/timeout';
 import {
 	normalizeDimensionMatchSnapshots,
 	type DimensionMatchSnapshotsByBookId
@@ -19,31 +20,40 @@ export type FetchRecommendationsResult = {
 export async function fetchRecommendations(
 	accessToken: string | null,
 	requestId: string | null,
-	{ includeRated = false }: { includeRated?: boolean } = {}
+	{
+		includeRated = false,
+		signal,
+		timeoutMs
+	}: { includeRated?: boolean; signal?: AbortSignal; timeoutMs?: number } = {}
 ): Promise<FetchRecommendationsResult> {
-	const url = requestId
-		? `/api/recommendations?request_id=${encodeURIComponent(requestId)}${includeRated ? '&include_rated=1' : ''}`
-		: '/api/recommendations';
-	const headers: Record<string, string> = {};
-	if (accessToken) {
-		headers['Authorization'] = `Bearer ${accessToken}`;
-	}
-	const res = await fetch(url, { headers });
-	if (!res.ok) throw new Error(`HTTP ${res.status}`);
-	const data: {
-		books: Book[];
-		request_id: string | null;
-		likedBookPrecedentsByBookId?: Record<string, Book[]>;
-		authorRelationshipAuthorsByBookId?: AuthorRelationshipAuthorsByBookId;
-		dimensionMatchSnapshotsByBookId?: DimensionMatchSnapshotsByBookId;
-	} = await res.json();
-	return {
-		books: data.books ?? [],
-		request_id: data.request_id ?? null,
-		likedBookPrecedentsByBookId: data.likedBookPrecedentsByBookId ?? {},
-		authorRelationshipAuthorsByBookId: data.authorRelationshipAuthorsByBookId ?? {},
-		dimensionMatchSnapshotsByBookId: normalizeDimensionMatchSnapshots(
-			data.dimensionMatchSnapshotsByBookId
-		)
-	};
+	return withTimeout(
+		async (signal) => {
+			const url = requestId
+				? `/api/recommendations?request_id=${encodeURIComponent(requestId)}${includeRated ? '&include_rated=1' : ''}`
+				: '/api/recommendations';
+			const headers: Record<string, string> = {};
+			if (accessToken) {
+				headers['Authorization'] = `Bearer ${accessToken}`;
+			}
+			const res = await fetch(url, { headers, signal });
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			const data: {
+				books: Book[];
+				request_id: string | null;
+				likedBookPrecedentsByBookId?: Record<string, Book[]>;
+				authorRelationshipAuthorsByBookId?: AuthorRelationshipAuthorsByBookId;
+				dimensionMatchSnapshotsByBookId?: DimensionMatchSnapshotsByBookId;
+			} = await res.json();
+			return {
+				books: data.books ?? [],
+				request_id: data.request_id ?? null,
+				likedBookPrecedentsByBookId: data.likedBookPrecedentsByBookId ?? {},
+				authorRelationshipAuthorsByBookId: data.authorRelationshipAuthorsByBookId ?? {},
+				dimensionMatchSnapshotsByBookId: normalizeDimensionMatchSnapshots(
+					data.dimensionMatchSnapshotsByBookId
+				)
+			};
+		},
+		{ signal, timeoutMs }
+	);
 }

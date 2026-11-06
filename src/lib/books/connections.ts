@@ -1,3 +1,4 @@
+import { withTimeout } from '$lib/requests/timeout';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Book, RatingValue } from '$lib/types/book';
 
@@ -54,54 +55,60 @@ export async function loadBookConnections(
 	signal: AbortSignal,
 	cachedBooks: Iterable<Book> = []
 ): Promise<BookConnection[]> {
-	const { data, error } = await supabase
-		.rpc('get_book_connections', { p_book_id: bookId, p_limit: 3 })
-		.abortSignal(signal);
-	if (error) throw new Error(error.message || 'Unable to load book connections');
-	signal.throwIfAborted();
-	const payload = parseResponse(data, bookId);
-	if (payload.connections.length === 0) return [];
+	return withTimeout(
+		async (signal) => {
+			const { data, error } = await supabase
+				.rpc('get_book_connections', { p_book_id: bookId, p_limit: 3 })
+				.abortSignal(signal);
+			if (error) throw new Error(error.message || 'Unable to load book connections');
+			signal.throwIfAborted();
+			const payload = parseResponse(data, bookId);
+			if (payload.connections.length === 0) return [];
 
-	const missing = new Set(payload.connections.map((match) => match.book_id));
-	const books = new Map<string, Book>();
-	for (const book of cachedBooks) {
-		// Older library snapshots have titles/covers but no canonical URL.
-		if (missing.has(book.book_id) && book.slug) {
-			books.set(book.book_id, book);
-			missing.delete(book.book_id);
-		}
-		if (!missing.size) break;
-	}
-	if (missing.size) {
-		const { data: rows, error: metadataError } = await supabase
-			.from('books')
-			.select('id,book_id,slug,book_name,author')
-			.in('book_id', [...missing])
-			.abortSignal(signal);
-		if (metadataError) throw new Error(metadataError.message || 'Unable to load connected books');
-		signal.throwIfAborted();
-		for (const row of rows ?? []) {
-			if (
-				typeof row.book_id === 'string' &&
-				missing.has(row.book_id) &&
-				typeof row.slug === 'string' &&
-				row.slug &&
-				typeof row.book_name === 'string' &&
-				row.book_name &&
-				typeof row.author === 'string'
-			) {
-				books.set(row.book_id, {
-					id: String(row.id),
-					book_id: row.book_id,
-					slug: row.slug,
-					title: row.book_name,
-					author: row.author
-				});
+			const missing = new Set(payload.connections.map((match) => match.book_id));
+			const books = new Map<string, Book>();
+			for (const book of cachedBooks) {
+				// Older library snapshots have titles/covers but no canonical URL.
+				if (missing.has(book.book_id) && book.slug) {
+					books.set(book.book_id, book);
+					missing.delete(book.book_id);
+				}
+				if (!missing.size) break;
 			}
-		}
-	}
-	return payload.connections.flatMap((match) => {
-		const book = books.get(match.book_id);
-		return book ? [{ book, rating: match.rating }] : [];
-	});
+			if (missing.size) {
+				const { data: rows, error: metadataError } = await supabase
+					.from('books')
+					.select('id,book_id,slug,book_name,author')
+					.in('book_id', [...missing])
+					.abortSignal(signal);
+				if (metadataError)
+					throw new Error(metadataError.message || 'Unable to load connected books');
+				signal.throwIfAborted();
+				for (const row of rows ?? []) {
+					if (
+						typeof row.book_id === 'string' &&
+						missing.has(row.book_id) &&
+						typeof row.slug === 'string' &&
+						row.slug &&
+						typeof row.book_name === 'string' &&
+						row.book_name &&
+						typeof row.author === 'string'
+					) {
+						books.set(row.book_id, {
+							id: String(row.id),
+							book_id: row.book_id,
+							slug: row.slug,
+							title: row.book_name,
+							author: row.author
+						});
+					}
+				}
+			}
+			return payload.connections.flatMap((match) => {
+				const book = books.get(match.book_id);
+				return book ? [{ book, rating: match.rating }] : [];
+			});
+		},
+		{ signal }
+	);
 }

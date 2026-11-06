@@ -1,0 +1,114 @@
+/* Filter controls share the site's interactive, input and selection tokens. */
+.filter-fields :where(button:not(.btn), select),
+.recommendation-filter-label {
+	font-family: var(--typ-interactive-2-font-family);
+	font-size: var(--typ-interactive-2-font-size);
+	font-weight: var(--typ-interactive-2-font-weight);
+	line-height: var(--typ-interactive-2-line-height);
+	letter-spacing: var(--typ-interactive-2-letter-spacing);
+}
+
+.recommendation-filter-choice {
+	min-width: 0;
+	min-height: max(var(--min-tap), 2.5rem);
+	padding: var(--space-1) var(--space-3);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-pill);
+	background: var(--color-card-bg);
+	color: var(--color-text);
+	cursor: pointer;
+	overflow-wrap: anywhere;
+	transition:
+		background var(--duration-fast) var(--ease-default),
+		border-color var(--duration-fast) var(--ease-default);
+}
+.recommendation-filter-choice.active {
+	background: var(--color-accent-bg);
+	border-color: var(--color-focus);
+}
+.recommendation-filter-choice:hover:not(:disabled):not(:has(input:disabled)) {
+	background: var(--color-interactive-hover-subtle);
+	border-color: var(--color-border-hover);
+}
+.recommendation-filter-choice.active:hover:not(:disabled):not(:has(input:disabled)) {
+	background: var(--color-interactive-hover-on-accent);
+	border-color: var(--color-focus);
+}
+.recommendation-filter-choice:focus-visible,
+.recommendation-filter-choice:has(input:focus-visible) {
+	outline: 2px solid var(--color-focus);
+	outline-offset: 2px;
+}
+.recommendation-filter-choice:disabled,
+.recommendation-filter-choice:has(input:disabled) {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.recommendation-filter-input {
+	width: 100%;
+	min-width: 0;
+	min-height: var(--min-tap);
+	padding: var(--space-3) var(--space-4);
+	font-family: var(--typ-interactive-1-font-family);
+	font-size: var(--primitive-type-size-16);
+	font-weight: var(--typ-interactive-1-font-weight);
+	line-height: var(--typ-interactive-1-line-height);
+	letter-spacing: var(--typ-interactive-1-letter-spacing);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-sm);
+	background: var(--color-card-bg);
+	color: var(--color-text);
+	box-shadow: var(--shadow-input);
+	transition:
+		border-color var(--duration-fast) var(--ease-default),
+		box-shadow var(--duration-fast) var(--ease-default);
+}
+.recommendation-filter-input[type='search'] {
+	border-radius: var(--radius-pill);
+}
+.recommendation-filter-input::placeholder {
+	color: var(--color-text-muted);
+}
+.recommendation-filter-input:hover:not(:disabled) {
+	border-color: var(--color-border-hover);
+}
+.recommendation-filter-input:focus {
+	outline: none;
+	border-color: var(--color-focus);
+	box-shadow: var(--shadow-focus-input);
+}
+.recommendation-filter-input:disabled {
+	opacity: 0.7;
+	cursor: not-allowed;
+}
+
+.recommendation-filter-close {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: var(--min-tap);
+	height: var(--min-tap);
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-pill);
+	background: transparent;
+	color: var(--color-text);
+	cursor: pointer;
+	transition: background var(--duration-fast) var(--ease-default);
+}
+.recommendation-filter-close:hover:not(:disabled) {
+	background: var(--color-floating-control-bg);
+}
+.recommendation-filter-close:active:not(:disabled) {
+	background: var(--color-floating-control-bg-hover);
+}
+.recommendation-filter-close:focus-visible {
+	outline: 2px solid var(--color-focus);
+	outline-offset: 2px;
+}
+.recommendation-filter-close:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}

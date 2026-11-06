@@ -13,6 +13,8 @@
 	import { getSupabase } from '$lib/supabase';
 	import { authStore, authReady } from '$lib/stores/auth';
 	import { ratingsStore } from '$lib/stores/ratings';
+	import { notInterestedStore } from '$lib/stores/notInterested';
+	import { libraryLoads } from '$lib/stores/libraryLoads';
 	import { userLibraryHydrationStore } from '$lib/stores/userLibrary';
 	import { librarySaves } from '$lib/stores/librarySaves';
 
@@ -22,6 +24,22 @@
 	let attempt = $state(0);
 	const details = ratingsStore.ratedBooksDetails;
 	const libraryOwner = $derived($librarySaves.ownerId);
+	const dismissalOwnerMatches = $derived(
+		$authStore.user?.id
+			? libraryOwner === $authStore.user.id &&
+					$userLibraryHydrationStore.userId === $authStore.user.id
+			: libraryOwner.startsWith('guest:')
+	);
+	const dismissalLoadState = $derived(
+		dismissalOwnerMatches && $authStore.user?.id
+			? $userLibraryHydrationStore.collections.dismissals
+			: null
+	);
+	const dismissalsReady = $derived(
+		// A complete snapshot, including an empty one, prevents an unfiltered first display.
+		dismissalOwnerMatches && (!$authStore.user?.id || dismissalLoadState?.hasSnapshot === true)
+	);
+	const dismissedIds = $derived(dismissalsReady ? $notInterestedStore : new Set<string>());
 	const readIds = $derived.by(() => {
 		const ratings = $ratingsStore;
 		const books = $details;
@@ -43,18 +61,23 @@
 				: [...books.values()].filter((book) => ratings.has(book.id)).map((book) => book.book_id)
 		);
 	});
+	const hasCandidates = $derived(
+		result?.bookId === bookId &&
+			(result.similarExperience.length > 0 || result.differentDirection.length > 0)
+	);
+	const waitingForDismissals = $derived(status === 'ready' && hasCandidates && !dismissalsReady);
 	const sections = $derived(
-		result?.bookId === bookId
+		result?.bookId === bookId && dismissalsReady
 			? [
 					{
 						id: 'similar-title',
 						title: 'Similar experience',
-						books: visibleDiscoveryBooks(result.similarExperience, readIds)
+						books: visibleDiscoveryBooks(result.similarExperience, readIds, dismissedIds)
 					},
 					{
 						id: 'different-title',
 						title: 'A different direction',
-						books: visibleDiscoveryBooks(result.differentDirection, readIds)
+						books: visibleDiscoveryBooks(result.differentDirection, readIds, dismissedIds)
 					}
 				].filter((section) => section.books.length)
 			: []
@@ -89,7 +112,7 @@
 	});
 </script>
 
-{#if status === 'loading' || status === 'error' || sections.length}
+{#if status === 'loading' || status === 'error' || waitingForDismissals || sections.length}
 	<div class="discovery-sections" class:single-section={sections.length === 1}>
 		{#if status === 'loading'}
 			<p class="discovery-status" role="status">Loading related books…</p>
@@ -97,6 +120,19 @@
 			<div class="discovery-status">
 				<p>Related books are temporarily unavailable.</p>
 				<button onclick={() => attempt++}>Try again</button>
+			</div>
+		{:else if waitingForDismissals}
+			<div class="discovery-status">
+				{#if dismissalLoadState?.status === 'error'}
+					<p role="alert">Couldn’t load your not-interested books.</p>
+					<button onclick={() => void libraryLoads.retry(['dismissals'])}>Try again</button>
+				{:else}
+					<p role="status">
+						{dismissalLoadState?.status === 'retrying'
+							? 'Retrying your not-interested books…'
+							: 'Loading your not-interested books…'}
+					</p>
+				{/if}
 			</div>
 		{:else}
 			{#each sections as section (section.id)}
@@ -106,9 +142,10 @@
 						{#each section.books as item (item.book_id)}
 							{@const cover = coverUrlForBookIdAtSize(item.book_id, 200)}
 							{@const reason = discoveryReason(item.reason)}
+							{@const dismissed = dismissedIds.has(item.book_id)}
 							<li>
 								<a class="mini-book" href={resolve(bookPath(item))}>
-									<span class="mini-cover">
+									<span class="mini-cover" class:mini-cover--not-interested={dismissed}>
 										<BookOpen size={22} aria-hidden="true" />
 										{#if cover}<img
 												src={cover}
@@ -124,6 +161,7 @@
 									</span>
 									<span class="book-label"
 										><strong>{item.title}</strong><span class="author">{item.author}</span>
+										{#if dismissed}<span class="dismissal-label">Not interested</span>{/if}
 										{#if reason}<span class="reason">{reason}</span>{/if}
 									</span>
 								</a>
@@ -201,6 +239,9 @@
 		height: 100%;
 		object-fit: cover;
 	}
+	.mini-cover--not-interested {
+		opacity: 0.3;
+	}
 	.book-label {
 		min-width: 0;
 		overflow-wrap: anywhere;
@@ -212,7 +253,8 @@
 		font-weight: 400;
 	}
 	.author,
-	.reason {
+	.reason,
+	.dismissal-label {
 		display: block;
 		font-family: var(--font-family-interactive);
 		font-size: 0.75rem;

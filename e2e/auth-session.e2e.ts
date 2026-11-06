@@ -105,6 +105,42 @@ async function assertNoAuthLockOrPageErrors(page: Page, errors: string[]) {
 	expect(errors).toEqual([]);
 }
 
+test('sign-out clears recommendation counts and cached request results', async ({ page }) => {
+	await setup(page);
+	await page.evaluate(async (owner) => {
+		const countPath = '/src/lib/stores/recommendationsCount.ts';
+		const cachePath = '/src/lib/stores/recommendationsPage.ts';
+		const { recommendationsCountStore } = await import(countPath);
+		const { recommendationsPageStore } = await import(cachePath);
+		recommendationsPageStore.ensureUser(owner);
+		recommendationsPageStore.setRun('SavedRun', {
+			books: [],
+			likedBookPrecedentsByBookId: {},
+			authorRelationshipAuthorsByBookId: {},
+			dimensionMatchSnapshotsByBookId: {}
+		});
+		recommendationsCountStore.set(5);
+	}, userId);
+	await page.getByRole('button', { name: 'Account', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click();
+	await expect.poll(() => appIdentity(page)).toBeNull();
+	await expect
+		.poll(() =>
+			page.evaluate(async () => {
+				const countPath = '/src/lib/stores/recommendationsCount.ts';
+				const cachePath = '/src/lib/stores/recommendationsPage.ts';
+				const { recommendationsCountStore } = await import(countPath);
+				const { recommendationsPageStore } = await import(cachePath);
+				let count = -1;
+				recommendationsCountStore.subscribe((value: number) => {
+					count = value;
+				})();
+				return { count, hasRun: !!recommendationsPageStore.getRun('SavedRun') };
+			})
+		)
+		.toEqual({ count: 0, hasRun: false });
+});
+
 test('restores the existing session across reloads without acquiring native auth locks', async ({
 	page
 }) => {

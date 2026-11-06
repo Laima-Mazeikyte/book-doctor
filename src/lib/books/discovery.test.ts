@@ -39,7 +39,7 @@ it('retrieves both lists and metadata in one public RPC, preserving server order
 		differentDirection: [book(4)]
 	});
 	expect(api.rpc).toHaveBeenCalledExactlyOnceWith('get_book_discovery', { p_book_id: id(1) });
-	expect(api.abortSignal).toHaveBeenCalledWith(signal);
+	expect(api.abortSignal).toHaveBeenCalledWith(expect.any(AbortSignal));
 });
 
 it.each([null, 'release'])('accepts empty lists with release %s', async (release_id) => {
@@ -110,6 +110,37 @@ it('prefers unread books, then fills remaining slots with familiar books in serv
 	]);
 	expect(visibleDiscoveryBooks([book(2)], new Set([id(2)]))).toEqual([book(2)]);
 	expect(visibleDiscoveryBooks([], new Set())).toEqual([]);
+});
+
+it('puts non-dismissed unread and rated books ahead of dismissed fallbacks', () => {
+	const books = [2, 3, 4, 5, 6].map(book);
+	expect(visibleDiscoveryBooks(books, new Set([id(3), id(6)]), new Set([id(2), id(4)]))).toEqual([
+		book(5),
+		book(3),
+		book(6)
+	]);
+	expect(
+		visibleDiscoveryBooks(books, new Set([id(3), id(4)]), new Set([id(2), id(4), id(6)]))
+	).toEqual([book(5), book(3), book(2)]);
+	// Dismissed books keep server order even when the earliest one is rated.
+	expect(
+		visibleDiscoveryBooks(books, new Set([id(2)]), new Set([id(2), id(3), id(4), id(6)]))
+	).toEqual([book(5), book(2), book(3)]);
+});
+
+it('retains three server-ordered books when every candidate is dismissed and keeps short lists', () => {
+	const books = [2, 3, 4, 5, 6].map(book);
+	const dismissed = new Set(books.map((entry) => entry.book_id));
+	expect(visibleDiscoveryBooks(books, new Set([id(2), id(4)]), dismissed)).toEqual([
+		book(2),
+		book(3),
+		book(4)
+	]);
+	expect(visibleDiscoveryBooks([book(2), book(3)], new Set(), dismissed)).toEqual([
+		book(2),
+		book(3)
+	]);
+	expect(visibleDiscoveryBooks([], new Set(), dismissed)).toEqual([]);
 });
 
 it('uses directional annotation wording and safely omits unknown explanations', () => {

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { withTimeout, wait } from '$lib/requests/timeout';
 	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
 	import RecommendationLoadNotice from '$lib/components/RecommendationLoadNotice.svelte';
 	import type { DimensionMatchSnapshotsByBookId } from '$lib/recommendations/dimensionMatches';
@@ -55,7 +56,7 @@
 	let viewState = $state<ViewState>('loading');
 	let error = $state<string | null>(null);
 	let slowLoading = $state(false);
-	let pollTimer: ReturnType<typeof setTimeout> | null = null;
+	let loadController: AbortController | null = null;
 	let slowLoadingTimer: ReturnType<typeof setTimeout> | null = null;
 	let activeLoadId = 0;
 	let activeIndex = $state(0);
@@ -121,9 +122,9 @@
 	}
 
 	function clearLoadTimers() {
-		if (pollTimer != null) clearTimeout(pollTimer);
+		loadController?.abort();
+		loadController = null;
 		if (slowLoadingTimer != null) clearTimeout(slowLoadingTimer);
-		pollTimer = null;
 		slowLoadingTimer = null;
 	}
 
@@ -211,6 +212,8 @@
 		preserveCurrent = false
 	) {
 		clearLoadTimers();
+		const controller = new AbortController();
+		loadController = controller;
 		slowLoading = false;
 		activeUserId = userId;
 		recommendationsPageStore.ensureUser(activeUserId);
@@ -229,7 +232,7 @@
 			}
 			viewState = 'ready';
 			void refreshRecommendationsCountFromApi(accessToken);
-			void fetchRecommendations(accessToken, requestId)
+			void fetchRecommendations(accessToken, requestId, { signal: controller.signal })
 				.then(
 					({
 						books: next,
@@ -237,7 +240,7 @@
 						authorRelationshipAuthorsByBookId: nextAuthorRelationshipAuthors,
 						dimensionMatchSnapshotsByBookId: nextDimensionMatches
 					}) => {
-						if (!isActiveLoad(loadId, requestId)) return;
+						if (controller.signal.aborted || !isActiveLoad(loadId, requestId)) return;
 						recommendationsPageStore.setRun(requestId, {
 							books: next,
 							likedBookPrecedentsByBookId: nextPrecedents,
@@ -256,7 +259,7 @@
 					}
 				)
 				.catch((cause) => {
-					if (!isActiveLoad(loadId, requestId)) return;
+					if (controller.signal.aborted || !isActiveLoad(loadId, requestId)) return;
 					console.error('[shortlist] Failed to refresh recommendations:', cause);
 					error = t('recommendations.failedToLoad');
 				});
@@ -277,54 +280,67 @@
 			if (isActiveLoad(loadId, requestId)) slowLoading = true;
 		}, SLOW_LOADING_MS);
 
-		const schedule = async () => {
-			if (!isActiveLoad(loadId, requestId)) return;
-			let done = false;
-			try {
-				const {
-					books: nextBooks,
-					likedBookPrecedentsByBookId: nextPrecedents,
-					authorRelationshipAuthorsByBookId: nextAuthorRelationshipAuthors,
-					dimensionMatchSnapshotsByBookId: nextDimensionMatches
-				} = await fetchRecommendations(accessToken, requestId);
+		const schedule = async (signal: AbortSignal) => {
+			while (true) {
+				signal.throwIfAborted();
 				if (!isActiveLoad(loadId, requestId)) return;
-				if (nextBooks.length > 0) {
-					applyBooksFromRun(
-						nextBooks,
-						nextPrecedents,
-						nextAuthorRelationshipAuthors,
-						nextDimensionMatches
-					);
-					recommendationsPageStore.setRun(requestId, {
+				let done = false;
+				try {
+					const {
 						books: nextBooks,
 						likedBookPrecedentsByBookId: nextPrecedents,
 						authorRelationshipAuthorsByBookId: nextAuthorRelationshipAuthors,
 						dimensionMatchSnapshotsByBookId: nextDimensionMatches
-					});
-					viewState = 'ready';
-					void refreshRecommendationsCountFromApi(accessToken);
-					done = true;
-				} else if (Date.now() - start >= RECOMMENDATIONS_POLL_TIMEOUT_MS) {
-					viewState = 'failed';
+					} = await fetchRecommendations(accessToken, requestId, { signal });
+					signal.throwIfAborted();
+					if (!isActiveLoad(loadId, requestId)) return;
+					if (nextBooks.length > 0) {
+						applyBooksFromRun(
+							nextBooks,
+							nextPrecedents,
+							nextAuthorRelationshipAuthors,
+							nextDimensionMatches
+						);
+						recommendationsPageStore.setRun(requestId, {
+							books: nextBooks,
+							likedBookPrecedentsByBookId: nextPrecedents,
+							authorRelationshipAuthorsByBookId: nextAuthorRelationshipAuthors,
+							dimensionMatchSnapshotsByBookId: nextDimensionMatches
+						});
+						viewState = 'ready';
+						void refreshRecommendationsCountFromApi(accessToken);
+						done = true;
+					} else if (Date.now() - start >= RECOMMENDATIONS_POLL_TIMEOUT_MS) {
+						viewState = 'failed';
+						done = true;
+					}
+				} catch (e) {
+					signal.throwIfAborted();
+					if (!isActiveLoad(loadId, requestId)) return;
+					console.error('[shortlist] Failed to load recommendations:', e);
+					error = t('recommendations.failedToLoad');
+					viewState = 'error';
 					done = true;
 				}
-			} catch (e) {
-				if (!isActiveLoad(loadId, requestId)) return;
-				console.error('[shortlist] Failed to load recommendations:', e);
-				error = t('recommendations.failedToLoad');
-				viewState = 'error';
-				done = true;
-			}
 
-			if (!isActiveLoad(loadId, requestId)) return;
-			if (done) {
-				clearLoadTimers();
-			} else {
-				pollTimer = setTimeout(schedule, RECOMMENDATIONS_POLL_INTERVAL_MS);
+				if (!isActiveLoad(loadId, requestId)) return;
+				if (done) {
+					clearLoadTimers();
+					return;
+				} else {
+					await wait(RECOMMENDATIONS_POLL_INTERVAL_MS, signal);
+				}
 			}
 		};
 
-		void schedule();
+		void withTimeout(schedule, {
+			signal: controller.signal,
+			timeoutMs: RECOMMENDATIONS_POLL_TIMEOUT_MS
+		}).catch(() => {
+			if (controller.signal.aborted || !isActiveLoad(loadId, requestId)) return;
+			clearLoadTimers();
+			viewState = 'failed';
+		});
 	}
 
 	function retryLoad() {

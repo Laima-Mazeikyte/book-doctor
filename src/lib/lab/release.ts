@@ -1,3 +1,4 @@
+import { withTimeout, LARGE_REQUEST_TIMEOUT_MS } from '$lib/requests/timeout';
 /**
  * Shared release resolution for lab artifact stores.
  *
@@ -22,11 +23,16 @@ export function joinUrl(...parts: string[]): string {
 }
 
 export async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
-	const response = await fetch(url, options);
-	if (!response.ok) {
-		throw new Error(`Could not load ${url} (${response.status}).`);
-	}
-	return (await response.json()) as T;
+	return withTimeout(
+		async (signal) => {
+			const response = await fetch(url, { ...options, signal });
+			if (!response.ok) {
+				throw new Error(`Could not load ${url} (${response.status}).`);
+			}
+			return (await response.json()) as T;
+		},
+		{ timeoutMs: LARGE_REQUEST_TIMEOUT_MS, signal: options?.signal ?? undefined }
+	);
 }
 
 /** The configured artifact base, or the caller's optional dev fallback when unset. */

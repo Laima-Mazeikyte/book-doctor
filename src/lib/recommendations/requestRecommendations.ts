@@ -1,3 +1,4 @@
+import { withTimeout, RequestTimeoutError } from '$lib/requests/timeout';
 import { goto } from '$app/navigation';
 import { resolve } from '$app/paths';
 import { get, writable } from 'svelte/store';
@@ -8,7 +9,7 @@ import { isUserLibraryIdsReady, userLibraryHydrationStore } from '$lib/stores/us
 
 type SubmissionState = {
 	status: 'idle' | 'submitting' | 'error';
-	error: 'start' | 'open' | null;
+	error: 'start' | 'open' | 'uncertain' | null;
 };
 
 /** One submission per mounted view. A confirmed request survives a failed navigation. */
@@ -37,7 +38,8 @@ export function createRecommendationSubmission() {
 	return {
 		subscribe: state.subscribe,
 		async submit(): Promise<void> {
-			if (destroyed || get(state).status === 'submitting') return;
+			if (destroyed || get(state).status === 'submitting' || get(state).error === 'uncertain')
+				return;
 			const attempt = ++generation;
 			const userId = get(authStore).user?.id;
 			const isCurrent = () =>
@@ -55,14 +57,17 @@ export function createRecommendationSubmission() {
 					}
 					const supabase = getSupabase();
 					if (!supabase) throw new Error('Recommendations are unavailable.');
-					const { data, error } = await supabase
-						.from('recommendation_requests')
-						.insert({ user_id: userId })
-						.select('id')
-						.single();
+					const { data, error } = await withTimeout((signal) =>
+						supabase
+							.from('recommendation_requests')
+							.insert({ user_id: userId })
+							.select('public_id')
+							.abortSignal(signal)
+							.single()
+					);
 					if (!isCurrent()) return;
-					if (error || data?.id == null) throw error ?? new Error('No request ID returned.');
-					requestId = String(data.id);
+					if (error || !data?.public_id) throw error ?? new Error('No request ID returned.');
+					requestId = String(data.public_id);
 				}
 
 				const target = resolve(
@@ -73,10 +78,13 @@ export function createRecommendationSubmission() {
 				if (!isCurrent()) return;
 				// Shortlist navigation can reuse the component with a new request_id.
 				cancel();
-			} catch {
+			} catch (error) {
 				if (!isCurrent()) return;
 				destination = null;
-				state.set({ status: 'error', error: requestId ? 'open' : 'start' });
+				state.set({
+					status: 'error',
+					error: error instanceof RequestTimeoutError ? 'uncertain' : requestId ? 'open' : 'start'
+				});
 			}
 		},
 		/** Ignore our own navigation; leaving by another route invalidates pending responses. */

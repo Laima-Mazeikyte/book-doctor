@@ -16,19 +16,15 @@ vi.mock('$lib/supabase', () => ({
 import { BOOK_SEARCH_FUNCTION } from './bookSearchEdge';
 import { searchBooksByAuthor } from './searchBooksByAuthor';
 
-function makeSupabase({
-	hits,
-	rows
-}: {
-	hits: { book_id: string }[];
-	rows: unknown[];
-}) {
+function makeSupabase({ hits, rows }: { hits: { book_id: string }[]; rows: unknown[] }) {
 	const invoke = vi.fn().mockResolvedValue({
 		data: { hits, estimatedTotalHits: hits.length },
 		error: null
 	});
 	const inFn = vi.fn().mockResolvedValue({ data: rows, error: null });
-	const selectFn = vi.fn().mockReturnValue({ in: inFn });
+	const selectFn = vi
+		.fn()
+		.mockReturnValue({ in: (...args: unknown[]) => ({ abortSignal: () => inFn(...args) }) });
 	const fromFn = vi.fn().mockReturnValue({ select: selectFn });
 
 	return {
@@ -70,7 +66,6 @@ describe('searchBooksByAuthor', () => {
 		const out = await searchBooksByAuthor('   ');
 		expect(out.books).toEqual([]);
 		expect(out.hasMore).toBe(false);
-		expect(out.source).toBe('edge');
 		expect(invoke).not.toHaveBeenCalled();
 	});
 
@@ -84,13 +79,13 @@ describe('searchBooksByAuthor', () => {
 		const out = await searchBooksByAuthor('Kitty Thomas', 0, 50);
 
 		expect(invoke).toHaveBeenCalledWith(BOOK_SEARCH_FUNCTION, {
-			body: { author: 'Kitty Thomas', limit: 50, offset: 0 }
+			body: { author: 'Kitty Thomas', limit: 50, offset: 0 },
+			signal: expect.any(AbortSignal)
 		});
 		expect(out.books).toHaveLength(1);
 		expect(out.books[0].title).toBe('Alpha');
 		expect(out.nextOffset).toBe(1);
 		expect(out.hasMore).toBe(false);
-		expect(out.source).toBe('edge');
 	});
 
 	it('author mode does not send q even if the search input contains the author name', async () => {

@@ -10,6 +10,12 @@ reset the shared database or replay completed backfills. See the catalog and
 connections operation guides before setting up a different project. Backend v4
 catalog, annotation, connections and sitemap publication remain release work.
 
+The additive [public request-ID migration](random-request-ids.md) is installed and
+was verified read-only on the shared project on November 5, 2026. It adds
+`public_id` aliases and `get_rate_feed_bootstrap_public` without changing internal
+backend IDs. Its migration-history entry is absent and needs separate
+reconciliation. Do not replay the migration or reset the shared project to test it.
+
 ## Setup
 
 Run commands from `book-doctor` using **Node 22.12 or later** and **pnpm 9.15.9**. Local validation used Node 24.15.0. Configure `.env` from `.env.example`; the server needs `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Any `PUBLIC_SUPABASE_*` browser values must refer to the same project.
@@ -33,6 +39,13 @@ Type checking and all Node/browser component tests:
 ```powershell
 pnpm run check
 pnpm exec vitest run
+```
+
+The request-ID regression suite needs Docker and owns its disposable PostgreSQL
+container; it does not load `.env` or contact the shared project:
+
+```powershell
+pnpm run test:request-ids:db
 ```
 
 The annotation database checks use Docker and a versioned synthetic schema plus

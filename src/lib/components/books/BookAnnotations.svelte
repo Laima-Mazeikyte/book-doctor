@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Book } from '$lib/types/book';
-	import { distinctionLabel, distinctionDescription } from '$lib/books/distinctions';
+	import { distinctionLabel } from '$lib/books/distinctions';
 	let { book }: { book: Book } = $props();
 	const distinctions = $derived(
 		[book.distinctions?.book, book.distinctions?.author].filter((item) => item != null)
@@ -14,10 +14,10 @@
 		data-testid="book-annotations"
 	>
 		{#each book.characteristics ?? [] as characteristic (characteristic.label)}
-			<li title={characteristic.description}>{characteristic.label}</li>
+			<li>{characteristic.label}</li>
 		{/each}
 		{#each distinctions as distinction (distinction.subject)}
-			<li title={distinctionDescription(distinction)}>{distinctionLabel(distinction)}</li>
+			<li>{distinctionLabel(distinction)}</li>
 		{/each}
 		{#each book.keywords ?? [] as keyword (keyword)}<li>{keyword}</li>{/each}
 	</ul>

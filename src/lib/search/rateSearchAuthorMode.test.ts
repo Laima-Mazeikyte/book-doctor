@@ -57,7 +57,9 @@ describe('nextRateSearchModeAfterQueryChange', () => {
 			],
 			error: null
 		});
-		const selectFn = vi.fn().mockReturnValue({ in: inFn });
+		const selectFn = vi
+			.fn()
+			.mockReturnValue({ in: (...args: unknown[]) => ({ abortSignal: () => inFn(...args) }) });
 		const fromFn = vi.fn().mockReturnValue({ select: selectFn });
 		getSupabaseMock.mockReturnValue({
 			functions: { invoke },
@@ -70,7 +72,8 @@ describe('nextRateSearchModeAfterQueryChange', () => {
 		expect(body).toEqual({ q: edited, limit: 50, offset: 0 });
 		expect(body).not.toHaveProperty('author');
 		expect(invoke).toHaveBeenCalledWith(BOOK_SEARCH_FUNCTION, {
-			body: { q: edited, limit: 50, offset: 0 }
+			body: { q: edited, limit: 50, offset: 0 },
+			signal: expect.any(AbortSignal)
 		});
 	});
 });

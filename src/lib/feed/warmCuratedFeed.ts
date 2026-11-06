@@ -1,3 +1,4 @@
+import { withTimeout, wait, RequestTimeoutError } from '$lib/requests/timeout';
 import { resolve } from '$app/paths';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Book } from '$lib/types/book';
@@ -10,40 +11,33 @@ export type CuratedFeedPollResult =
 	| { kind: 'completed'; books: Book[] }
 	| { kind: 'failed' | 'skipped' | 'http_error' | 'timeout' | 'aborted' };
 
-/** Resolves after `ms`, or rejects with an `AbortError` if `signal` fires first. */
-function delay(ms: number, signal?: AbortSignal): Promise<void> {
-	return new Promise((resolve, reject) => {
-		if (signal?.aborted) {
-			reject(new DOMException('Aborted', 'AbortError'));
-			return;
-		}
-		const timer = setTimeout(resolve, ms);
-		signal?.addEventListener(
-			'abort',
-			() => {
-				clearTimeout(timer);
-				reject(new DOMException('Aborted', 'AbortError'));
-			},
-			{ once: true }
-		);
-	});
-}
+// An unacknowledged insert must not be retried by another automatic feed refresh.
+const uncertainOwners = new Set<string>();
 
 export async function insertFeedRequestRow(
 	supabase: SupabaseClient,
 	userId: string
 ): Promise<string | null> {
-	const { data, error } = await supabase
-		.from('feed_requests')
-		.insert({ user_id: userId })
-		.select('id')
-		.single();
+	if (uncertainOwners.has(userId)) throw new RequestTimeoutError();
+	try {
+		const { data, error } = await withTimeout((signal) =>
+			supabase
+				.from('feed_requests')
+				.insert({ user_id: userId })
+				.select('public_id')
+				.abortSignal(signal)
+				.single()
+		);
 
-	if (error || data?.id == null) {
-		console.error('[feed] feed_requests insert:', error);
-		return null;
+		if (error || !data?.public_id) {
+			console.error('[feed] feed_requests insert:', error);
+			return null;
+		}
+		return data.public_id;
+	} catch (error) {
+		if (error instanceof RequestTimeoutError) uncertainOwners.add(userId);
+		throw error;
 	}
-	return String(data.id);
 }
 
 export async function pollCuratedFeedRequest(
@@ -51,45 +45,51 @@ export async function pollCuratedFeedRequest(
 	accessToken: string,
 	signal?: AbortSignal
 ): Promise<CuratedFeedPollResult> {
-	const started = Date.now();
-
 	const feedPollUrl = `${resolve('/api/feed')}?request_id=${encodeURIComponent(requestId)}`;
 
 	try {
-		while (Date.now() - started < FEED_TIMEOUT_MS) {
-			const res = await fetch(feedPollUrl, {
-				headers: { Authorization: `Bearer ${accessToken}` },
-				signal
-			});
+		return await withTimeout(
+			async (signal): Promise<CuratedFeedPollResult> => {
+				while (true) {
+					signal.throwIfAborted();
+					const payload = await withTimeout(
+						async (signal) => {
+							const res = await fetch(feedPollUrl, {
+								headers: { Authorization: `Bearer ${accessToken}` },
+								signal
+							});
 
-			if (!res.ok) {
-				return { kind: 'http_error' };
-			}
+							if (!res.ok) {
+								throw new Error(`Feed status request failed (${res.status})`);
+							}
 
-			const payload: {
-				status: string;
-				books: Book[];
-				request_id: string;
-				error_message?: string | null;
-			} = await res.json();
+							const payload: {
+								status: string;
+								books: Book[];
+								request_id: string;
+								error_message?: string | null;
+							} = await res.json();
+							return payload;
+						},
+						{ signal }
+					);
 
-			if (payload.status === 'failed' || payload.status === 'skipped') {
-				return { kind: payload.status === 'skipped' ? 'skipped' : 'failed' };
-			}
+					if (payload.status === 'failed' || payload.status === 'skipped') {
+						return { kind: payload.status === 'skipped' ? 'skipped' : 'failed' };
+					}
 
-			if (payload.status === 'completed') {
-				return { kind: 'completed', books: payload.books ?? [] };
-			}
+					if (payload.status === 'completed') {
+						return { kind: 'completed', books: payload.books ?? [] };
+					}
 
-			await delay(FEED_POLL_MS, signal);
-		}
-
-		return { kind: 'timeout' };
+					await wait(FEED_POLL_MS, signal);
+				}
+			},
+			{ signal, timeoutMs: FEED_TIMEOUT_MS }
+		);
 	} catch (err) {
-		// Caller aborted (e.g. navigated away): stop quietly, don't surface as an error.
-		if (err instanceof DOMException && err.name === 'AbortError') {
-			return { kind: 'aborted' };
-		}
-		throw err;
+		if (err instanceof RequestTimeoutError) return { kind: 'timeout' };
+		if (signal?.aborted) return { kind: 'aborted' };
+		return { kind: 'http_error' };
 	}
 }

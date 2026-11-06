@@ -214,7 +214,11 @@ function pickRowMapper(
 	if (fields.includes(COL_BOOK_ID) && fields.includes(COL_RATING)) return goodreadsToRow;
 
 	for (const cols of METADATA_SOURCES) {
-		if (fields.includes(cols.marker) && fields.includes(cols.title) && fields.includes(cols.author)) {
+		if (
+			fields.includes(cols.marker) &&
+			fields.includes(cols.title) &&
+			fields.includes(cols.author)
+		) {
 			return (raw) => metadataRow(raw, cols);
 		}
 	}

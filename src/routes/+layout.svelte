@@ -28,7 +28,7 @@
 	import LibrarySaveNotice from '$lib/components/LibrarySaveNotice.svelte';
 	import { librarySaves } from '$lib/stores/librarySaves';
 	import { createLayoutAuthController } from '$lib/auth/bootstrap-auth';
-	import { AUTH_SIGNED_IN_EVENT, isAuthTransitionActive } from '$lib/auth/completeAuthSuccess';
+	import { AUTH_SIGNED_IN_EVENT } from '$lib/auth/completeAuthSuccess';
 	import {
 		onAfterNavigateForBrowseFeedWarm,
 		notifyLibraryPersistedMutationForBrowseFeedWarm
@@ -153,6 +153,7 @@
 			pathname === '/not-interested' ||
 			pathname === '/faq' ||
 			pathname === '/rate' ||
+			pathname === '/discover' ||
 			pathname.startsWith('/rate/') ||
 			pathname.startsWith('/lab') ||
 			pathname.startsWith('/books/')
@@ -163,8 +164,7 @@
 		if (isErrorPage) return true;
 		const pathname = page.url.pathname;
 		if (isShortlistShell) return false;
-		if (pathname === '/rate/recommendations' || pathname === '/rate/recommendations/filtered')
-			return true;
+		if (pathname === '/rate/recommendations' || pathname === '/discover') return true;
 		return pathname !== '/rate' && !pathname.startsWith('/rate/');
 	});
 
@@ -325,10 +325,8 @@
 			recommendationsCountLoadedForUserId = null;
 			resetUserLibraryOnSignOut(hadUserBefore, previousUserId);
 			bookmarksPageStore.reset();
-			if (hadUserBefore && !isAuthTransitionActive()) {
-				recommendationsPageStore.reset();
-				recommendationsCountStore.set(0);
-			}
+			recommendationsPageStore.reset();
+			recommendationsCountStore.set(0);
 			clearUserLibraryHydration();
 			return;
 		}

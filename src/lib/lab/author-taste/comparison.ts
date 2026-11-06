@@ -1,3 +1,4 @@
+import { withTimeout } from '$lib/requests/timeout';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { env } from '$env/dynamic/public';
 import { ensureAnonymousSessionStarted } from '$lib/auth/anonymous-session';
@@ -204,56 +205,63 @@ export async function compareAuthorsEdge(
 	aId: number,
 	bId: number
 ): Promise<PairComparison> {
-	const sessionReady = await ensureAnonymousSessionStarted();
-	if (!sessionReady) {
-		throw new ComparisonError('Could not establish an authenticated session');
-	}
+	return withTimeout(async (signal) => {
+		const sessionReady = await ensureAnonymousSessionStarted();
+		if (!sessionReady) {
+			throw new ComparisonError('Could not establish an authenticated session');
+		}
 
-	const { data, error } = await supabase.functions.invoke(COMPARE_AUTHORS_FUNCTION, {
-		body: { author_a_id: aId, author_b_id: bId }
+		signal.throwIfAborted();
+		const { data, error } = await supabase.functions.invoke(COMPARE_AUTHORS_FUNCTION, {
+			body: { author_a_id: aId, author_b_id: bId },
+			signal
+		});
+
+		if (error) {
+			throw new ComparisonError(error.message || `${COMPARE_AUTHORS_FUNCTION} request failed`);
+		}
+
+		const payload = data as EdgeResponse | null;
+		if (!payload || typeof payload !== 'object') {
+			throw new ComparisonError(`${COMPARE_AUTHORS_FUNCTION} returned no result`);
+		}
+		if (typeof payload.error === 'string' && payload.error.trim()) {
+			throw new ComparisonError(payload.error);
+		}
+		if (!payload.a_to_b || !payload.b_to_a) {
+			throw new ComparisonError(`${COMPARE_AUTHORS_FUNCTION} returned an unexpected shape`);
+		}
+
+		// The function reorients its answer to the ids as asked, so a/b here are already self/reverse.
+		const validated = payload.validated_relationship ?? {
+			present: false,
+			directionality_status: ''
+		};
+		const selfMode = requireMode(payload.a_to_b.mode);
+		const reverseMode = requireMode(payload.b_to_a.mode);
+		if (selfMode !== reverseMode) {
+			throw new ComparisonError('comparison response returned mismatched modes');
+		}
+		const isRelease = selfMode === 'release';
+
+		return {
+			mode: selfMode,
+			validated: isRelease,
+			status: isRelease ? (STATUS_CODES[validated.directionality_status] ?? null) : null,
+			self: toEstimate(
+				payload.a_to_b,
+				isRelease ? validated.a_to_b_selected === true : false,
+				isRelease ? validated.a_to_b_q_value : null
+			),
+			reverse: toEstimate(
+				payload.b_to_a,
+				isRelease ? validated.b_to_a_selected === true : false,
+				isRelease ? validated.b_to_a_q_value : null
+			),
+			selfStatus: payload.a_to_b.evidence_status,
+			reverseStatus: payload.b_to_a.evidence_status,
+			asymmetry: null,
+			datasetVersion: payload.dataset_version
+		};
 	});
-
-	if (error) {
-		throw new ComparisonError(error.message || `${COMPARE_AUTHORS_FUNCTION} request failed`);
-	}
-
-	const payload = data as EdgeResponse | null;
-	if (!payload || typeof payload !== 'object') {
-		throw new ComparisonError(`${COMPARE_AUTHORS_FUNCTION} returned no result`);
-	}
-	if (typeof payload.error === 'string' && payload.error.trim()) {
-		throw new ComparisonError(payload.error);
-	}
-	if (!payload.a_to_b || !payload.b_to_a) {
-		throw new ComparisonError(`${COMPARE_AUTHORS_FUNCTION} returned an unexpected shape`);
-	}
-
-	// The function reorients its answer to the ids as asked, so a/b here are already self/reverse.
-	const validated = payload.validated_relationship ?? { present: false, directionality_status: '' };
-	const selfMode = requireMode(payload.a_to_b.mode);
-	const reverseMode = requireMode(payload.b_to_a.mode);
-	if (selfMode !== reverseMode) {
-		throw new ComparisonError('comparison response returned mismatched modes');
-	}
-	const isRelease = selfMode === 'release';
-
-	return {
-		mode: selfMode,
-		validated: isRelease,
-		status: isRelease ? (STATUS_CODES[validated.directionality_status] ?? null) : null,
-		self: toEstimate(
-			payload.a_to_b,
-			isRelease ? validated.a_to_b_selected === true : false,
-			isRelease ? validated.a_to_b_q_value : null
-		),
-		reverse: toEstimate(
-			payload.b_to_a,
-			isRelease ? validated.b_to_a_selected === true : false,
-			isRelease ? validated.b_to_a_q_value : null
-		),
-		selfStatus: payload.a_to_b.evidence_status,
-		reverseStatus: payload.b_to_a.evidence_status,
-		asymmetry: null,
-		datasetVersion: payload.dataset_version
-	};
 }

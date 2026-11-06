@@ -160,4 +160,34 @@ describe('modal keyboard and focus behavior', () => {
 		expect(onClose).toHaveBeenCalledTimes(1);
 		rendered.unmount();
 	});
+
+	it.each([null, new Error('Earlier submission failed')])(
+		'ignores an earlier feedback outcome after closing and reopening the form (%s)',
+		async (error) => {
+			let finish!: (result: { error: Error | null }) => void;
+			vi.mocked(submitBug).mockReturnValueOnce(
+				new Promise((resolve) => {
+					finish = resolve;
+				})
+			);
+			const { rendered, onClose } = mount(BugReportModal);
+			await rendered.getByRole('textbox', { name: 'Message or question' }).fill('Earlier message');
+			await rendered.getByRole('button', { name: 'Send feedback', exact: true }).click();
+			await rendered.getByRole('button', { name: 'Close', exact: true }).click();
+			await expect.poll(() => document.querySelector('dialog')).toBeNull();
+			await rendered.rerender({ open: true });
+			const input = rendered.getByRole('textbox', { name: 'Message or question' });
+			await input.fill('New message');
+			finish({ error });
+			await tick();
+			await expect.element(input).toHaveValue('New message');
+			await expect
+				.element(rendered.getByRole('button', { name: 'Send feedback', exact: true }))
+				.toBeEnabled();
+			await expect.element(rendered.getByRole('alert')).not.toBeInTheDocument();
+			await expect.element(rendered.getByRole('status')).not.toBeInTheDocument();
+			expect(onClose).toHaveBeenCalledOnce();
+			rendered.unmount();
+		}
+	);
 });

@@ -22,9 +22,7 @@ describe('catalog book quality evidence selection', () => {
 
 		const books = await fetchBooksByUlidsInOrder(supabase, [rows[0].book_id]);
 
-		expect(selectFn).toHaveBeenCalledWith(
-			expect.stringContaining('quality_band')
-		);
+		expect(selectFn).toHaveBeenCalledWith(expect.stringContaining('quality_band'));
 		expect(books[0]).toMatchObject({ qualityBand: 'top_5_percent' });
 	});
 });

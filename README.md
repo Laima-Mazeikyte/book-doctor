@@ -15,6 +15,11 @@ backfills or reset it for development. See [catalog publication](docs/operations
 [connections](docs/operations/connections.md), [sitemaps](docs/operations/sitemaps.md),
 and [remaining book-page work](docs/book-page.md) for the v4 release steps.
 
+The additive [random request-ID migration](docs/random-request-ids.md) is installed
+and verified on the shared project. Its migration-history entry still needs
+reconciliation; do not replay the SQL. See [discovery behavior](docs/discovery.md) and
+[request timeouts](docs/request-timeouts.md) for the current implementation.
+
 ## Environment variables
 
 Copy `.env.example` to `.env` and fill in the values:

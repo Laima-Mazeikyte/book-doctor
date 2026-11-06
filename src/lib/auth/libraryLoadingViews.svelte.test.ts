@@ -14,7 +14,12 @@ vi.mock('$app/stores', async () => ({
 		state: {}
 	})
 }));
-vi.mock('$app/navigation', () => ({ goto: vi.fn(), pushState: vi.fn(), replaceState: vi.fn() }));
+vi.mock('$app/navigation', () => ({
+	goto: vi.fn(),
+	pushState: vi.fn(),
+	replaceState: vi.fn(),
+	preloadData: vi.fn().mockResolvedValue({ status: 200 })
+}));
 vi.mock('$app/paths', () => ({ resolve: (path: string) => path }));
 
 afterEach(() => {

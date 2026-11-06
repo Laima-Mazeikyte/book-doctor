@@ -77,7 +77,8 @@ describe('v9 book ranking release', () => {
 		vi.stubGlobal('fetch', fetcher);
 		const release = await loadRelease();
 		expect(fetcher).toHaveBeenNthCalledWith(1, `${HOSTED_BASE}/current_release.json`, {
-			cache: 'no-cache'
+			cache: 'no-cache',
+			signal: expect.any(AbortSignal)
 		});
 		const population = await loadDataset(release, 'best_items');
 		expect(fetcher.mock.calls.map(([url]) => url)).toEqual([

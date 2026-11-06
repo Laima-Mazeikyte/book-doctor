@@ -22,8 +22,8 @@ function deferred<T>() {
 	});
 	return { promise, resolve };
 }
-const success = { data: { id: 42 }, error: null };
-const destination = '/rate/recommendations/shortlist?request_id=42';
+const success = { data: { public_id: 'K7mQ2xBa' }, error: null };
+const destination = '/rate/recommendations/shortlist?request_id=K7mQ2xBa';
 
 describe('recommendation submission', () => {
 	let submission: ReturnType<typeof createRecommendationSubmission>;
@@ -36,7 +36,7 @@ describe('recommendation submission', () => {
 		authStore.setSession(session());
 		markUserLibraryIdsReady('A');
 		single = vi.fn().mockResolvedValue(success);
-		insert = vi.fn().mockReturnValue({ select: () => ({ single }) });
+		insert = vi.fn().mockReturnValue({ select: () => ({ abortSignal: () => ({ single }) }) });
 		vi.mocked(getSupabase).mockReturnValue({ from: () => ({ insert }) } as never);
 		submission = createRecommendationSubmission();
 	});
@@ -195,4 +195,37 @@ describe('recommendation submission', () => {
 		expect(insert).toHaveBeenCalledTimes(1);
 		expect(goto).not.toHaveBeenCalled();
 	});
+});
+
+it('does not repeat a timed-out insert or navigate on its late acknowledgment', async () => {
+	vi.useFakeTimers();
+	authStore.setSession(session());
+	markUserLibraryIdsReady('A');
+	const flush = vi.spyOn(librarySaves, 'flush').mockResolvedValue();
+	let finish!: (value: typeof success) => void;
+	const single = vi.fn(
+		() =>
+			new Promise<typeof success>((resolve) => {
+				finish = resolve;
+			})
+	);
+	const insert = vi.fn(() => ({ select: () => ({ abortSignal: () => ({ single }) }) }));
+	vi.mocked(getSupabase).mockReturnValue({ from: () => ({ insert }) } as never);
+	vi.mocked(goto).mockReset();
+	const submission = createRecommendationSubmission();
+	try {
+		const pending = submission.submit();
+		await vi.advanceTimersByTimeAsync(15_000);
+		await pending;
+		expect(get(submission)).toEqual({ status: 'error', error: 'uncertain' });
+		await submission.submit();
+		expect(insert).toHaveBeenCalledTimes(1);
+		finish(success);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(goto).not.toHaveBeenCalled();
+	} finally {
+		submission.destroy();
+		flush.mockRestore();
+		vi.useRealTimers();
+	}
 });

@@ -1,3 +1,4 @@
+import { withTimeout } from '$lib/requests/timeout';
 import { browser } from '$app/environment';
 import { resolve } from '$app/paths';
 import { get } from 'svelte/store';
@@ -72,7 +73,8 @@ export function notifyLibraryPersistedMutationForBrowseFeedWarm(): void {
 
 	void (async () => {
 		try {
-			const { data: sessionData } = await supabase.auth.getSession();
+			const { data: sessionData } = await withTimeout(() => supabase.auth.getSession());
+			if (get(authStore).user?.id !== userId) return;
 			if (!sessionData.session) {
 				console.warn('[browseFeedWarm] skip warm: no Supabase session on client');
 				feedWarmPending = true;

@@ -1,3 +1,4 @@
+import { withRequestTimeout } from '$lib/server/requestTimeout';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { supabase } from '$lib/server/supabase';
@@ -5,7 +6,7 @@ import { supabase } from '$lib/server/supabase';
 const MAX_IDS = 64;
 
 /** Batch-load `books.summary` by UUID `id` for callers that need live text without a full row fetch. */
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = withRequestTimeout(async ({ url }, signal) => {
 	const raw = url.searchParams.get('ids') ?? '';
 	const ids = [
 		...new Set(
@@ -20,7 +21,11 @@ export const GET: RequestHandler = async ({ url }) => {
 		return json({ summaries: {} as Record<string, string> });
 	}
 
-	const { data, error: dbError } = await supabase.from('books').select('id, summary').in('id', ids);
+	const { data, error: dbError } = await supabase
+		.from('books')
+		.select('id, summary')
+		.in('id', ids)
+		.abortSignal(signal);
 
 	if (dbError) {
 		console.error(dbError);
@@ -35,4 +40,4 @@ export const GET: RequestHandler = async ({ url }) => {
 	}
 
 	return json({ summaries });
-};
+});

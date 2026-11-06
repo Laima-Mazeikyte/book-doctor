@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { RequestTimeoutError } from '$lib/requests/timeout';
 	import ModalDialog from './ModalDialog.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import { isAnonymousOrSignedOut, signedInEmail } from '$lib/stores/auth';
@@ -19,28 +20,40 @@
 	let loading = $state(false);
 	let error = $state<string | null>(null);
 	let successMessage = $state(false);
+	let uncertain = $state(false);
+	let submissionGeneration = 0;
+	let closeTimer: ReturnType<typeof setTimeout> | undefined;
 
 	const titleId = 'bug-modal-title';
 	const author = $derived((name.trim() || $signedInEmail) ?? null);
 	const nameRequired = $derived($isAnonymousOrSignedOut);
 
 	$effect(() => {
+		submissionGeneration++;
+		loading = false;
 		if (open) {
 			description = '';
 			name = '';
 			error = null;
 			successMessage = false;
+			uncertain = false;
 		}
+		return () => {
+			submissionGeneration++;
+			clearTimeout(closeTimer);
+		};
 	});
 
 	async function handleSubmit(e: SubmitEvent) {
 		e.preventDefault();
+		if (loading || uncertain) return;
 		error = null;
 		const desc = description.trim();
 		if (!desc) return;
 		if (nameRequired && !name.trim()) return;
 
 		loading = true;
+		const generation = submissionGeneration;
 		const id = crypto.randomUUID();
 		const { viewport_width, device_info } = getDeviceInfo();
 
@@ -51,15 +64,17 @@
 			viewport_width,
 			device_info: { ...device_info }
 		});
+		if (generation !== submissionGeneration) return;
 
 		loading = false;
 		if (err) {
-			error = t('shared.bugModal.errorSubmit');
+			uncertain = err instanceof RequestTimeoutError;
+			error = uncertain ? t('requests.uncertainReport') : t('shared.bugModal.errorSubmit');
 			return;
 		}
 
 		successMessage = true;
-		setTimeout(() => {
+		closeTimer = setTimeout(() => {
 			onClose();
 		}, 1800);
 	}
@@ -122,7 +137,7 @@
 					disabled={loading}
 				/>
 
-				<Button type="submit" variant="primary" disabled={loading}>
+				<Button type="submit" variant="primary" disabled={loading || uncertain}>
 					{loading ? t('shared.bugModal.submitting') : t('shared.bugModal.submit')}
 				</Button>
 			</form>

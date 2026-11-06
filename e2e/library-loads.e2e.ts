@@ -92,9 +92,9 @@ async function setup(page: Page, failures: ReadKind[], cached: boolean | 'comple
 		if (request.method() !== 'GET') {
 			if (table === 'recommendation_requests') {
 				state.generations++;
-				return route.fulfill({ json: { id: 42 } });
+				return route.fulfill({ json: { public_id: 'LoadRunA' } });
 			}
-			if (table === 'feed_requests') return route.fulfill({ json: { id: 7 } });
+			if (table === 'feed_requests') return route.fulfill({ json: { public_id: 'FeedRunA' } });
 			state.writes++;
 			await state.holdWrites;
 			return route.fulfill({ status: 204, body: '' });
@@ -151,6 +151,110 @@ test('a failed first rating load shows Retry, then loads without refetching succ
 	expect(state.reads.get('ratings')).toBe(5);
 	expect(state.reads.get('bookmarks')).toBe(bookmarkReads);
 	expect(state.reads.get('dismissals')).toBe(dismissalReads);
+});
+
+test('bookshelf tab changes preserve the mounted page, keyboard focus, and loaded collections', async ({
+	page
+}) => {
+	const state = await setup(page, [], 'complete');
+	await page.addInitScript(() => {
+		localStorage.setItem('book-doctor:my-bookshelf-filter', 'bookmarked');
+	});
+	await page.goto(`${base}/faq`, { waitUntil: 'domcontentloaded' });
+	await page.getByRole('link', { name: 'Bookshelf', exact: true }).first().click();
+	await expect(page).toHaveURL(/my-bookshelf\?filter=bookmarked$/);
+	await expect(page.locator('.book-card')).toHaveCount(1);
+	const search = page.getByRole('searchbox');
+	await search.evaluate((node) => node.setAttribute('data-original-shelf', 'true'));
+	const bookmarkReads = state.reads.get('bookmarkDetails');
+	await page.getByRole('tab', { name: /^Rated/ }).click();
+	await expect(page).toHaveURL(/filter=rated$/);
+	await expect(page.locator('.book-card')).toHaveCount(10);
+	await expect(search).toHaveAttribute('data-original-shelf', 'true');
+	await page.keyboard.press('ArrowRight');
+	const bookmarked = page.getByRole('tab', { name: /^Bookmarked/ });
+	await expect(bookmarked).toBeFocused();
+	await expect(page).toHaveURL(/filter=bookmarked$/);
+	await expect(page.locator('.book-card')).toHaveCount(1);
+	await expect(search).toHaveAttribute('data-original-shelf', 'true');
+	expect(state.reads.get('bookmarkDetails')).toBe(bookmarkReads);
+	await page.reload({ waitUntil: 'domcontentloaded' });
+	await expect(bookmarked).toHaveAttribute('aria-selected', 'true');
+	await expect(page.locator('.book-card')).toHaveCount(1);
+	await page.goBack();
+	await expect(page).toHaveURL(/\/faq$/);
+	await page.goForward();
+	await expect(bookmarked).toHaveAttribute('aria-selected', 'true');
+});
+
+test('opening a cold bookshelf requests rated details without waiting for an idle callback', async ({
+	page
+}) => {
+	const state = await setup(page, []);
+	await page.addInitScript(() => {
+		// Hold background warmups to prove the visible shelf requests its own details.
+		window.requestIdleCallback = () => 1;
+	});
+	await page.goto(`${base}/my-bookshelf?filter=rated`, { waitUntil: 'domcontentloaded' });
+	await expect(page.locator('.book-card')).toHaveCount(10);
+	expect(state.reads.get('ratedDetails')).toBe(1);
+});
+
+test('a direct bookshelf load restores the saved tab without hydration mismatches', async ({
+	page
+}) => {
+	await setup(page, [], 'complete');
+	const hydrationWarnings: string[] = [];
+	page.on('console', (message) => {
+		if (message.text().includes('hydration')) hydrationWarnings.push(message.text());
+	});
+	await page.addInitScript(() => {
+		localStorage.setItem('book-doctor:my-bookshelf-filter', 'bookmarked');
+	});
+	await page.goto(`${base}/my-bookshelf`, { waitUntil: 'domcontentloaded' });
+	await expect(page).toHaveURL(/filter=bookmarked$/);
+	await expect(page.getByRole('tab', { name: /^Bookmarked/ })).toHaveAttribute(
+		'aria-selected',
+		'true'
+	);
+	await expect(page.getByRole('tab', { name: /^Rated/ })).toHaveAttribute('aria-selected', 'false');
+	await expect(page.locator('.book-card')).toHaveCount(1);
+	expect(hydrationWarnings).toEqual([]);
+});
+
+test('large rated shelves reveal more cards on scroll and search the entire collection', async ({
+	page
+}) => {
+	await setup(page, []);
+	const largeShelf = Array.from({ length: 120 }, (_, index) => ({
+		id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+		book_id: `01${String(index + 1).padStart(24, '0')}`,
+		book_name: index === 110 ? 'Hidden Nebula' : `Large Shelf ${index}`,
+		author: 'Test Author'
+	}));
+	await page.route('**/rest/v1/user_ratings?**', (route) =>
+		route.fulfill({
+			json: largeShelf.map((book) => ({ book_id: book.book_id, book_rating: 4, books: book })),
+			headers: { 'content-range': '*/120', 'access-control-expose-headers': 'content-range' }
+		})
+	);
+	await page.goto(`${base}/my-bookshelf?filter=rated`, { waitUntil: 'domcontentloaded' });
+	await expect(page.getByRole('tab', { name: 'Rated, 120', exact: true })).toBeVisible();
+	await expect(page.locator('.book-card')).toHaveCount(24);
+	await page.locator('.bookshelf-page__more').scrollIntoViewIfNeeded();
+	await expect.poll(() => page.locator('.book-card').count()).toBeGreaterThanOrEqual(48);
+	const search = page.getByRole('searchbox');
+	await search.fill('Hidden Nebula');
+	await expect(page.locator('.book-card')).toHaveCount(1);
+	await expect(page.locator('.book-card')).toHaveAttribute('data-book-id', largeShelf[110].id);
+	await search.fill('');
+	await expect.poll(() => page.locator('.book-card').count()).toBeGreaterThanOrEqual(48);
+	const ratedScroll = await page.evaluate(() => window.scrollY);
+	await page.getByRole('tab', { name: /^Bookmarked/ }).click();
+	await expect(page.locator('.book-card')).toHaveCount(1);
+	await page.getByRole('tab', { name: /^Rated/ }).click();
+	await expect.poll(() => page.locator('.book-card').count()).toBeGreaterThanOrEqual(48);
+	await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(ratedScroll);
 });
 
 test('a bookmark ID failure leaves rating actions usable and blocks recommendation generation', async ({

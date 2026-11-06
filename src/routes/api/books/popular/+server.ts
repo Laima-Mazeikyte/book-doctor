@@ -1,3 +1,4 @@
+import { withRequestTimeout } from '$lib/server/requestTimeout';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { BOOK_CATALOG_SELECT } from '$lib/book-catalog-fields';
@@ -44,12 +45,15 @@ function mapRowToBook(b: BookRow) {
 	return mapBookRowToBook(b);
 }
 
-async function loadTop100Catalog(accessToken: string | null): Promise<Top100CatalogRow[]> {
+async function loadTop100Catalog(
+	accessToken: string | null,
+	signal: AbortSignal
+): Promise<Top100CatalogRow[]> {
 	if (accessToken) {
-		const supabaseAuth = createSupabaseWithAuth(accessToken);
-		const { data, error: rpcError } = await supabaseAuth.rpc(
-			'get_eligible_top_100_books_annotated'
-		);
+		const supabaseAuth = createSupabaseWithAuth(accessToken, signal);
+		const { data, error: rpcError } = await supabaseAuth
+			.rpc('get_eligible_top_100_books_annotated')
+			.abortSignal(signal);
 		if (rpcError) {
 			console.error('[popular] get_eligible_top_100_books_annotated failed:', rpcError);
 			throw new Error('Failed to load books');
@@ -60,7 +64,8 @@ async function loadTop100Catalog(accessToken: string | null): Promise<Top100Cata
 	const { data: rows, error: dbError } = await supabase
 		.from('top_100_books')
 		.select(`book_id, genre, display_order, books(${BOOK_CATALOG_SELECT})`)
-		.order('display_order', { ascending: true });
+		.order('display_order', { ascending: true })
+		.abortSignal(signal);
 
 	if (dbError) {
 		console.error(dbError);
@@ -112,7 +117,7 @@ function buildTop100Page(catalog: Top100CatalogRow[], offset: number, seedParam:
 	};
 }
 
-export const GET: RequestHandler = async ({ url, request }) => {
+export const GET: RequestHandler = withRequestTimeout(async ({ url, request }, signal) => {
 	const offsetParam = url.searchParams.get('offset');
 	const offset = offsetParam ? parseInt(offsetParam, 10) : 0;
 	const seedParam = url.searchParams.get('seed');
@@ -120,7 +125,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	const authHeader = request.headers.get('Authorization');
 	const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
-	const catalog = await loadTop100Catalog(accessToken);
+	const catalog = await loadTop100Catalog(accessToken, signal);
 	const payload = buildTop100Page(catalog, offset, seedParam);
 	return json(payload);
-};
+});

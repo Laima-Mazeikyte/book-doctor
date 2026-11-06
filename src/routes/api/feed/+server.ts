@@ -1,17 +1,18 @@
+import { withRequestTimeout } from '$lib/server/requestTimeout';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { buildFeedPayloadForRequest } from '$lib/server/feedPayload';
 import { requireAccessToken } from '$lib/server/requestAuth';
 import { createSupabaseWithAuth } from '$lib/server/supabase';
 
-export const GET: RequestHandler = async ({ url, request }) => {
+export const GET: RequestHandler = withRequestTimeout(async ({ url, request }, signal) => {
 	const requestId = url.searchParams.get('request_id')?.trim() ?? null;
 	if (!requestId) {
 		throw error(400, 'request_id is required');
 	}
 
 	const accessToken = requireAccessToken(request);
-	const supabase = createSupabaseWithAuth(accessToken);
+	const supabase = createSupabaseWithAuth(accessToken, signal);
 
 	try {
 		const payload = await buildFeedPayloadForRequest(supabase, requestId);
@@ -24,4 +25,4 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		console.error(e);
 		throw error(500, 'Failed to load feed');
 	}
-};
+});

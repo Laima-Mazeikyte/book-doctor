@@ -57,7 +57,7 @@
 	let loading = $state(false);
 	let busy = $state(false);
 	let failure = $state('');
-	let recovery = $state<'reload' | 'retry' | null>(null);
+	let recovery = $state<'reload' | 'retry' | 'reconcile' | null>(null);
 	let notice = $state('');
 	let genreInput = $state('');
 	let previewUrl = $state('');
@@ -160,7 +160,7 @@
 		}
 	}
 
-	async function refresh(signal?: AbortSignal, background = false) {
+	async function refresh(signal?: AbortSignal, background = false, preserveDraft = false) {
 		const current = generation;
 		const request = ++refreshVersion;
 		if (!background) {
@@ -174,11 +174,12 @@
 			// A quiet refresh must never replace a draft or a successful submission.
 			if (background) {
 				if (!selectedField && !busy) context = next;
-			} else populate(next);
+			} else if (preserveDraft) context = next;
+			else populate(next);
 		} catch (error) {
 			if (current === generation && request === refreshVersion && !signal?.aborted && !background) {
 				failure = message(error);
-				recovery = 'retry';
+				recovery = preserveDraft ? 'reconcile' : 'retry';
 			}
 		} finally {
 			if (current === generation && request === refreshVersion && !background) loading = false;
@@ -216,7 +217,14 @@
 	}
 	function requestFailed(error: unknown) {
 		failure = message(error);
-		recovery = error instanceof CorrectionRequestError && error.status === 409 ? 'reload' : null;
+		recovery =
+			error instanceof CorrectionRequestError
+				? error.status === 504
+					? 'reconcile'
+					: error.status === 409
+						? 'reload'
+						: null
+				: null;
 	}
 	async function showEditor() {
 		open = true;
@@ -548,9 +556,17 @@
 				{/if}
 				{#if failure}<p class="correction__error" role="alert">{failure}</p>
 					{#if recovery}
-						<Button variant="tertiary" compact disabled={busy || loading} onclick={() => refresh()}
+						<Button
+							variant="tertiary"
+							compact
+							disabled={busy || loading}
+							onclick={() => refresh(undefined, false, recovery === 'reconcile')}
 							>{t(
-								recovery === 'reload' ? 'bookCorrections.reload' : 'bookCorrections.retryLoading'
+								recovery === 'reload'
+									? 'bookCorrections.reload'
+									: recovery === 'reconcile'
+										? 'requests.checkAgain'
+										: 'bookCorrections.retryLoading'
 							)}</Button
 						>
 					{/if}

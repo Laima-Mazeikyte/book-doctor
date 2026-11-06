@@ -105,3 +105,8 @@ export function scheduleUserLibraryIdsLoad(userId: string | null | undefined): v
 export function scheduleUserLibraryDetailsLoad(userId: string | null | undefined): void {
 	if (userId && detailsLoader) schedule(() => detailsLoader?.(userId));
 }
+
+/** Visible library views need details immediately; the loader joins any running request. */
+export function requestUserLibraryDetailsLoad(userId: string | null | undefined): void {
+	if (userId) detailsLoader?.(userId);
+}

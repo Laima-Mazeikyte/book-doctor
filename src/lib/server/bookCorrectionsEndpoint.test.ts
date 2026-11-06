@@ -179,3 +179,23 @@ describe('correction endpoints', () => {
 		});
 	});
 });
+
+it('does not submit a write after its authentication wait times out', async () => {
+	vi.useFakeTimers();
+	let finish!: (value: unknown) => void;
+	fixture.getUser.mockReturnValue(
+		new Promise((resolve) => {
+			finish = resolve;
+		})
+	);
+	try {
+		const pending = POST(event('POST', { book_id: bookId, id, changes: { title: 'Updated' } }));
+		await vi.advanceTimersByTimeAsync(8000);
+		expect((await pending).status).toBe(504);
+		finish({ data: { user: { id, is_anonymous: false } }, error: null });
+		await vi.advanceTimersByTimeAsync(0);
+		expect(fixture.rpc).not.toHaveBeenCalled();
+	} finally {
+		vi.useRealTimers();
+	}
+});

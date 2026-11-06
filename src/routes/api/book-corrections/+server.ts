@@ -1,3 +1,4 @@
+import { withRequestTimeout } from '$lib/server/requestTimeout';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { coverUrlForBookId } from '$lib/book-cover';
@@ -7,10 +8,11 @@ import { createSupabaseWithAuth } from '$lib/server/supabase';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-async function registeredClient(request: Request) {
+async function registeredClient(request: Request, signal: AbortSignal) {
 	const token = requireAccessToken(request);
-	const client = createSupabaseWithAuth(token);
+	const client = createSupabaseWithAuth(token, signal);
 	const { data, error: authError } = await client.auth.getUser(token);
+	signal.throwIfAborted();
 	if (authError || !data.user) error(401, 'Please sign in again.');
 	if (data.user.is_anonymous)
 		error(403, 'A registered account is required to suggest corrections.');
@@ -66,8 +68,8 @@ async function resolveContext(
 	return context;
 }
 
-export const GET: RequestHandler = async ({ request, url }) => {
-	const client = await registeredClient(request);
+export const GET: RequestHandler = withRequestTimeout(async ({ request, url }, signal) => {
+	const client = await registeredClient(request, signal);
 	const id = bookId(url.searchParams.get('book_id'));
 	const { data, error: failure } = await client.rpc('get_book_correction_context', {
 		p_book_id: id
@@ -76,11 +78,12 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	return json(await resolveContext(data, id, client), {
 		headers: { 'Cache-Control': 'private, no-store' }
 	});
-};
+});
 
-export const POST: RequestHandler = async ({ request }) => {
-	const client = await registeredClient(request);
+export const POST: RequestHandler = withRequestTimeout(async ({ request }, signal) => {
+	const client = await registeredClient(request, signal);
 	const body = await readBody(request);
+	signal.throwIfAborted();
 	const id = bookId(body.book_id);
 	if (typeof body.id !== 'string' || !UUID.test(body.id)) error(400, 'Invalid proposal ID.');
 	let changes;
@@ -98,16 +101,17 @@ export const POST: RequestHandler = async ({ request }) => {
 	return json(await resolveContext(data, id, client), {
 		headers: { 'Cache-Control': 'private, no-store' }
 	});
-};
+});
 
-export const DELETE: RequestHandler = async ({ request }) => {
-	const client = await registeredClient(request);
+export const DELETE: RequestHandler = withRequestTimeout(async ({ request }, signal) => {
+	const client = await registeredClient(request, signal);
 	const body = await readBody(request);
+	signal.throwIfAborted();
 	if (typeof body.id !== 'string' || !UUID.test(body.id)) error(400, 'Invalid proposal ID.');
 	const { error: failure } = await client.rpc('withdraw_book_correction', { p_id: body.id });
 	if (failure) rpcError(failure);
 	return new Response(null, { status: 204 });
-};
+});
 
 async function readBody(request: Request): Promise<Record<string, unknown>> {
 	// Bound the body before parsing, including requests without Content-Length.

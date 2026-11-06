@@ -1,13 +1,17 @@
 <script lang="ts">
+	import { withTimeout } from '$lib/requests/timeout';
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
 	import BookCorrection from '$lib/components/book-card/BookCorrection.svelte';
 	import { resolve } from '$app/paths';
 	import { navigating } from '$app/state';
-	import { Bookmark, BookOpen, ChevronDown, LockKeyhole, Star, ThumbsDown } from 'lucide-svelte';
+	import { Bookmark, BookOpen, ChevronDown, Star, ThumbsDown } from 'lucide-svelte';
+	import { startingBookPath } from '$lib/recommendations/filteredRecommendations';
 	import type { Book, RatingValue } from '$lib/types/book';
+	import type { AuthorBookSummary, AuthorBooksResponse } from '$lib/books/authorBooks';
 	import { bookPath } from '$lib/books/bookUrl';
+	import { coverUrlForBookIdAtSize } from '$lib/book-cover';
 	import BookAnnotations from './BookAnnotations.svelte';
 	import BookAwards from './BookAwards.svelte';
 	import BookSeries from './BookSeries.svelte';
@@ -43,13 +47,18 @@
 	let authorExpanded = $state(false);
 	const author = $derived(book.author);
 	const currentBookId = $derived(book.book_id);
-	let authorCollection = $state<Book[]>([]);
+	let authorCollection = $state<AuthorBookSummary[]>([]);
 	let authorCollectionTruncated = $state(false);
 	const authorHasCurrentBook = $derived(
 		authorCollection.some((item) => item.book_id === currentBookId)
 	);
 	const authorBooks = $derived(
-		authorHasCurrentBook ? authorCollection : [...authorCollection.slice(0, 47), book]
+		authorHasCurrentBook
+			? authorCollection
+			: [
+					...authorCollection.slice(0, 47),
+					{ book_id: book.book_id, slug: book.slug, title: book.title }
+				]
 	);
 	const authorBooksTruncated = $derived(
 		authorCollectionTruncated || (!authorHasCurrentBook && authorCollection.length === 48)
@@ -87,26 +96,49 @@
 
 	function releaseSeriesImagesAfterCover(node: HTMLElement) {
 		const bookId = book.book_id;
-		let released = false;
+		let settled = false;
+		let destroyed = false;
 		let firstFrame = 0;
 		let secondFrame = 0;
+		coverReadyFor = null;
 		const release = () => {
-			if (released) return;
-			released = true;
+			if (destroyed) return;
+			clearTimeout(timeout);
+			cancelAnimationFrame(firstFrame);
+			cancelAnimationFrame(secondFrame);
+			coverReadyFor = bookId;
+		};
+		const settle = (failed: boolean) => {
+			if (settled || destroyed) return;
+			settled = true;
+			if (failed) coverFailedFor = bookId;
 			// Give the main cover a paint opportunity before adding thumbnail requests.
 			firstFrame = requestAnimationFrame(() => {
-				secondFrame = requestAnimationFrame(() => (coverReadyFor = bookId));
+				secondFrame = requestAnimationFrame(release);
 			});
 		};
-		// Capture also handles an error before the image becomes the fallback.
-		node.addEventListener('load', release, true);
-		node.addEventListener('error', release, true);
+		// A cover gets a head start, but cannot indefinitely hold unrelated sections.
+		// Release directly at the deadline, even if animation frames are suspended.
+		const timeout = setTimeout(() => {
+			if (!settled) {
+				settled = true;
+				coverFailedFor = bookId;
+			}
+			release();
+		}, 5_000);
+		const loaded = () => settle(false);
+		const failed = () => settle(true);
+		node.addEventListener('load', loaded, true);
+		node.addEventListener('error', failed, true);
 		const image = node.querySelector('img');
-		if (!image || image.complete) release();
+		if (!image) settle(false);
+		else if (image.complete) settle(image.naturalWidth === 0);
 		return {
 			destroy() {
-				node.removeEventListener('load', release, true);
-				node.removeEventListener('error', release, true);
+				destroyed = true;
+				clearTimeout(timeout);
+				node.removeEventListener('load', loaded, true);
+				node.removeEventListener('error', failed, true);
 				cancelAnimationFrame(firstFrame);
 				cancelAnimationFrame(secondFrame);
 			}
@@ -121,11 +153,16 @@
 		const requestedAuthor = author;
 		const params = new URLSearchParams({ author: requestedAuthor });
 		try {
-			const response = await fetch(`${resolve('/api/books/by-author')}?${params}`, {
-				signal: controller.signal
-			});
-			if (!response.ok) throw new Error('Unable to load author books');
-			const payload: { books: Book[]; truncated: boolean } = await response.json();
+			const payload = await withTimeout(
+				async (signal) => {
+					const response = await fetch(`${resolve('/api/books/by-author')}?${params}`, {
+						signal
+					});
+					if (!response.ok) throw new Error('Unable to load author books');
+					return (await response.json()) as AuthorBooksResponse;
+				},
+				{ signal: controller.signal }
+			);
 			if (controller.signal.aborted || requestedAuthor !== author) return;
 			authorCollection = payload.books.slice(0, 48);
 			authorCollectionTruncated = payload.truncated || payload.books.length > 48;
@@ -199,12 +236,7 @@
 					use:releaseSeriesImagesAfterCover
 				>
 					{#if book.coverUrl && coverFailedFor !== book.book_id}
-						<img
-							src={book.coverUrl}
-							alt={`Cover of ${book.title}`}
-							fetchpriority="high"
-							onerror={() => (coverFailedFor = book.book_id)}
-						/>
+						<img src={book.coverUrl} alt={`Cover of ${book.title}`} fetchpriority="high" />
 					{:else}
 						<div class="cover-fallback">
 							<BookOpen size={40} aria-hidden="true" /><span>{book.title}</span><small
@@ -274,7 +306,7 @@
 					aria-controls="author-books"
 					onclick={toggleAuthorBooks}
 				>
-					{book.author}<ChevronDown size={18} aria-hidden="true" />
+					<span class="author-name">{book.author}</span><ChevronDown size={18} aria-hidden="true" />
 				</button>
 				{#if authorExpanded}
 					<section
@@ -295,6 +327,7 @@
 						{:else}
 							<div class="author-cover-grid">
 								{#each authorBooks as item (item.book_id)}
+									{@const cover = coverUrlForBookIdAtSize(item.book_id, 200)}
 									<!-- eslint-disable svelte/no-navigation-without-resolve -- The populated branch uses resolve; older cached records deliberately have no href. -->
 									<a
 										class="author-book-cover"
@@ -308,11 +341,14 @@
 										aria-label={item.title}
 										title={item.title}
 									>
-										{#if item.coverUrl && !failedAuthorCovers.has(item.book_id)}
+										{#if cover && !failedAuthorCovers.has(item.book_id)}
 											<img
-												src={item.coverUrl}
+												src={cover}
 												alt=""
+												width="200"
+												height="300"
 												loading="lazy"
+												fetchpriority="low"
 												decoding="async"
 												onerror={() => failedAuthorCovers.add(item.book_id)}
 											/>
@@ -365,17 +401,28 @@
 				<BookConnections bookId={book.book_id} imagesReady={seriesImagesReady} />
 			</section>
 
-			<section class="premium-panel" aria-labelledby="premium-title">
-				<p class="eyebrow"><LockKeyhole size={13} aria-hidden="true" /> Premium</p>
-				<h2 id="premium-title">More like this, but…</h2>
+			<section class="starting-book-panel" aria-labelledby="starting-book-title">
+				<h2 id="starting-book-title">More like this, but…</h2>
 				<p class="muted">Use this book as a starting point and fine-tune your next read.</p>
-				<ul class="premium-options" aria-label="Planned premium options">
-					<li>Faster pacing</li>
-					<li>Less violence</li>
-					<li>More demanding vocabulary</li>
-					<li>Less widely read</li>
+				<ul class="starting-book-options" aria-label="Ways to explore from this book">
+					<li>
+						<a href={resolve(startingBookPath(book.slug, 'more-action-driven'))}
+							>More action-driven</a
+						>
+					</li>
+					<li>
+						<a href={resolve(startingBookPath(book.slug, 'less-violence'))}>Less violence</a>
+					</li>
+					<li>
+						<a href={resolve(startingBookPath(book.slug, 'more-complex-language'))}
+							>More complex language</a
+						>
+					</li>
+					<li>
+						<a href={resolve(startingBookPath(book.slug, 'least-popular-30'))}>Least popular 30%</a>
+					</li>
 				</ul>
-				<p class="placeholder">Premium discovery coming soon</p>
+				<a href={resolve(startingBookPath(book.slug))}>Explore from this book →</a>
 			</section>
 		</aside>
 
@@ -396,8 +443,7 @@
 	.text-button,
 	.eyebrow,
 	.metadata,
-	.muted,
-	.placeholder {
+	.muted {
 		font-family: var(--font-family-interactive);
 		font-size: 0.85rem;
 	}
@@ -447,6 +493,11 @@
 		background: var(--color-bg-muted);
 		border: 1px solid var(--color-border);
 	}
+	.cover-fallback > span,
+	.cover-fallback > small {
+		max-width: 100%;
+		overflow-wrap: anywhere;
+	}
 	.eyebrow {
 		display: flex;
 		align-items: center;
@@ -466,8 +517,18 @@
 		overflow-wrap: anywhere;
 	}
 	.author-button {
+		max-width: 100%;
+		min-width: 0;
 		font-family: var(--font-family-content);
 		font-size: 1.6rem;
+		text-align: left;
+	}
+	.author-name {
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+	.author-button :global(svg) {
+		flex-shrink: 0;
 	}
 	.author-books {
 		margin-block: 1rem;
@@ -485,6 +546,7 @@
 	}
 	.author-books-title {
 		margin-bottom: 0.25rem;
+		overflow-wrap: anywhere;
 	}
 	.author-books-subtitle {
 		margin: 0 0 0.75rem;
@@ -543,7 +605,7 @@
 		grid-row: 1 / span 2;
 	}
 	.profile-panel,
-	.premium-panel {
+	.starting-book-panel {
 		padding: 1.5rem;
 		background: var(--color-card-bg);
 		border: 1px solid var(--color-border);
@@ -612,29 +674,25 @@
 		color: var(--color-text);
 		cursor: pointer;
 	}
-	.premium-panel h2 {
+	.starting-book-panel h2 {
 		font-size: 1.5rem;
 		line-height: 1.2;
 	}
-	.premium-options {
+	.starting-book-options {
 		list-style: none;
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.4rem;
 		padding: 0;
 	}
-	.premium-options li {
+	.starting-book-options a {
+		display: block;
+		text-decoration: none;
 		font-family: var(--font-family-interactive);
 		font-size: 0.75rem;
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-pill);
 		padding: 0.25rem 0.6rem;
-		color: var(--color-text-muted);
-	}
-	.placeholder {
-		padding: 0.75rem;
-		border: 1px dashed var(--color-border);
-		border-radius: var(--radius-sm);
 		color: var(--color-text-muted);
 	}
 	button:focus-visible,
@@ -666,7 +724,7 @@
 			grid-template-columns: 1fr;
 		}
 		.profile-panel,
-		.premium-panel {
+		.starting-book-panel {
 			padding: 1rem;
 		}
 	}

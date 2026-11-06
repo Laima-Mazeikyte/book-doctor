@@ -11,6 +11,7 @@
 	import { getSupabase } from '$lib/supabase';
 
 	let { bookId, imagesReady = false }: { bookId: string; imagesReady?: boolean } = $props();
+	let retry = $state(0);
 	let connections = $state<BookConnection[]>([]);
 	let status = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
 	// A token refresh for the same reader is not a new page visit.
@@ -19,6 +20,7 @@
 	);
 
 	$effect(() => {
+		void retry;
 		const owner = readerId;
 		const target = bookId;
 		const ready = imagesReady;
@@ -60,6 +62,7 @@
 			<p class="muted" role="status">Loading connections…</p>
 		{:else if status === 'error'}
 			<p class="muted">Book connections are temporarily unavailable.</p>
+			<button type="button" onclick={() => retry++}>Try again</button>
 		{:else}
 			<div class="reference-books">
 				{#each connections as connection (connection.book.book_id)}
@@ -82,7 +85,7 @@
 						{:else}
 							<span class="mini-cover"><BookOpen size={22} aria-hidden="true" /></span>
 						{/if}
-						<span
+						<span class="book-label"
 							><strong>{item.title}</strong><span class="muted">{item.author}</span>
 							<span class="muted">Your rating: {connection.rating} / 5</span></span
 						>
@@ -114,6 +117,10 @@
 		text-decoration: none;
 		min-width: 0;
 		color: var(--color-text);
+	}
+	.book-label {
+		min-width: 0;
+		overflow-wrap: anywhere;
 	}
 	.mini-book img,
 	.mini-cover {

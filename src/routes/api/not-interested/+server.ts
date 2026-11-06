@@ -1,3 +1,4 @@
+import { withRequestTimeout } from '$lib/server/requestTimeout';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAccessToken } from '$lib/server/requestAuth';
@@ -7,9 +8,9 @@ import {
 	createUserLibraryPostHandler
 } from '$lib/server/userLibraryMutations';
 
-export const GET: RequestHandler = async ({ request }) => {
+export const GET: RequestHandler = withRequestTimeout(async ({ request }, signal) => {
 	const accessToken = requireAccessToken(request);
-	const supabase = createSupabaseWithAuth(accessToken);
+	const supabase = createSupabaseWithAuth(accessToken, signal);
 
 	const { data: rows, error: selectError } = await supabase
 		.from('user_not_interested')
@@ -25,7 +26,7 @@ export const GET: RequestHandler = async ({ request }) => {
 		.filter((id): id is string => typeof id === 'string' && id.trim() !== '');
 
 	return json({ book_ids: bookIds });
-};
+});
 
 export const POST = createUserLibraryPostHandler(
 	'user_not_interested',

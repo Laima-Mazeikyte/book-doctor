@@ -2,6 +2,9 @@
 	import type { DimensionMatch } from '$lib/recommendations/dimensionMatches';
 	import { onDestroy, tick } from 'svelte';
 	import { browser } from '$app/environment';
+	import { preloadData } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import { bookPath } from '$lib/books/bookUrl';
 	import { fly } from 'svelte/transition';
 	import { X } from 'lucide-svelte';
 	import Spinner from '$lib/components/Spinner.svelte';
@@ -63,6 +66,7 @@
 
 	const visible = $derived(sheetState.kind !== 'closed');
 	const readyBook = $derived(sheetState.kind === 'ready' ? sheetState.book : null);
+	const bookPageHref = $derived(readyBook?.slug ? resolve(bookPath(readyBook)) : null);
 	const identity = $derived.by(() => {
 		if (sheetState.kind === 'ready') return bookSummaryIdentity(sheetState.book);
 		if (sheetState.kind === 'loading' || sheetState.kind === 'error') return sheetState.identity;
@@ -335,6 +339,12 @@
 	function starAriaPressed(value: RatingValue): boolean {
 		return currentRating === value;
 	}
+
+	$effect(() => {
+		if (!bookPageHref) return;
+		// Start the title's normal route load on open; navigation reuses its data and code.
+		void preloadData(bookPageHref).catch(() => undefined);
+	});
 
 	let lastVisibleBookUlid: string | null = null;
 	$effect(() => {

@@ -1,6 +1,16 @@
 # App microcopy – edit strings here. Use {{variable}} for interpolation in code.
 # To add a locale later, add another top-level key (e.g. es:, fr:) with the same structure.
 en:
+  requests:
+    checkAgain: 'Check again'
+    uncertainCorrection: 'We could not confirm whether your proposal changed. Your draft is preserved. Reload proposals to check before submitting again.'
+    uncertainSignOut: 'We could not confirm sign-out. Your session may still be active. Please try signing out again.'
+    uncertainAccount: 'We could not confirm whether this completed. Check your account or email before trying again.'
+    uncertainReport: 'We could not confirm whether your report was received. Your text is preserved; please avoid submitting it again now.'
+    uncertainSearch: 'We could not confirm whether this search started. Check your recent requests before starting another search.'
+    uncertainRecommendations: 'We could not confirm whether your request started. Check your recommendations before starting another request.'
+    uncertainFeed: 'We could not confirm whether new books were requested. Check your feed again before requesting more.'
+    uncertainPassword: 'We could not confirm whether your password changed. Try signing in before submitting again.'
   errors:
     notFoundLabel: '404 / Page not found'
     unavailableTitle: 'A brief intermission.'
@@ -141,6 +151,7 @@ en:
     metaDescription: 'Your Unread bookshelf: rated titles, bookmarks, and books marked not interested. Easy to browse and manage.'
     empty: 'No books rated yet. Rate at least 10 to get recommendations.'
     loadingList: 'Loading your library…'
+    loadMore: 'Show more books'
     loadError: "Couldn't load your bookshelf right now. Please refresh to try again."
     emptyBookmarked: 'No bookmarked books yet. Titles you save stay here even if you also rate them.'
     emptyNotInterested: 'No books marked as not interested yet.'
@@ -240,9 +251,9 @@ en:
       metaDescription: 'Swipe through your latest book recommendations on Unread.'
       loading: 'Finding books for you…'
       takingLonger: 'Taking longer than usual.'
-      failureTitle: 'Could not generate your shortlist'
-      failureMessage: 'We could not finish generating your recommendations. Please try again.'
-      retry: 'Try again'
+      failureTitle: 'Your shortlist is taking longer than expected'
+      failureMessage: 'Your request may still be running. Check the same request again in a moment.'
+      retry: 'Check again'
       typeLabel: 'Type'
       carouselAriaLabel: 'Your recommended books'
       prevBook: 'Previous book'
@@ -906,7 +917,7 @@ en:
       doneSummary_one: '{{count}} rating imported.'
       doneSummary_other: '{{count}} ratings imported.'
       unmatchedHeading: 'These books may not be in our library ({{count}}):'
-      timeout: 'Still importing — this is taking longer than usual. Your ratings will appear once it finishes; you can close this and check back shortly.'
+      timeout: 'The import may still be running. Check your library shortly. Please avoid starting the same import again.'
       errorParse: "This doesn't look like a supported file. Please upload a Goodreads, StoryGraph, or Hardcover export, or a .csv with Title, Author, and Rating columns."
       errorFileTooLarge: 'That file is larger than the 5 MB limit. Please upload a .csv exported from Goodreads, StoryGraph, or Hardcover, or your own .csv.'
       errorTooManyRows: 'That file has more books than we can import at once. Please contact us if you need a larger import.'

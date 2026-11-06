@@ -4,10 +4,16 @@
 	import { Search } from 'lucide-svelte';
 
 	interface Props {
+		id?: string;
 		value?: string;
 		placeholder?: string;
 		ariaLabel?: string;
 		oninput?: (e: Event) => void;
+		onkeydown?: (e: KeyboardEvent) => void;
+		/** Optional autocomplete list; ordinary search fields keep searchbox semantics. */
+		listboxId?: string;
+		expanded?: boolean;
+		activeDescendant?: string;
 		/** Request focus when this instance mounts (e.g. rate search overlay field). */
 		autofocus?: boolean;
 		/**
@@ -19,10 +25,15 @@
 	}
 
 	let {
+		id,
 		value = $bindable(''),
 		placeholder = t('rate.search.placeholder'),
 		ariaLabel = t('rate.search.ariaLabel'),
 		oninput,
+		onkeydown,
+		listboxId,
+		expanded = false,
+		activeDescendant,
 		autofocus = false,
 		asTrigger = false,
 		onActivate
@@ -73,15 +84,21 @@
 		</button>
 	{:else}
 		<input
+			{id}
 			bind:this={inputRef}
 			type="text"
 			inputmode="search"
-			role="searchbox"
+			role={listboxId ? 'combobox' : 'searchbox'}
+			aria-autocomplete={listboxId ? 'list' : undefined}
+			aria-expanded={listboxId ? expanded : undefined}
+			aria-controls={expanded ? listboxId : undefined}
+			aria-activedescendant={activeDescendant}
 			autocomplete="off"
 			{placeholder}
 			aria-label={ariaLabel}
 			bind:value
 			{oninput}
+			{onkeydown}
 			class="search-bar__input"
 			class:search-bar__input--has-clear={value.length > 0}
 		/>

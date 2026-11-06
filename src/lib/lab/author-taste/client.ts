@@ -1,3 +1,4 @@
+import { withTimeout, LARGE_REQUEST_TIMEOUT_MS } from '$lib/requests/timeout';
 import { decodeConnectionBlock, reorientRecord } from './decode';
 import { bucketUrl, type Release } from './release';
 import type { AuthorIndex } from './authors';
@@ -57,12 +58,17 @@ export class ConnectionStore {
 		const pending = this.inFlight.get(id);
 		if (pending) return pending;
 
-		const request = fetch(bucketUrl(this.release, id))
-			.then(async (response) => {
+		const request = withTimeout(
+			async (signal) => {
+				const response = await fetch(bucketUrl(this.release, id), { signal });
 				if (!response.ok) {
 					throw new Error(`Connection bucket ${id} request failed with ${response.status}.`);
 				}
-				const buffer = await response.arrayBuffer();
+				return response.arrayBuffer();
+			},
+			{ timeoutMs: LARGE_REQUEST_TIMEOUT_MS }
+		)
+			.then((buffer) => {
 				this.buckets.set(id, buffer);
 				this.inFlight.delete(id);
 				return buffer;

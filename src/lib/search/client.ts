@@ -1,3 +1,4 @@
+import { withTimeout } from '$lib/requests/timeout';
 import { browser } from '$app/environment';
 
 import { getSupabase } from '$lib/supabase';
@@ -42,36 +43,41 @@ export async function executeSearch(
 	offset: number,
 	limit: number
 ): Promise<SearchResultPage> {
-	const supabase = getSupabase();
-	if (!supabase) {
-		throw new Error(SEARCH_UNAVAILABLE_MESSAGE);
-	}
+	return withTimeout(async (signal) => {
+		const supabase = getSupabase();
+		if (!supabase) {
+			throw new Error(SEARCH_UNAVAILABLE_MESSAGE);
+		}
 
-	const cappedLimit = Math.min(Math.max(1, limit), SEARCH_MAX_LIMIT);
+		const cappedLimit = Math.min(Math.max(1, limit), SEARCH_MAX_LIMIT);
 
-	const { bookIds, estimatedTotalHits, scannedHitCount } = await invokeBookSearch(supabase, {
-		...selector,
-		limit: cappedLimit,
-		offset
+		const { bookIds, estimatedTotalHits, scannedHitCount } = await invokeBookSearch(
+			supabase,
+			{
+				...selector,
+				limit: cappedLimit,
+				offset
+			},
+			signal
+		);
+
+		signal.throwIfAborted();
+		const books = await resolveBooksByIdsInOrder(supabase, bookIds, signal);
+		// Advance Meilisearch `offset` by raw hit count so it stays aligned with ranking (dedupe is display-only).
+		const nextOffset = offset + scannedHitCount;
+		const hasMore = computeSearchHasMore(
+			scannedHitCount,
+			cappedLimit,
+			nextOffset,
+			estimatedTotalHits
+		);
+
+		return {
+			books,
+			nextOffset,
+			hasMore
+		};
 	});
-
-	const books = await resolveBooksByIdsInOrder(supabase, bookIds);
-	// Advance Meilisearch `offset` by raw hit count so it stays aligned with ranking (dedupe is display-only).
-	const nextOffset = offset + scannedHitCount;
-	const hasMore = computeSearchHasMore(
-		scannedHitCount,
-		cappedLimit,
-		nextOffset,
-		estimatedTotalHits
-	);
-
-	return {
-		books,
-		nextOffset,
-		hasMore,
-		source: 'edge',
-		loadedFields: []
-	};
 }
 
 /**

@@ -5,6 +5,7 @@ import { tick } from 'svelte';
 import { get } from 'svelte/store';
 import type { Session } from '@supabase/supabase-js';
 import type { Book } from '$lib/types/book';
+import type { AuthorBookSummary } from '$lib/books/authorBooks';
 import { authStore, markAuthInitReady } from '$lib/stores/auth';
 import { clearUserLibraryHydration } from '$lib/stores/userLibrary';
 import { libraryLoads, type LibraryCollection } from '$lib/stores/libraryLoads';
@@ -71,6 +72,10 @@ const props = {
 	canonicalUrl: `https://unread.example/books/${book.slug}`
 };
 
+function authorSummary(item: Book): AuthorBookSummary {
+	return { book_id: item.book_id, slug: item.slug!, title: item.title };
+}
+
 beforeEach(() => {
 	connections.load.mockReset().mockResolvedValue([]);
 	discovery.load.mockReset().mockResolvedValue({
@@ -99,7 +104,9 @@ afterEach(() => {
 });
 
 it('renders real catalog evidence, expands author books, and keeps missing features explicit', async () => {
-	const fetchMock = vi.fn().mockResolvedValue(Response.json({ books: [other], truncated: false }));
+	const fetchMock = vi
+		.fn()
+		.mockResolvedValue(Response.json({ books: [authorSummary(other)], truncated: false }));
 	vi.stubGlobal('fetch', fetchMock);
 	const screen = render(BookDetailPage, props);
 	await expect.element(screen.getByRole('heading', { name: book.title })).toBeVisible();
@@ -114,6 +121,12 @@ it('renders real catalog evidence, expands author books, and keeps missing featu
 		.element(screen.getByText('Rate at least 10 books to build your reading profile.'))
 		.toBeVisible();
 	expect(document.body.textContent).not.toContain('Similar-experience recommendations coming soon');
+	await expect
+		.element(screen.getByRole('link', { name: 'Less violence', exact: true }))
+		.toHaveAttribute('href', `/discover?from=${book.slug}&change=less-violence`);
+	await expect
+		.element(screen.getByRole('link', { name: 'Explore from this book →', exact: true }))
+		.toHaveAttribute('href', `/discover?from=${book.slug}`);
 	expect(fetchMock).not.toHaveBeenCalled();
 	await screen.getByRole('button', { name: book.author, exact: true }).click();
 	await expect
@@ -363,7 +376,7 @@ it('keeps the book visible during a failed author lookup and retries on demand',
 	const fetchMock = vi
 		.fn()
 		.mockResolvedValueOnce(new Response('', { status: 503 }))
-		.mockResolvedValueOnce(Response.json({ books: [other], truncated: false }));
+		.mockResolvedValueOnce(Response.json({ books: [authorSummary(other)], truncated: false }));
 	vi.stubGlobal('fetch', fetchMock);
 	const screen = render(BookDetailPage, props);
 	await screen.getByRole('button', { name: book.author, exact: true }).click();
@@ -394,7 +407,7 @@ it('keeps all author covers mounted, moves the current-book highlight, and prese
 	];
 	const fetchMock = vi
 		.fn()
-		.mockResolvedValue(Response.json({ books: collection, truncated: false }));
+		.mockResolvedValue(Response.json({ books: collection.map(authorSummary), truncated: false }));
 	vi.stubGlobal('fetch', fetchMock);
 	const screen = render(BookDetailPage, props);
 	try {
@@ -483,7 +496,9 @@ it.each([false, true])(
 				title: `Volume ${index}`
 			}))
 		];
-		const fetchMock = vi.fn().mockResolvedValue(Response.json({ books: collection, truncated }));
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(Response.json({ books: collection.map(authorSummary), truncated }));
 		vi.stubGlobal('fetch', fetchMock);
 		const screen = render(BookDetailPage, props);
 		await screen.getByRole('button', { name: book.author, exact: true }).click();
@@ -541,7 +556,7 @@ it('keeps a pending author lookup alive across same-author navigation and highli
 	await screen.rerender({ book: other });
 	expect(signal?.aborted).toBe(false);
 	await expect.element(screen.getByRole('status')).toHaveTextContent('Loading books…');
-	finish(Response.json({ books: [book, other], truncated: false }));
+	finish(Response.json({ books: [book, other].map(authorSummary), truncated: false }));
 	await expect.element(screen.getByRole('link', { name: book.title, exact: true })).toBeVisible();
 	expect(document.querySelectorAll('.author-book-cover')).toHaveLength(2);
 	expect(
@@ -549,7 +564,8 @@ it('keeps a pending author lookup alive across same-author navigation and highli
 	).toBe(`/books/${other.slug}`);
 	expect(fetchMock).toHaveBeenCalledTimes(1);
 	screen.unmount();
-	expect(signal?.aborted).toBe(true);
+	// The completed request has detached its parent listener.
+	expect(signal?.aborted).toBe(false);
 });
 
 it('discards old-author results even when they arrive after the new author collection', async () => {
@@ -564,7 +580,9 @@ it('discards old-author results even when they arrive after the new author colle
 					finishOld = resolve;
 				})
 		)
-		.mockResolvedValue(Response.json({ books: [newBook, newAuthorOther], truncated: false }));
+		.mockResolvedValue(
+			Response.json({ books: [newBook, newAuthorOther].map(authorSummary), truncated: false })
+		);
 	vi.stubGlobal('fetch', fetchMock);
 	const screen = render(BookDetailPage, props);
 	await screen.getByRole('button', { name: book.author, exact: true }).click();
@@ -592,7 +610,11 @@ it.each([false, true])(
 	async (empty) => {
 		vi.stubGlobal(
 			'fetch',
-			vi.fn().mockResolvedValue(Response.json({ books: empty ? [] : [book], truncated: false }))
+			vi
+				.fn()
+				.mockResolvedValue(
+					Response.json({ books: empty ? [] : [authorSummary(book)], truncated: false })
+				)
 		);
 		const screen = render(BookDetailPage, props);
 		await screen.getByRole('button', { name: book.author, exact: true }).click();
@@ -638,7 +660,7 @@ it('aborts the old author lookup on an author change and resets book-specific co
 	expect(document.querySelector('.book-cover img')?.getAttribute('alt')).toBe(
 		`Cover of ${other.title}`
 	);
-	finish?.(Response.json({ books: [book], truncated: false }));
+	finish?.(Response.json({ books: [authorSummary(book)], truncated: false }));
 	await tick();
 	expect(document.querySelector('.author-books')).toBeNull();
 	authStore.setSession(null);
@@ -647,4 +669,37 @@ it('aborts the old author lookup on an author change and resets book-specific co
 	expect(planToReadStore.has(other.id)).toBe(true);
 	expect(planToReadStore.has(book.id)).toBe(false);
 	screen.unmount();
+});
+
+it('recovers from a stalled author response body and ignores its late results', async () => {
+	vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+	let finish!: (payload: unknown) => void;
+	const body = new Promise((resolve) => {
+		finish = resolve;
+	});
+	const fetchMock = vi
+		.fn()
+		.mockResolvedValueOnce({ ok: true, json: () => body })
+		.mockResolvedValue(Response.json({ books: [other].map(authorSummary), truncated: false }));
+	vi.stubGlobal('fetch', fetchMock);
+	const screen = render(BookDetailPage, props);
+	try {
+		await screen.getByRole('button', { name: book.author, exact: true }).click();
+		await vi.advanceTimersByTimeAsync(15_000);
+		expect(
+			document.querySelector('.author-books')?.textContent ?? document.body.textContent
+		).toContain('Retry');
+		expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(true);
+		finish({ books: [{ ...authorSummary(other), title: 'Late old result' }], truncated: false });
+		await vi.advanceTimersByTimeAsync(0);
+		await screen.getByRole('button', { name: 'Retry', exact: true }).click();
+		await expect
+			.element(screen.getByRole('link', { name: other.title, exact: true }))
+			.toBeVisible();
+		expect(document.body.textContent).not.toContain('Late old result');
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+	} finally {
+		screen.unmount();
+		vi.useRealTimers();
+	}
 });

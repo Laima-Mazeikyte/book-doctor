@@ -10,9 +10,7 @@ import {
 
 describe('feedEligibility', () => {
 	it('sums ratings, bookmarks, and not-interested for interaction count', () => {
-		expect(
-			feedInteractionCountFromParts({ ratings: 1, bookmarks: 1, notInterested: 1 })
-		).toBe(3);
+		expect(feedInteractionCountFromParts({ ratings: 1, bookmarks: 1, notInterested: 1 })).toBe(3);
 	});
 
 	it('unlocks the feed at a single interaction, but not at zero', () => {
@@ -54,16 +52,16 @@ describe('feedEligibility', () => {
 		).toBe(true);
 	});
 
-		it('treats below_threshold mode as ineligible', () => {
-			expect(
-				feedStateMeetsInteractionThreshold({
-					mode: 'below_threshold',
-					books: [],
-					interaction_count: 2,
-					eligible_for_feed: false
-				})
-			).toBe(false);
-		});
+	it('treats below_threshold mode as ineligible', () => {
+		expect(
+			feedStateMeetsInteractionThreshold({
+				mode: 'below_threshold',
+				books: [],
+				interaction_count: 2,
+				eligible_for_feed: false
+			})
+		).toBe(false);
+	});
 
 	it('requests initial personalized feed only when eligible and not already hydrated', () => {
 		expect(

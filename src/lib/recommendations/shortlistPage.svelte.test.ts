@@ -14,7 +14,11 @@ const pageState = vi.hoisted(() => ({
 }));
 
 vi.mock('$app/state', () => ({ page: pageState }));
-vi.mock('$app/navigation', () => ({ goto: vi.fn(), beforeNavigate: vi.fn() }));
+vi.mock('$app/navigation', () => ({
+	goto: vi.fn(),
+	beforeNavigate: vi.fn(),
+	preloadData: vi.fn().mockResolvedValue({ status: 200 })
+}));
 vi.mock('$app/paths', () => ({ resolve: (path: string) => path }));
 vi.mock('$lib/stores/recommendationsCount', () => ({
 	refreshRecommendationsCountFromApi: vi.fn()
@@ -62,7 +66,8 @@ describe('shortlist page auth loading', () => {
 			.element(rendered.getByRole('alert'))
 			.toHaveTextContent('Couldn’t load your recommendations.');
 		expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/recommendations?request_id=42', {
-			headers: {}
+			headers: {},
+			signal: expect.any(AbortSignal)
 		});
 
 		authStore.setSession(session('user-1', 'token-1'));
@@ -70,7 +75,8 @@ describe('shortlist page auth loading', () => {
 			.element(rendered.getByRole('heading', { name: 'Restored recommendation', exact: true }))
 			.toBeVisible();
 		expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/recommendations?request_id=42', {
-			headers: { Authorization: 'Bearer token-1' }
+			headers: { Authorization: 'Bearer token-1' },
+			signal: expect.any(AbortSignal)
 		});
 		expect(recommendationsPageStore.getRun('42')?.books[0]?.title).toBe('Restored recommendation');
 		rendered.unmount();
@@ -124,10 +130,10 @@ describe('shortlist page auth loading', () => {
 		await vi.advanceTimersByTimeAsync(2000);
 		await expect
 			.element(rendered.getByRole('alert'))
-			.toHaveTextContent('Could not generate your shortlist');
+			.toHaveTextContent('Your shortlist is taking longer than expected');
 		await expect
 			.element(rendered.getByRole('button', { name: 'Check again', exact: true }))
-			.not.toBeInTheDocument();
+			.toBeVisible();
 		const readsAtTimeout = fetchMock.mock.calls.length;
 		await vi.advanceTimersByTimeAsync(6000);
 		expect(fetchMock).toHaveBeenCalledTimes(readsAtTimeout);
@@ -168,7 +174,8 @@ describe('shortlist page auth loading', () => {
 			)
 			.toBeVisible();
 		expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/recommendations?request_id=42', {
-			headers: { Authorization: 'Bearer token-2' }
+			headers: { Authorization: 'Bearer token-2' },
+			signal: expect.any(AbortSignal)
 		});
 		expect(document.body.textContent).not.toContain('Cached first account');
 
@@ -261,7 +268,8 @@ describe('shortlist page auth loading', () => {
 			.element(rendered.getByRole('alert'))
 			.toHaveTextContent('Couldn’t load your recommendations.');
 		expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/recommendations?request_id=42', {
-			headers: {}
+			headers: {},
+			signal: expect.any(AbortSignal)
 		});
 
 		resolveFirst(recommendationsResponse('Signed out account recommendation'));
@@ -293,7 +301,8 @@ describe('shortlist page auth loading', () => {
 			.element(rendered.getByRole('heading', { name: 'Retried recommendation', exact: true }))
 			.toBeVisible();
 		expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/recommendations?request_id=42', {
-			headers: { Authorization: 'Bearer token-1' }
+			headers: { Authorization: 'Bearer token-1' },
+			signal: expect.any(AbortSignal)
 		});
 		expect(recommendationsPageStore.getRun('42')?.books[0]?.title).toBe('Retried recommendation');
 		rendered.unmount();

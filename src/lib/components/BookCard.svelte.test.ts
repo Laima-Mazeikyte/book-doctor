@@ -36,7 +36,8 @@ vi.mock('$app/navigation', () => ({
 		appPage.current = { state };
 		window.history.replaceState(state, '', url);
 	},
-	goto: vi.fn()
+	goto: vi.fn(),
+	preloadData: vi.fn().mockResolvedValue({ status: 200 })
 }));
 
 const book = {

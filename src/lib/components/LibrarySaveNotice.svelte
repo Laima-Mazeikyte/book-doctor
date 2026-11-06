@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { withTimeout } from '$lib/requests/timeout';
 	import { librarySaves } from '$lib/stores/librarySaves';
 	import { ensureAnonymousSessionStarted } from '$lib/auth/anonymous-session';
 	import { getSupabase } from '$lib/supabase';
@@ -25,7 +26,9 @@
 			if (owner.startsWith('guest:')) {
 				if (!(await ensureAnonymousSessionStarted())) return;
 			} else if (authenticationFailed) {
-				await getSupabase()?.auth.refreshSession();
+				const client = getSupabase();
+				if (!client) return;
+				await withTimeout(() => client.auth.refreshSession());
 				if (librarySaves.getOwner() !== owner) return;
 			}
 			await librarySaves.retryFailed();

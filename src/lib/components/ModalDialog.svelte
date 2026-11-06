@@ -1,3 +1,9 @@
+<script module lang="ts">
+	// Nested pickers and their parent can close in either order during navigation.
+	let openModalCount = 0;
+	let previousBodyOverflow = '';
+</script>
+
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { fade } from 'svelte/transition';
@@ -8,6 +14,8 @@
 		labelledby,
 		closeDisabled = false,
 		initialFocus,
+		onClosed,
+		placement = 'center',
 		restoreFocusTarget = null,
 		children
 	}: {
@@ -16,6 +24,8 @@
 		labelledby: string;
 		closeDisabled?: boolean;
 		initialFocus?: string;
+		onClosed?: () => void;
+		placement?: 'center' | 'drawer';
 		restoreFocusTarget?: HTMLElement | null;
 		children: Snippet;
 	} = $props();
@@ -23,7 +33,7 @@
 	function focusable(node: HTMLDialogElement): HTMLElement[] {
 		return Array.from(
 			node.querySelectorAll<HTMLElement>(
-				'button, input, select, textarea, a[href], [tabindex], [contenteditable="true"]'
+				'button, input, select, textarea, summary, a[href], [tabindex], [contenteditable="true"]'
 			)
 		).filter(
 			(element) =>
@@ -39,8 +49,10 @@
 		const opener =
 			restoreFocusTarget ??
 			(document.activeElement instanceof HTMLElement ? document.activeElement : null);
-		const previousOverflow = document.body.style.overflow;
-		document.body.style.overflow = 'hidden';
+		if (openModalCount++ === 0) {
+			previousBodyOverflow = document.body.style.overflow;
+			document.body.style.overflow = 'hidden';
+		}
 		node.showModal();
 		if (initialFocus) node.querySelector<HTMLElement>(initialFocus)?.focus();
 
@@ -66,14 +78,21 @@
 			destroy() {
 				observer.disconnect();
 				node.close();
-				document.body.style.overflow = previousOverflow;
+				if (--openModalCount === 0) document.body.style.overflow = previousBodyOverflow;
 				if (opener?.isConnected) opener.focus({ preventScroll: true });
+				onClosed?.();
 			}
 		};
 	}
 
 	function requestClose() {
 		if (open && !closeDisabled) onClose();
+	}
+
+	function modalTransition(node: Element) {
+		// Drawer content supplies its own slide; keep the modal and scroll lock
+		// mounted until that content's outro finishes.
+		return placement === 'drawer' ? { duration: 0 } : fade(node, { duration: 150 });
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
@@ -94,6 +113,7 @@
 	<dialog
 		use:showModal
 		class="modal-dialog"
+		class:modal-dialog--drawer={placement === 'drawer'}
 		aria-labelledby={labelledby}
 		oncancel={(event) => {
 			event.preventDefault();
@@ -103,7 +123,7 @@
 			if (event.target === event.currentTarget) requestClose();
 		}}
 		onkeydown={handleKeydown}
-		transition:fade={{ duration: 150 }}
+		transition:modalTransition
 	>
 		{@render children()}
 	</dialog>
@@ -130,5 +150,11 @@
 	}
 	.modal-dialog::backdrop {
 		background: transparent;
+	}
+	.modal-dialog--drawer {
+		background: var(--color-overlay-scrim-soft);
+		padding: 0;
+		align-items: stretch;
+		justify-content: flex-start;
 	}
 </style>

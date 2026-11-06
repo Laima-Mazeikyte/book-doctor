@@ -167,7 +167,7 @@ async function setup(
 		if (request.method() !== 'GET') {
 			if (table === 'feed_requests') {
 				state.jobs++;
-				return route.fulfill({ json: { id: 'unexpected-new-job' } });
+				return route.fulfill({ json: { public_id: 'FeedRunA' } });
 			}
 			state.writes++;
 			return route.fulfill({ status: 204, body: '' });

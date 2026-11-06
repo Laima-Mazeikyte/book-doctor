@@ -1,3 +1,6 @@
+import { isPublicRequestId } from '$lib/requests/publicId';
+import { recommendationPublicIds } from '$lib/server/publicRequestIds';
+import { withRequestTimeout } from '$lib/server/requestTimeout';
 import { buildDimensionMatchSnapshotsByBookId } from '$lib/recommendations/dimensionMatches';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
@@ -13,13 +16,25 @@ import { requireAccessToken } from '$lib/server/requestAuth';
 import { createSupabaseWithAuth } from '$lib/server/supabase';
 import { overallRecommendationLogs } from '$lib/server/overallRecommendationLogs';
 
-export const GET: RequestHandler = async ({ url, request }) => {
+export const GET: RequestHandler = withRequestTimeout(async ({ url, request }, signal) => {
 	const requestId = url.searchParams.get('request_id')?.trim() ?? null;
 	const includeRated = requestId !== null && url.searchParams.get('include_rated') === '1';
 	const accessToken = requireAccessToken(request);
-	const supabase = createSupabaseWithAuth(accessToken);
+	const supabase = createSupabaseWithAuth(accessToken, signal);
 
 	let targetRequestId: string | null = requestId;
+	let publicRequestId: string | null = null;
+	if (requestId && isPublicRequestId(requestId)) {
+		const { data: ownedRequest, error: lookupError } = await supabase
+			.from('recommendation_requests')
+			.select('id, public_id')
+			.eq('public_id', requestId)
+			.maybeSingle();
+		if (lookupError) throw error(500, 'Failed to load recommendation request');
+		if (!ownedRequest) throw error(404, 'Recommendation request unavailable');
+		targetRequestId = String(ownedRequest.id);
+		publicRequestId = ownedRequest.public_id;
+	}
 
 	if (!targetRequestId) {
 		const { data: allLogs, error: logError } = await supabase
@@ -32,8 +47,11 @@ export const GET: RequestHandler = async ({ url, request }) => {
 			throw error(500, 'Failed to load recommendation');
 		}
 		try {
-			targetRequestId =
-				(await overallRecommendationLogs(supabase, allLogs ?? []))[0]?.request_id ?? null;
+			const { logs, publicIds } = await overallRecommendationLogs(supabase, allLogs ?? []);
+			targetRequestId = logs[0]?.request_id ?? null;
+			publicRequestId = targetRequestId
+				? (publicIds.get(targetRequestId) ?? targetRequestId)
+				: null;
 		} catch (requestError) {
 			console.error(requestError);
 			throw error(500, 'Failed to load recommendation requests');
@@ -49,7 +67,13 @@ export const GET: RequestHandler = async ({ url, request }) => {
 			dimensionMatchSnapshotsByBookId: {}
 		});
 	}
-	if (includeRated) {
+	if (!publicRequestId) {
+		const aliases = await recommendationPublicIds(supabase, [targetRequestId]).catch(() => {
+			throw error(500, 'Failed to load recommendation request');
+		});
+		publicRequestId = aliases.get(targetRequestId) ?? targetRequestId;
+	}
+	if (includeRated && !(requestId && isPublicRequestId(requestId))) {
 		// The filtered page preserves a run's original books, including titles rated later.
 		// Verify the owning request under the caller's RLS before using this read mode.
 		const { data: ownedRequest, error: ownerError } = await supabase
@@ -81,7 +105,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	if (!items?.length) {
 		return json({
 			books: [],
-			request_id: targetRequestId,
+			request_id: publicRequestId,
 			likedBookPrecedentsByBookId: {},
 			authorRelationshipAuthorsByBookId: {},
 			dimensionMatchSnapshotsByBookId: {}
@@ -102,7 +126,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	if (bookIds.length === 0) {
 		return json({
 			books: [],
-			request_id: targetRequestId,
+			request_id: publicRequestId,
 			likedBookPrecedentsByBookId: {},
 			authorRelationshipAuthorsByBookId: {},
 			dimensionMatchSnapshotsByBookId: {}
@@ -120,12 +144,12 @@ export const GET: RequestHandler = async ({ url, request }) => {
 			returnedItems as RecommendationPrecedentRow[]
 		);
 		const dimensionMatchSnapshotsByBookId = buildDimensionMatchSnapshotsByBookId(
-			returnedItems.map((item) => ({ ...item, request_id: targetRequestId }))
+			returnedItems.map((item) => ({ ...item, request_id: publicRequestId }))
 		);
 		const authorRelationshipAuthorsByBookId = buildAuthorRelationshipAuthorsByBookId(returnedItems);
 		return json({
 			books,
-			request_id: targetRequestId,
+			request_id: publicRequestId,
 			likedBookPrecedentsByBookId,
 			authorRelationshipAuthorsByBookId,
 			dimensionMatchSnapshotsByBookId
@@ -134,4 +158,4 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		console.error(booksError);
 		throw error(500, 'Failed to load books');
 	}
-};
+});

@@ -59,7 +59,7 @@ async function setup(page: Page, guest = false, initialRatings = 10) {
 		holdAdd: null as null | (() => Promise<void>),
 		holdWrite: null as null | (() => Promise<void>),
 		recommendations: 0,
-		nextRequestId: 43
+		nextRequestId: 1
 	};
 	await page.route('**/auth/v1/**', (route) => route.fulfill({ json: session }));
 	await page.route('**/rest/v1/**', async (route: Route) => {
@@ -94,9 +94,9 @@ async function setup(page: Page, guest = false, initialRatings = 10) {
 		}
 		if (table === 'recommendation_requests') {
 			state.recommendations++;
-			return route.fulfill({ json: { id: state.nextRequestId++ } });
+			return route.fulfill({ json: { public_id: `SaveRun${state.nextRequestId++}` } });
 		}
-		if (table === 'feed_requests') return route.fulfill({ json: { id: 7 } });
+		if (table === 'feed_requests') return route.fulfill({ json: { public_id: 'FeedRunA' } });
 		state.writes.push({ table, method: request.method() });
 		await state.holdWrite?.();
 		if (table === 'user_bookmarks' && request.method() === 'POST') await state.holdAdd?.();
@@ -243,7 +243,7 @@ test('the tenth local rating reveals the normal CTA while submission waits for i
 	).toHaveAttribute('aria-disabled', 'true');
 	expect(state.recommendations).toBe(0);
 	release();
-	await expect(page).toHaveURL(/\/rate\/recommendations\/shortlist\?request_id=43$/);
+	await expect(page).toHaveURL(/\/rate\/recommendations\/shortlist\?request_id=SaveRun1$/);
 	expect(state.recommendations).toBe(1);
 });
 
@@ -489,7 +489,7 @@ test('shortlist dismissal, replacement, and reset stay reactive through a new re
 	await expect(dots).toHaveCount(10);
 	await dismiss();
 	await active.getByRole('button', { name: 'Get new recommendations', exact: true }).click();
-	await expect(page).toHaveURL(/shortlist\?request_id=43$/);
+	await expect(page).toHaveURL(/shortlist\?request_id=SaveRun1$/);
 	await expectBook(0);
 	await expect(dots).toHaveCount(7);
 	expect(state.recommendations).toBe(1);

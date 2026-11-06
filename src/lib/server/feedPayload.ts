@@ -1,3 +1,4 @@
+import { requestIdColumn } from '$lib/requests/publicId';
 import { FEED_REQUEST_BATCH_SIZE } from '$lib/feed/constants';
 import type { Book } from '$lib/types/book';
 import type { BookCatalogRow } from '$lib/search/mapBookRowToBook';
@@ -87,7 +88,7 @@ export async function loadLatestEligibleRateFeed(
 	async function readBootstrap() {
 		const started = performance.now();
 		try {
-			return await supabase.rpc('get_rate_feed_bootstrap_annotated', { p_limit: limit });
+			return await supabase.rpc('get_rate_feed_bootstrap_public', { p_limit: limit });
 		} finally {
 			recordTiming?.('feed_bootstrap', performance.now() - started);
 		}
@@ -95,7 +96,7 @@ export async function loadLatestEligibleRateFeed(
 
 	const { data, error, status } = await readBootstrap();
 	if (error) {
-		console.error('[feed] get_rate_feed_bootstrap_annotated failed:', error);
+		console.error('[feed] get_rate_feed_bootstrap_public failed:', error);
 		if (status === 401 || status === 403) throw new FeedAccessError(status);
 		throw new Error('Failed to load latest eligible feed');
 	}
@@ -150,8 +151,8 @@ export async function buildFeedPayloadForRequest(
 ): Promise<FeedJsonResponse> {
 	const { data: feedReq, error: reqError } = await supabase
 		.from('feed_requests')
-		.select('status, error_message')
-		.eq('id', requestId)
+		.select('id, public_id, status, error_message')
+		.eq(requestIdColumn(requestId), requestId)
 		.maybeSingle();
 
 	if (reqError) {
@@ -169,7 +170,7 @@ export async function buildFeedPayloadForRequest(
 		return {
 			status,
 			books: [],
-			request_id: requestId,
+			request_id: feedReq.public_id,
 			error_message: errorMessage
 		};
 	}
@@ -178,17 +179,17 @@ export async function buildFeedPayloadForRequest(
 		return {
 			status,
 			books: [],
-			request_id: requestId,
+			request_id: feedReq.public_id,
 			error_message: errorMessage
 		};
 	}
 
-	const books = await loadEligibleFeedBooks(supabase, requestId, limit);
+	const books = await loadEligibleFeedBooks(supabase, String(feedReq.id), limit);
 
 	return {
 		status: 'completed',
 		books,
-		request_id: requestId,
+		request_id: feedReq.public_id,
 		error_message: errorMessage
 	};
 }

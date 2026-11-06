@@ -1,3 +1,4 @@
+import { withRequestTimeout } from '$lib/server/requestTimeout';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { getUserIdFromToken } from '$lib/server/auth';
@@ -28,13 +29,14 @@ export function createUserLibraryPostHandler(
 	table: UserLibraryTable,
 	failureMessage: string
 ): RequestHandler {
-	return async ({ request }) => {
+	return withRequestTimeout(async ({ request }, signal) => {
 		const accessToken = requireAccessToken(request);
-		const userId = await getUserIdFromToken(accessToken);
+		const userId = await getUserIdFromToken(accessToken, signal);
 		if (!userId) throw error(401, 'Invalid or expired token');
 
 		const bookId = await parseBookIdFromJson(request);
-		const supabase = createSupabaseWithAuth(accessToken);
+		signal.throwIfAborted();
+		const supabase = createSupabaseWithAuth(accessToken, signal);
 		const { error: insertError } = await supabase
 			.from(table)
 			.upsert({ user_id: userId, book_id: bookId }, { onConflict: 'user_id,book_id' });
@@ -45,17 +47,17 @@ export function createUserLibraryPostHandler(
 		}
 
 		return json({ ok: true });
-	};
+	});
 }
 
 export function createUserLibraryDeleteHandler(
 	table: UserLibraryTable,
 	failureMessage: string
 ): RequestHandler {
-	return async ({ request, url }) => {
+	return withRequestTimeout(async ({ request, url }, signal) => {
 		const accessToken = requireAccessToken(request);
 		const bookId = parseBookIdFromQuery(url);
-		const supabase = createSupabaseWithAuth(accessToken);
+		const supabase = createSupabaseWithAuth(accessToken, signal);
 		const { error: deleteError } = await supabase.from(table).delete().eq('book_id', bookId);
 
 		if (deleteError) {
@@ -64,5 +66,5 @@ export function createUserLibraryDeleteHandler(
 		}
 
 		return json({ ok: true });
-	};
+	});
 }

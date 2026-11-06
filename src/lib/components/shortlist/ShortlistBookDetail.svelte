@@ -306,6 +306,5 @@
 			padding-top: var(--space-6);
 			padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
 		}
-
 	}
 </style>

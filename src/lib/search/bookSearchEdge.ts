@@ -80,9 +80,10 @@ export type BookSearchEdgeResult = {
  */
 export async function invokeBookSearch(
 	supabase: SupabaseClient,
-	body: BookSearchInvokeBody
+	body: BookSearchInvokeBody,
+	signal?: AbortSignal
 ): Promise<BookSearchEdgeResult> {
-	const { data, error } = await supabase.functions.invoke(BOOK_SEARCH_FUNCTION, { body });
+	const { data, error } = await supabase.functions.invoke(BOOK_SEARCH_FUNCTION, { body, signal });
 
 	if (error) {
 		throw new Error(error.message || `${BOOK_SEARCH_FUNCTION} request failed`);

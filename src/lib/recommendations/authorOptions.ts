@@ -1,3 +1,4 @@
+import { withTimeout } from '$lib/requests/timeout';
 import { base } from '$app/paths';
 
 export type AuthorOption = [name: string, bookCount: number];
@@ -7,15 +8,14 @@ let indexPromise: Promise<AuthorOption[]> | null = null;
 /** The static catalog snapshot is downloaded only when author search is used. */
 export function loadAuthorOptions(): Promise<AuthorOption[]> {
 	if (!indexPromise) {
-		indexPromise = fetch(`${base}/recommendation-authors.json`)
-			.then(async (response) => {
-				if (!response.ok) throw new Error('Could not load author options.');
-				return (await response.json()) as AuthorOption[];
-			})
-			.catch((error) => {
-				indexPromise = null;
-				throw error;
-			});
+		indexPromise = withTimeout(async (signal) => {
+			const response = await fetch(`${base}/recommendation-authors.json`, { signal });
+			if (!response.ok) throw new Error('Could not load author options.');
+			return (await response.json()) as AuthorOption[];
+		}).catch((error) => {
+			indexPromise = null;
+			throw error;
+		});
 	}
 	return indexPromise;
 }

@@ -10,14 +10,14 @@ import { mapBookRowToBook, type BookCatalogRow } from './mapBookRowToBook';
  */
 export async function resolveBooksByIdsInOrder(
 	supabase: SupabaseClient,
-	bookIds: string[]
+	bookIds: string[],
+	signal?: AbortSignal
 ): Promise<Book[]> {
 	if (bookIds.length === 0) return [];
 
-	const { data, error } = await supabase
-		.from('books')
-		.select(BOOK_CATALOG_SELECT)
-		.in('book_id', bookIds);
+	signal?.throwIfAborted();
+	const query = supabase.from('books').select(BOOK_CATALOG_SELECT).in('book_id', bookIds);
+	const { data, error } = await (signal ? query.abortSignal(signal) : query);
 
 	if (error) {
 		throw new Error(error.message || 'Failed to resolve books');

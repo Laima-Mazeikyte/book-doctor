@@ -1,11 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-	beginAuthTransition,
-	clearAuthTransition,
-	completeAuthSuccess,
-	isAuthTransitionActive
-} from './completeAuthSuccess';
+import { completeAuthSuccess } from './completeAuthSuccess';
+import { REQUEST_TIMEOUT_MS } from '$lib/requests/timeout';
 
 const refreshSession = vi.fn();
 const getSession = vi.fn();
@@ -18,7 +14,6 @@ vi.mock('$lib/supabase', () => ({
 
 describe('completeAuthSuccess', () => {
 	beforeEach(() => {
-		clearAuthTransition();
 		refreshSession.mockReset();
 		getSession.mockReset();
 		refreshSession.mockResolvedValue({ data: { session: null }, error: null });
@@ -28,15 +23,18 @@ describe('completeAuthSuccess', () => {
 		});
 	});
 
-	it('clears auth transition and dispatches signed-in event', async () => {
-		beginAuthTransition();
-		expect(isAuthTransitionActive()).toBe(true);
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.unstubAllGlobals();
+		vi.restoreAllMocks();
+	});
 
-		await completeAuthSuccess({ previousAnonymousUserId: 'anon-id' });
+	it('refreshes claims and dispatches the signed-in event', async () => {
+		await completeAuthSuccess();
 
-		expect(isAuthTransitionActive()).toBe(false);
 		expect(refreshSession).toHaveBeenCalledOnce();
 		expect(window.dispatchEvent).toHaveBeenCalledOnce();
+		expect(vi.mocked(window.dispatchEvent).mock.calls[0][0].type).toBe('auth:signed-in');
 	});
 
 	it('falls back to getSession when refreshSession fails', async () => {
@@ -48,6 +46,18 @@ describe('completeAuthSuccess', () => {
 		await completeAuthSuccess();
 
 		expect(getSession).toHaveBeenCalledOnce();
-		expect(isAuthTransitionActive()).toBe(false);
+		expect(window.dispatchEvent).toHaveBeenCalledOnce();
+	});
+
+	it('keeps confirmed sign-in successful when follow-up refresh stalls', async () => {
+		vi.useFakeTimers();
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+		refreshSession.mockReturnValue(new Promise(() => {}));
+		const completion = completeAuthSuccess();
+		await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
+		await expect(completion).resolves.toBeUndefined();
+		expect(window.dispatchEvent).toHaveBeenCalledOnce();
+		expect(getSession).not.toHaveBeenCalled();
+		expect(vi.getTimerCount()).toBe(0);
 	});
 });

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { runAuthMutation } from '$lib/auth/mutations';
 	import { get } from 'svelte/store';
 	import { getSupabase } from '$lib/supabase';
 	import {
@@ -23,7 +24,8 @@
 
 	function isNavHrefActive(href: string, pathname: string): boolean {
 		if (href === '/rate') return pathname === '/rate';
-		if (href === '/rate/recommendations') return pathname.startsWith('/rate/recommendations');
+		if (href === '/rate/recommendations')
+			return pathname === '/discover' || pathname.startsWith('/rate/recommendations');
 		if (href === '/my-bookshelf') return pathname === '/my-bookshelf';
 		return false;
 	}
@@ -35,6 +37,8 @@
 	let { onOpenBugReport }: Props = $props();
 
 	let authModalOpen = $state(false);
+	let signingOut = $state(false);
+	let signOutFailed = $state(false);
 	let goodreadsSyncOpen = $state(false);
 	let authModalInitialTab = $state<'signin' | 'signup'>('signin');
 	let accountDropdownOpen = $state(false);
@@ -75,10 +79,23 @@
 		authModalOpen = false;
 	}
 
-	function handleSignOut() {
-		getSupabase()?.auth.signOut();
+	async function handleSignOut() {
+		if (signingOut) return;
+		const client = getSupabase();
+		if (!client) return;
+		const owner = get(authStore).user?.id;
+		signingOut = true;
+		signOutFailed = false;
 		closeAccountDropdown();
 		closeMobileMenu();
+		try {
+			const { error } = await runAuthMutation(client, () => client.auth.signOut());
+			if (error) throw error;
+		} catch {
+			if (get(authStore).user?.id === owner) signOutFailed = true;
+		} finally {
+			signingOut = false;
+		}
 	}
 
 	function openGoodreadsSync() {
@@ -258,6 +275,7 @@
 								role="menuitem"
 								class="app-header__account-item"
 								onclick={handleSignOut}
+								disabled={signingOut}
 							>
 								{t('shared.header.signOut')}
 							</button>
@@ -359,7 +377,12 @@
 						<button type="button" class="app-header__account-item" onclick={openGoodreadsSync}>
 							{t('shared.header.syncGoodreads')}
 						</button>
-						<button type="button" class="app-header__account-item" onclick={handleSignOut}>
+						<button
+							type="button"
+							class="app-header__account-item"
+							onclick={handleSignOut}
+							disabled={signingOut}
+						>
 							{t('shared.header.signOut')}
 						</button>
 					{/if}
@@ -406,6 +429,9 @@
 		></div>
 	{/if}
 </header>
+{#if signOutFailed && $authStore.session}<p class="app-header__signout-error" role="alert">
+		{t('requests.uncertainSignOut')}
+	</p>{/if}
 
 <AuthModal
 	open={authModalOpen}

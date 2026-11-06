@@ -21,17 +21,23 @@
 		role={$submission.status === 'submitting' ? 'status' : 'alert'}
 		data-testid="recommendation-submission-error"
 	>
-		<span>{t(`recommendations.submission.${$submission.error}Error`)}</span>
-		<span aria-hidden="true">·</span>
-		<button
-			type="button"
-			aria-disabled={retryDisabled || $submission.status === 'submitting' ? 'true' : undefined}
-			onclick={() => {
-				if (!retryDisabled) void onRetry();
-			}}
+		<span
+			>{#if $submission.error === 'uncertain'}{t('requests.uncertainRecommendations')}{:else}{t(
+					`recommendations.submission.${$submission.error}Error`
+				)}{/if}</span
 		>
-			{t('recommendations.submission.retry')}
-		</button>
+		{#if $submission.error !== 'uncertain'}
+			<span aria-hidden="true">·</span>
+			<button
+				type="button"
+				aria-disabled={retryDisabled || $submission.status === 'submitting' ? 'true' : undefined}
+				onclick={() => {
+					if (!retryDisabled) void onRetry();
+				}}
+			>
+				{t('recommendations.submission.retry')}
+			</button>
+		{/if}
 	</div>
 {/if}
 

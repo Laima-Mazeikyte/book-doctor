@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { withTimeout } from '$lib/requests/timeout';
 	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
 	import RecommendationLoadNotice from '$lib/components/RecommendationLoadNotice.svelte';
 	import {
@@ -151,35 +152,38 @@
 	});
 
 	async function fetchUniqueBooks(accessToken: string): Promise<RecommendationsUniquePayload> {
-		const res = await fetch('/api/recommendations/unique', {
-			headers: { Authorization: `Bearer ${accessToken}` }
+		return withTimeout(async (signal) => {
+			const res = await fetch('/api/recommendations/unique', {
+				headers: { Authorization: `Bearer ${accessToken}` },
+				signal
+			});
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			const data: {
+				books?: Book[];
+				hasRuns?: boolean;
+				lastRecommendedAt?: Record<string, number>;
+				recommendationAppearanceCount?: Record<string, number>;
+				bestRecommendationRank?: Record<string, number>;
+				likedBookPrecedentsByBookId?: Record<string, Book[]>;
+				authorRelationshipAuthorsByBookId?: AuthorRelationshipAuthorsByBookId;
+				dimensionMatchSnapshotsByBookId?: DimensionMatchSnapshotsByBookId;
+			} = await res.json();
+			if (!Array.isArray(data.books) || typeof data.hasRuns !== 'boolean') {
+				throw new Error('Invalid recommendation response');
+			}
+			return {
+				books: data.books,
+				hasRuns: data.hasRuns,
+				lastRecommendedAt: data.lastRecommendedAt ?? {},
+				recommendationAppearanceCount: data.recommendationAppearanceCount ?? {},
+				bestRecommendationRank: data.bestRecommendationRank ?? {},
+				likedBookPrecedentsByBookId: data.likedBookPrecedentsByBookId ?? {},
+				authorRelationshipAuthorsByBookId: data.authorRelationshipAuthorsByBookId ?? {},
+				dimensionMatchSnapshotsByBookId: normalizeDimensionMatchSnapshots(
+					data.dimensionMatchSnapshotsByBookId
+				)
+			};
 		});
-		if (!res.ok) throw new Error(`HTTP ${res.status}`);
-		const data: {
-			books?: Book[];
-			hasRuns?: boolean;
-			lastRecommendedAt?: Record<string, number>;
-			recommendationAppearanceCount?: Record<string, number>;
-			bestRecommendationRank?: Record<string, number>;
-			likedBookPrecedentsByBookId?: Record<string, Book[]>;
-			authorRelationshipAuthorsByBookId?: AuthorRelationshipAuthorsByBookId;
-			dimensionMatchSnapshotsByBookId?: DimensionMatchSnapshotsByBookId;
-		} = await res.json();
-		if (!Array.isArray(data.books) || typeof data.hasRuns !== 'boolean') {
-			throw new Error('Invalid recommendation response');
-		}
-		return {
-			books: data.books,
-			hasRuns: data.hasRuns,
-			lastRecommendedAt: data.lastRecommendedAt ?? {},
-			recommendationAppearanceCount: data.recommendationAppearanceCount ?? {},
-			bestRecommendationRank: data.bestRecommendationRank ?? {},
-			likedBookPrecedentsByBookId: data.likedBookPrecedentsByBookId ?? {},
-			authorRelationshipAuthorsByBookId: data.authorRelationshipAuthorsByBookId ?? {},
-			dimensionMatchSnapshotsByBookId: normalizeDimensionMatchSnapshots(
-				data.dimensionMatchSnapshotsByBookId
-			)
-		};
 	}
 
 	function handleNotInterested(book: Book) {
@@ -343,7 +347,7 @@
 	<LibraryLoadNotice collections={['ratings', 'bookmarks', 'dismissals']} />
 	<nav class="recommendations-page__tabs" aria-label="Recommendation views">
 		<a href={resolve('/rate/recommendations')} aria-current="page">For you</a>
-		<a href={resolve('/rate/recommendations/filtered')}>Filter books</a>
+		<a href={resolve('/discover')}>Filter books</a>
 	</nav>
 	{#if viewMode === 'loading'}
 		<h1

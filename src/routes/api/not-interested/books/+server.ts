@@ -1,3 +1,4 @@
+import { withRequestTimeout } from '$lib/server/requestTimeout';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { fetchBooksByUlidsInOrder } from '$lib/server/catalogBooks';
@@ -38,12 +39,12 @@ function cursorFilter(cursor: NotInterestedCursor): string {
 }
 
 /** Returns one dismissal-ordered page of full book details for the current user. */
-export const GET: RequestHandler = async ({ request, url }) => {
+export const GET: RequestHandler = withRequestTimeout(async ({ request, url }, signal) => {
 	const accessToken = requireAccessToken(request);
 	const order = parseOrder(url.searchParams.get('order'));
 	const cursorValue = url.searchParams.get('cursor');
 	const cursor = cursorValue === null ? null : decodeNotInterestedCursor(cursorValue, order);
-	const supabase = createSupabaseWithAuth(accessToken);
+	const supabase = createSupabaseWithAuth(accessToken, signal);
 
 	let query = supabase.from('user_not_interested').select('book_id, created_at');
 	if (cursor) query = query.or(cursorFilter(cursor));
@@ -89,4 +90,4 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	}
 
 	return json({ books, nextCursor } satisfies NotInterestedPage);
-};
+});

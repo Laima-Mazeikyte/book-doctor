@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { withTimeout, RequestTimeoutError } from '$lib/requests/timeout';
+	import { runAuthMutation } from '$lib/auth/mutations';
 	import { tick } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import Button from '$lib/components/Button.svelte';
@@ -96,8 +98,8 @@
 		revealSignUpPassword = false;
 	}
 
-	async function closeAfterAuthSuccess(detail: { previousAnonymousUserId?: string | null } = {}) {
-		await completeAuthSuccess(detail);
+	async function closeAfterAuthSuccess() {
+		await completeAuthSuccess();
 		clearDraft();
 		clearTransientState();
 		onClose();
@@ -232,13 +234,23 @@
 		try {
 			const origin = typeof window !== 'undefined' ? window.location.origin : '';
 			const resetOptions = { redirectTo: `${origin}/auth/reset-password` };
-			const { error: err } = await supabase.auth.resetPasswordForEmail(trimmed, resetOptions);
+			const { error: err } = await withTimeout(() =>
+				supabase.auth.resetPasswordForEmail(trimmed, resetOptions)
+			);
 			if (!isCurrentAuthRequest(requestId)) return;
 			if (err) {
 				error = err.message ?? t('shared.authModal.errorResetEmailFailed');
 				return;
 			}
 			successMessage = t('shared.authModal.successResetEmailSent');
+		} catch (cause) {
+			if (isCurrentAuthRequest(requestId))
+				error =
+					cause instanceof RequestTimeoutError
+						? t('requests.uncertainAccount')
+						: cause instanceof Error
+							? cause.message
+							: 'Could not connect. Please try again.';
 		} finally {
 			finishAuthRequest(requestId);
 		}
@@ -257,16 +269,26 @@
 
 		const requestId = beginAuthRequest();
 		try {
-			const { error: err } = await supabase.auth.signInWithPassword({
-				email,
-				password: signInPassword
-			});
+			const { error: err } = await runAuthMutation(supabase, () =>
+				supabase.auth.signInWithPassword({
+					email,
+					password: signInPassword
+				})
+			);
 			if (!isCurrentAuthRequest(requestId)) return;
 			if (err) {
 				error = err.message ?? t('shared.authModal.errorInvalidCredentials');
 				return;
 			}
 			await closeAfterAuthSuccess();
+		} catch (cause) {
+			if (isCurrentAuthRequest(requestId))
+				error =
+					cause instanceof RequestTimeoutError
+						? 'We could not confirm whether this completed. Check your account or email before trying again.'
+						: cause instanceof Error
+							? cause.message
+							: 'Could not connect. Please try again.';
 		} finally {
 			finishAuthRequest(requestId);
 		}
@@ -287,16 +309,18 @@
 		try {
 			const {
 				data: { session: currentSession }
-			} = await supabase.auth.getSession();
+			} = await withTimeout(() => supabase.auth.getSession());
 			if (!isCurrentAuthRequest(requestId)) return;
 			const isAnonymous = currentSession?.user?.is_anonymous === true;
 			const anonymousUserId = currentSession?.user?.id ?? null;
 
 			if (isAnonymous && anonymousUserId) {
-				const { error: updateErr } = await supabase.auth.updateUser({
-					email,
-					password: signUpPassword
-				});
+				const { error: updateErr } = await runAuthMutation(supabase, () =>
+					supabase.auth.updateUser({
+						email,
+						password: signUpPassword
+					})
+				);
 				if (!isCurrentAuthRequest(requestId)) return;
 				// Native anonymous→permanent conversion keeps the same user_id, so the account already
 				// owns all its data — no migration needed. On failure (e.g. the email is already
@@ -305,20 +329,30 @@
 					error = updateErr.message ?? t('shared.authModal.errorSignUpFailed');
 					return;
 				}
-				await closeAfterAuthSuccess({ previousAnonymousUserId: anonymousUserId });
+				await closeAfterAuthSuccess();
 				return;
 			}
 
-			const { error: err } = await supabase.auth.signUp({
-				email,
-				password: signUpPassword
-			});
+			const { error: err } = await runAuthMutation(supabase, () =>
+				supabase.auth.signUp({
+					email,
+					password: signUpPassword
+				})
+			);
 			if (!isCurrentAuthRequest(requestId)) return;
 			if (err) {
 				error = err.message ?? t('shared.authModal.errorSignUpFailed');
 				return;
 			}
 			await closeAfterAuthSuccess();
+		} catch (cause) {
+			if (isCurrentAuthRequest(requestId))
+				error =
+					cause instanceof RequestTimeoutError
+						? 'We could not confirm whether this completed. Check your account or email before trying again.'
+						: cause instanceof Error
+							? cause.message
+							: 'Could not connect. Please try again.';
 		} finally {
 			finishAuthRequest(requestId);
 		}

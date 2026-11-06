@@ -58,7 +58,7 @@ async function setup(page: Page, create: (route: Route, attempt: number) => Prom
 				state.bodies.push(request.postDataJSON());
 				return create(route, state.inserts);
 			}
-			if (table === 'feed_requests') return route.fulfill({ json: { id: 7 } });
+			if (table === 'feed_requests') return route.fulfill({ json: { public_id: 'FeedRunA' } });
 			return route.fulfill({ status: 204, body: '' });
 		}
 		if (table === 'user_ratings')
@@ -115,7 +115,7 @@ test('rapid clicks and keyboard activation create one request and keep a stable,
 	const pending = gate();
 	const state = await setup(page, async (route) => {
 		await pending.promise;
-		await route.fulfill({ json: { id: 99 } });
+		await route.fulfill({ json: { public_id: 'K7mQ2xBa' } });
 	});
 	const button = await openRate(page);
 	const bounds = await button.boundingBox();
@@ -136,7 +136,7 @@ test('rapid clicks and keyboard activation create one request and keep a stable,
 	expect(Math.abs(busyBounds!.width - bounds!.width)).toBeLessThan(1);
 	expect(Math.abs(busyBounds!.height - bounds!.height)).toBeLessThan(1);
 	pending.release();
-	await expect(page).toHaveURL(/shortlist\?request_id=99/);
+	await expect(page).toHaveURL(/shortlist\?request_id=K7mQ2xBa/);
 	await expect(page.getByRole('heading', { name: books[10].title, exact: true })).toBeVisible();
 	expect(state.inserts).toBe(1);
 	expect(state.bodies).toEqual([{ user_id: userId }]);
@@ -151,7 +151,7 @@ test('creation failure stays on Browse and manual Retry preserves focus until it
 		if (attempt === 1)
 			return route.fulfill({ status: 503, json: { message: 'Unavailable', code: 'TEST' } });
 		await pending.promise;
-		await route.fulfill({ json: { id: 100 } });
+		await route.fulfill({ json: { public_id: 'NextRun1' } });
 	});
 	await (await openRate(page)).click();
 	const notice = page.getByTestId('recommendation-submission-error');
@@ -167,7 +167,7 @@ test('creation failure stays on Browse and manual Retry preserves focus until it
 	await page.keyboard.press('Enter');
 	await expect.poll(() => state.inserts).toBe(2);
 	pending.release();
-	await expect(page).toHaveURL(/shortlist\?request_id=100/);
+	await expect(page).toHaveURL(/shortlist\?request_id=NextRun1/);
 });
 
 test('leaving Browse while creation is pending prevents its response from redirecting', async ({
@@ -176,12 +176,12 @@ test('leaving Browse while creation is pending prevents its response from redire
 	const pending = gate();
 	const state = await setup(page, async (route) => {
 		await pending.promise;
-		await route.fulfill({ json: { id: 101 } });
+		await route.fulfill({ json: { public_id: 'NextRun2' } });
 	});
 	await (await openRate(page)).click();
 	await expect.poll(() => state.inserts).toBe(1);
 	await page.getByRole('link', { name: 'Choose filters', exact: true }).click();
-	await expect(page).toHaveURL(`${base}/rate/recommendations/filtered`);
+	await expect(page).toHaveURL(`${base}/discover`);
 	const response = page.waitForResponse(
 		(r) => r.url().includes('/rest/v1/recommendation_requests') && r.request().method() === 'POST'
 	);
@@ -190,7 +190,7 @@ test('leaving Browse while creation is pending prevents its response from redire
 	await page.evaluate(
 		() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
 	);
-	await expect(page).toHaveURL(`${base}/rate/recommendations/filtered`);
+	await expect(page).toHaveURL(`${base}/discover`);
 });
 
 test('shortlist submission exposes errors, retains its books, and uses the same guarded Retry flow', async ({
@@ -202,7 +202,7 @@ test('shortlist submission exposes errors, retains its books, and uses the same 
 		if (attempt === 1)
 			return route.fulfill({ status: 503, json: { message: 'Unavailable', code: 'TEST' } });
 		await pending.promise;
-		await route.fulfill({ json: { id: 102 } });
+		await route.fulfill({ json: { public_id: 'NextRun3' } });
 	});
 	await page.goto(`${base}/rate/recommendations/shortlist?request_id=42`, {
 		waitUntil: 'domcontentloaded'
@@ -230,7 +230,7 @@ test('shortlist submission exposes errors, retains its books, and uses the same 
 	await expect.poll(() => state.inserts).toBe(2);
 	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 	pending.release();
-	await expect(page).toHaveURL(/shortlist\?request_id=102/);
+	await expect(page).toHaveURL(/shortlist\?request_id=NextRun3/);
 	await expect(
 		page.getByRole('button', { name: 'Starting recommendations…', exact: true })
 	).toHaveCount(0);

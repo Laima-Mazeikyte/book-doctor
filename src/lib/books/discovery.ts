@@ -1,3 +1,4 @@
+import { withTimeout } from '$lib/requests/timeout';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export interface DiscoveryBook {
@@ -60,24 +61,33 @@ export async function loadBookDiscovery(
 	bookId: string,
 	signal: AbortSignal
 ): Promise<BookDiscoveryResult> {
-	signal.throwIfAborted();
-	const { data, error } = await supabase
-		.rpc('get_book_discovery', { p_book_id: bookId })
-		.abortSignal(signal);
-	if (error) throw new Error(error.message || 'Unable to load related books');
-	signal.throwIfAborted();
-	if (
-		!object(data) ||
-		data.book_id !== bookId ||
-		!(data.release_id === null || (typeof data.release_id === 'string' && data.release_id.trim()))
-	) {
-		throw new Error('Invalid book discovery response');
-	}
-	const seen = new Set<string>();
-	const similarExperience = parseBooks(data.similar_experience, bookId, seen);
-	const differentDirection = parseBooks(data.different_direction, bookId, seen);
-	if (data.release_id === null && seen.size) throw new Error('Discovery results have no release');
-	return { bookId, releaseId: data.release_id, similarExperience, differentDirection };
+	return withTimeout(
+		async (signal) => {
+			signal.throwIfAborted();
+			const { data, error } = await supabase
+				.rpc('get_book_discovery', { p_book_id: bookId })
+				.abortSignal(signal);
+			if (error) throw new Error(error.message || 'Unable to load related books');
+			signal.throwIfAborted();
+			if (
+				!object(data) ||
+				data.book_id !== bookId ||
+				!(
+					data.release_id === null ||
+					(typeof data.release_id === 'string' && data.release_id.trim())
+				)
+			) {
+				throw new Error('Invalid book discovery response');
+			}
+			const seen = new Set<string>();
+			const similarExperience = parseBooks(data.similar_experience, bookId, seen);
+			const differentDirection = parseBooks(data.different_direction, bookId, seen);
+			if (data.release_id === null && seen.size)
+				throw new Error('Discovery results have no release');
+			return { bookId, releaseId: data.release_id, similarExperience, differentDirection };
+		},
+		{ signal }
+	);
 }
 
 const contrasts: Record<string, readonly [string, string]> = {
@@ -142,9 +152,13 @@ export function discoveryReason(reason: DiscoveryBook['reason']): string | null 
 
 export function visibleDiscoveryBooks(
 	books: DiscoveryBook[],
-	readIds: ReadonlySet<string>
+	readIds: ReadonlySet<string>,
+	dismissedIds: ReadonlySet<string> = new Set()
 ): DiscoveryBook[] {
-	const unread = books.filter((book) => !readIds.has(book.book_id));
-	const familiar = books.filter((book) => readIds.has(book.book_id));
-	return [...unread, ...familiar].slice(0, 3);
+	const eligible = books.filter((book) => !dismissedIds.has(book.book_id));
+	const unread = eligible.filter((book) => !readIds.has(book.book_id));
+	const familiar = eligible.filter((book) => readIds.has(book.book_id));
+	// Dismissals fill otherwise empty slots, in server order regardless of rating.
+	const dismissed = books.filter((book) => dismissedIds.has(book.book_id));
+	return [...unread, ...familiar, ...dismissed].slice(0, 3);
 }

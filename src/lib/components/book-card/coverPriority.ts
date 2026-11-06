@@ -42,8 +42,7 @@ export function trackGridColumns(
 	let last = -1;
 	const measure = () => {
 		const tracks = getComputedStyle(node).gridTemplateColumns;
-		const columns =
-			tracks && tracks !== 'none' ? tracks.split(/\s+/).filter(Boolean).length : 0;
+		const columns = tracks && tracks !== 'none' ? tracks.split(/\s+/).filter(Boolean).length : 0;
 		if (columns > 0 && columns !== last) {
 			last = columns;
 			onChange(columns);

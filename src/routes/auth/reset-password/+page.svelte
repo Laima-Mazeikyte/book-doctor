@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { runAuthMutation } from '$lib/auth/mutations';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -38,6 +39,7 @@
 
 	async function handleSubmit(e: SubmitEvent) {
 		e.preventDefault();
+		if (loading) return;
 		error = null;
 		if (password.length < 6) {
 			error = t('shared.resetPasswordPage.errorWeak');
@@ -53,7 +55,11 @@
 			return;
 		}
 		loading = true;
-		const { error: err } = await supabase.auth.updateUser({ password });
+		const { error: err } = await runAuthMutation(supabase, () =>
+			supabase.auth.updateUser({ password })
+		).catch(() => ({
+			error: new Error(t('requests.uncertainPassword'))
+		}));
 		loading = false;
 		if (err) {
 			error = err.message ?? t('shared.resetPasswordPage.errorUpdateFailed');

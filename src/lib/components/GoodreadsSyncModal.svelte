@@ -24,7 +24,10 @@
 
 	type Phase = 'select' | 'preview' | 'importing' | 'done' | 'timeout';
 
+	let importGeneration = 0;
+	const ownerId = $derived($authStore.user?.id);
 	let phase = $state<Phase>('select');
+	let jobId = $state<string | undefined>();
 	let rows = $state<GoodreadsRow[]>([]);
 	let error = $state<string | null>(null);
 	let imported = $state(0);
@@ -44,7 +47,9 @@
 	};
 
 	function reset() {
+		importGeneration++;
 		phase = 'select';
+		jobId = undefined;
 		rows = [];
 		error = null;
 		imported = 0;
@@ -52,6 +57,7 @@
 	}
 
 	$effect(() => {
+		void ownerId;
 		if (open) reset();
 	});
 
@@ -77,6 +83,8 @@
 	}
 
 	async function handleImport() {
+		if (phase === 'importing') return;
+		const generation = ++importGeneration;
 		const userId = get(authStore).user?.id;
 		if (!userId) {
 			error = t('shared.goodreadsModal.errorGeneric');
@@ -85,7 +93,8 @@
 
 		error = null;
 		phase = 'importing';
-		const result = await runGoodreadsImport(userId, rows);
+		const result = await runGoodreadsImport(userId, rows, undefined, jobId);
+		if (generation !== importGeneration || get(authStore).user?.id !== userId) return;
 
 		if (result.kind === 'error') {
 			error = t('shared.goodreadsModal.errorSubmit');
@@ -93,6 +102,7 @@
 			return;
 		}
 		if (result.kind === 'timeout') {
+			jobId = result.jobId;
 			phase = 'timeout';
 			return;
 		}
@@ -168,6 +178,9 @@
 			<p class="gr-modal__intro" role="status">{t('shared.goodreadsModal.importing')}</p>
 		{:else if phase === 'timeout'}
 			<p class="gr-modal__intro" role="status">{t('shared.goodreadsModal.timeout')}</p>
+			{#if jobId}<Button variant="secondary" onclick={handleImport}
+					>{t('requests.checkAgain')}</Button
+				>{/if}
 			<div class="gr-modal__actions">
 				<Button variant="primary" onclick={onClose}>{t('shared.goodreadsModal.close')}</Button>
 			</div>

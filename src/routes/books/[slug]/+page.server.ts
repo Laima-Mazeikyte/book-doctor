@@ -1,3 +1,4 @@
+import { SERVER_TIMEOUT_MS, withTimeout } from '$lib/requests/timeout';
 import { error, redirect } from '@sveltejs/kit';
 import { base } from '$app/paths';
 import { bookPath } from '$lib/books/bookUrl';
@@ -6,7 +7,7 @@ import { mapBookRowToBook, type BookCatalogRow } from '$lib/search/mapBookRowToB
 import { supabase } from '$lib/server/supabase';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ params, url }) => {
+export const load: PageServerLoad = async ({ params, url, request }) => {
 	if (
 		!params.slug ||
 		params.slug.length > 2000 ||
@@ -14,8 +15,10 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	) {
 		error(404, 'Book not found');
 	}
-	const { data, error: bookError } = await Promise.resolve(
-		supabase.rpc('get_book_detail_with_series', { p_slug: params.slug })
+	const { data, error: bookError } = await withTimeout(
+		(signal) =>
+			supabase.rpc('get_book_detail_with_series', { p_slug: params.slug }).abortSignal(signal),
+		{ timeoutMs: SERVER_TIMEOUT_MS, signal: request?.signal }
 	).catch(() => error(503, 'Book details are temporarily unavailable. Please try again.'));
 	if (bookError) error(503, 'Book details are temporarily unavailable. Please try again.');
 	if (!data?.book) error(404, 'Book not found');

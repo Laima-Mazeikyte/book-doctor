@@ -252,12 +252,10 @@
 		--shortlist-cover-motion-ease: cubic-bezier(0.23, 1, 0.32, 1);
 		--shortlist-cover-strip-height: calc(
 			var(--space-3) + var(--space-4) + var(--shortlist-cover-height) *
-				var(--shortlist-cover-active-scale) + var(--space-4) +
-				env(safe-area-inset-bottom, 0px)
+				var(--shortlist-cover-active-scale) + var(--space-4) + env(safe-area-inset-bottom, 0px)
 		);
 		height: var(--shortlist-cover-strip-height);
-		padding: var(--space-3) var(--space-4)
-			calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+		padding: var(--space-3) var(--space-4) calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
 		box-sizing: border-box;
 	}
 	.shortlist-cover-strip__scroll {
@@ -271,7 +269,9 @@
 		-webkit-overflow-scrolling: touch;
 		padding-block: var(--space-2);
 		padding-inline: var(--space-2);
-		height: calc(var(--shortlist-cover-height) * var(--shortlist-cover-active-scale) + var(--space-4));
+		height: calc(
+			var(--shortlist-cover-height) * var(--shortlist-cover-active-scale) + var(--space-4)
+		);
 		box-sizing: border-box;
 	}
 	.shortlist-cover-strip__scroll::-webkit-scrollbar {

@@ -1,11 +1,12 @@
+import { withRequestTimeout } from '$lib/server/requestTimeout';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAccessToken } from '$lib/server/requestAuth';
 import { createSupabaseWithAuth } from '$lib/server/supabase';
 
-export const GET: RequestHandler = async ({ request }) => {
+export const GET: RequestHandler = withRequestTimeout(async ({ request }, signal) => {
 	const accessToken = requireAccessToken(request);
-	const supabase = createSupabaseWithAuth(accessToken);
+	const supabase = createSupabaseWithAuth(accessToken, signal);
 	const { data, error: countError } = await supabase.rpc('get_recommendations_unread_count');
 
 	if (countError) {
@@ -14,4 +15,4 @@ export const GET: RequestHandler = async ({ request }) => {
 	}
 
 	return json({ count: data ?? 0 });
-};
+});

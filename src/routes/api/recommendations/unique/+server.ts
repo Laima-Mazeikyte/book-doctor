@@ -1,3 +1,4 @@
+import { withRequestTimeout } from '$lib/server/requestTimeout';
 import { buildDimensionMatchSnapshotsByBookId } from '$lib/recommendations/dimensionMatches';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
@@ -21,11 +22,11 @@ type RecommendationItemRow = RecommendationPrecedentRow & {
 	request_id?: unknown;
 };
 
-export const GET: RequestHandler = async ({ request }) => {
+export const GET: RequestHandler = withRequestTimeout(async ({ request }, signal) => {
 	const accessToken = requireAccessToken(request);
-	const supabase = createSupabaseWithAuth(accessToken);
+	const supabase = createSupabaseWithAuth(accessToken, signal);
 
-	const logs = await loadRecentOverallRecommendationLogs(supabase).catch((cause) => {
+	const { logs, publicIds } = await loadRecentOverallRecommendationLogs(supabase).catch((cause) => {
 		console.error(cause);
 		throw error(500, 'Failed to load recommendation runs');
 	});
@@ -162,7 +163,13 @@ export const GET: RequestHandler = async ({ request }) => {
 			precedentRowsInPriorityOrder
 		);
 		const dimensionMatchSnapshotsByBookId = buildDimensionMatchSnapshotsByBookId(
-			precedentRowsInPriorityOrder
+			precedentRowsInPriorityOrder.map((row) => ({
+				...row,
+				request_id:
+					typeof row.request_id === 'string'
+						? (publicIds.get(row.request_id) ?? row.request_id)
+						: row.request_id
+			}))
 		);
 		const authorRelationshipAuthorsByBookId = buildAuthorRelationshipAuthorsByBookId(
 			precedentRowsInPriorityOrder
@@ -182,4 +189,4 @@ export const GET: RequestHandler = async ({ request }) => {
 		console.error(booksError);
 		throw error(500, 'Failed to load books');
 	}
-};
+});

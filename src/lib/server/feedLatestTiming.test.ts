@@ -40,9 +40,9 @@ function bootstrap(overrides: Partial<Bootstrap> = {}): Bootstrap {
 	return {
 		mode: 'has_eligible_feed',
 		status: 'completed',
-		request_id: '42',
+		request_id: 'FeedRunA',
 		error_message: null,
-		latest_request_id: '43',
+		latest_request_id: 'FeedRunB',
 		latest_request_status: 'processing',
 		latest_request_error_message: null,
 		ratings_count: 249,
@@ -141,9 +141,9 @@ describe('latest feed unified RPC', () => {
 		expect(await response.json()).toEqual({
 			mode: 'has_eligible_feed',
 			status: 'completed',
-			request_id: '42',
+			request_id: 'FeedRunA',
 			error_message: null,
-			latest_request_id: '43',
+			latest_request_id: 'FeedRunB',
 			latest_request_status: 'processing',
 			latest_request_error_message: null,
 			ratings_count: 249,
@@ -164,10 +164,13 @@ describe('latest feed unified RPC', () => {
 				}
 			]
 		});
-		expect(fixture.createWithAuth).toHaveBeenCalledExactlyOnceWith('fixture-token');
+		expect(fixture.createWithAuth).toHaveBeenCalledExactlyOnceWith(
+			'fixture-token',
+			expect.any(AbortSignal)
+		);
 		expect(calls).toEqual([
 			{
-				path: '/rest/v1/rpc/get_rate_feed_bootstrap_annotated',
+				path: '/rest/v1/rpc/get_rate_feed_bootstrap_public',
 				method: 'POST',
 				body: { p_limit: 50 },
 				authorization: 'Bearer fixture-token'
@@ -349,7 +352,10 @@ describe('latest feed unified RPC', () => {
 			expect(await choice).toMatchObject({ kind: 'curated' });
 			expect(generate).not.toHaveBeenCalled();
 			expect(retryCalls).toHaveLength(1);
-			expect(fixture.createWithAuth).toHaveBeenLastCalledWith('restored-token');
+			expect(fixture.createWithAuth).toHaveBeenLastCalledWith(
+				'restored-token',
+				expect.any(AbortSignal)
+			);
 			expect(apiStatuses).toEqual([200, status, 200]);
 			controller.destroy();
 		}

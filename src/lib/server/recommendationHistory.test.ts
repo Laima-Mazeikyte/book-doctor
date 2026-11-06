@@ -10,7 +10,9 @@ vi.mock('$lib/server/supabase', () => ({ createSupabaseWithAuth: fixture.createW
 type Log = { id: number; request_id: string; created_at: string | null };
 let logs: Log[];
 let filteredIds: Set<string>;
+let publicIds: Map<string, string>;
 let logReads: URL[];
+let requestReads: URL[];
 let itemWindows: string[][];
 let failedLogOffset: number | null;
 let failRequests: boolean;
@@ -46,11 +48,16 @@ const fetcher: typeof fetch = async (input) => {
 		return Response.json(ordered.slice(offset, offset + Number(url.searchParams.get('limit'))));
 	}
 	if (table === 'recommendation_requests') {
+		requestReads.push(url);
 		if (failRequests) return Response.json({ message: 'Requests unavailable' }, { status: 503 });
 		return Response.json(
 			inValues(url, 'id')
-				.filter((id) => filteredIds.has(id))
-				.map((id) => ({ id, filters: { genres: { all_of: ['Africa'] } } }))
+				.filter((id) => filteredIds.has(id) || publicIds.has(id))
+				.map((id) => ({
+					id,
+					filters: filteredIds.has(id) ? { genres: { all_of: ['Africa'] } } : null,
+					public_id: publicIds.get(id) ?? null
+				}))
 		);
 	}
 	if (table === 'recommendation_items') {
@@ -95,7 +102,9 @@ describe('50-run recommendation history', () => {
 	beforeEach(() => {
 		logs = makeLogs(55);
 		filteredIds = new Set();
+		publicIds = new Map();
 		logReads = [];
+		requestReads = [];
 		itemWindows = [];
 		failedLogOffset = null;
 		failRequests = false;
@@ -117,21 +126,34 @@ describe('50-run recommendation history', () => {
 		);
 		expect(logReads).toHaveLength(1);
 		expect(logReads[0].searchParams.get('limit')).toBe('50');
-		expect(fixture.createWithAuth).toHaveBeenCalledWith('history-test-token');
+		expect(fixture.createWithAuth).toHaveBeenCalledWith(
+			'history-test-token',
+			expect.any(AbortSignal)
+		);
 	});
 
 	it('fills the same 50-run window for both endpoints when recent runs are filtered', async () => {
 		logs = makeLogs(115);
 		filteredIds = new Set(logs.slice(0, 60).map((log) => log.request_id));
+		publicIds = new Map(
+			logs.map((log) => [log.request_id, `Run${log.request_id.padStart(5, '0')}`])
+		);
 		const expectedIds = logs.slice(60, 110).map((log) => log.request_id);
 		const history = await (await getHistory(event('/api/recommendations/history'))).json();
-		expect(history.runs.map((run: Log) => run.request_id)).toEqual(expectedIds);
+		expect(history.runs.map((run: Log) => run.request_id)).toEqual(
+			expectedIds.map((id) => publicIds.get(id))
+		);
 		expect(logReads.map((url) => url.searchParams.get('offset'))).toEqual(['0', '50', '100']);
+		expect(requestReads).toHaveLength(3);
 
 		const unique = await (await getUnique(event('/api/recommendations/unique'))).json();
 		expect(itemWindows).toEqual([expectedIds]);
 		expect(unique.recommendationAppearanceCount.shared).toBe(50);
 		expect(unique.books).toHaveLength(451);
+		expect(unique.dimensionMatchSnapshotsByBookId.shared.request_id).toBe(
+			publicIds.get(expectedIds[0])
+		);
+		expect(requestReads).toHaveLength(6);
 	});
 
 	it('calculates book history, recency, appearance counts, and best ranks within the retained window', async () => {

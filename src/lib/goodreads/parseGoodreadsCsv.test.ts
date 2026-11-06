@@ -128,7 +128,13 @@ describe('parseGoodreadsCsv (StoryGraph exports)', () => {
 		const { rows } = await parseGoodreadsCsv(csv);
 
 		expect(rows).toEqual([
-			{ goodreads_id: null, rating: 5, title: 'The Selfish Gene', author: 'Richard Dawkins', year: null }
+			{
+				goodreads_id: null,
+				rating: 5,
+				title: 'The Selfish Gene',
+				author: 'Richard Dawkins',
+				year: null
+			}
 		]);
 	});
 

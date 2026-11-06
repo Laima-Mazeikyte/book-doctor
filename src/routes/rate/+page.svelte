@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { withTimeout, RequestTimeoutError } from '$lib/requests/timeout';
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
 	import { get } from 'svelte/store';
@@ -1068,7 +1069,14 @@
 		if (remainingMs > 0) {
 			return { kind: 'cooldown', remainingMs };
 		}
-		const requestId = await insertFeedRequestRow(supabase, userId);
+		let requestId: string | null;
+		try {
+			requestId = await insertFeedRequestRow(supabase, userId);
+		} catch (error) {
+			if (error instanceof RequestTimeoutError && rateFeed.isCurrentEntry(entry))
+				popularError = t('requests.uncertainFeed');
+			throw error;
+		}
 		if (!rateFeed.isCurrentEntry(entry)) return { kind: 'failed' };
 		if (requestId == null) return { kind: 'failed' };
 		rateFeed.invalidatePrepared();
@@ -1378,13 +1386,21 @@
 			const headers: Record<string, string> = {};
 			const accessToken = get(authStore).session?.access_token ?? null;
 			if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
-			const res = await fetch(`${resolve('/api/books/popular')}?${params.toString()}`, { headers });
-			if (!res.ok) {
-				if (offset > 0) hasMore = false;
-				throw new Error(`HTTP ${res.status}`);
-			}
-			const data: { books: Book[]; nextOffset: number; hasMore: boolean; seed?: string } =
-				await res.json();
+			const data = await withTimeout(async (signal) => {
+				const res = await fetch(`${resolve('/api/books/popular')}?${params.toString()}`, {
+					headers,
+					signal
+				});
+				if (!res.ok) {
+					throw new Error(`HTTP ${res.status}`);
+				}
+				return (await res.json()) as {
+					books: Book[];
+					nextOffset: number;
+					hasMore: boolean;
+					seed?: string;
+				};
+			});
 			if (!rateFeed.isCurrentEntry(entry)) return;
 
 			const mode = offset === 0 ? 'replace' : 'append';
@@ -1562,7 +1578,10 @@
 				return;
 			}
 			dispatchFeedPagination({ type: 'LOAD_FAILED', now: Date.now() });
-			popularError = t('rate.errors.loadMoreBooks');
+			popularError =
+				e instanceof RequestTimeoutError
+					? t('requests.uncertainFeed')
+					: t('rate.errors.loadMoreBooks');
 			hasMore = false;
 		} finally {
 			if (rateFeed.isCurrentEntry(entry)) {
@@ -1932,9 +1951,7 @@
 						onRetry={handleSubmit}
 						retryDisabled={recommendationsSubmitBlocked}
 					/>
-					<a class="rate-page__filtered-link" href={resolve('/rate/recommendations/filtered')}>
-						Choose filters
-					</a>
+					<a class="rate-page__filtered-link" href={resolve('/discover')}> Choose filters </a>
 				</div>
 			{:else}
 				<div class="rate-page__recommendations-hint-wrap">

@@ -60,10 +60,9 @@
 		SYSTEM_IDS.flatMap((system) => {
 			const row = rows
 				.filter((candidate) => candidate.system === system)
-				.reduce<HitRow | undefined>(
-					(best, candidate) => (!best || candidate.users > best.users ? candidate : best),
-					undefined
-				);
+				.reduce<
+					HitRow | undefined
+				>((best, candidate) => (!best || candidate.users > best.users ? candidate : best), undefined);
 			if (!row) return [];
 			const info = populations.find((population) => population.id === row.population);
 			const mark: Mark = row.population === 'all' || info?.direct_comparison === false ? '' : '*';

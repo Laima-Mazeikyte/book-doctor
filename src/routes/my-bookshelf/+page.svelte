@@ -3,8 +3,7 @@
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
-	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
+	import { replaceState } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { authStore, authReady } from '$lib/stores/auth';
 	import { ratingsStore } from '$lib/stores/ratings';
@@ -14,11 +13,13 @@
 	import { ratedSummarySheetKeepAlive } from '$lib/stores/ratedSummarySheetKeepAlive';
 	import {
 		areLibraryCollectionsAvailable,
+		requestUserLibraryDetailsLoad,
 		userLibraryHydrationStore
 	} from '$lib/stores/userLibrary';
 	import { libraryLoads, type LibraryCollection } from '$lib/stores/libraryLoads';
 	import { loadBookmarkDetails } from '$lib/auth/load-bookmarks';
 	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
+	import Button from '$lib/components/Button.svelte';
 	import BookCard from '$lib/components/BookCard.svelte';
 	import BookCardGridSkeleton from '$lib/components/BookCardGridSkeleton.svelte';
 	import NotInterestedPagination from '$lib/components/NotInterestedPagination.svelte';
@@ -70,6 +71,21 @@
 
 	function isValidFilter(s: string | null | undefined): s is FilterId {
 		return s != null && (FILTER_IDS as readonly string[]).includes(s);
+	}
+
+	function readInitialFilter(): FilterId {
+		const current = get(page);
+		const param = current.state.bookshelfFilter ?? current.url.searchParams.get('filter');
+		if (isValidFilter(param)) return param;
+		return 'rated';
+	}
+
+	function replaceFilterQuery(filter: FilterId): void {
+		const current = get(page);
+		const url = new URL(window.location.href);
+		url.searchParams.set('filter', filter);
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- update this shelf's query without navigating or remounting the page
+		replaceState(url, { ...current.state, bookshelfFilter: filter });
 	}
 
 	/** Not interested is exclusive; rated and bookmarked can overlap. */
@@ -159,7 +175,7 @@
 			bookmarkBooks.length === 0
 	);
 
-	let activeFilter = $state<FilterId>('rated');
+	let activeFilter = $state<FilterId>(readInitialFilter());
 	let sortOrder = $state<ShelfSortId>(readSortFromLs());
 	let notInterestedSortOrder = $state<NotInterestedSortId>(readNotInterestedSortFromLs());
 	const shelfScrollPositions = new SvelteMap<string, number>();
@@ -276,6 +292,14 @@
 	});
 	$effect(() => {
 		const userId = libraryUserId;
+		const hydration = $userLibraryHydrationStore;
+		if (userId && hydration.userId === userId && hydration.collections.ratings.status !== 'idle') {
+			// Shelf details are visible work here, rather than an idle-time feed warmup.
+			untrack(() => requestUserLibraryDetailsLoad(userId));
+		}
+	});
+	$effect(() => {
+		const userId = libraryUserId;
 		const resources = activeResources;
 		if (userId) untrack(() => void libraryLoads.visit(resources));
 	});
@@ -297,10 +321,10 @@
 		};
 	});
 
-	/** Sync from URL only when `$page.url` changes — do not subscribe to `activeFilter`, or a tab change can run before `goto` updates the query and this effect would snap `activeFilter` back to the stale param (breaking keyboard focus on other tabs). */
+	/** URL changes, including Back/Forward, select the shelf without resetting its local state. */
 	$effect(() => {
 		if (!browser) return;
-		const param = $page.url.searchParams.get('filter');
+		const param = $page.state.bookshelfFilter ?? $page.url.searchParams.get('filter');
 		if (isValidFilter(param)) {
 			const current = untrack(() => activeFilter);
 			if (current !== param) activeFilter = param;
@@ -320,12 +344,12 @@
 		}
 		const current = untrack(() => activeFilter);
 		if (current !== next) activeFilter = next;
-		// eslint-disable-next-line svelte/no-navigation-without-resolve -- persist active filter in query
-		void goto(`${resolve('/my-bookshelf')}?filter=${encodeURIComponent(next)}`, {
-			replaceState: true,
-			keepFocus: true,
-			noScroll: true
-		});
+		// Initial effects can run before SvelteKit finishes initializing its router.
+		const filter = next;
+		const timer = setTimeout(() => {
+			if (!destroyed && activeFilter === filter) replaceFilterQuery(filter);
+		}, 0);
+		return () => clearTimeout(timer);
 	});
 
 	const ratedBooksForPartition = $derived($ratedBooksStore.map((e) => e.book));
@@ -468,6 +492,52 @@
 			: currentShelfBooks.filter((book) => matchingBookIds.has(book.id))
 	);
 
+	// Keep full shelf data for search/sorting, but only mount card controls as needed.
+	const SHELF_RENDER_BATCH = 24;
+	const shelfRenderCounts = new SvelteMap<string, number>();
+	const shelfRenderCount = $derived(shelfRenderCounts.get(shelfScrollKey()) ?? SHELF_RENDER_BATCH);
+	const renderedListBooks = $derived.by(() => {
+		if (activeFilter === 'not-interested') return currentListBooks;
+		const visible = currentListBooks.slice(0, shelfRenderCount);
+		const keep = $ratedSummarySheetKeepAlive;
+		if (activeFilter === 'rated' && keep && !visible.some((book) => book.id === keep.bookId)) {
+			const book = currentListBooks.find((book) => book.id === keep.bookId);
+			if (book) visible.push(book);
+		}
+		return visible;
+	});
+	const hasMoreShelfBooks = $derived(
+		activeFilter !== 'not-interested' && currentListBooks.length > shelfRenderCount
+	);
+
+	function revealMoreShelfBooks(): void {
+		if (!hasMoreShelfBooks) return;
+		shelfRenderCounts.set(shelfScrollKey(), shelfRenderCount + SHELF_RENDER_BATCH);
+	}
+
+	function revealOnScroll(node: HTMLElement, renderedCount: number) {
+		if (typeof IntersectionObserver === 'undefined') return;
+		const observer = new IntersectionObserver(
+			(entries) => {
+				if (entries.some((entry) => entry.isIntersecting)) revealMoreShelfBooks();
+			},
+			{ rootMargin: '400px' }
+		);
+		observer.observe(node);
+		return {
+			update(nextCount: number) {
+				if (nextCount === renderedCount) return;
+				renderedCount = nextCount;
+				// Recheck after each batch, even if the footer remains near the viewport.
+				observer.unobserve(node);
+				observer.observe(node);
+			},
+			destroy() {
+				observer.disconnect();
+			}
+		};
+	}
+
 	function shelfScrollKey(filter: FilterId = activeFilter): string {
 		if (filter === 'not-interested') return `${filter}:${notInterestedSortOrder}`;
 		return `${filter}:${sortOrder}`;
@@ -518,12 +588,7 @@
 		} catch {
 			// ignore
 		}
-		// eslint-disable-next-line svelte/no-navigation-without-resolve -- persist active filter in query
-		void goto(`${resolve('/my-bookshelf')}?filter=${encodeURIComponent(id)}`, {
-			replaceState: true,
-			keepFocus: true,
-			noScroll: true
-		});
+		replaceFilterQuery(id);
 		restoreShelfScroll(id);
 	}
 
@@ -646,7 +711,7 @@
 				use:trackGridColumns={(c) => (gridColumns = c)}
 			>
 				{#if activeFilter === 'rated'}
-					{#each currentListBooks as book, i (book.id)}
+					{#each renderedListBooks as book, i (book.id)}
 						<li>
 							<BookCard
 								context="rated"
@@ -663,7 +728,7 @@
 						</li>
 					{/each}
 				{:else}
-					{#each currentListBooks as book, i (book.id)}
+					{#each renderedListBooks as book, i (book.id)}
 						{@const ctx = cardContextFor()}
 						<li>
 							<BookCard
@@ -686,6 +751,11 @@
 				{/if}
 			</ul>
 		{/if}
+		{#if hasMoreShelfBooks}
+			<div class="bookshelf-page__more" use:revealOnScroll={renderedListBooks.length}>
+				<Button variant="secondary" onclick={revealMoreShelfBooks}>{t('rated.loadMore')}</Button>
+			</div>
+		{/if}
 		{#if activeFilter === 'not-interested' && !notInterestedInitialLoading}
 			<NotInterestedPagination
 				state={niPageState}
@@ -697,6 +767,12 @@
 </div>
 
 <style>
+	.bookshelf-page__more {
+		display: flex;
+		justify-content: center;
+		margin-top: var(--space-5);
+	}
+
 	.bookshelf-page {
 		display: flex;
 		flex-direction: column;

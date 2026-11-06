@@ -6,6 +6,13 @@ declare global {
 		// interface Locals {}
 		// interface PageData {}
 		interface PageState {
+			/** Selected bookshelf tab, kept with its shallow URL update. */
+			bookshelfFilter?: 'rated' | 'bookmarked' | 'not-interested';
+			/** Shallow layers: filtered recommendation editor and its tag picker. */
+			filteredRecommendationDialog?: {
+				url: string;
+				layer: 'closed' | 'filters' | 'genres' | 'keywords';
+			};
 			/** Shallow history layer: rate page book search overlay opened from toolbar. */
 			rateSearchLayer?: boolean;
 			/** Shallow layer: the currently open book summary, shared by feed and lab pages. */

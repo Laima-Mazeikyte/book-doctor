@@ -507,6 +507,26 @@ it('offers reload only when the saved proposal has changed on the server', async
 		.toHaveValue('Saved elsewhere');
 });
 
+it('preserves the draft and proposal UUID while checking an uncertain save', async () => {
+	api.save.mockRejectedValueOnce(new CorrectionRequestError('Outcome unconfirmed.', 504));
+	const rendered = render(BookCorrection, { book });
+	await openField(rendered, 'Title');
+	const title = rendered.getByRole('textbox', { name: 'Title', exact: true });
+	await title.fill('Keep this uncertain draft');
+	await rendered.getByRole('button', { name: 'Propose changes', exact: true }).click();
+	await expect.element(rendered.getByRole('alert')).toHaveTextContent('Outcome unconfirmed.');
+	const originalId = api.save.mock.calls[0][1];
+	await rendered.getByRole('button', { name: 'Check again', exact: true }).click();
+	await expect.element(title).toHaveValue('Keep this uncertain draft');
+	await rendered.getByRole('button', { name: 'Propose changes', exact: true }).click();
+	await expect.poll(() => api.save.mock.calls.length).toBe(2);
+	expect(api.save.mock.calls[1]).toEqual([
+		book.book_id,
+		originalId,
+		{ title: 'Keep this uncertain draft' }
+	]);
+});
+
 it('offers a loading retry when book details could not be loaded', async () => {
 	api.load.mockRejectedValue(new Error('Could not load.'));
 	const rendered = render(BookCorrection, { book });

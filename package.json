@@ -26,6 +26,7 @@
 		"test:annotations:db": "node scripts/test-book-annotations-db.mjs",
 		"test:book-slugs:db": "node scripts/test-book-slugs-db.mjs",
 		"test:catalog-maintenance:db": "node scripts/test-book-catalog-maintenance-db.mjs",
+		"test:request-ids:db": "node scripts/test-random-request-ids-db.mjs",
 		"prepare:annotations": "node scripts/prepare-book-annotation-import.mjs",
 		"seed:top100": "node scripts/seed-top-100.mjs > supabase/seed_top_100_books.sql"
 	},

@@ -1,3 +1,5 @@
+import { withTimeout, RequestTimeoutError } from '$lib/requests/timeout';
+import { t } from '$lib/copy';
 import { getSupabase } from '$lib/supabase';
 import type { CorrectionChanges, CorrectionContext } from './model';
 import { CorrectionRequestError } from './errors';
@@ -8,31 +10,46 @@ async function request(
 	body?: unknown,
 	signal?: AbortSignal
 ) {
-	const client = getSupabase();
-	if (!client) throw new Error('Could not connect. Please try again.');
-	const { data, error } = await client.auth.getSession();
-	if (error || !data.session || data.session.user.is_anonymous)
-		throw new Error('Please sign in with a registered account.');
-	const response = await fetch(
-		`/api/book-corrections${method === 'GET' ? `?book_id=${encodeURIComponent(bookId)}` : ''}`,
-		{
-			method,
-			headers: {
-				Authorization: `Bearer ${data.session.access_token}`,
-				'Content-Type': 'application/json'
-			},
-			body: body === undefined ? undefined : JSON.stringify(body),
-			signal
+	return withTimeout(
+		async (signal) => {
+			const client = getSupabase();
+			if (!client) throw new Error('Could not connect. Please try again.');
+			const { data, error } = await client.auth.getSession();
+			if (error || !data.session || data.session.user.is_anonymous)
+				throw new Error('Please sign in with a registered account.');
+			signal.throwIfAborted();
+			const response = await fetch(
+				`/api/book-corrections${method === 'GET' ? `?book_id=${encodeURIComponent(bookId)}` : ''}`,
+				{
+					method,
+					headers: {
+						Authorization: `Bearer ${data.session.access_token}`,
+						'Content-Type': 'application/json'
+					},
+					body: body === undefined ? undefined : JSON.stringify(body),
+					signal
+				}
+			);
+			if (!response.ok) {
+				const payload = await response.json().catch(() => null);
+				throw new CorrectionRequestError(
+					payload?.message ?? 'Could not save or load your proposal. Please try again.',
+					response.status
+				);
+			}
+			return response.status === 204 ? null : response.json();
+		},
+		{ signal }
+	).catch((error: unknown) => {
+		if (
+			method !== 'GET' &&
+			(error instanceof RequestTimeoutError ||
+				(error instanceof CorrectionRequestError && error.status === 504))
+		) {
+			throw new CorrectionRequestError(t('requests.uncertainCorrection'), 504);
 		}
-	);
-	if (!response.ok) {
-		const payload = await response.json().catch(() => null);
-		throw new CorrectionRequestError(
-			payload?.message ?? 'Could not save or load your proposal. Please try again.',
-			response.status
-		);
-	}
-	return response.status === 204 ? null : response.json();
+		throw error;
+	});
 }
 
 export async function loadCorrectionContext(

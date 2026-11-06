@@ -1,37 +1,51 @@
 export const FILTER_DIMENSIONS = [
-	{ key: 'spice', label: 'Romance intimacy', low: 'Sweet', high: 'Explicit' },
-	{ key: 'vocabulary', label: 'Vocabulary', low: 'Conversational', high: 'Scholarly' },
-	{ key: 'granularity', label: 'Description', low: 'Minimalist', high: 'Transportive' },
+	{ key: 'spice', label: 'Sexual content', low: 'None', high: 'Explicit' },
+	{ key: 'vocabulary', label: 'Language complexity', low: 'Accessible', high: 'Demanding' },
+	{ key: 'granularity', label: 'Descriptive richness', low: 'Understated', high: 'Elaborate' },
 	{ key: 'emotion', label: 'Emotional tone', low: 'Uplifting', high: 'Tragic' },
-	{ key: 'violence', label: 'Violence', low: 'Peaceful', high: 'Brutal' },
-	{ key: 'intended_age', label: 'Intended age', low: 'Toddler', high: 'Mature YA' },
-	{ key: 'period', label: 'Setting period', low: 'Antiquity', high: 'Future' },
-	{ key: 'political', label: 'Political outlook', low: 'Far left', high: 'Far right' },
-	{ key: 'entry_barrier', label: 'Background knowledge', low: 'Universal', high: 'Referential' },
-	{ key: 'pace', label: 'Story focus', low: 'Pure action', high: 'Introspective' },
-	{ key: 'narrative', label: 'Narrative style', low: 'Classic', high: 'Deconstructed' },
-	{ key: 'atmosphere', label: 'Atmosphere', low: 'Cozy', high: 'Oppressive' },
-	{ key: 'originality', label: 'Originality', low: 'Conventional', high: 'Unique' },
-	{ key: 'depth', label: 'Thematic depth', low: 'Literal', high: 'Philosophical' },
+	{ key: 'violence', label: 'Violence', low: 'Minimal', high: 'Graphic' },
+	{ key: 'intended_age', label: 'Target reader age', low: 'Young children', high: 'Adult' },
+	{ key: 'period', label: 'Story time period', low: 'Ancient past', high: 'Future' },
+	{ key: 'political', label: 'Political leaning', low: 'Left', high: 'Right' },
+	{
+		key: 'entry_barrier',
+		label: 'Required background knowledge',
+		low: 'Little',
+		high: 'Extensive'
+	},
+	{ key: 'pace', label: 'Story focus', low: 'Action-driven', high: 'Introspective' },
+	{ key: 'narrative', label: 'Narrative structure', low: 'Conventional', high: 'Experimental' },
+	{ key: 'atmosphere', label: 'Atmosphere', low: 'Comforting', high: 'Oppressive' },
+	{ key: 'originality', label: 'Originality', low: 'Familiar', high: 'Unconventional' },
+	{ key: 'depth', label: 'Thematic focus', low: 'Literal', high: 'Philosophical' },
 	{
 		key: 'discussion_potential',
-		label: 'Discussion potential',
-		low: 'Unambiguous',
-		high: 'Divisive'
+		label: 'Potential for debate',
+		low: 'Clear-cut',
+		high: 'Debatable'
 	},
-	{ key: 'hierarchy_focus', label: 'Social position', low: 'Outcast', high: 'Ruling elite' },
+	{ key: 'hierarchy_focus', label: 'Social focus', low: 'Society’s margins', high: 'Ruling elite' },
 	{
 		key: 'factual',
-		label: 'Factual approach',
-		low: 'Highly subjective',
-		high: 'Strictly objective'
+		label: 'Perspective',
+		low: 'Subjective',
+		high: 'Objective'
 	}
 ] as const;
 
 export type FilterDimension = (typeof FILTER_DIMENSIONS)[number]['key'];
 export type Bounds = { min?: number; max?: number };
-export type TagSelection = { any_of?: string[]; all_of?: string[] };
+export const TAG_OPERATORS = ['all_of', 'any_of', 'none_of'] as const;
+export type TagOperator = (typeof TAG_OPERATORS)[number];
+export type TagSelection = Partial<Record<TagOperator, string[]>>;
+export type TagDraft = Record<TagOperator, string[]>;
+
+export function emptyTagDraft(): TagDraft {
+	return { all_of: [], any_of: [], none_of: [] };
+}
 export type RecommendationFilters = {
+	seed_book_id?: string;
+	relative_dimensions?: Partial<Record<FilterDimension, number>>;
 	genres?: TagSelection;
 	keywords?: TagSelection;
 	type?: ('Fiction' | 'Nonfiction')[];
@@ -44,12 +58,36 @@ export type RecommendationFilters = {
 };
 
 export type RangeDraft = { min: string; max: string };
-export type DimensionDraft = { enabled: boolean; min: number; max: number };
+export type DimensionDraft = RangeDraft & { enabled: boolean };
+export type RangePreset = { label: string; min?: string; max?: string };
+
+export const YEAR_PRESETS: RangePreset[] = [
+	{ label: 'Any year' },
+	{ label: 'Since 2020', min: '2020' },
+	{ label: 'Since 2000', min: '2000' },
+	{ label: 'Before 2000', max: '1999' }
+];
+export const PAGE_PRESETS: RangePreset[] = [
+	{ label: 'Any length' },
+	{ label: 'Under 300 pages', max: '299' },
+	{ label: '300–500 pages', min: '300', max: '500' },
+	{ label: 'Over 500 pages', min: '501' }
+];
+export const POPULARITY_PRESETS: RangePreset[] = [
+	{ label: 'Any popularity' },
+	{ label: 'Most popular 30%', min: '70' },
+	{ label: 'Least popular 30%', max: '30' }
+];
+export const RATING_PRESETS: RangePreset[] = [
+	{ label: 'Any rating' },
+	{ label: 'Top 20% by reader rating', min: '80' },
+	{ label: 'Top 10% by reader rating', min: '90' }
+];
 export type FilterDraft = {
-	genres: string[];
-	genreMode: 'any_of' | 'all_of';
-	keywords: string[];
-	keywordMode: 'any_of' | 'all_of';
+	seedBookId: string;
+	relativeDimensions: Partial<Record<FilterDimension, number>>;
+	genres: TagDraft;
+	keywords: TagDraft;
 	types: ('Fiction' | 'Nonfiction')[];
 	authors: string[];
 	pages: RangeDraft;
@@ -61,10 +99,10 @@ export type FilterDraft = {
 
 export function emptyFilterDraft(): FilterDraft {
 	return {
-		genres: [],
-		genreMode: 'any_of',
-		keywords: [],
-		keywordMode: 'any_of',
+		seedBookId: '',
+		relativeDimensions: {},
+		genres: emptyTagDraft(),
+		keywords: emptyTagDraft(),
 		types: [],
 		authors: [],
 		pages: { min: '', max: '' },
@@ -72,7 +110,7 @@ export function emptyFilterDraft(): FilterDraft {
 		popularity: { min: '', max: '' },
 		averageRating: { min: '', max: '' },
 		dimensions: Object.fromEntries(
-			FILTER_DIMENSIONS.map(({ key }) => [key, { enabled: false, min: 0, max: 1 }])
+			FILTER_DIMENSIONS.map(({ key }) => [key, { enabled: false, min: '0', max: '1' }])
 		) as Record<FilterDimension, DimensionDraft>
 	};
 }
@@ -115,28 +153,41 @@ function rangeFromDraft(
 
 export function buildRecommendationFilters(draft: FilterDraft): RecommendationFilters {
 	const filters: RecommendationFilters = {};
-	const genres = cleanSelection(draft.genres, 'genres');
-	const keywords = cleanSelection(draft.keywords, 'keywords');
+	if (draft.seedBookId) {
+		if (!isStartingBookId(draft.seedBookId)) throw new Error('Choose a valid starting book.');
+		filters.seed_book_id = draft.seedBookId;
+	}
+	const relative: NonNullable<RecommendationFilters['relative_dimensions']> = {};
+	for (const [key, value] of Object.entries(draft.relativeDimensions)) {
+		if (
+			!FILTER_DIMENSIONS.some((dimension) => dimension.key === key) ||
+			typeof value !== 'number' ||
+			!Number.isFinite(value) ||
+			value === 0 ||
+			Math.abs(value) > 1
+		)
+			throw new Error('Choose a valid change from the starting book.');
+		relative[key as FilterDimension] = value;
+	}
+	if (Object.keys(relative).length) {
+		if (!filters.seed_book_id) throw new Error('Choose a starting book before adjusting it.');
+		filters.relative_dimensions = relative;
+	}
+	const genres = buildTagSelection(draft.genres, 'genres');
+	const keywords = buildTagSelection(draft.keywords, 'keywords');
 	const authors = cleanSelection(draft.authors, 'authors');
-	if (genres.length) filters.genres = { [draft.genreMode]: genres };
-	if (keywords.length) filters.keywords = { [draft.keywordMode]: keywords };
+	if (genres) filters.genres = genres;
+	if (keywords) filters.keywords = keywords;
 	if (authors.length) filters.authors = authors;
 	if (draft.types.length) filters.type = [...new Set(draft.types)];
 
 	const dimensions: NonNullable<RecommendationFilters['dimensions']> = {};
-	for (const { key } of FILTER_DIMENSIONS) {
+	for (const { key, label } of FILTER_DIMENSIONS) {
 		const range = draft.dimensions[key];
 		if (!range.enabled) continue;
-		if (
-			!Number.isFinite(range.min) ||
-			!Number.isFinite(range.max) ||
-			range.min < 0 ||
-			range.max > 1 ||
-			range.min > range.max
-		) {
-			throw new Error(`Enter a valid ${key.replaceAll('_', ' ')} range.`);
-		}
-		dimensions[key] = { min: range.min, max: range.max };
+		if (!range.min.trim() || !range.max.trim())
+			throw new Error(`Enter both bounds for ${label.toLowerCase()}.`);
+		dimensions[key] = rangeFromDraft(range, label.toLowerCase(), { min: 0, max: 1 })!;
 	}
 	if (Object.keys(dimensions).length) filters.dimensions = dimensions;
 
@@ -167,23 +218,25 @@ export function isFilteredRequest(value: unknown): value is RecommendationFilter
 	);
 }
 
-function selector(value: unknown): { values: string[]; mode: 'any_of' | 'all_of' } {
-	if (!value || typeof value !== 'object' || Array.isArray(value)) {
-		return { values: [], mode: 'any_of' };
+function buildTagSelection(value: TagDraft, name: string): TagSelection | undefined {
+	const selection: TagSelection = {};
+	for (const operator of TAG_OPERATORS) {
+		const labels = cleanSelection(value[operator], name);
+		if (labels.length) selection[operator] = labels;
 	}
+	return Object.keys(selection).length ? selection : undefined;
+}
+
+function selector(value: unknown): TagDraft {
+	const draft = emptyTagDraft();
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return draft;
 	const record = value as TagSelection;
-	if (Array.isArray(record.all_of) && record.all_of.length) {
-		return {
-			values: record.all_of.filter((entry): entry is string => typeof entry === 'string'),
-			mode: 'all_of'
-		};
+	for (const operator of TAG_OPERATORS) {
+		const labels = record[operator];
+		if (Array.isArray(labels))
+			draft[operator] = labels.filter((label): label is string => typeof label === 'string');
 	}
-	return {
-		values: Array.isArray(record.any_of)
-			? record.any_of.filter((entry): entry is string => typeof entry === 'string')
-			: [],
-		mode: 'any_of'
-	};
+	return draft;
 }
 
 function fromBounds(value: unknown): RangeDraft {
@@ -199,12 +252,12 @@ export function draftFromFilters(value: unknown): FilterDraft {
 	const draft = emptyFilterDraft();
 	if (!isFilteredRequest(value)) return draft;
 	const filters = value as RecommendationFilters;
-	const genres = selector(filters.genres);
-	const keywords = selector(filters.keywords);
-	draft.genres = genres.values;
-	draft.genreMode = genres.mode;
-	draft.keywords = keywords.values;
-	draft.keywordMode = keywords.mode;
+	draft.seedBookId = typeof filters.seed_book_id === 'string' ? filters.seed_book_id : '';
+	if (filters.relative_dimensions && typeof filters.relative_dimensions === 'object') {
+		draft.relativeDimensions = { ...filters.relative_dimensions };
+	}
+	draft.genres = selector(filters.genres);
+	draft.keywords = selector(filters.keywords);
 	draft.types = Array.isArray(filters.type)
 		? filters.type.filter(
 				(item): item is 'Fiction' | 'Nonfiction' => item === 'Fiction' || item === 'Nonfiction'
@@ -222,29 +275,141 @@ export function draftFromFilters(value: unknown): FilterDraft {
 		if (!bounds) continue;
 		draft.dimensions[key] = {
 			enabled: true,
-			min: typeof bounds.min === 'number' ? bounds.min : 0,
-			max: typeof bounds.max === 'number' ? bounds.max : 1
+			min: String(typeof bounds.min === 'number' ? bounds.min : 0),
+			max: String(typeof bounds.max === 'number' ? bounds.max : 1)
 		};
 	}
 	return draft;
 }
 
-export function describeFilters(value: unknown): string {
+export function describeFilters(value: unknown, seedTitles: Record<string, string> = {}): string {
 	if (!isFilteredRequest(value)) return 'Overall recommendations';
 	const filters = value as RecommendationFilters;
 	const labels: string[] = [];
-	if (filters.genres) labels.push(...(filters.genres.all_of ?? filters.genres.any_of ?? []));
-	if (filters.keywords) labels.push(...(filters.keywords.all_of ?? filters.keywords.any_of ?? []));
+	if (filters.seed_book_id)
+		labels.push(`Starting from ${seedTitles[filters.seed_book_id] ?? 'a book'}`);
+	if (filters.relative_dimensions) {
+		for (const { key } of FILTER_DIMENSIONS) {
+			const delta = filters.relative_dimensions[key];
+			if (typeof delta === 'number' && delta !== 0) {
+				labels.push(relativeDimensionLabel(key, delta));
+			}
+		}
+	}
+	labels.push(...describeTagSelection(filters.genres), ...describeTagSelection(filters.keywords));
 	if (filters.type) labels.push(...filters.type);
 	if (filters.authors) labels.push(...filters.authors);
-	if (filters.year) labels.push('Publication year');
-	if (filters.pages) labels.push('Length');
-	if (filters.popularity_percentile) labels.push('Popularity');
-	if (filters.average_rating_percentile) labels.push('Reader rating');
+	if (filters.year) labels.push(describeRange(filters.year, YEAR_PRESETS, 'Publication year'));
+	if (filters.pages) labels.push(describeRange(filters.pages, PAGE_PRESETS, 'Page count'));
+	if (filters.popularity_percentile)
+		labels.push(
+			describeRange(filters.popularity_percentile, POPULARITY_PRESETS, 'Popularity percentile')
+		);
+	if (filters.average_rating_percentile)
+		labels.push(
+			describeRange(filters.average_rating_percentile, RATING_PRESETS, 'Reader rating percentile')
+		);
 	if (filters.dimensions) {
-		for (const { key, label } of FILTER_DIMENSIONS) {
-			if (filters.dimensions[key]) labels.push(label);
+		for (const { key, label, low, high } of FILTER_DIMENSIONS) {
+			const bounds = filters.dimensions[key];
+			if (!bounds) continue;
+			const { min = 0, max = 1 } = bounds;
+			const choice =
+				min === 0 && max === 0.33
+					? low
+					: min === 0.33 && max === 0.67
+						? 'In between'
+						: min === 0.67 && max === 1
+							? high
+							: `${min}–${max}`;
+			labels.push(`${label}: ${choice}`);
 		}
 	}
 	return labels.join(' · ') || 'Filtered recommendations';
+}
+
+function describeRange(bounds: Bounds, presets: RangePreset[], label: string): string {
+	const preset = presets.find(
+		(item) =>
+			(item.min ?? '') === (bounds.min === undefined ? '' : String(bounds.min)) &&
+			(item.max ?? '') === (bounds.max === undefined ? '' : String(bounds.max))
+	);
+	if (preset) return preset.label;
+	if (bounds.min !== undefined && bounds.max !== undefined)
+		return `${label}: ${bounds.min}–${bounds.max}`;
+	if (bounds.min !== undefined) return `${label}: at least ${bounds.min}`;
+	if (bounds.max !== undefined) return `${label}: at most ${bounds.max}`;
+	return `${label}: any recorded value`;
+}
+
+export function describeTagSelection(value: TagSelection | undefined): string[] {
+	if (!value) return [];
+	const groups = selector(value);
+	const labels: Record<TagOperator, string> = {
+		all_of: 'Require all',
+		any_of: 'At least one',
+		none_of: 'Exclude'
+	};
+	return TAG_OPERATORS.flatMap((operator) =>
+		groups[operator].length ? [`${labels[operator]}: ${groups[operator].join(', ')}`] : []
+	);
+}
+
+export function isStartingBookId(value: string): boolean {
+	return /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/.test(value);
+}
+
+const relativeLabels: Record<FilterDimension, readonly [string, string]> = {
+	spice: ['Less explicit', 'More explicit'],
+	vocabulary: ['More accessible language', 'More complex language'],
+	granularity: ['Sparser description', 'Richer description'],
+	emotion: ['More uplifting', 'More tragic'],
+	violence: ['Less violence', 'More violence'],
+	intended_age: ['Younger audience', 'Older audience'],
+	period: ['Earlier setting', 'Later setting'],
+	political: ['Further left', 'Further right'],
+	entry_barrier: ['Less background knowledge', 'More background knowledge'],
+	pace: ['More action-driven', 'More introspective'],
+	narrative: ['More conventional narrative', 'More experimental narrative'],
+	atmosphere: ['Less oppressive', 'More oppressive'],
+	originality: ['More familiar', 'More unconventional'],
+	depth: ['More literal', 'More philosophical'],
+	discussion_potential: ['Less debatable', 'More debatable'],
+	hierarchy_focus: ['Toward outsiders', 'Toward ruling elites'],
+	factual: ['More subjective', 'More objective']
+};
+
+export function relativeDimensionLabel(key: FilterDimension, delta: number): string {
+	return relativeLabels[key][delta < 0 ? 0 : 1];
+}
+
+export const STARTING_BOOK_MODIFIERS = {
+	'less-violence': { relative_dimensions: { violence: -0.15 } },
+	'more-action-driven': { relative_dimensions: { pace: -0.15 } },
+	'more-complex-language': { relative_dimensions: { vocabulary: 0.15 } },
+	'least-popular-30': { popularity_percentile: { max: 30 } }
+} satisfies Record<string, Omit<RecommendationFilters, 'seed_book_id'>>;
+
+export function startingBookPath(
+	slug: string | undefined,
+	modifier?: keyof typeof STARTING_BOOK_MODIFIERS
+): `/discover?${string}` {
+	if (!slug) throw new Error('Missing public book slug');
+	const params = new URLSearchParams({ from: slug });
+	if (modifier) params.set('change', modifier);
+	return `/discover?${params}`;
+}
+
+export function savedSearchPath(id: string | number): `/discover?${string}` {
+	return `/discover?${new URLSearchParams({ search: String(id) })}`;
+}
+
+/** Resolve the public slug first; only catalog ULIDs enter recommendation payloads. */
+export function draftFromStartingBookUrl(url: URL, bookId = ''): FilterDraft {
+	if (!url.searchParams.get('from') || !isStartingBookId(bookId)) return emptyFilterDraft();
+	const modifier = url.searchParams.get('change') ?? '';
+	const changes = Object.hasOwn(STARTING_BOOK_MODIFIERS, modifier)
+		? STARTING_BOOK_MODIFIERS[modifier as keyof typeof STARTING_BOOK_MODIFIERS]
+		: {};
+	return draftFromFilters({ seed_book_id: bookId, ...changes });
 }

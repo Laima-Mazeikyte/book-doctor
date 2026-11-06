@@ -19,7 +19,7 @@
 		'/not-interested': [display, regular, bold],
 		'/rate/recommendations': [variable, bold],
 		'/rate/recommendations/shortlist': [variable, bold],
-		'/rate/recommendations/filtered': [variable, bold, semibold],
+		'/discover': [variable, bold, semibold],
 		'/books/[slug]': [bold, variable, medium],
 		'/auth/reset-password': [bold, regular],
 		'/lab': [variable, bold],

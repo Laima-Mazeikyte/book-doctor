@@ -13,10 +13,4 @@ export {
 	type MeilisearchHit
 } from './bookSearchEdge';
 export { resolveBooksByIdsInOrder } from './resolveBooksFromSupabase';
-export {
-	SEARCH_MAX_LIMIT,
-	SEARCH_MIN_QUERY_LENGTH,
-	SEARCH_PAGE_SIZE,
-	type SearchResultPage,
-	type SearchResultSource
-} from './types';
+export { SEARCH_MAX_LIMIT, SEARCH_MIN_QUERY_LENGTH, type SearchResultPage } from './types';

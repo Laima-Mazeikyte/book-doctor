@@ -59,7 +59,8 @@ describe('recommendations page auth loading', () => {
 		markAuthInitReady();
 		await expect.poll(() => fetchMock.mock.calls.length).toBe(1);
 		expect(fetchMock).toHaveBeenCalledWith('/api/recommendations/unique', {
-			headers: { Authorization: 'Bearer token-1' }
+			headers: { Authorization: 'Bearer token-1' },
+			signal: expect.any(AbortSignal)
 		});
 
 		rendered.unmount();
@@ -205,7 +206,8 @@ describe('recommendations page auth loading', () => {
 		await rendered.getByRole('button', { name: 'Retry', exact: true }).click();
 		await expect.poll(() => fetchMock.mock.calls.length).toBe(2);
 		expect(fetchMock).toHaveBeenLastCalledWith('/api/recommendations/unique', {
-			headers: { Authorization: 'Bearer refreshed-token' }
+			headers: { Authorization: 'Bearer refreshed-token' },
+			signal: expect.any(AbortSignal)
 		});
 		await expect.element(rendered.getByTestId('test-book-card')).toHaveTextContent('Cached book');
 

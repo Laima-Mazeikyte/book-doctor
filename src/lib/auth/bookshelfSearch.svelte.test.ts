@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { page } from 'vitest/browser';
+import { page as appPage } from '$app/stores';
+import type { Writable } from 'svelte/store';
 import type { Session } from '@supabase/supabase-js';
 import Bookshelf from '../../routes/my-bookshelf/+page.svelte';
 import { authStore, markAuthInitReady } from '$lib/stores/auth';
@@ -11,6 +13,7 @@ import { notInterestedStore } from '$lib/stores/notInterested';
 import { notInterestedPageLoader } from '$lib/notInterested/pageLoader';
 import { ratingsStore } from '$lib/stores/ratings';
 import { planToReadStore } from '$lib/stores/planToRead';
+import { ratedSummarySheetKeepAlive } from '$lib/stores/ratedSummarySheetKeepAlive';
 
 vi.mock('$app/stores', async () => ({
 	page: (await import('svelte/store')).writable({
@@ -18,7 +21,12 @@ vi.mock('$app/stores', async () => ({
 		state: {}
 	})
 }));
-vi.mock('$app/navigation', () => ({ goto: vi.fn(), pushState: vi.fn(), replaceState: vi.fn() }));
+vi.mock('$app/navigation', () => ({
+	goto: vi.fn(),
+	pushState: vi.fn(),
+	replaceState: vi.fn(),
+	preloadData: vi.fn().mockResolvedValue({ status: 200 })
+}));
 vi.mock('$app/paths', () => ({ resolve: (path: string) => path }));
 
 const owner = 'shelf-search-reader';
@@ -30,8 +38,10 @@ const books = Array.from({ length: 120 }, (_, i) => ({
 	year: String(1900 + i)
 }));
 let unmount: (() => void) | undefined;
+const pageStore = appPage as unknown as Writable<{ url: URL; state: App.PageState }>;
 
 beforeEach(() => {
+	pageStore.set({ url: new URL('http://localhost/my-bookshelf?filter=not-interested'), state: {} });
 	localStorage.removeItem('book-doctor:my-bookshelf-sort');
 	localStorage.removeItem('book-doctor:my-bookshelf-not-interested-sort');
 	librarySaves.activateOwner(owner);
@@ -55,18 +65,23 @@ afterEach(() => {
 	libraryLoads.reset();
 	authStore.setSession(null);
 	librarySaves.discard();
+	ratedSummarySheetKeepAlive.set(null);
 	vi.unstubAllGlobals();
 	localStorage.removeItem('book-doctor:my-bookshelf-sort');
 	localStorage.removeItem('book-doctor:my-bookshelf-not-interested-sort');
 });
 
-function fixture(beforePage?: (offset: number) => Promise<Response | undefined>) {
+function fixture(
+	beforePage?: (offset: number) => Promise<Response | undefined>,
+	bookmarkBooks: typeof books = []
+) {
 	const reads: URL[] = [];
 	vi.stubGlobal(
 		'fetch',
 		vi.fn(async (input: RequestInfo | URL) => {
 			const url = new URL(String(input), location.href);
-			if (url.pathname !== '/api/not-interested/books') return Response.json({ books: [] });
+			if (url.pathname !== '/api/not-interested/books')
+				return Response.json({ books: bookmarkBooks });
 			reads.push(url);
 			const offset = Number(url.searchParams.get('cursor') ?? 0);
 			const response = await beforePage?.(offset);
@@ -164,4 +179,83 @@ it('shows a retry error instead of a false no-match state and resumes loading al
 	await page.getByRole('button', { name: 'Try again', exact: true }).click();
 	await expect.poll(displayed).toEqual(['uuid-110']);
 	await expect.element(page.getByRole('alert')).not.toBeInTheDocument();
+});
+
+function ratedShelf() {
+	notInterestedStore.reset();
+	ratingsStore.hydrate(books.map((book) => ({ bookId: book.id, rating: 4 })));
+	ratingsStore.setRatedBooksDetails(new Map(books.map((book) => [book.id, book])));
+	pageStore.set({ url: new URL('http://localhost/my-bookshelf?filter=rated'), state: {} });
+}
+
+it.each(['rated', 'bookmarked'] as const)(
+	'mounts %s cards in batches while searching and sorting the complete shelf',
+	async (filter) => {
+		ratedShelf();
+		if (filter === 'bookmarked') {
+			planToReadStore.hydrate(books.map((book) => book.id));
+			pageStore.set({ url: new URL('http://localhost/my-bookshelf?filter=bookmarked'), state: {} });
+		}
+		let nearViewport = () => {};
+		const disconnect = vi.fn();
+		vi.stubGlobal(
+			'IntersectionObserver',
+			class {
+				constructor(callback: IntersectionObserverCallback) {
+					nearViewport = () =>
+						callback(
+							[{ isIntersecting: true }] as IntersectionObserverEntry[],
+							this as unknown as IntersectionObserver
+						);
+				}
+				observe() {}
+				unobserve() {}
+				disconnect = disconnect;
+			}
+		);
+		const { view } = fixture(undefined, books);
+		await expect.poll(() => displayed().length).toBe(24);
+		await expect
+			.element(
+				view.getByRole('tab', {
+					name: `${filter === 'rated' ? 'Rated' : 'Bookmarked'}, 120`,
+					exact: true
+				})
+			)
+			.toBeVisible();
+		nearViewport();
+		await expect.poll(() => displayed().length).toBe(48);
+		await view.getByRole('searchbox').fill('Hidden Nebula');
+		await expect.poll(displayed).toEqual(['uuid-110']);
+		await view.getByRole('searchbox').fill('');
+		await expect.poll(() => displayed().length).toBe(48);
+		await chooseSort('Newest first');
+		await expect.poll(displayed).toEqual(
+			[...books]
+				.reverse()
+				.slice(0, 24)
+				.map((book) => book.id)
+		);
+		await view.getByRole('button', { name: 'Show more books', exact: true }).click();
+		await expect.poll(() => displayed().length).toBe(48);
+		expect(disconnect).toHaveBeenCalled();
+	}
+);
+
+it('keeps an open summary mounted when its removed rating moves beyond the rendered batch', async () => {
+	ratedShelf();
+	const { view } = fixture();
+	await expect.poll(() => displayed().length).toBe(24);
+	const book = books[0];
+	await view
+		.getByRole('button', {
+			name: `${book.title} by ${book.author}. See summary`,
+			exact: true
+		})
+		.first()
+		.click();
+	await expect.element(page.getByRole('dialog')).toBeVisible();
+	ratingsStore.removeRating(book.id, book.book_id);
+	await expect.poll(() => displayed().includes(book.id)).toBe(true);
+	await expect.element(page.getByRole('dialog')).toBeVisible();
 });

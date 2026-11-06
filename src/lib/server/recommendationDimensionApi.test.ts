@@ -137,7 +137,7 @@ it('carries stored matches through the run API and frontend mapper without chang
 			book: ['Liked author']
 		});
 		expect(fixture.selects.some((s) => s.includes('dimension_matches'))).toBe(true);
-		expect(fixture.createWithAuth).toHaveBeenCalledWith('fixture-token');
+		expect(fixture.createWithAuth).toHaveBeenCalledWith('fixture-token', expect.any(AbortSignal));
 	} finally {
 		fetchMock.mockRestore();
 	}

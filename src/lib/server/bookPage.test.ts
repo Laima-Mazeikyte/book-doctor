@@ -5,7 +5,14 @@ import { createClient } from '@supabase/supabase-js';
 const fixture = vi.hoisted(() => ({
 	rpc: vi.fn()
 }));
-vi.mock('$lib/server/supabase', () => ({ supabase: { rpc: fixture.rpc } }));
+vi.mock('$lib/server/supabase', () => ({
+	supabase: {
+		rpc: (...args: unknown[]) => {
+			const result = fixture.rpc(...args);
+			return { abortSignal: () => result };
+		}
+	}
+}));
 import { load } from '../../routes/books/[slug]/+page.server';
 
 const book: Book = {

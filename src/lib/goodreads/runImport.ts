@@ -1,3 +1,4 @@
+import { RequestTimeoutError } from '$lib/requests/timeout';
 import type { GoodreadsRow } from './types';
 import { createImportJob, pollImportJob, type PollOptions } from './importJobs';
 
@@ -15,7 +16,7 @@ export interface ImportMiss {
 
 export type ImportUiResult =
 	| { kind: 'done'; imported: number; misses: ImportMiss[] }
-	| { kind: 'timeout' }
+	| { kind: 'timeout'; jobId?: string }
 	| { kind: 'error' };
 
 /**
@@ -46,17 +47,24 @@ export function buildMisses(
 export async function runGoodreadsImport(
 	userId: string,
 	rows: GoodreadsRow[],
-	poll?: PollOptions
+	poll?: PollOptions,
+	existingJobId?: string
 ): Promise<ImportUiResult> {
 	const items = rows.map((row, index) => ({ index, ...row }));
 
-	const { id, error } = await createImportJob(userId, items);
+	const { id, error } = existingJobId
+		? { id: existingJobId, error: null }
+		: await createImportJob(userId, items);
+	if (error instanceof RequestTimeoutError) return { kind: 'timeout' };
 	if (error || !id) return { kind: 'error' };
 
 	const outcome = await pollImportJob(id, poll);
 
-	if (outcome.status === 'timeout') return { kind: 'timeout' };
-	if (outcome.status === 'failed' || outcome.status === 'error') return { kind: 'error' };
+	// A failed status read says nothing about the job's outcome. Keep its identity
+	// so Check again observes this job instead of inserting another import.
+	if (outcome.status === 'timeout' || outcome.status === 'failed')
+		return { kind: 'timeout', jobId: id };
+	if (outcome.status === 'error') return { kind: 'error' };
 
 	// status === 'done'
 	const misses = buildMisses(rows, outcome.result.unmatched);
