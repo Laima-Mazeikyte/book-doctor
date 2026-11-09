@@ -26,6 +26,7 @@
 		RECOMMENDATIONS_POLL_INTERVAL_MS,
 		RECOMMENDATIONS_POLL_TIMEOUT_MS
 	} from '$lib/recommendations/fetchRecommendations';
+	import { isSelectionType } from '$lib/recommendations/bookSelection';
 	import { createRecommendationSubmission } from '$lib/recommendations/requestRecommendations';
 	import RecommendationSubmissionNotice from '$lib/components/RecommendationSubmissionNotice.svelte';
 	import { refreshRecommendationsCountFromApi } from '$lib/stores/recommendationsCount';
@@ -236,11 +237,18 @@
 				.then(
 					({
 						books: next,
+						request_type: requestType,
 						likedBookPrecedentsByBookId: nextPrecedents,
 						authorRelationshipAuthorsByBookId: nextAuthorRelationshipAuthors,
 						dimensionMatchSnapshotsByBookId: nextDimensionMatches
 					}) => {
 						if (controller.signal.aborted || !isActiveLoad(loadId, requestId)) return;
+						if (isSelectionType(requestType)) {
+							void goto(resolve(`/choose-books?request_id=${encodeURIComponent(requestId)}`), {
+								replaceState: true
+							});
+							return;
+						}
 						recommendationsPageStore.setRun(requestId, {
 							books: next,
 							likedBookPrecedentsByBookId: nextPrecedents,
@@ -288,12 +296,19 @@
 				try {
 					const {
 						books: nextBooks,
+						request_type: requestType,
 						likedBookPrecedentsByBookId: nextPrecedents,
 						authorRelationshipAuthorsByBookId: nextAuthorRelationshipAuthors,
 						dimensionMatchSnapshotsByBookId: nextDimensionMatches
 					} = await fetchRecommendations(accessToken, requestId, { signal });
 					signal.throwIfAborted();
 					if (!isActiveLoad(loadId, requestId)) return;
+					if (isSelectionType(requestType)) {
+						await goto(resolve(`/choose-books?request_id=${encodeURIComponent(requestId)}`), {
+							replaceState: true
+						});
+						return;
+					}
 					if (nextBooks.length > 0) {
 						applyBooksFromRun(
 							nextBooks,

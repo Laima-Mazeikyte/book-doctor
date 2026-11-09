@@ -85,6 +85,8 @@
 		height: clamp(6.5rem, 22vw, 10.5rem);
 		flex-shrink: 0;
 		overflow: hidden;
+		/* Keep screen blending against the page color during ancestor opacity fades. */
+		background: var(--color-bg);
 	}
 
 	.landing__logo {

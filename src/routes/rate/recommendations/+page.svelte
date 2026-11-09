@@ -97,7 +97,9 @@
 	const likedBookPrecedentsForDisplay = $derived.by((): Record<string, Book[]> => {
 		const filtered: Record<string, Book[]> = {};
 		for (const [bookId, precedents] of Object.entries(uniquePayload.likedBookPrecedentsByBookId)) {
-			filtered[bookId] = filterRatedLikedBookPrecedents(precedents, $ratingsStore);
+			filtered[bookId] = uniquePayload.selectionSeedBookIds?.includes(bookId)
+				? precedents
+				: filterRatedLikedBookPrecedents(precedents, $ratingsStore);
 		}
 		return filtered;
 	});
@@ -165,6 +167,7 @@
 				recommendationAppearanceCount?: Record<string, number>;
 				bestRecommendationRank?: Record<string, number>;
 				likedBookPrecedentsByBookId?: Record<string, Book[]>;
+				selectionSeedBookIds?: string[];
 				authorRelationshipAuthorsByBookId?: AuthorRelationshipAuthorsByBookId;
 				dimensionMatchSnapshotsByBookId?: DimensionMatchSnapshotsByBookId;
 			} = await res.json();
@@ -178,6 +181,7 @@
 				recommendationAppearanceCount: data.recommendationAppearanceCount ?? {},
 				bestRecommendationRank: data.bestRecommendationRank ?? {},
 				likedBookPrecedentsByBookId: data.likedBookPrecedentsByBookId ?? {},
+				selectionSeedBookIds: data.selectionSeedBookIds ?? [],
 				authorRelationshipAuthorsByBookId: data.authorRelationshipAuthorsByBookId ?? {},
 				dimensionMatchSnapshotsByBookId: normalizeDimensionMatchSnapshots(
 					data.dimensionMatchSnapshotsByBookId
@@ -374,6 +378,9 @@
 		{/if}
 
 		<div class="recommendations-page__toolbar">
+			<a class="btn btn--secondary" href={resolve('/choose-books?from=recommendations')}
+				>Rank my list</a
+			>
 			<div class="recommendations-page__sort">
 				<span class="recommendations-page__sort-sizer" aria-hidden="true">{sortOptionLabel}</span>
 				<select
@@ -417,6 +424,9 @@
 								{book}
 								coverPriority={coverPriorityFor(i, gridColumns)}
 								likedBookPrecedents={likedBookPrecedentsForDisplay[book.book_id] ?? []}
+								precedentsFromSelection={uniquePayload.selectionSeedBookIds?.includes(
+									book.book_id
+								) ?? false}
 								authorRelationshipAuthors={authorRelationshipAuthorsForDisplay[book.book_id] ?? []}
 								dimensionMatches={uniquePayload.dimensionMatchSnapshotsByBookId[book.book_id]
 									?.matches ?? []}
@@ -472,6 +482,9 @@
 	}
 	.recommendations-page__toolbar {
 		display: flex;
+		gap: var(--space-4);
+		align-items: center;
+		flex-wrap: wrap;
 		justify-content: flex-end;
 		align-self: stretch;
 		margin: 0 0 var(--space-5) 0;

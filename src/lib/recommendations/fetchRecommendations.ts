@@ -12,7 +12,9 @@ export const RECOMMENDATIONS_POLL_TIMEOUT_MS = 20_000;
 export type FetchRecommendationsResult = {
 	books: Book[];
 	request_id: string | null;
+	request_type?: string | null;
 	likedBookPrecedentsByBookId: Record<string, Book[]>;
+	selectionSeedBookIds?: string[];
 	authorRelationshipAuthorsByBookId: AuthorRelationshipAuthorsByBookId;
 	dimensionMatchSnapshotsByBookId: DimensionMatchSnapshotsByBookId;
 };
@@ -40,14 +42,18 @@ export async function fetchRecommendations(
 			const data: {
 				books: Book[];
 				request_id: string | null;
+				request_type?: string | null;
 				likedBookPrecedentsByBookId?: Record<string, Book[]>;
+				selectionSeedBookIds?: string[];
 				authorRelationshipAuthorsByBookId?: AuthorRelationshipAuthorsByBookId;
 				dimensionMatchSnapshotsByBookId?: DimensionMatchSnapshotsByBookId;
 			} = await res.json();
 			return {
 				books: data.books ?? [],
 				request_id: data.request_id ?? null,
+				request_type: data.request_type ?? null,
 				likedBookPrecedentsByBookId: data.likedBookPrecedentsByBookId ?? {},
+				selectionSeedBookIds: data.selectionSeedBookIds ?? [],
 				authorRelationshipAuthorsByBookId: data.authorRelationshipAuthorsByBookId ?? {},
 				dimensionMatchSnapshotsByBookId: normalizeDimensionMatchSnapshots(
 					data.dimensionMatchSnapshotsByBookId

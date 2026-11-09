@@ -17,16 +17,12 @@
 	);
 	const failed = $derived(states.filter((state) => state.status === 'error'));
 	const retrying = $derived(states.some((state) => state.status === 'retrying'));
-	const cached = $derived(
-		states
-			.filter((state) => ['error', 'retrying'].includes(state.status))
-			.every((state) => state.hasSnapshot)
-	);
+	const cached = $derived(failed.every((state) => state.hasSnapshot));
 	onMount(() => {
 		if ($authStore.user) void libraryLoads.visit(collections);
 	});
 	const collectionLabel = $derived.by(() => {
-		const affected = states.filter((state) => ['error', 'retrying'].includes(state.status));
+		const affected = failed;
 		const labels = new Set(
 			affected.map((state) =>
 				state.kind === 'ratedDetails' || state.kind === 'ratings'
@@ -46,12 +42,12 @@
 		role={failed.length ? 'alert' : 'status'}
 		data-testid="library-load-notice"
 	>
-		<span
-			>{t(cached ? 'libraryLoad.refreshError' : 'libraryLoad.loadError', {
-				collection: t(`libraryLoad.${collectionLabel}`)
-			})}</span
-		>
 		{#if failed.length > 0}
+			<span
+				>{t(cached ? 'libraryLoad.refreshError' : 'libraryLoad.loadError', {
+					collection: t(`libraryLoad.${collectionLabel}`)
+				})}</span
+			>
 			<button
 				type="button"
 				onclick={() => void libraryLoads.retry(failed.map((state) => state.kind))}

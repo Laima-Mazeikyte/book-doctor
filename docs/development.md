@@ -120,12 +120,23 @@ reads and pending-save flushes, immediately before inserting a job. Search feedb
 uses this same scheduler rather than a separate generation path. Initial loading
 can still join an existing pending job; it does not create one while browsing is paused.
 
-After 100 distinct books enter the viewport without feedback, pagination shows
+After 150 distinct books enter the viewport without feedback, pagination shows
 only **Load more**. Overscan and revisits do not count. Each click permits one
 batch; only a library interaction resumes automatic loading. An already running
 job may complete. The checkpoint belongs to the layout controller in memory, so
 navigation away and back retains it, while reloads and account changes reset it.
 It is not written to local storage. Seen-ID tracking stops at the checkpoint.
+
+Feed inserts share a per-account coordinator. Web Locks coordinate supporting
+browser tabs; a versioned local journal and live request reconciliation preserve
+pending jobs across navigation, polling timeouts and reloads. Browsers without
+Web Locks retain same-tab coordination and best-effort storage coordination.
+Serialization across devices requires backend enforcement. No new generation
+is triggered by off-Browse library mutations: publication consumes the backend
+cooldown even for unseen books. Background preparation only reads existing
+batches. Feed display cache v2 discards pre-deployment v1 candidates/request IDs
+while preserving auth and library save journals. Its separate 100-book display
+bound remains unchanged.
 
 `e2e/rate-feed-scheduling.e2e.ts` covers early requests, one-batch lookahead,
 checkpoint/manual loading, navigation, exclusions after feedback during generation,

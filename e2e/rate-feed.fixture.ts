@@ -68,6 +68,7 @@ export async function setup(page: Page, { initialCount = 1000 } = {}) {
 			state.writes++;
 			return route.fulfill({ status: 204, body: '' });
 		}
+		if (table === 'feed_requests') return route.fulfill({ json: [] });
 		if (table === 'books')
 			return route.fulfill({
 				json: state.searchBooks.map((book) => ({ ...book, book_name: book.title }))

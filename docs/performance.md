@@ -8,7 +8,14 @@ quiet optimistic saves and account-change cancellation. The original 150-ms navi
 fade remains. Persistent feed candidates are bounded to 24 hours/100 books and filtered
 against current/pending interactions. Cached cards remain mounted during refresh.
 The shared read deadline is 10 seconds; it does not cover every auth/library operation.
-Landing preparation reuses reads and never starts generation jobs.
+Landing preparation reuses reads and never starts generation jobs. After landing
+images/fonts are ready and the logo video has a frame, it preloads `/rate` code,
+prepares the live public Top 100 or authenticated feed, and warms first-row covers.
+Top 100 preparation preserves the response's shuffle seed and pagination; early
+clicks join pending reads or start foreground loading without waiting for assets.
+Popular preparation expires after five minutes and is consumed by the next entry;
+account changes and interactions invalidate it. The layout keeps one keyed wrapper
+so enabling the 150-ms destination fade does not remount the departing landing page.
 
 The strict under-200-ms cache-hit visible-action target remains open. Historical
 restored-fade fixture measurements (October 25, 2026):
@@ -18,6 +25,23 @@ restored-fade fixture measurements (October 25, 2026):
 | Disk cache, refresh pending   | 169.5–236.3 ms       | 180.3 ms | 4/5                  |
 | Completed landing preparation | 152.9–420.1 ms       | 258.6 ms | 2/5                  |
 | Warm navigation               | 209.7–391.2 ms       | 217.3 ms | 0/5                  |
+
+November 8, 2026 production-preview validation after landing asset gating, live
+Top 100 preparation, route/cover preloading, and the stable transition wrapper:
+all 33 behavior checks passed. The three timing assertions still failed. Every
+visible-rating sample is listed below, in run order, with the 150-ms fade retained.
+
+| Scenario                      | Visible rating samples (ms)       | Median   | Samples under 200 ms |
+| ----------------------------- | --------------------------------- | -------- | -------------------- |
+| Disk cache, refresh pending   | 195.1, 314.3, 241.4, 241.3, 338.4 | 241.4 ms | 1/5                  |
+| Completed landing preparation | 420.2, 301.1, 201.6, 243.7, 210.3 | 243.7 ms | 0/5                  |
+| Warm navigation               | 173.7, 253.1, 241.9, 275.9, 403.8 | 253.1 ms | 1/5                  |
+
+These authenticated fixtures made one feed read and zero generation writes per
+scenario. Separate signed-out and below-threshold behavior checks verify that a
+pending Top 100 read is shared, its seed/offset survive entry, and asset waiting
+does not delay an early click. These samples do not establish production latency
+or a strict instant-render guarantee.
 
 Each scenario made one feed read and zero generation writes. Earlier 74–149-ms samples
 used a temporary zero-fade build and do not establish acceptance for the restored UI.
@@ -41,7 +65,7 @@ contents into reports. A document navigation does not preserve a console-install
 click probe; use a browser Performance/Network recording for direct entry.
 
 For a real-account application-cache miss, let pending saves settle and remove only
-that reader's disposable book-doctor:rate-feed:v1:<uid> and
+that reader's disposable book-doctor:rate-feed:v2:<uid> and
 book-doctor:library-cache:v2:<uid> snapshots. Preserve auth and pending-save journals.
 Keep browser HTTP cache/viewport fixed. Navigate directly to /rate, then compare warm
 and post-idle entries without repeatedly warming the upstream service. Browser cache

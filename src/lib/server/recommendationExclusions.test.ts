@@ -27,8 +27,8 @@ const fetcher: typeof fetch = async (input) => {
 		case 'recommendation_requests':
 			return Response.json(
 				url.searchParams.has('id') && url.searchParams.get('id') === 'eq.1'
-					? { id: '1' }
-					: [{ id: '1', filters: null }]
+					? { id: '1', status: 'completed', result_count: 3 }
+					: [{ id: '1', filters: null, status: 'completed', result_count: 3 }]
 			);
 		case 'recommendation_items':
 			return Response.json(

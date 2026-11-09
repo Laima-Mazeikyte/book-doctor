@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { authStore, authReady } from '$lib/stores/auth';
 	import { canUseLibraryAction, userLibraryHydrationStore } from '$lib/stores/userLibrary';
 	import { resolve } from '$app/paths';
@@ -23,6 +24,7 @@
 		book: Book;
 		summaryTitleId: string;
 		displaySummary: string;
+		summaryStatus?: Snippet;
 		showCoverImage: boolean;
 		onCoverImageError?: () => void;
 		showAuthorInSheetMeta: boolean;
@@ -80,6 +82,7 @@
 		book,
 		summaryTitleId,
 		displaySummary,
+		summaryStatus,
 		showCoverImage,
 		onCoverImageError,
 		showAuthorInSheetMeta,
@@ -291,7 +294,11 @@
 			</ul>
 		{/if}
 
-		<p class="book-card__summary">{displaySummary}</p>
+		{#if summaryStatus}
+			{@render summaryStatus()}
+		{:else}
+			<p class="book-card__summary">{displaySummary}</p>
+		{/if}
 		<RecommendationPrecedents books={likedBookPrecedents} />
 		<RecommendationAuthorRelationships authors={authorRelationshipAuthors} />
 		<RecommendationDimensionMatches matches={dimensionMatches} />

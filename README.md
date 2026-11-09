@@ -20,6 +20,11 @@ and verified on the shared project. Its migration-history entry still needs
 reconciliation; do not replay the SQL. See [discovery behavior](docs/discovery.md) and
 [request timeouts](docs/request-timeouts.md) for the current implementation.
 
+The local [book-selection recommendation feature](docs/book-selection.md) adds
+`/choose-books` with bookmark/history selection and liked-book discovery. Its
+additive request schema and backend worker dispatch must be installed together
+before live generation is available; see the guide for the contract and checks.
+
 ## Environment variables
 
 Copy `.env.example` to `.env` and fill in the values:

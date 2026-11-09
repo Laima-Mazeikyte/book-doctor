@@ -71,7 +71,14 @@ beforeEach(() => {
 				table === 'recommendation_log'
 					? [...fixture.logs]
 					: table === 'recommendation_requests'
-						? [...fixture.requests]
+						? fixture.logs.map((log) => ({
+								...log,
+								id: log.request_id,
+								status: 'completed',
+								result_count: 10,
+								filters: null,
+								...fixture.requests.find((request) => request.id === log.request_id)
+							}))
 						: [...fixture.rows];
 			const query = {
 				select(fields: string) {
@@ -80,6 +87,9 @@ beforeEach(() => {
 				},
 				eq(key: string, value: unknown) {
 					rows = rows.filter((row) => row[key] === value);
+					return query;
+				},
+				gt() {
 					return query;
 				},
 				in(key: string, values: unknown[]) {

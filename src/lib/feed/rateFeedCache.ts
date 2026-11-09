@@ -1,7 +1,7 @@
 import type { Book, QualityBand } from '$lib/types/book';
 import { cachedBookAnnotations } from '$lib/books/annotations';
 
-export const RATE_FEED_CACHE_PREFIX = 'book-doctor:rate-feed:v1:';
+export const RATE_FEED_CACHE_PREFIX = 'book-doctor:rate-feed:v2:';
 export const RATE_FEED_CACHE_MAX_AGE_MS = 24 * 60 * 60_000;
 export const RATE_FEED_CACHE_MAX_BOOKS = 100;
 const MAX_CACHE_CHARS = 1_500_000;
@@ -10,7 +10,7 @@ export type CachedRateFeedSource =
 	| { kind: 'curated'; requestId: string | null }
 	| { kind: 'popular'; requestId: null; seed: string | null; nextOffset: number; hasMore: boolean };
 export type CachedRateFeed = {
-	version: 1;
+	version: 2;
 	ownerId: string;
 	fetchedAt: number;
 	source: CachedRateFeedSource;
@@ -110,7 +110,7 @@ function parse(
 ): CachedRateFeed | null {
 	if (
 		!object(value) ||
-		value.version !== 1 ||
+		value.version !== 2 ||
 		value.ownerId !== ownerId ||
 		!identifier(ownerId) ||
 		!Number.isSafeInteger(value.fetchedAt) ||
@@ -151,7 +151,7 @@ function parse(
 		new Set(valid.map((row) => row.book_id)).size !== valid.length
 	)
 		return null;
-	return { version: 1, ownerId, fetchedAt: value.fetchedAt as number, source, books: valid };
+	return { version: 2, ownerId, fetchedAt: value.fetchedAt as number, source, books: valid };
 }
 
 export function createRateFeedCache({
@@ -166,6 +166,7 @@ export function createRateFeedCache({
 	return {
 		read(ownerId) {
 			try {
+				storage()?.removeItem('book-doctor:rate-feed:v1:' + ownerId);
 				const raw = storage()?.getItem(RATE_FEED_CACHE_PREFIX + ownerId);
 				return raw && raw.length <= MAX_CACHE_CHARS
 					? parse(JSON.parse(raw), ownerId, now(), maxAgeMs)
@@ -188,6 +189,7 @@ export function createRateFeedCache({
 		clear(ownerId) {
 			try {
 				storage()?.removeItem(RATE_FEED_CACHE_PREFIX + ownerId);
+				storage()?.removeItem('book-doctor:rate-feed:v1:' + ownerId);
 			} catch {
 				/* Keep pending-save journals independent. */
 			}

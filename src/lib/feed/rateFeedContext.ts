@@ -6,6 +6,7 @@ import {
 	createRateFeedController,
 	RateFeedReadError,
 	type LatestFeedStateResponse,
+	type PopularFeedPage,
 	type RateFeedController,
 	type RateFeedIdentity
 } from './rateFeedController';
@@ -27,6 +28,14 @@ export function createBrowserRateFeedController({
 } = {}): RateFeedController {
 	return createRateFeedController({
 		readLatest: readLatestRateFeed,
+		readPopular: async (identity, signal) => {
+			const response = await fetch(`${resolve('/api/books/popular')}?offset=0`, {
+				headers: identity ? { Authorization: `Bearer ${identity.accessToken}` } : {},
+				signal
+			});
+			if (!response.ok) throw new Error(`Failed to load popular books: HTTP ${response.status}`);
+			return (await response.json()) as PopularFeedPage;
+		},
 		cache: persistSnapshots ? createRateFeedCache() : undefined
 	});
 }

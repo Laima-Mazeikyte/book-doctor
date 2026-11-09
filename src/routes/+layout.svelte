@@ -27,12 +27,10 @@
 	import SaveAccountPrompt from '$lib/components/SaveAccountPrompt.svelte';
 	import LibrarySaveNotice from '$lib/components/LibrarySaveNotice.svelte';
 	import { librarySaves } from '$lib/stores/librarySaves';
+	import { selectionCandidates } from '$lib/recommendations/selectionCandidates';
+	import { loadBookmarkDetails } from '$lib/auth/load-bookmarks';
 	import { createLayoutAuthController } from '$lib/auth/bootstrap-auth';
 	import { AUTH_SIGNED_IN_EVENT } from '$lib/auth/completeAuthSuccess';
-	import {
-		onAfterNavigateForBrowseFeedWarm,
-		notifyLibraryPersistedMutationForBrowseFeedWarm
-	} from '$lib/feed/browseFeedWarm';
 	import { isRateShellPath } from '$lib/navigation/rateShell';
 	import { getSupabase } from '$lib/supabase';
 	import { createBrowserRateFeedController, setRateFeedContext } from '$lib/feed/rateFeedContext';
@@ -154,6 +152,7 @@
 			pathname === '/faq' ||
 			pathname === '/rate' ||
 			pathname === '/discover' ||
+			pathname === '/choose-books' ||
 			pathname.startsWith('/rate/') ||
 			pathname.startsWith('/lab') ||
 			pathname.startsWith('/books/')
@@ -186,6 +185,8 @@
 			libraryHydratedForUserId
 		);
 		await libraryLoads.retry(LIBRARY_ID_COLLECTIONS);
+		selectionCandidates.invalidate();
+		if (bookmarksPageStore.getSnapshot().loaded) void loadBookmarkDetails(user.id, true);
 	});
 	onMount(() => librarySnapshots.mount());
 
@@ -193,6 +194,7 @@
 		const supabase = getSupabase();
 		const user = get(authStore).user;
 		if (!supabase || !user?.id) return;
+		selectionCandidates.invalidate();
 
 		activeLibraryLoadRequestId = reloadUserLibraryAfterMigration(
 			supabase,
@@ -202,19 +204,14 @@
 			persistenceUserId
 		);
 		scheduleUserLibraryDetailsLoad(user.id);
+		if (bookmarksPageStore.getSnapshot().loaded) void loadBookmarkDetails(user.id, true);
 	}
 
 	onMount(() => {
 		librarySaves.initialize();
 		const unsubscribeSaved = librarySaves.onBookSaved(() => {
 			rateFeed.invalidatePrepared();
-			const owner = librarySaves.getOwner();
-			void librarySaves
-				.flush()
-				.then(() => {
-					if (librarySaves.getOwner() === owner) notifyLibraryPersistedMutationForBrowseFeedWarm();
-				})
-				.catch(() => undefined);
+			void librarySaves.flush().catch(() => undefined);
 		});
 
 		const supabaseClient = getSupabase();
@@ -240,6 +237,7 @@
 		registerUserLibraryDetailsLoader((userId) => {
 			const supabase = getSupabase();
 			if (!supabase || get(authStore).user?.id !== userId) return;
+			if (page.url.pathname === '/choose-books') return;
 			void loadUserLibraryDetails(supabase, userId, activeLibraryLoadRequestId, libraryCoordinator);
 		});
 
@@ -248,6 +246,7 @@
 			const token = get(authStore).session?.access_token ?? null;
 			if (!user?.id || !token) return;
 			recommendationsCountLoadedForUserId = null;
+			if (page.url.pathname === '/choose-books') return;
 			void refreshRecommendationsCountFromApi(token).then((ok) => {
 				if (ok && get(authStore).user?.id === user.id) {
 					recommendationsCountLoadedForUserId = user.id;
@@ -298,7 +297,6 @@
 		) {
 			shortlistSavePromptStore.show();
 		}
-		onAfterNavigateForBrowseFeedWarm(from?.url, to?.url);
 	});
 
 	$effect(() => {
@@ -349,7 +347,13 @@
 
 		const token = session.access_token ?? null;
 
-		if (token && recommendationsCountLoadedForUserId !== user.id && !isRateShellPath(pathname)) {
+		if (pathname !== '/choose-books') scheduleUserLibraryDetailsLoad(user.id);
+		if (
+			token &&
+			recommendationsCountLoadedForUserId !== user.id &&
+			!isRateShellPath(pathname) &&
+			pathname !== '/choose-books'
+		) {
 			const userId = user.id;
 			void refreshRecommendationsCountFromApi(token).then((ok) => {
 				if (ok && get(authStore).user?.id === userId) {
@@ -395,15 +399,15 @@
 		class:main-book-grid-shell={isBookGridShell}
 	>
 		<div class="main-min">
-			{#if pageEnterTransition}
-				{#key page.url.pathname}
-					<div class="page-enter" in:fade={{ duration: 150, easing: cubicOut }}>
-						{@render children()}
-					</div>
-				{/key}
-			{:else}
-				{@render children()}
-			{/if}
+			<!-- Enabling the next page's fade must not remount the current page while code loads. -->
+			{#key page.url.pathname}
+				<div
+					class="page-enter"
+					in:fade={{ duration: pageEnterTransition ? 150 : 0, easing: cubicOut }}
+				>
+					{@render children()}
+				</div>
+			{/key}
 		</div>
 	</main>
 	{#if showAppFooter}

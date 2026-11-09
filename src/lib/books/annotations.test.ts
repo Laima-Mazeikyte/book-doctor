@@ -134,7 +134,7 @@ describe('stored book annotation mapping', () => {
 			keyword1: 'Wonder'
 		} as Parameters<typeof mapBookRowToBook>[0]);
 		cache.write({
-			version: 1,
+			version: 2,
 			ownerId: 'reader',
 			fetchedAt: 1000,
 			source: { kind: 'curated', requestId: '42' },

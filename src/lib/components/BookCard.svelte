@@ -42,6 +42,7 @@
 		bookmarked = false,
 		onBookmark,
 		likedBookPrecedents = [],
+		precedentsFromSelection = false,
 		authorRelationshipAuthors = [],
 		dimensionMatches = [],
 		currentRating: currentRatingProp = null,
@@ -412,7 +413,10 @@
 			}}
 		/>
 		{#if context === 'recommendations'}
-			<RecommendationPrecedents books={likedBookPrecedents} />
+			<RecommendationPrecedents
+				books={likedBookPrecedents}
+				fromSelection={precedentsFromSelection}
+			/>
 			<RecommendationAuthorRelationships authors={authorRelationshipAuthors} />
 			<RecommendationDimensionMatches matches={dimensionMatches} />
 		{/if}

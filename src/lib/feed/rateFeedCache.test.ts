@@ -8,7 +8,7 @@ import {
 
 const owner = 'account-a';
 const snapshot = (overrides: Partial<CachedRateFeed> = {}): CachedRateFeed => ({
-	version: 1,
+	version: 2,
 	ownerId: owner,
 	fetchedAt: 1000,
 	source: { kind: 'curated', requestId: '42' },
@@ -46,6 +46,17 @@ function fixture() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('bounded account feed display snapshots', () => {
+	it('discards pre-deployment batches without touching auth or library journals', () => {
+		const { cache, data } = fixture();
+		const oldKey = 'book-doctor:rate-feed:v1:' + owner;
+		data.set(oldKey, JSON.stringify({ ...snapshot(), version: 1 }));
+		data.set('auth-token', 'retained');
+		data.set('library-pending', 'retained');
+		expect(cache.read(owner)).toBeNull();
+		expect(data.has(oldKey)).toBe(false);
+		expect(data.get('auth-token')).toBe('retained');
+		expect(data.get('library-pending')).toBe('retained');
+	});
 	it('round-trips all card/detail fields without retaining unknown metadata or credentials', () => {
 		const { cache, data } = fixture();
 		const input = {
@@ -86,7 +97,7 @@ describe('bounded account feed display snapshots', () => {
 		expect(data.get(RATE_FEED_CACHE_PREFIX + owner)).toBe(before);
 	});
 	it.each([
-		{ version: 2 },
+		{ version: 1 },
 		{ ownerId: 'account-b' },
 		{ fetchedAt: -1 },
 		{ books: [] },

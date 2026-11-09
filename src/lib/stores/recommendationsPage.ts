@@ -6,6 +6,7 @@ import type { AuthorRelationshipAuthorsByBookId } from '$lib/recommendations/aut
 export type RecommendationRunData = {
 	books: Book[];
 	likedBookPrecedentsByBookId: Record<string, Book[]>;
+	selectionSeedBookIds?: string[];
 	authorRelationshipAuthorsByBookId: AuthorRelationshipAuthorsByBookId;
 	dimensionMatchSnapshotsByBookId: DimensionMatchSnapshotsByBookId;
 };
@@ -17,6 +18,7 @@ export type RecommendationsUniquePayload = {
 	recommendationAppearanceCount: Record<string, number>;
 	bestRecommendationRank: Record<string, number>;
 	likedBookPrecedentsByBookId: Record<string, Book[]>;
+	selectionSeedBookIds?: string[];
 	authorRelationshipAuthorsByBookId: AuthorRelationshipAuthorsByBookId;
 	dimensionMatchSnapshotsByBookId: DimensionMatchSnapshotsByBookId;
 };
@@ -48,6 +50,7 @@ export function createRecommendationsPageStore() {
 	const runData = writable<Map<string, RecommendationRunData>>(new Map());
 
 	return {
+		subscribe: state.subscribe,
 		ensureUser(userId: string | null) {
 			if (ownerUserId === userId) return;
 			this.reset();

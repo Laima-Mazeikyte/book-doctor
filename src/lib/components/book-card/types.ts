@@ -27,6 +27,7 @@ export type BookCardListProps = {
 	onBookmark?: (bookId: string) => void;
 	/** Resolved rated-history books that explain a recommendation, strongest first. */
 	likedBookPrecedents?: Book[];
+	precedentsFromSelection?: boolean;
 	/** Ordered author candidates that explain a recommendation after rating-based filtering. */
 	authorRelationshipAuthors?: string[];
 	dimensionMatches?: DimensionMatch[];

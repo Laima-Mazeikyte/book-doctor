@@ -68,13 +68,23 @@ Shortlist retry checks the same request. Goodreads retains confirmed job IDs for
 Check again. Existing polling intervals remain unchanged. No automatic write retries
 were added.
 
+The book-selection workspace (`/choose-books`) has a separate ten-second total
+click-to-results budget and sequential 500 ms status checks. It preserves the
+original deadline and request ID for same-tab recovery. Its explicit timeout Retry
+starts a new request by product decision; this does not cancel or prove failure of
+the old backend job. See `docs/book-selection.md` for its button-only progress,
+network backoff, result reuse and recovery rules. Other submission guards below
+are unchanged.
+
 ## Uncertain writes and authentication
 
 - Recommendation submissions show uncertainty after a timeout and block another
   submission from that mounted controller. Filtered submissions do the same.
-- A timed-out feed insert blocks further automatic inserts for that owner for the
-  current loaded application. Existing jobs can still be read. This is a conservative
-  recovery limit until a fresh load or a backend idempotency contract is available.
+- Feed inserts preserve uncertain intent in an account-scoped journal and reconcile
+  live pending requests before another insert. Navigation and polling deadlines
+  never cancel the backend job. Web Locks coordinate supported browser tabs;
+  same-tab callers share a submission. An unconfirmed insert with no recoverable
+  row remains guarded across reloads rather than automatically creating another.
 - Bug-report timeouts preserve the current form and prevent resubmission from it.
 - Correction drafts and proposal UUIDs remain intact when Check again refreshes
   context after an uncertain save. Conflict-only Reload proposal deliberately

@@ -37,7 +37,7 @@ export async function filterBookIdsExcludingUserLists(
 	return filtered;
 }
 
-/** Parse recommendation_log.created_at to epoch ms, or null when missing/invalid. */
+/** Parse a recommendation request timestamp to epoch ms, or null when missing/invalid. */
 export function parseRecommendationTimestamp(createdAt: string | null | undefined): number | null {
 	if (!createdAt) return null;
 	const ts = new Date(createdAt).getTime();

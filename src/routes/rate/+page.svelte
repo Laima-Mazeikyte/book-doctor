@@ -1235,21 +1235,30 @@
 			const headers: Record<string, string> = {};
 			const accessToken = get(authStore).session?.access_token ?? null;
 			if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
-			const data = await withTimeout(async (signal) => {
-				const res = await fetch(`${resolve('/api/books/popular')}?${params.toString()}`, {
-					headers,
-					signal
-				});
-				if (!res.ok) {
-					throw new Error(`HTTP ${res.status}`);
-				}
-				return (await res.json()) as {
-					books: Book[];
-					nextOffset: number;
-					hasMore: boolean;
-					seed?: string;
-				};
-			});
+			const prepared =
+				offset === 0 && !popularSeed
+					? await rateFeed.takePopular(
+							accessToken && entry.ownerId ? { userId: entry.ownerId, accessToken } : null
+						)
+					: null;
+			if (!rateFeed.isCurrentEntry(entry)) return;
+			const data =
+				prepared ??
+				(await withTimeout(async (signal) => {
+					const res = await fetch(`${resolve('/api/books/popular')}?${params.toString()}`, {
+						headers,
+						signal
+					});
+					if (!res.ok) {
+						throw new Error(`HTTP ${res.status}`);
+					}
+					return (await res.json()) as {
+						books: Book[];
+						nextOffset: number;
+						hasMore: boolean;
+						seed?: string;
+					};
+				}));
 			if (!rateFeed.isCurrentEntry(entry)) return;
 
 			const mode = offset === 0 ? 'replace' : 'append';

@@ -128,6 +128,39 @@ async function setup(page: Page, failures: ReadKind[], cached: boolean | 'comple
 	return state;
 }
 
+test('empty bookshelf tabs and the standalone dismissal page use the approved copy', async ({
+	page
+}) => {
+	const state = await setup(page, []);
+	await page.route('**/rest/v1/**', (route) =>
+		route.fulfill({
+			json: [],
+			headers: { 'content-range': '*/0', 'access-control-expose-headers': 'content-range' }
+		})
+	);
+	await page.route('**/api/bookmarks', (route) => route.fulfill({ json: { books: [] } }));
+	await page.route('**/api/not-interested/books?**', (route) =>
+		route.fulfill({ json: { books: [], nextCursor: null } })
+	);
+	for (const [filter, copy] of [
+		['bookmarked', "You haven't bookmarked any books yet."],
+		['rated', "You haven't rated any books yet."],
+		['not-interested', "You haven't marked any books as not interested yet."]
+	]) {
+		await page.goto(`${base}/my-bookshelf?filter=${filter}`);
+		await expect(page.locator('.bookshelf-page__empty')).toHaveText(copy);
+		await expect(page.locator('.bookshelf-page__loading')).toHaveCount(0);
+	}
+	await page.goto(`${base}/not-interested`);
+	await expect(page.locator('.not-interested-page__intro')).toHaveText(
+		"Books you've marked as not interested."
+	);
+	await expect(page.locator('.not-interested-page__empty')).toHaveText(
+		"You haven't marked any books as not interested yet."
+	);
+	expect(state.writes).toBe(0);
+});
+
 test('a failed first rating load shows Retry, then loads without refetching successful collections', async ({
 	page
 }) => {
@@ -139,9 +172,7 @@ test('a failed first rating load shows Retry, then loads without refetching succ
 	await expect(notice.getByRole('button', { name: 'Retry', exact: true })).toBeVisible({
 		timeout: 20_000
 	});
-	await expect(
-		page.getByText('No books rated yet. Rate at least 10 to get recommendations.', { exact: true })
-	).toHaveCount(0);
+	await expect(page.getByText("You haven't rated any books yet.", { exact: true })).toHaveCount(0);
 	const bookmarkReads = state.reads.get('bookmarks');
 	const dismissalReads = state.reads.get('dismissals');
 	state.failures.clear();
@@ -293,10 +324,14 @@ test('cached rated books remain visible and editable through a failed details re
 	await page.goto(`${base}/my-bookshelf?filter=rated`, { waitUntil: 'domcontentloaded' });
 	await expect(page.locator('.book-card')).toHaveCount(10);
 	const notice = page.getByTestId('library-load-notice');
+	await expect(notice).toHaveAttribute('role', 'status');
+	await expect(notice).toHaveText('Retrying...');
+	await expect(notice).not.toContainText('Couldn’t refresh');
 	await expect(notice.getByRole('button', { name: 'Retry', exact: true })).toBeVisible({
 		timeout: 20_000
 	});
-	await expect(notice).toContainText('Showing previously loaded books');
+	await expect(notice).toContainText('Couldn’t refresh your ratings.');
+	await expect(notice).not.toContainText('Showing previously loaded books');
 	const card = page.locator(`.book-card[data-book-id="${books[0].id}"]`);
 	await card.locator('.book-card__star').nth(4).click();
 	await expect.poll(() => state.writes).toBe(1);
@@ -325,7 +360,9 @@ test('a bookmark drawer failure waits for Retry and reopening starts a fresh att
 	await expect(notice.getByRole('button', { name: 'Retry', exact: true })).toBeVisible({
 		timeout: 20_000
 	});
-	await expect(panel.getByText('No bookmarked books yet.', { exact: false })).toHaveCount(0);
+	await expect(
+		panel.getByText("You haven't bookmarked any books yet.", { exact: true })
+	).toHaveCount(0);
 	expect(state.reads.get('bookmarkDetails')).toBe(4);
 	await page.evaluate(() => {
 		window.dispatchEvent(new Event('online'));
@@ -356,9 +393,7 @@ test('missing book details preserve the known rating count and do not block reco
 		page.getByTestId('library-load-notice').getByRole('button', { name: 'Retry', exact: true })
 	).toBeVisible({ timeout: 20_000 });
 	await expect(page.getByRole('tab', { name: 'Rated, 10', exact: true })).toBeVisible();
-	await expect(
-		page.getByText('No books rated yet. Rate at least 10 to get recommendations.', { exact: true })
-	).toHaveCount(0);
+	await expect(page.getByText("You haven't rated any books yet.", { exact: true })).toHaveCount(0);
 	await page.getByRole('link', { name: 'Rate books', exact: true }).click();
 	await expect(page).toHaveURL(`${base}/rate`);
 	await expect(

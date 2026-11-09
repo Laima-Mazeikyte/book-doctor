@@ -701,6 +701,9 @@
 			<a href={resolve('/discover')} aria-current="page">Filter books</a>
 		</nav>
 		<h1 class="filtered-page__title typ-display2 typ-display2--content">Find your next book</h1>
+		<a class="btn btn--secondary" href={resolve('/choose-books?mode=recommend_from_selection')}
+			>Find more like books you loved</a
+		>
 	</header>
 
 	<section class="filtered-page__results" aria-label="Filtered recommendation results">

@@ -283,7 +283,7 @@
 		if (!userId) return;
 		untrack(() => {
 			void libraryLoads.visit(['ratings', 'bookmarks', 'dismissals', 'ratedDetails']);
-			void loadBookmarkDetails(userId, true);
+			void loadBookmarkDetails(userId);
 		});
 	});
 	$effect(() => {
@@ -637,6 +637,11 @@
 
 <div class="bookshelf-page">
 	<h1 class="bookshelf-page__title typ-display2 typ-display2--content">{t('rated.title')}</h1>
+	{#if activeFilter === 'bookmarked'}
+		<div class="bookshelf-page__choose">
+			<Button variant="secondary" href="/choose-books?from=bookmarks">Rank my list</Button>
+		</div>
+	{/if}
 
 	<div class="bookshelf-page__search">
 		<SearchBar
@@ -767,6 +772,11 @@
 </div>
 
 <style>
+	.bookshelf-page__choose {
+		display: flex;
+		justify-content: center;
+		margin: 0 0 24px;
+	}
 	.bookshelf-page__more {
 		display: flex;
 		justify-content: center;

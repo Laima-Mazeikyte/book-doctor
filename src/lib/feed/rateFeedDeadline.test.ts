@@ -116,7 +116,7 @@ describe('shared feed read deadline', () => {
 	it('preserves cached and mounted books when background refresh times out', async () => {
 		const { controller, cache, readLatest } = fixture();
 		cache.write({
-			version: 1,
+			version: 2,
 			ownerId: identity.userId,
 			fetchedAt: Date.now(),
 			source: { kind: 'curated', requestId: 'cached' },

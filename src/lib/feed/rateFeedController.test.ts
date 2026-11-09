@@ -3,6 +3,7 @@ import { get } from 'svelte/store';
 import {
 	createRateFeedController,
 	RateFeedReadError,
+	type PopularFeedPage,
 	type LatestFeedStateResponse
 } from './rateFeedController';
 
@@ -51,6 +52,107 @@ function fixture() {
 		}
 	};
 }
+
+describe('live popular feed preparation', () => {
+	const page: PopularFeedPage = { books, seed: 'live-seed', nextOffset: 20, hasMore: true };
+
+	it('shares a pending landing read with entry and preserves the whole pagination payload', async () => {
+		const read = deferred<PopularFeedPage>();
+		const readPopular = vi.fn().mockReturnValueOnce(read.promise).mockResolvedValue(page);
+		const controller = createRateFeedController({ readLatest: vi.fn(), readPopular });
+		const preparing = controller.preparePopular(null);
+		expect(controller.preparePopular(null)).toBe(preparing);
+		const entering = controller.takePopular(null);
+		read.resolve(page);
+		expect(await entering).toBe(page);
+		expect(readPopular).toHaveBeenCalledTimes(1);
+		// A subsequent entry obtains a new live shuffle instead of replaying a consumed one.
+		await controller.takePopular(null);
+		expect(readPopular).toHaveBeenCalledTimes(2);
+		controller.destroy();
+	});
+
+	it('reuses completed preparation and expires it after five minutes', async () => {
+		let now = 0;
+		const readPopular = vi.fn().mockResolvedValue(page);
+		const controller = createRateFeedController({
+			readLatest: vi.fn(),
+			readPopular,
+			now: () => now
+		});
+		await controller.preparePopular(null);
+		await controller.preparePopular(null);
+		expect(readPopular).toHaveBeenCalledTimes(1);
+		now = 300_000;
+		await controller.preparePopular(null);
+		expect(readPopular).toHaveBeenCalledTimes(2);
+		expect(await controller.takePopular(null)).toBe(page);
+		expect(readPopular).toHaveBeenCalledTimes(2);
+		controller.destroy();
+	});
+
+	it.each(['owner', 'interaction', 'destroy'] as const)(
+		'rejects obsolete preparation after %s changes',
+		async (change) => {
+			const read = deferred<PopularFeedPage>();
+			const readPopular = vi.fn().mockReturnValue(read.promise);
+			const controller = createRateFeedController({ readLatest: vi.fn(), readPopular });
+			const preparing = controller.preparePopular(null);
+			const signal = readPopular.mock.calls[0][1] as AbortSignal;
+			if (change === 'owner') controller.setOwner(identity.userId);
+			else if (change === 'interaction') controller.invalidatePrepared();
+			else controller.destroy();
+			read.resolve(page);
+			expect(await preparing).toBeNull();
+			expect(signal.aborted).toBe(true);
+			controller.destroy();
+		}
+	);
+
+	it('uses the authenticated identity and allows a failed speculative request to retry', async () => {
+		const readPopular = vi.fn().mockRejectedValueOnce(new Error('outage')).mockResolvedValue(page);
+		const controller = createRateFeedController({ readLatest: vi.fn(), readPopular });
+		controller.setOwner(identity.userId);
+		expect(await controller.preparePopular(null)).toBeNull();
+		await expect(controller.preparePopular(identity)).rejects.toThrow('outage');
+		expect(await controller.takePopular(identity)).toBe(page);
+		expect(readPopular).toHaveBeenCalledTimes(2);
+		expect(readPopular.mock.calls[1][0]).toEqual(identity);
+		controller.destroy();
+	});
+
+	it('lets a live prepared shuffle take precedence over an older popular disk candidate', async () => {
+		const cache = {
+			read: vi.fn().mockReturnValue({
+				version: 2,
+				ownerId: identity.userId,
+				fetchedAt: Date.now(),
+				books,
+				source: {
+					kind: 'popular',
+					requestId: null,
+					seed: 'older-seed',
+					nextOffset: 20,
+					hasMore: true
+				}
+			}),
+			write: vi.fn(),
+			clear: vi.fn()
+		};
+		const controller = createRateFeedController({
+			readLatest: vi.fn(),
+			readPopular: vi.fn().mockResolvedValue(page),
+			cache
+		});
+		controller.setOwner(identity.userId);
+		const entry = controller.enter();
+		expect(controller.restoreInitial(entry, (books) => books)?.source.kind).toBe('popular');
+		await controller.preparePopular(identity);
+		expect(controller.restoreInitial(entry, (books) => books)).toBeNull();
+		expect((await controller.takePopular(identity))?.seed).toBe('live-seed');
+		controller.destroy();
+	});
+});
 
 describe('account-owned rate feed controller', () => {
 	it('deduplicates preparation and reuses a recent result until it expires or is forced', async () => {

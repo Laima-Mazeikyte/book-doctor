@@ -3,7 +3,7 @@ import { buildDimensionMatchSnapshotsByBookId } from '$lib/recommendations/dimen
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { buildAuthorRelationshipAuthorsByBookId } from '$lib/recommendations/authorRelationships';
-import { fetchBooksByUlids } from '$lib/server/catalogBooks';
+import { fetchBooksByUlids, fetchSelectionBooksByUlids } from '$lib/server/catalogBooks';
 import {
 	filterBookIdsExcludingUserLists,
 	lastRecommendedAtRecord,
@@ -16,25 +16,29 @@ import {
 } from '$lib/server/recommendationPrecedents';
 import { requireAccessToken } from '$lib/server/requestAuth';
 import { createSupabaseWithAuth } from '$lib/server/supabase';
-import { loadRecentOverallRecommendationLogs } from '$lib/server/overallRecommendationLogs';
+import { loadRecentOverallRecommendationRequests } from '$lib/server/overallRecommendationRequests';
 
 type RecommendationItemRow = RecommendationPrecedentRow & {
 	request_id?: unknown;
 };
 
 export const GET: RequestHandler = withRequestTimeout(async ({ request }, signal) => {
+	const selectionView = new URL(request.url).searchParams.get('view') === 'selection';
 	const accessToken = requireAccessToken(request);
 	const supabase = createSupabaseWithAuth(accessToken, signal);
 
-	const { logs, publicIds } = await loadRecentOverallRecommendationLogs(supabase).catch((cause) => {
-		console.error(cause);
-		throw error(500, 'Failed to load recommendation runs');
-	});
+	const { runs, publicIds } = await loadRecentOverallRecommendationRequests(supabase).catch(
+		(cause) => {
+			console.error(cause);
+			throw error(500, 'Failed to load recommendation runs');
+		}
+	);
 
-	const requestIds = (logs ?? []).map((r) => r.request_id).filter(Boolean);
+	const requestIds = (runs ?? []).map((r) => r.request_id).filter(Boolean);
 	if (requestIds.length === 0) {
+		if (selectionView) return json({ books: [], lastRecommendedAt: {} });
 		return json({
-			hasRuns: (logs ?? []).length > 0,
+			hasRuns: (runs ?? []).length > 0,
 			books: [],
 			lastRecommendedAt: {},
 			recommendationAppearanceCount: {},
@@ -49,7 +53,9 @@ export const GET: RequestHandler = withRequestTimeout(async ({ request }, signal
 	const { data: items, error: itemsError } = await supabase
 		.from('recommendation_items')
 		.select(
-			'book_id, request_id, rank, dimension_matches, liked_book_precedent_ids, author_relationship_evidence'
+			selectionView
+				? 'book_id, request_id, rank'
+				: 'book_id, request_id, rank, dimension_matches, liked_book_precedent_ids, author_relationship_evidence'
 		)
 		.in('request_id', requestIds);
 
@@ -59,20 +65,22 @@ export const GET: RequestHandler = withRequestTimeout(async ({ request }, signal
 	}
 
 	const itemsByRequestId = new Map<string, RecommendationItemRow[]>();
+	const resultCounts = new Map(runs.map((run) => [run.request_id, run.result_count]));
 	const appearanceCountByBook = new Map<string, number>();
 	const bestRankByBook = new Map<string, number>();
 
-	for (const row of items ?? []) {
+	for (const row of (items ?? []) as unknown as RecommendationItemRow[]) {
 		const bid = String(row.book_id ?? '').trim();
-		const requestId = typeof row.request_id === 'string' ? row.request_id : '';
+		const requestId = row.request_id == null ? '' : String(row.request_id);
 		if (!bid || !requestId) continue;
+		const rank = parseRecommendationRank(row.rank);
+		if (rank == null || rank > Math.min(10, resultCounts.get(requestId) ?? 0)) continue;
 		const list = itemsByRequestId.get(requestId) ?? [];
 		list.push(row as RecommendationItemRow);
 		itemsByRequestId.set(requestId, list);
 
-		appearanceCountByBook.set(bid, (appearanceCountByBook.get(bid) ?? 0) + 1);
-		const rank = parseRecommendationRank(row.rank);
-		if (rank != null) {
+		if (!selectionView) appearanceCountByBook.set(bid, (appearanceCountByBook.get(bid) ?? 0) + 1);
+		if (!selectionView && rank != null) {
 			const prev = bestRankByBook.get(bid);
 			if (prev == null || rank < prev) bestRankByBook.set(bid, rank);
 		}
@@ -97,15 +105,15 @@ export const GET: RequestHandler = withRequestTimeout(async ({ request }, signal
 				.filter(Boolean)
 		)
 	];
-	// Most recent run that contained each book (logs are newest-first)
+	// Most recent run that contained each book (runs are newest-first)
 	const lastRecommendedMs = new Map<string, number>();
-	for (const log of logs ?? []) {
-		const rid = log.request_id;
+	for (const run of runs ?? []) {
+		const rid = run.request_id;
 		if (!rid) continue;
 		const runBookIds = (itemsByRequestId.get(rid) ?? [])
 			.map((row) => String(row.book_id ?? '').trim())
 			.filter(Boolean);
-		const ts = parseRecommendationTimestamp(log.created_at);
+		const ts = parseRecommendationTimestamp(run.created_at);
 		if (ts == null) continue;
 		for (const bid of runBookIds) {
 			if (!lastRecommendedMs.has(bid)) {
@@ -123,6 +131,17 @@ export const GET: RequestHandler = withRequestTimeout(async ({ request }, signal
 		console.error('[recommendations/unique] Failed to load exclusions:', filterError);
 		throw error(500, 'Failed to load recommendations');
 	}
+	if (selectionView) {
+		try {
+			return json({
+				books: await fetchSelectionBooksByUlids(supabase, uniqueBookIds),
+				lastRecommendedAt: lastRecommendedAtRecord(lastRecommendedMs)
+			});
+		} catch (cause) {
+			console.error(cause);
+			throw error(500, 'Failed to load books');
+		}
+	}
 
 	const recommendationAppearanceCount: Record<string, number> = {};
 	for (const [bid, n] of appearanceCountByBook) {
@@ -135,7 +154,7 @@ export const GET: RequestHandler = withRequestTimeout(async ({ request }, signal
 
 	if (uniqueBookIds.length === 0) {
 		return json({
-			hasRuns: (logs ?? []).length > 0,
+			hasRuns: (runs ?? []).length > 0,
 			books: [],
 			lastRecommendedAt: lastRecommendedAtRecord(lastRecommendedMs),
 			recommendationAppearanceCount,
@@ -150,13 +169,23 @@ export const GET: RequestHandler = withRequestTimeout(async ({ request }, signal
 		const books = await fetchBooksByUlids(supabase, uniqueBookIds);
 		const returnedBookIds = new Set(books.map((book) => book.book_id));
 		const precedentRowsInPriorityOrder: RecommendationPrecedentRow[] = [];
-		for (const log of logs ?? []) {
-			if (!log.request_id) continue;
+		for (const run of runs ?? []) {
+			if (!run.request_id) continue;
 			precedentRowsInPriorityOrder.push(
-				...(itemsByRequestId.get(log.request_id) ?? []).filter((row) =>
+				...(itemsByRequestId.get(run.request_id) ?? []).filter((row) =>
 					returnedBookIds.has(String(row.book_id ?? '').trim())
 				)
 			);
+		}
+		const selectionSeedBookIds: string[] = [];
+		const seen = new Set<string>();
+		const runTypes = new Map(runs.map((run) => [run.request_id, run.request_type]));
+		for (const row of precedentRowsInPriorityOrder) {
+			const id = String(row.book_id ?? '');
+			if (seen.has(id)) continue;
+			seen.add(id);
+			if (runTypes.get(String(row.request_id)) === 'recommend_from_selection')
+				selectionSeedBookIds.push(id);
 		}
 		const likedBookPrecedentsByBookId = await resolveLikedBookPrecedents(
 			supabase,
@@ -176,12 +205,13 @@ export const GET: RequestHandler = withRequestTimeout(async ({ request }, signal
 		);
 
 		return json({
-			hasRuns: (logs ?? []).length > 0,
+			hasRuns: (runs ?? []).length > 0,
 			books,
 			lastRecommendedAt: lastRecommendedAtRecord(lastRecommendedMs),
 			recommendationAppearanceCount,
 			bestRecommendationRank,
 			likedBookPrecedentsByBookId,
+			selectionSeedBookIds,
 			authorRelationshipAuthorsByBookId,
 			dimensionMatchSnapshotsByBookId
 		});

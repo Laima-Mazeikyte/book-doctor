@@ -25,7 +25,11 @@
 	function isNavHrefActive(href: string, pathname: string): boolean {
 		if (href === '/rate') return pathname === '/rate';
 		if (href === '/rate/recommendations')
-			return pathname === '/discover' || pathname.startsWith('/rate/recommendations');
+			return (
+				pathname === '/discover' ||
+				pathname === '/choose-books' ||
+				pathname.startsWith('/rate/recommendations')
+			);
 		if (href === '/my-bookshelf') return pathname === '/my-bookshelf';
 		return false;
 	}

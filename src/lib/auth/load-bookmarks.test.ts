@@ -74,6 +74,28 @@ describe('shared bookmark details', () => {
 		});
 	});
 
+	it('reuses a recent snapshot and revalidates stale data without hiding cached books', async () => {
+		const fetcher = vi.fn().mockImplementation(async () => Response.json({ books: [book] }));
+		vi.stubGlobal('fetch', fetcher);
+		await loadBookmarkDetails('A');
+		await loadBookmarkDetails('A');
+		expect(fetcher).toHaveBeenCalledOnce();
+		await vi.advanceTimersByTimeAsync(60_000);
+		await loadBookmarkDetails('A');
+		expect(fetcher).toHaveBeenCalledTimes(2);
+		expect(bookmarksPageStore.getSnapshot().books).toEqual([book]);
+	});
+
+	it('does not turn reopening an exhausted source into an automatic retry loop', async () => {
+		const fetcher = vi.fn().mockImplementation(async () => Response.json({}, { status: 403 }));
+		vi.stubGlobal('fetch', fetcher);
+		await loadBookmarkDetails('A');
+		await loadBookmarkDetails('A');
+		expect(fetcher).toHaveBeenCalledOnce();
+		await loadBookmarkDetails('A', true);
+		expect(fetcher).toHaveBeenCalledTimes(2);
+	});
+
 	it('preserves a bookmark saved after the read began, even when its queue entry is already acknowledged', async () => {
 		let release!: (response: Response) => void;
 		const response = new Promise<Response>((resolve) => {

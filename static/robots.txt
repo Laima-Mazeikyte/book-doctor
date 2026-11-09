@@ -1,5 +1,6 @@
 # Public books and pages are crawlable; personalized discovery is an application route.
 User-agent: *
 Disallow: /discover
+Disallow: /choose-books
 
 Sitemap: https://unread.world/sitemap.xml

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { DimensionMatch } from '$lib/recommendations/dimensionMatches';
-	import { onDestroy, tick } from 'svelte';
+	import { onDestroy, tick, type Snippet } from 'svelte';
 	import { browser } from '$app/environment';
 	import { preloadData } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -39,6 +39,8 @@
 		showRatingStars?: boolean;
 		/** Rate cards reserve the remove-rating slot before a rating exists. */
 		reserveSummaryRemoveLayoutSlot?: boolean;
+		/** Optional inline summary status while the rest of the book remains interactive. */
+		summaryStatus?: Snippet;
 	}
 
 	let {
@@ -58,7 +60,8 @@
 		onRetry,
 		ratingContext = 'recommendation',
 		showRatingStars = true,
-		reserveSummaryRemoveLayoutSlot = false
+		reserveSummaryRemoveLayoutSlot = false,
+		summaryStatus
 	}: Props = $props();
 
 	let coverImageFailed = $state(false);
@@ -444,6 +447,7 @@
 					book={sheetState.book}
 					{summaryTitleId}
 					{displaySummary}
+					{summaryStatus}
 					{showCoverImage}
 					onCoverImageError={() => (coverImageFailed = true)}
 					{showAuthorInSheetMeta}

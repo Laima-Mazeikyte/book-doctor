@@ -6,6 +6,8 @@ declare global {
 		// interface Locals {}
 		// interface PageData {}
 		interface PageState {
+			/** In-page saved-selection views; payloads stay in an account-scoped memory cache. */
+			selectionHistory?: { ownerId: string; key: string };
 			/** Selected bookshelf tab, kept with its shallow URL update. */
 			bookshelfFilter?: 'rated' | 'bookmarked' | 'not-interested';
 			/** Shallow layers: filtered recommendation editor and its tag picker. */

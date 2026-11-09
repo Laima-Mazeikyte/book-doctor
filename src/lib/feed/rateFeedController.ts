@@ -1,4 +1,5 @@
 import { writable } from 'svelte/store';
+import { withTimeout } from '$lib/requests/timeout';
 import {
 	feedStateMeetsInteractionThreshold,
 	shouldRequestInitialPersonalizedFeed,
@@ -41,6 +42,12 @@ export type InitialRateFeedChoice =
 	| { kind: 'curated'; books: Book[]; requestId: string | null }
 	| { kind: 'popular'; preservePersonalizedFeedMode: boolean };
 export type GeneratedRateFeed = { books: Book[]; requestId: string };
+export type PopularFeedPage = {
+	books: Book[];
+	nextOffset: number;
+	hasMore: boolean;
+	seed?: string;
+};
 
 export class RateFeedReadError extends Error {
 	constructor(public readonly status: number) {
@@ -67,6 +74,10 @@ export type RateFeedState = {
 
 type Options = {
 	readLatest: (identity: RateFeedIdentity, signal: AbortSignal) => Promise<LatestFeedStateResponse>;
+	readPopular?: (
+		identity: RateFeedIdentity | null,
+		signal: AbortSignal
+	) => Promise<PopularFeedPage>;
 	now?: () => number;
 	freshMs?: number;
 	cache?: RateFeedCache;
@@ -77,6 +88,7 @@ type Options = {
 /** Each layout owns one instance. Preparation never changes an admitted list or creates jobs. */
 export function createRateFeedController({
 	readLatest,
+	readPopular,
 	now = Date.now,
 	freshMs = 5 * 60_000,
 	cache,
@@ -108,6 +120,56 @@ export function createRateFeedController({
 	let destroyed = false;
 	let cacheTimer: ReturnType<typeof setTimeout> | undefined;
 	let queuedSnapshot: CachedRateFeed | null = null;
+	let popularSnapshot: { fetchedAt: number; payload: PopularFeedPage } | null = null;
+	let popularPending: { abort: AbortController; promise: Promise<PopularFeedPage | null> } | null =
+		null;
+
+	function clearPopularPreparation() {
+		popularSnapshot = null;
+		popularPending?.abort.abort();
+		popularPending = null;
+	}
+
+	// One live initial-page read per owner, shared by landing preparation and navigation.
+	function preparePopular(identity: RateFeedIdentity | null): Promise<PopularFeedPage | null> {
+		if (destroyed || !readPopular || state.ownerId !== (identity?.userId ?? null)) {
+			return Promise.resolve(null);
+		}
+		if (popularPending) return popularPending.promise;
+		if (popularSnapshot && now() - popularSnapshot.fetchedAt < freshMs) {
+			return Promise.resolve(popularSnapshot.payload);
+		}
+		const generation = ownerGeneration;
+		const revision = snapshotRevision;
+		const abort = new AbortController();
+		const current = () =>
+			!destroyed && ownerGeneration === generation && snapshotRevision === revision;
+		const promise = withTimeout((signal) => readPopular(identity, signal), {
+			signal: abort.signal,
+			timeoutMs: readTimeoutMs
+		})
+			.then((payload) => {
+				if (!current()) return null;
+				popularSnapshot = { fetchedAt: now(), payload };
+				return payload;
+			})
+			.catch((error: unknown) => {
+				if (!current() || abort.signal.aborted) return null;
+				throw error;
+			})
+			.finally(() => {
+				if (popularPending?.abort === abort) popularPending = null;
+			});
+		popularPending = { abort, promise };
+		return promise;
+	}
+
+	async function takePopular(identity: RateFeedIdentity | null): Promise<PopularFeedPage | null> {
+		const payload = await preparePopular(identity);
+		// Preparation is for the next entry, not a replacement for a later live shuffle.
+		if (popularSnapshot?.payload === payload) popularSnapshot = null;
+		return payload;
+	}
 
 	function flushSnapshot() {
 		clearTimeout(cacheTimer);
@@ -149,6 +211,7 @@ export function createRateFeedController({
 				? state.activeBooks
 				: null;
 		ownerGeneration++;
+		clearPopularPreparation();
 		pending?.abort.abort();
 		pending = null;
 		entry = null;
@@ -200,7 +263,7 @@ export function createRateFeedController({
 					});
 					if (shouldShowLatestRateFeed(payload)) {
 						queueSnapshot({
-							version: 1,
+							version: 2,
 							ownerId: identity.userId,
 							fetchedAt,
 							source: { kind: 'curated', requestId: payload.request_id },
@@ -326,6 +389,7 @@ export function createRateFeedController({
 	function invalidatePrepared() {
 		if (destroyed) return;
 		snapshotRevision++;
+		clearPopularPreparation();
 		publish({ preparedSnapshot: null });
 	}
 
@@ -339,6 +403,12 @@ export function createRateFeedController({
 		if (recent && prepared.payload.mode !== 'below_threshold') return null;
 		const snapshot = cache.read(candidate.ownerId);
 		if (!snapshot) return null;
+		// A live landing read owns the upcoming shuffle and its pagination seed.
+		if (
+			snapshot.source.kind === 'popular' &&
+			(popularPending || (popularSnapshot && now() - popularSnapshot.fetchedAt < freshMs))
+		)
+			return null;
 		// Fresh personalized results, including empty ones, win. A confirmed below-threshold
 		// account can keep reusing its popular list and pagination hints during memory freshness.
 		if (recent && snapshot.source.kind !== 'popular') return null;
@@ -354,7 +424,7 @@ export function createRateFeedController({
 				? prepared.fetchedAt
 				: now();
 		queueSnapshot({
-			version: 1,
+			version: 2,
 			ownerId: candidate.ownerId,
 			fetchedAt,
 			source,
@@ -367,6 +437,8 @@ export function createRateFeedController({
 		browsing,
 		setOwner,
 		prepare,
+		preparePopular,
+		takePopular,
 		enter,
 		leave,
 		isCurrentEntry,
@@ -383,6 +455,7 @@ export function createRateFeedController({
 		flushSnapshot,
 		destroy() {
 			flushSnapshot();
+			clearPopularPreparation();
 			setOwner(null);
 			destroyed = true;
 			pending?.abort.abort();

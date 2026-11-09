@@ -33,5 +33,9 @@ export function loadBookmarkDetails(userId: string, refresh = false): Promise<vo
 		0,
 		isCurrent
 	);
-	return refresh ? libraryLoads.retry(['bookmarkDetails']) : libraryLoads.load('bookmarkDetails');
+	const load = get(libraryLoads).collections.bookmarkDetails;
+	return refresh ||
+		(load.hasSnapshot && bookmarksPageStore.needsRefresh() && load.status !== 'error')
+		? libraryLoads.retry(['bookmarkDetails'])
+		: libraryLoads.load('bookmarkDetails');
 }

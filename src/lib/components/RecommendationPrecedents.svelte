@@ -8,9 +8,10 @@
 
 	type Props = {
 		books?: Book[];
+		fromSelection?: boolean;
 	};
 
-	let { books = [] }: Props = $props();
+	let { books = [], fromSelection = false }: Props = $props();
 	let summaryState = $state<BookSummarySheetState>({ kind: 'closed' });
 	const displayedBooks = $derived(books.slice(0, 3));
 	const failedCovers = new SvelteSet<string>();
@@ -42,7 +43,7 @@
 {#if displayedBooks.length > 0}
 	<div class="recommendation-precedents">
 		<span class="recommendation-precedents__label typ-caption">
-			{t('recommendations.becauseYouLiked')}:
+			{fromSelection ? 'Based on books you selected' : t('recommendations.becauseYouLiked')}:
 		</span>
 		<div class="recommendation-precedents__covers">
 			{#each displayedBooks as book (book.book_id)}

@@ -108,7 +108,7 @@ describe('rate feed progress scheduling', () => {
 		libraryLoads.markSnapshot('test-user', ['ratings', 'bookmarks', 'dismissals']);
 		const cache = createRateFeedCache();
 		cache.write({
-			version: 1,
+			version: 2,
 			ownerId: 'test-user',
 			fetchedAt: 1000,
 			source: { kind: 'curated', requestId: 'cached-request' },
@@ -565,7 +565,7 @@ describe('rate feed progress scheduling', () => {
 
 	it('retains Load more at the checkpoint when reentry falls back to public books, and honors that click', async () => {
 		const { controller, readLatest } = sharedFeed();
-		controller.browsing.observe(Array.from({ length: 100 }, (_, i) => `seen-${i}`));
+		controller.browsing.observe(Array.from({ length: 150 }, (_, i) => `seen-${i}`));
 		readLatest.mockResolvedValue({
 			...feedPayload([]),
 			mode: 'feed_error',
@@ -758,7 +758,7 @@ describe('rate feed progress scheduling', () => {
 		const { controller, cache, readLatest } = cachedFeed();
 		ratingsStore.hydrate([]);
 		cache.write({
-			version: 1,
+			version: 2,
 			ownerId: 'test-user',
 			fetchedAt: 1000,
 			books,
@@ -785,7 +785,7 @@ describe('rate feed progress scheduling', () => {
 		const { controller, cache, readLatest } = cachedFeed();
 		ratingsStore.hydrate([]);
 		cache.write({
-			version: 1,
+			version: 2,
 			ownerId: 'test-user',
 			fetchedAt: 1000,
 			books,
@@ -818,7 +818,7 @@ describe('rate feed progress scheduling', () => {
 		const { controller, cache, readLatest } = cachedFeed();
 		ratingsStore.hydrate([]);
 		cache.write({
-			version: 1,
+			version: 2,
 			ownerId: 'test-user',
 			fetchedAt: 1000,
 			books,

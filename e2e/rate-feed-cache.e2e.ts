@@ -6,7 +6,7 @@ const base = process.env.RATE_FEED_TEST_ORIGIN || 'http://127.0.0.1:4173';
 const env = loadEnv('development', process.cwd(), '');
 const authKey = `sb-${new URL(env.PUBLIC_SUPABASE_URL || env.VITE_SUPABASE_URL).hostname.split('.')[0]}-auth-token`;
 const owner = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
-const key = `book-doctor:rate-feed:v1:${owner}`;
+const key = `book-doctor:rate-feed:v2:${owner}`;
 const books = Array.from({ length: 110 }, (_, index) => ({
 	id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
 	book_id: `01${String(index + 1).padStart(24, '0')}`,
@@ -33,6 +33,7 @@ async function setup(
 		libraryCache?: boolean;
 		signedOut?: boolean;
 		expiredSession?: boolean;
+		belowThreshold?: boolean;
 	} = {}
 ) {
 	const session = {
@@ -113,7 +114,7 @@ async function setup(
 					options.invalid === 'corrupt'
 						? 'broken json'
 						: JSON.stringify({
-								version: 1,
+								version: 2,
 								ownerId: owner,
 								fetchedAt: Date.now() - (options.invalid === 'expired' ? 86_400_001 : 60_000),
 								source: { kind: 'curated', requestId: 'persisted-completed' },
@@ -172,6 +173,7 @@ async function setup(
 			state.writes++;
 			return route.fulfill({ status: 204, body: '' });
 		}
+		if (table === 'feed_requests') return route.fulfill({ json: [] });
 		await libraryGate.promise;
 		const rated = options.exclusions
 			? books[0]
@@ -182,7 +184,7 @@ async function setup(
 					author: 'Author'
 				};
 		const rows =
-			table === 'user_ratings'
+			table === 'user_ratings' && !options.belowThreshold
 				? [{ book_id: rated.book_id, book_rating: 4, books: { ...rated, book_name: rated.title } }]
 				: table === 'user_bookmarks' && options.exclusions
 					? [{ book_id: books[1].book_id, books: books[1] }]
@@ -449,7 +451,7 @@ test('logout clears this account feed without clearing another account or pendin
 	await page.goto(`${base}/rate`, { waitUntil: 'domcontentloaded' });
 	await expect(page.locator('.book-card')).toHaveCount(46);
 	await page.evaluate(() =>
-		localStorage.setItem('book-doctor:rate-feed:v1:other-account', 'retained')
+		localStorage.setItem('book-doctor:rate-feed:v2:other-account', 'retained')
 	);
 	await page.getByRole('button', { name: 'Account', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click();
@@ -459,7 +461,7 @@ test('logout clears this account feed without clearing another account or pendin
 	await page.waitForTimeout(300);
 	expect(await page.evaluate((key) => localStorage.getItem(key), key)).toBeNull();
 	expect(
-		await page.evaluate(() => localStorage.getItem('book-doctor:rate-feed:v1:other-account'))
+		await page.evaluate(() => localStorage.getItem('book-doctor:rate-feed:v2:other-account'))
 	).toBe('retained');
 	expect(
 		await page.evaluate(
@@ -632,6 +634,163 @@ for (const mode of ['feed_exhausted', 'feed_generation_pending', 'feed_error'] a
 		await expect(page.getByRole('link', { name: 'Start rating', exact: true })).toBeEnabled();
 	});
 }
+
+test('landing assets finish before signed-out feed preparation and first-row cover requests', async ({
+	page
+}) => {
+	const state = await setup(page, { signedOut: true });
+	const assetGate = deferred();
+	let assetRequested = false;
+	await page.route(/\/unread-logo[^/]*\.svg(?:\?|$)/, async (route) => {
+		if (route.request().resourceType() !== 'image') return route.continue();
+		assetRequested = true;
+		await assetGate.promise;
+		await route.continue();
+	});
+	let coverReads = 0;
+	await page.route('**/prepared-cover.svg', (route) => {
+		coverReads++;
+		return route.fulfill({
+			contentType: 'image/svg+xml',
+			body: '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="15"/>'
+		});
+	});
+	let popularReads = 0;
+	await page.route('**/api/books/popular?*', (route) => {
+		popularReads++;
+		return route.fulfill({
+			json: {
+				books: [{ ...books[0], coverUrl: `${base}/prepared-cover.svg` }],
+				seed: 'prepared-seed',
+				nextOffset: 1,
+				hasMore: false
+			}
+		});
+	});
+	await page.goto(base, { waitUntil: 'domcontentloaded' });
+	await expect.poll(() => assetRequested).toBe(true);
+	await expect(page.getByRole('button', { name: 'Log in', exact: true }).first()).toBeVisible();
+	await page.waitForTimeout(200);
+	expect(popularReads).toBe(0);
+	expect(coverReads).toBe(0);
+	assetGate.resolve();
+	await expect.poll(() => popularReads).toBe(1);
+	await expect.poll(() => coverReads).toBe(1);
+	await page.getByRole('link', { name: 'Start rating', exact: true }).click();
+	await expect(page.locator('.book-card')).toHaveCount(1);
+	expect(popularReads).toBe(1);
+	expect(state.authRequests).toBe(0);
+	expect(state.feedReads).toBe(0);
+	expect(state.jobs).toBe(0);
+});
+
+for (const signedOut of [true, false]) {
+	test(`prepared popular entry shares the pending read and preserves its shuffle and pagination (${signedOut ? 'signed out' : 'authenticated'})`, async ({
+		page
+	}) => {
+		const state = await setup(page, {
+			signedOut,
+			feedCache: false,
+			libraryCache: false,
+			belowThreshold: true
+		});
+		state.latest = {
+			...state.latest,
+			mode: 'below_threshold',
+			books: [],
+			ratings_count: 0,
+			interaction_count: 0,
+			eligible_for_feed: false
+		};
+		state.releaseLibrary();
+		state.releaseFeed();
+		const popularGate = deferred();
+		const nextGate = deferred();
+		let initialReads = 0;
+		let nextUrl: string | null = null;
+		await page.route('**/api/books/popular?*', async (route) => {
+			const url = new URL(route.request().url());
+			if (url.searchParams.get('offset') === '0') {
+				initialReads++;
+				expect(route.request().headers()['authorization'] ?? null).toBe(
+					signedOut ? null : 'Bearer feed-cache-test-token'
+				);
+				await popularGate.promise;
+				return route.fulfill({
+					json: { books: books.slice(0, 20), seed: 'prepared-seed', nextOffset: 20, hasMore: true }
+				});
+			}
+			nextUrl = url.href;
+			await nextGate.promise;
+			return route.fulfill({
+				json: { books: books.slice(20, 30), nextOffset: 30, hasMore: false }
+			});
+		});
+		await page.goto(base, { waitUntil: 'domcontentloaded' });
+		await expect.poll(() => initialReads).toBe(1);
+		await page.getByRole('link', { name: 'Start rating', exact: true }).click();
+		await expect(page).toHaveURL(`${base}/rate`);
+		await expect(page.locator('.rate-page__list[aria-busy="true"]')).toBeVisible();
+		expect(initialReads).toBe(1);
+		popularGate.resolve();
+		await expect(page.locator('.book-card').first()).toHaveAttribute('data-book-id', books[0].id);
+		await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+		await expect.poll(() => nextUrl).not.toBeNull();
+		const url = new URL(nextUrl!);
+		expect(url.searchParams.get('seed')).toBe('prepared-seed');
+		expect(url.searchParams.get('offset')).toBe('20');
+		nextGate.resolve();
+		expect(initialReads).toBe(1);
+		expect(state.jobs).toBe(0);
+	});
+}
+
+test('an early click bypasses asset waiting without remounting the landing page', async ({
+	page
+}) => {
+	await setup(page, { signedOut: true });
+	const assetGate = deferred();
+	await page.route(/\/unread-logo[^/]*\.svg(?:\?|$)/, async (route) => {
+		if (route.request().resourceType() !== 'image') return route.continue();
+		await assetGate.promise;
+		return route.continue();
+	});
+	const codeGate = deferred();
+	await page.goto(base, { waitUntil: 'domcontentloaded' });
+	await expect(page.getByRole('button', { name: 'Log in', exact: true }).first()).toBeVisible();
+	const isRateCode = (url: string) =>
+		/\/(?:src\/routes\/rate\/\+page\.svelte|_app\/immutable\/)/.test(url);
+	// Install after hydration so the gate only holds lazy destination code in dev or preview.
+	await page.route('**/*', async (route) => {
+		if (route.request().resourceType() === 'script' && isRateCode(route.request().url())) {
+			await codeGate.promise;
+		}
+		return route.fallback();
+	});
+	await page.evaluate(() => {
+		const landing = document.querySelector('.landing');
+		const video = document.querySelector('.landing video');
+		(window as unknown as { landingStable: () => boolean }).landingStable = () =>
+			document.querySelector('.landing') === landing &&
+			document.querySelector('.landing video') === video;
+	});
+	const codeRequest = page.waitForRequest(
+		(request) => request.resourceType() === 'script' && isRateCode(request.url())
+	);
+	await page.getByRole('link', { name: 'Start rating', exact: true }).click();
+	await codeRequest;
+	await page.waitForTimeout(100);
+	expect(
+		await page.evaluate(() =>
+			(window as unknown as { landingStable: () => boolean }).landingStable()
+		)
+	).toBe(true);
+	codeGate.resolve();
+	await expect(page).toHaveURL(`${base}/rate`);
+	await expect(page.locator('.book-card')).toHaveCount(10);
+	// The landing asset is still pending: it did not block the foreground feed read.
+	assetGate.resolve();
+});
 
 test('signed-out landing visitors create neither sessions nor feed requests', async ({ page }) => {
 	const state = await setup(page, { signedOut: true });

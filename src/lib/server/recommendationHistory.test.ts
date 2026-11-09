@@ -10,12 +10,14 @@ vi.mock('$lib/server/supabase', () => ({ createSupabaseWithAuth: fixture.createW
 type Log = { id: number; request_id: string; created_at: string | null };
 let logs: Log[];
 let filteredIds: Set<string>;
+let selectionTypes: Map<string, string>;
 let publicIds: Map<string, string>;
-let logReads: URL[];
 let requestReads: URL[];
 let itemWindows: string[][];
 let failedLogOffset: number | null;
 let failRequests: boolean;
+let catalogReads: URL[];
+let itemReads: URL[];
 
 function makeLogs(count: number): Log[] {
 	return Array.from({ length: count }, (_, index) => ({
@@ -32,11 +34,15 @@ function inValues(url: URL, column: string): string[] {
 const fetcher: typeof fetch = async (input) => {
 	const url = new URL(input instanceof Request ? input.url : String(input));
 	const table = url.pathname.split('/').at(-1);
-	if (table === 'recommendation_log') {
-		logReads.push(url);
+	if (table === 'recommendation_log')
+		throw new Error('History must not depend on best-effort logs');
+	if (table === 'recommendation_requests') {
+		requestReads.push(url);
 		const offset = Number(url.searchParams.get('offset') ?? 0);
-		if (offset === failedLogOffset)
-			return Response.json({ message: 'Logs unavailable' }, { status: 503 });
+		if (failRequests || offset === failedLogOffset)
+			return Response.json({ message: 'Requests unavailable' }, { status: 503 });
+		expect(url.searchParams.get('status')).toBe('eq.completed');
+		expect(url.searchParams.get('result_count')).toBe('gt.0');
 		const ordered = [...logs].sort((a, b) => {
 			if (a.created_at !== b.created_at) {
 				if (a.created_at === null) return 1;
@@ -45,22 +51,19 @@ const fetcher: typeof fetch = async (input) => {
 			}
 			return b.id - a.id;
 		});
-		return Response.json(ordered.slice(offset, offset + Number(url.searchParams.get('limit'))));
-	}
-	if (table === 'recommendation_requests') {
-		requestReads.push(url);
-		if (failRequests) return Response.json({ message: 'Requests unavailable' }, { status: 503 });
 		return Response.json(
-			inValues(url, 'id')
-				.filter((id) => filteredIds.has(id) || publicIds.has(id))
-				.map((id) => ({
-					id,
-					filters: filteredIds.has(id) ? { genres: { all_of: ['Africa'] } } : null,
-					public_id: publicIds.get(id) ?? null
-				}))
+			ordered.slice(offset, offset + Number(url.searchParams.get('limit'))).map((row) => ({
+				...row,
+				status: 'completed',
+				result_count: 10,
+				request_type: selectionTypes.get(row.request_id) ?? null,
+				filters: filteredIds.has(row.request_id) ? { genres: { all_of: ['Africa'] } } : null,
+				public_id: publicIds.get(row.request_id) ?? null
+			}))
 		);
 	}
 	if (table === 'recommendation_items') {
+		itemReads.push(url);
 		const ids = inValues(url, 'request_id');
 		itemWindows.push(ids);
 		return Response.json(
@@ -75,6 +78,7 @@ const fetcher: typeof fetch = async (input) => {
 		);
 	}
 	if (table === 'books') {
+		catalogReads.push(url);
 		return Response.json(
 			inValues(url, 'book_id').map((book_id) => ({
 				id: `uuid-${book_id}`,
@@ -102,10 +106,12 @@ describe('50-run recommendation history', () => {
 	beforeEach(() => {
 		logs = makeLogs(55);
 		filteredIds = new Set();
+		selectionTypes = new Map();
 		publicIds = new Map();
-		logReads = [];
 		requestReads = [];
 		itemWindows = [];
+		itemReads = [];
+		catalogReads = [];
 		failedLogOffset = null;
 		failRequests = false;
 		fixture.createWithAuth.mockReturnValue(
@@ -119,17 +125,46 @@ describe('50-run recommendation history', () => {
 
 	afterEach(() => vi.restoreAllMocks());
 
-	it('returns only the latest 50 runs and stops reading once that window is filled', async () => {
+	it('returns the latest 50 completed nonempty requests without consulting worker logs', async () => {
 		const payload = await (await getHistory(event('/api/recommendations/history'))).json();
 		expect(payload.runs.map((run: Log) => run.request_id)).toEqual(
 			logs.slice(0, 50).map((log) => log.request_id)
 		);
-		expect(logReads).toHaveLength(1);
-		expect(logReads[0].searchParams.get('limit')).toBe('50');
+		expect(requestReads).toHaveLength(1);
+		expect(requestReads[0].searchParams.get('limit')).toBe('50');
 		expect(fixture.createWithAuth).toHaveBeenCalledWith(
 			'history-test-token',
 			expect.any(AbortSignal)
 		);
+	});
+	it('includes both selection modes in the existing 50-run For you window', async () => {
+		selectionTypes = new Map([
+			['55', 'rank_selection'],
+			['54', 'recommend_from_selection']
+		]);
+		publicIds = new Map([
+			['55', 'ChooseA1'],
+			['54', 'ChooseA2']
+		]);
+		const history = await (await getHistory(event('/api/recommendations/history'))).json();
+		expect(history.runs).toHaveLength(50);
+		expect(history.runs.slice(0, 2).map((row: { request_id: string }) => row.request_id)).toEqual([
+			'ChooseA1',
+			'ChooseA2'
+		]);
+		await getUnique(event('/api/recommendations/unique'));
+		expect(itemWindows[0]).toEqual(logs.slice(0, 50).map((log) => log.request_id));
+	});
+
+	it('keeps inspiration provenance from the newest appearance rather than an older run', async () => {
+		selectionTypes.set('55', 'recommend_from_selection');
+		let payload = await (await getUnique(event('/api/recommendations/unique'))).json();
+		expect(payload.selectionSeedBookIds).toContain('shared');
+		selectionTypes.delete('55');
+		selectionTypes.set('54', 'recommend_from_selection');
+		payload = await (await getUnique(event('/api/recommendations/unique'))).json();
+		expect(payload.selectionSeedBookIds).not.toContain('shared');
+		expect(payload.selectionSeedBookIds).toContain('book-54-0');
 	});
 
 	it('fills the same 50-run window for both endpoints when recent runs are filtered', async () => {
@@ -143,7 +178,7 @@ describe('50-run recommendation history', () => {
 		expect(history.runs.map((run: Log) => run.request_id)).toEqual(
 			expectedIds.map((id) => publicIds.get(id))
 		);
-		expect(logReads.map((url) => url.searchParams.get('offset'))).toEqual(['0', '50', '100']);
+		expect(requestReads.map((url) => url.searchParams.get('offset'))).toEqual(['0', '50', '100']);
 		expect(requestReads).toHaveLength(3);
 
 		const unique = await (await getUnique(event('/api/recommendations/unique'))).json();
@@ -169,6 +204,30 @@ describe('50-run recommendation history', () => {
 		expect(payload.books).toHaveLength(451);
 	});
 
+	it('returns lightweight selection identities and recency without querying synopsis or recommendation evidence', async () => {
+		const full = await (await getUnique(event('/api/recommendations/unique'))).json();
+		itemReads = [];
+		catalogReads = [];
+		const input = event('/api/recommendations/unique');
+		input.request = new Request('http://localhost/api/recommendations/unique?view=selection', {
+			headers: { Authorization: 'Bearer history-test-token' }
+		});
+		const lean = await (await getUnique(input)).json();
+		expect(Object.keys(lean).sort()).toEqual(['books', 'lastRecommendedAt']);
+		expect(lean.books.map((book: { book_id: string }) => book.book_id).sort()).toEqual(
+			full.books.map((book: { book_id: string }) => book.book_id).sort()
+		);
+		expect(lean.lastRecommendedAt).toEqual(full.lastRecommendedAt);
+		expect(itemReads).toHaveLength(1);
+		expect(itemReads[0].searchParams.get('select')).toBe('book_id,request_id,rank');
+		expect(
+			catalogReads.every(
+				(url) => url.searchParams.get('select') === 'id,book_id,slug,book_name,author,year'
+			)
+		).toBe(true);
+		expect(lean.books.every((book: Record<string, unknown>) => !('summary' in book))).toBe(true);
+	});
+
 	it('uses a unique tiebreaker for equal timestamps and places undated runs last', async () => {
 		logs = [
 			{ id: 1, request_id: '1', created_at: null },
@@ -177,7 +236,7 @@ describe('50-run recommendation history', () => {
 		];
 		const payload = await (await getHistory(event('/api/recommendations/history'))).json();
 		expect(payload.runs.map((run: Log) => run.request_id)).toEqual(['3', '2', '1']);
-		expect(logReads[0].searchParams.get('order')).toBe('created_at.desc.nullslast,id.desc');
+		expect(requestReads[0].searchParams.get('order')).toBe('created_at.desc.nullslast,id.desc');
 	});
 
 	it('reports later-page failures instead of returning partial history', async () => {

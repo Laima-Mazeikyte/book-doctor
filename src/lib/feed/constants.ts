@@ -14,7 +14,7 @@ export const FEED_BATCH_BROWSE_DWELL_MS = 2000;
 export const FEED_PREFETCH_RUNWAY_SECONDS = 7;
 
 /** Automatic loading becomes an explicit Load more after this many new visible books. */
-export const FEED_BROWSE_CHECKPOINT = 100;
+export const FEED_BROWSE_CHECKPOINT = 150;
 
 /** Consecutive duplicate/empty feed appends before auto-pagination stops. */
 export const FEED_MAX_CONSECUTIVE_EMPTY_APPENDS = 2;

@@ -29,7 +29,7 @@ const payload = (incoming = books): LatestFeedStateResponse => ({
 	eligible_for_feed: true
 });
 const stored = (): CachedRateFeed => ({
-	version: 1,
+	version: 2,
 	ownerId: identity.userId,
 	fetchedAt: 1000,
 	source: { kind: 'curated', requestId: 'old-request' },

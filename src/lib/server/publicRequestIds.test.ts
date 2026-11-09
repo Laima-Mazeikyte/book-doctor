@@ -36,7 +36,16 @@ function client() {
 							url.searchParams.get('public_id') === `eq.${public_id}`);
 					return Response.json(
 						matches
-							? [{ id: 42, public_id, filters: null, status: 'completed', error_message: null }]
+							? [
+									{
+										id: 42,
+										public_id,
+										filters: null,
+										status: 'completed',
+										result_count: 1,
+										error_message: null
+									}
+								]
 							: []
 					);
 				}
@@ -105,7 +114,7 @@ it('returns public IDs in recommendation history and combined dimension evidence
 	const metadataReads = reads.filter((url) => url.pathname.endsWith('/recommendation_requests'));
 	expect(metadataReads).toHaveLength(2);
 	expect(
-		metadataReads.every((url) => url.searchParams.get('select') === 'id,filters,public_id')
+		metadataReads.every((url) => url.searchParams.get('select')?.includes('status,result_count'))
 	).toBe(true);
 	expect(
 		reads
@@ -131,12 +140,12 @@ it.each([
 	['combined', getUnique, '/api/recommendations/unique'],
 	['latest', getRun, '/api/recommendations']
 ] as const)(
-	'preserves legacy references in %s when lifecycle metadata is absent',
+	'returns empty %s when no completed request is visible',
 	async (_name, handler, path) => {
 		ownerVisible = false;
 		const payload = await (await handler(event(path))).json();
-		if ('runs' in payload) expect(payload.runs[0].request_id).toBe('42');
-		else expect(payload.dimensionMatchSnapshotsByBookId.book.request_id).toBe('42');
+		if ('runs' in payload) expect(payload.runs).toEqual([]);
+		else expect(payload.books).toEqual([]);
 		expect(reads.filter((url) => url.pathname.endsWith('/recommendation_requests'))).toHaveLength(
 			1
 		);

@@ -34,13 +34,13 @@ for (const [layout, viewport] of [
 	});
 }
 
-test('100 encountered books require only Load more; each click allows one batch and feedback resumes auto loading', async ({
+test('150 encountered books require only Load more; each click allows one batch and feedback resumes auto loading', async ({
 	page
 }) => {
 	const state = await setup(page);
 	await openFeed(page);
 	// Small overlapping jumps expose real cards; overscan and skipped rows must not count.
-	for (let index = 0; index <= 120; index += 8) await jump(page, index);
+	for (let index = 0; index <= 176; index += 8) await jump(page, index);
 	await jump(page, 999);
 	await expect(loadMore(page)).toHaveText('Load more');
 	await page.waitForTimeout(2200);

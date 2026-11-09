@@ -36,9 +36,9 @@ en:
   libraryLoad:
     wait: 'Load your library to get recommendations.'
     loadError: 'Couldn’t load your {{collection}}.'
-    refreshError: 'Couldn’t refresh your {{collection}}. Showing previously loaded books.'
+    refreshError: 'Couldn’t refresh your {{collection}}.'
     retry: 'Retry'
-    retrying: 'Trying again…'
+    retrying: 'Retrying...'
     books: 'books'
     ratings: 'ratings'
     bookmarks: 'bookmarks'
@@ -142,20 +142,20 @@ en:
   notInterested:
     title: 'Not interested'
     metaDescription: "Review books you've selected as 'not interested'."
-    intro: "Books you've marked as not interested. Click the button again to show them in recommendations."
-    empty: 'No books marked as not interested yet.'
+    intro: "Books you've marked as not interested."
+    empty: "You haven't marked any books as not interested yet."
     loadError: "Couldn't load your not interested books right now."
     retry: 'Try again'
     loadMore: 'Load more'
   rated:
     title: 'Bookshelf'
     metaDescription: 'Your Unread bookshelf: rated titles, bookmarks, and books marked not interested. Easy to browse and manage.'
-    empty: 'No books rated yet. Rate at least 10 to get recommendations.'
+    empty: "You haven't rated any books yet."
     loadingList: 'Loading your library…'
     loadMore: 'Show more books'
     loadError: "Couldn't load your bookshelf right now. Please refresh to try again."
-    emptyBookmarked: 'No bookmarked books yet. Titles you save stay here even if you also rate them.'
-    emptyNotInterested: 'No books marked as not interested yet.'
+    emptyBookmarked: "You haven't bookmarked any books yet."
+    emptyNotInterested: "You haven't marked any books as not interested yet."
     search:
       placeholders:
         rated: 'Search rated books by title or author'
@@ -788,7 +788,7 @@ en:
       yourRatings: 'Bookshelf'
       backToRatings: 'Back to bookshelf'
       close: 'Close bookshelf'
-      empty: 'No books rated yet. Rate at least 10 to get recommendations.'
+      empty: "You haven't rated any books yet."
       syncRatings: 'Sync ratings'
       syncing: 'Ratings syncing'
       retryNeeded: 'Some ratings need syncing'

@@ -14,7 +14,8 @@ function uniqueIds(bookIds: string[]): string[] {
 
 async function fetchCatalogRows(
 	supabase: SupabaseClient,
-	bookIds: string[]
+	bookIds: string[],
+	selection = CATALOG_SELECT
 ): Promise<BookCatalogRow[]> {
 	const uniqueBookIds = uniqueIds(bookIds);
 	if (uniqueBookIds.length === 0) return [];
@@ -31,7 +32,7 @@ async function fetchCatalogRows(
 			concurrentBatches.map(async (batch) => {
 				const { data, error: booksError } = await supabase
 					.from('books')
-					.select(CATALOG_SELECT)
+					.select(selection)
 					.in('book_id', batch);
 				if (booksError) throw booksError;
 				return (data ?? []) as unknown as BookCatalogRow[];
@@ -66,4 +67,22 @@ export async function fetchBooksByUlids(
 	const booksData = await fetchCatalogRows(supabase, bookIds);
 
 	return (booksData ?? []).map((b) => mapBookRowToBook(b as BookCatalogRow));
+}
+
+/** Picker identities only; synopsis/evidence is fetched if the reader opens details. */
+export async function fetchSelectionBooksByUlids(
+	supabase: SupabaseClient,
+	bookIds: string[]
+): Promise<Book[]> {
+	const rows = await fetchCatalogRows(
+		supabase,
+		bookIds,
+		'id, book_id, slug, book_name, author, year'
+	);
+	return rows.map((row) => {
+		const book = mapBookRowToBook(row);
+		// Missing is distinct from a known empty synopsis in the details-panel cache.
+		delete book.summary;
+		return book;
+	});
 }
