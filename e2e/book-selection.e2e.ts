@@ -1356,15 +1356,20 @@ test('inspiration evidence retains an unrated seed and names its selection origi
 	expect(state.writes).toBe(0);
 });
 
-test('saved selection links through the old shortlist open the full selection results', async ({
-	page
-}) => {
+test('unsupported selection links through the grouped shortlist return 404', async ({ page }) => {
 	const state = await setup(page);
 	state.status = 'completed';
-	await page.goto(`${base}/rate/recommendations/shortlist?request_id=ChooseA1&from=history`);
-	await expect(page).toHaveURL(/choose-books\?.*request_id=ChooseA1/);
-	await expect(page.getByRole('button', { name: 'Back to selection', exact: true })).toBeVisible();
-	await expect(page.locator('.selection-results ol > li')).toHaveCount(8);
+	await page.route('**/api/recommendations?**', async (route) => {
+		const url = new URL(route.request().url());
+		if (url.searchParams.get('request_id') === 'ChooseA1')
+			return route.fulfill({ status: 404, json: { message: 'Not found' } });
+		return route.fallback();
+	});
+	await page.goto(`${base}/rate/recommendations/shortlist?request_id=ChooseA1&from=history`, {
+		waitUntil: 'domcontentloaded'
+	});
+	await expect(page).toHaveTitle(/^404 /, { timeout: 15000 });
+	await expect(page).toHaveURL(/shortlist\?request_id=ChooseA1/);
 });
 
 test('clear offers undo, restores the exact selection and keeps each mode independent', async ({

@@ -1,3 +1,4 @@
+import { flavorFixture } from '$lib/recommendations/flavorGroups.fixture';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { RequestEvent } from '@sveltejs/kit';
 import { GET as getRun } from '../../routes/api/recommendations/+server';
@@ -10,14 +11,14 @@ const fixture = vi.hoisted(() => ({
 	rows: [
 		{
 			book_id: 'series',
-			request_id: 'old',
+			request_id: '1',
 			rank: 1,
 			dimension_matches: [{ dimension_key: 'spice', candidate_raw_score: 1 }],
 			author_relationship_evidence: ['Older author']
 		},
 		{
 			book_id: 'book',
-			request_id: 'new',
+			request_id: '2',
 			rank: 2,
 			dimension_matches: [
 				{ dimension_key: 'spice', candidate_raw_score: 0 },
@@ -27,7 +28,7 @@ const fixture = vi.hoisted(() => ({
 		},
 		{
 			book_id: 'series',
-			request_id: 'new',
+			request_id: '2',
 			rank: 1,
 			dimension_matches: [],
 			author_relationship_evidence: []
@@ -38,8 +39,8 @@ const fixture = vi.hoisted(() => ({
 		{ id: 's', book_id: 'series', title: 'Series', author: 'Author' }
 	],
 	logs: [
-		{ request_id: 'new', created_at: '2026-09-06T00:00:00Z' },
-		{ request_id: 'old', created_at: '2026-09-05T00:00:00Z' }
+		{ request_id: '2', created_at: '2026-09-06T00:00:00Z' },
+		{ request_id: '1', created_at: '2026-09-05T00:00:00Z' }
 	],
 	requests: [] as Array<{ id: string; filters: unknown }>,
 	filteredBookIds: null as string[] | null
@@ -77,6 +78,13 @@ beforeEach(() => {
 								status: 'completed',
 								result_count: 10,
 								filters: null,
+								request_type: null,
+								output_format: 'flavors_v1',
+								flavor_groups: flavorFixture(
+									fixture.rows
+										.filter((row) => row.request_id === log.request_id)
+										.sort((a, b) => a.rank - b.rank)
+								),
 								...fixture.requests.find((request) => request.id === log.request_id)
 							}))
 						: [...fixture.rows];
@@ -87,6 +95,9 @@ beforeEach(() => {
 				},
 				eq(key: string, value: unknown) {
 					rows = rows.filter((row) => row[key] === value);
+					return query;
+				},
+				is() {
 					return query;
 				},
 				gt() {
@@ -133,20 +144,20 @@ function event<R extends '/api/recommendations' | '/api/recommendations/unique'>
 }
 
 it('carries stored matches through the run API and frontend mapper without changing rank or author evidence', async () => {
-	const response = await getRun(event('/api/recommendations', '?request_id=new'));
+	const response = await getRun(event('/api/recommendations', '?request_id=2'));
 	const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response);
 	try {
-		const payload = await fetchRecommendations('fixture-token', 'new');
+		const payload = await fetchRecommendations('fixture-token', '2');
 		expect(payload.books.map((b) => b.book_id)).toEqual(['series', 'book']);
 		expect(payload.dimensionMatchSnapshotsByBookId).toEqual({
-			series: { request_id: 'new', matches: [] },
-			book: { request_id: 'new', matches: fixture.rows[1].dimension_matches }
+			series: { request_id: '2', matches: [] },
+			book: { request_id: '2', matches: fixture.rows[1].dimension_matches }
 		});
 		expect(payload.authorRelationshipAuthorsByBookId).toEqual({
 			series: [],
 			book: ['Liked author']
 		});
-		expect(fixture.selects.some((s) => s.includes('dimension_matches'))).toBe(true);
+		expect(fixture.selects.some((s) => s.includes('flavor_groups'))).toBe(true);
 		expect(fixture.createWithAuth).toHaveBeenCalledWith('fixture-token', expect.any(AbortSignal));
 	} finally {
 		fetchMock.mockRestore();
@@ -158,16 +169,14 @@ it('uses the latest containing request in the combined API even when database it
 	expect(payload.hasRuns).toBe(true);
 	expect(payload.books.map((b: { book_id: string }) => b.book_id)).toEqual(['book', 'series']);
 	expect(payload.dimensionMatchSnapshotsByBookId.series).toEqual({
-		request_id: 'new',
+		request_id: '2',
 		matches: []
 	});
 	expect(payload.dimensionMatchSnapshotsByBookId.book).toEqual({
-		request_id: 'new',
+		request_id: '2',
 		matches: fixture.rows[1].dimension_matches
 	});
-	expect(payload.recommendationAppearanceCount).toEqual({ series: 2, book: 1 });
-	expect(payload.bestRecommendationRank).toEqual({ series: 1, book: 2 });
-	expect(fixture.selects.some((s) => s.includes('dimension_matches'))).toBe(true);
+	expect(fixture.selects.some((s) => s.includes('flavor_groups'))).toBe(true);
 });
 
 it('reports whether recommendation runs exist even when no items survive filtering', async () => {
@@ -190,30 +199,17 @@ it('reports no runs separately from an empty eligible book list', async () => {
 	}
 });
 
-it('resolves evidence only for books that survive filtering', async () => {
+it('resolves combined evidence only for books that survive filtering', async () => {
 	fixture.filteredBookIds = ['book'];
-
-	const response = await getRun(event('/api/recommendations', '?request_id=new'));
-	const payload = await response.json();
-
+	const payload = await (await getUnique(event('/api/recommendations/unique'))).json();
 	expect(payload.books.map((book: { book_id: string }) => book.book_id)).toEqual(['book']);
-	expect(payload.dimensionMatchSnapshotsByBookId).toEqual({
-		book: { request_id: 'new', matches: fixture.rows[1].dimension_matches }
-	});
 	expect(payload.authorRelationshipAuthorsByBookId).toEqual({ book: ['Liked author'] });
-
-	const uniquePayload = await (await getUnique(event('/api/recommendations/unique'))).json();
-	expect(uniquePayload.books.map((book: { book_id: string }) => book.book_id)).toEqual(['book']);
-	expect(uniquePayload.dimensionMatchSnapshotsByBookId).toEqual({
-		book: { request_id: 'new', matches: fixture.rows[1].dimension_matches }
-	});
-	expect(uniquePayload.authorRelationshipAuthorsByBookId).toEqual({ book: ['Liked author'] });
 });
 
 it('keeps filtered runs out of the overall list and latest overall lookup', async () => {
 	fixture.logs = [
 		{ request_id: '42', created_at: '2026-09-07T00:00:00Z' },
-		{ request_id: 'old', created_at: '2026-09-05T00:00:00Z' }
+		{ request_id: '1', created_at: '2026-09-05T00:00:00Z' }
 	];
 	fixture.requests = [{ id: '42', filters: { genres: { all_of: ['Africa'] } } }];
 	fixture.rows = [
@@ -226,7 +222,7 @@ it('keeps filtered runs out of the overall list and latest overall lookup', asyn
 		},
 		{
 			book_id: 'series',
-			request_id: 'old',
+			request_id: '1',
 			rank: 1,
 			dimension_matches: [],
 			author_relationship_evidence: []
@@ -236,26 +232,26 @@ it('keeps filtered runs out of the overall list and latest overall lookup', asyn
 		const unique = await (await getUnique(event('/api/recommendations/unique'))).json();
 		expect(unique.books.map((book: { book_id: string }) => book.book_id)).toEqual(['series']);
 		const latestOverall = await (await getRun(event('/api/recommendations'))).json();
-		expect(latestOverall.request_id).toBe('old');
+		expect(latestOverall.request_id).toBe('1');
 		expect(latestOverall.books.map((book: { book_id: string }) => book.book_id)).toEqual([
 			'series'
 		]);
 	} finally {
 		fixture.logs = [
-			{ request_id: 'new', created_at: '2026-09-06T00:00:00Z' },
-			{ request_id: 'old', created_at: '2026-09-05T00:00:00Z' }
+			{ request_id: '2', created_at: '2026-09-06T00:00:00Z' },
+			{ request_id: '1', created_at: '2026-09-05T00:00:00Z' }
 		];
 		fixture.rows = [
 			{
 				book_id: 'series',
-				request_id: 'old',
+				request_id: '1',
 				rank: 1,
 				dimension_matches: [{ dimension_key: 'spice', candidate_raw_score: 1 }],
 				author_relationship_evidence: ['Older author']
 			},
 			{
 				book_id: 'book',
-				request_id: 'new',
+				request_id: '2',
 				rank: 2,
 				dimension_matches: [
 					{ dimension_key: 'spice', candidate_raw_score: 0 },
@@ -265,7 +261,7 @@ it('keeps filtered runs out of the overall list and latest overall lookup', asyn
 			},
 			{
 				book_id: 'series',
-				request_id: 'new',
+				request_id: '2',
 				rank: 1,
 				dimension_matches: [],
 				author_relationship_evidence: []

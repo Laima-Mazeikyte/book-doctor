@@ -13,8 +13,7 @@ en:
     uncertainPassword: 'We could not confirm whether your password changed. Try signing in before submitting again.'
   errors:
     notFoundLabel: '404 / Page not found'
-    unavailableTitle: 'A brief intermission.'
-    unavailableDescription: 'Something went wrong while opening this page. Please try again shortly.'
+    unavailableTitle: 'Couldn’t open this page.'
     status: 'Error {{status}}'
     backHome: 'Back to home'
   librarySaves:
@@ -199,7 +198,6 @@ en:
       ariaLabel: 'Sort recommendations'
       newest: 'Newest'
       oldest: 'Oldest'
-      bestFit: 'Best fit'
     emptyRecommendedTab: 'No recommendations in this list yet.'
     dimensionMatches:
       preference: 'Matches your interest in {{phrase}}'
@@ -247,7 +245,6 @@ en:
     becauseYouLikedAuthors: 'Because you liked books by'
     shortlist:
       title: 'Your shortlist'
-      description: "Seven books for you based on what you've rated."
       close: 'Close'
       metaDescription: 'Swipe through your latest book recommendations on Unread.'
       loading: 'Finding books for you…'
@@ -255,17 +252,7 @@ en:
       failureTitle: 'Your shortlist is taking longer than expected'
       failureMessage: 'Your request may still be running. Check the same request again in a moment.'
       retry: 'Check again'
-      typeLabel: 'Type'
-      carouselAriaLabel: 'Your recommended books'
-      prevBook: 'Previous book'
-      nextBook: 'Next book'
-      slideAriaLabel: '{{title}}, book {{position}} of {{total}}'
       positionAriaLabel: 'Book {{position}} of {{total}}'
-      coverNavAriaLabel: 'Browse shortlist books'
-      iveReadIt: "I've read it"
-      removeIveReadIt: "Remove I've read it"
-      offerAnotherBook: 'Get another book'
-      getNewRecommendations: 'Get new recommendations'
     saveAccountPrompt:
       title: 'Save your progress'
       message: 'Create an account to keep your ratings and recommendations.'

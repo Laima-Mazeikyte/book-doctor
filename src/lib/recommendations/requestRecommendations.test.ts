@@ -66,6 +66,7 @@ describe('recommendation submission', () => {
 		await submission.submit();
 		expect(get(submission).status).toBe('submitting');
 		expect(insert).toHaveBeenCalledTimes(1);
+		expect(insert).toHaveBeenCalledWith({ user_id: 'A', output_format: 'flavors_v1' });
 		navigation.resolve();
 		await first;
 		expect(get(submission).status).toBe('idle');
@@ -180,7 +181,10 @@ describe('recommendation submission', () => {
 		authStore.setSession(session('B'));
 		markUserLibraryIdsReady('B');
 		await submission.submit();
-		expect(insert.mock.calls).toEqual([[{ user_id: 'A' }], [{ user_id: 'B' }]]);
+		expect(insert.mock.calls).toEqual([
+			[{ user_id: 'A', output_format: 'flavors_v1' }],
+			[{ user_id: 'B', output_format: 'flavors_v1' }]
+		]);
 	});
 
 	it('ignores late responses after unmount and cannot submit after destruction', async () => {

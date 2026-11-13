@@ -22,6 +22,7 @@ separate 16 MB active dataset on October 31. Inspect fresh metadata when needed.
 | Purpose                                      | Files                                                          |
 | -------------------------------------------- | -------------------------------------------------------------- |
 | Allocation inventory                         | supabase-storage-inventory.sql, inspect-book-catalog-space.sql |
+| Science hosting and v4 capacity planning     | inspect-science-hosting.sql                                    |
 | Author data ownership/retention review       | inspect-author-data-retention.sql                              |
 | Reclaim verified empty import storage        | reclaim-book-annotation-staging.sql                            |
 | Retire confirmed-unused regenerable map data | reclaim-unused-author-map-data.sql                             |
@@ -34,6 +35,24 @@ The empty-staging script refuses residual staged rows/importer activity. Retenti
 cleanup is limited to the documented regenerable map exports; raw author comparisons,
 source datasets, application tables and active releases are not blanket cleanup targets.
 Use the retention inventory and review consumers before executing it again.
+
+For hosting decisions, paste all of
+[inspect-science-hosting.sql](../../scripts/maintenance/inspect-science-hosting.sql)
+into Supabase Dashboard **SQL Editor**, with database and role **postgres**. Run it
+and copy/export the single `science_hosting_report` JSON cell. It is a read-only
+query returning allocation by group, table and index, separate Storage bucket
+payload totals, routine reference hints and illustrative v4 growth scenarios.
+It does not require the optional science tables to be installed; standard Supabase
+Storage metadata tables must exist. No reader records or object paths are returned.
+
+Start with `summary`, then `groups` and `application_and_science_tables` to identify
+the dominant allocations and their hosting implications. Check
+`storage_buckets_separate_quota` independently: moving file payloads does not remove
+imported PostgreSQL rows. `v4_planning_scenarios` compares replacement allocation
+with keeping a new copy alongside the existing data. These are sensitivity estimates,
+not a measured v4 build or an import-disk guarantee. Edit `settings` for the intended
+growth factor and budget; the default 500,000,000 bytes is a conservative planning
+input, not a subscription lookup. Pair data need not grow linearly with books.
 
 Compaction is a physical rewrite with an exclusive lock: it can block book reads/writes.
 Use a quiet maintenance window and verify physical disk headroom for old/new files,

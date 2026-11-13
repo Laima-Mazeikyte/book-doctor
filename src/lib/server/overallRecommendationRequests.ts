@@ -1,4 +1,4 @@
-import { isFilteredRequest } from '$lib/recommendations/filteredRecommendations';
+import { parseFlavorGroups, type FlavorGroups } from '$lib/recommendations/flavorGroups';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export const RECOMMENDATION_HISTORY_RUN_LIMIT = 50;
@@ -8,6 +8,7 @@ export type OverallRecommendationRun = {
 	public_id: string | null;
 	request_type: string | null;
 	result_count: number;
+	flavor_groups: FlavorGroups;
 	created_at: string | null;
 };
 
@@ -22,23 +23,24 @@ export async function loadRecentOverallRecommendationRequests(supabase: Supabase
 	) {
 		const { data, error } = await supabase
 			.from('recommendation_requests')
-			.select('id, public_id, request_type, filters, status, result_count, created_at')
+			.select(
+				'id, public_id, request_type, filters, status, result_count, created_at, output_format, flavor_groups'
+			)
 			.eq('status', 'completed')
-			.gt('result_count', 0)
+			.eq('output_format', 'flavors_v1')
+			.is('request_type', null)
+			.is('filters', null)
 			.order('created_at', { ascending: false, nullsFirst: false })
 			.order('id', { ascending: false })
 			.range(offset, offset + RECOMMENDATION_HISTORY_RUN_LIMIT - 1);
 		if (error) throw error;
 		const batch = data ?? [];
 		for (const row of batch) {
-			if (
-				isFilteredRequest(row.filters) ||
-				(row.request_type != null &&
-					!['rank_selection', 'recommend_from_selection'].includes(row.request_type))
-			)
+			if (row.output_format !== 'flavors_v1' || row.request_type != null || row.filters != null)
 				continue;
+			const flavor_groups = parseFlavorGroups(row.flavor_groups);
 			const request_id = String(row.id);
-			runs.push({ ...row, request_id });
+			runs.push({ ...row, request_id, flavor_groups });
 			if (typeof row.public_id === 'string') publicIds.set(request_id, row.public_id);
 			if (runs.length === RECOMMENDATION_HISTORY_RUN_LIMIT) break;
 		}

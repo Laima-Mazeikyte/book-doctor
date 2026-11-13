@@ -1,3 +1,6 @@
+import { page as browserPage } from 'vitest/browser';
+import '../../app.css';
+import { flavorFixture } from './flavorGroups.fixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { tick } from 'svelte';
@@ -16,10 +19,21 @@ const pageState = vi.hoisted(() => ({
 vi.mock('$app/state', () => ({ page: pageState }));
 vi.mock('$app/navigation', () => ({
 	goto: vi.fn(),
+	pushState: vi.fn(),
+	replaceState: vi.fn(),
 	beforeNavigate: vi.fn(),
+	invalidateAll: vi.fn(),
 	preloadData: vi.fn().mockResolvedValue({ status: 200 })
 }));
-vi.mock('$app/paths', () => ({ resolve: (path: string) => path }));
+vi.mock('$app/paths', () => ({ resolve: (path: string) => path, assets: '', base: '' }));
+vi.mock('$app/stores', () => ({
+	page: {
+		subscribe(run: (value: unknown) => void) {
+			run({ url: pageState.url, state: {} });
+			return () => {};
+		}
+	}
+}));
 vi.mock('$lib/stores/recommendationsCount', () => ({
 	refreshRecommendationsCountFromApi: vi.fn()
 }));
@@ -34,7 +48,9 @@ function recommendationsResponse(title: string) {
 		status: 200,
 		json: async () => ({
 			books: [{ id: `${title}-id`, book_id: `${title}-book`, title, author: 'Author' }],
-			request_id: '42'
+			request_id: '42',
+			flavor_groups: flavorFixture([{ book_id: `${title}-book`, rank: 1 }]),
+			status: 'completed'
 		})
 	};
 }
@@ -72,7 +88,7 @@ describe('shortlist page auth loading', () => {
 
 		authStore.setSession(session('user-1', 'token-1'));
 		await expect
-			.element(rendered.getByRole('heading', { name: 'Restored recommendation', exact: true }))
+			.element(rendered.getByRole('button', { name: /Restored recommendation/ }))
 			.toBeVisible();
 		expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/recommendations?request_id=42', {
 			headers: { Authorization: 'Bearer token-1' },
@@ -104,9 +120,44 @@ describe('shortlist page auth loading', () => {
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 		resolveResponse(recommendationsResponse('Delayed recommendation'));
 		await expect
-			.element(rendered.getByRole('heading', { name: 'Delayed recommendation', exact: true }))
+			.element(rendered.getByRole('button', { name: /Delayed recommendation/ }))
 			.toBeVisible();
 		await expect.element(rendered.getByText('Taking longer than usual.')).not.toBeInTheDocument();
+		rendered.unmount();
+	});
+
+	it('shows backend failure separately from timeout and stops polling a terminal request', async () => {
+		vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+		authStore.setSession(session('user-1', 'token-1'));
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			json: async () => ({
+				books: [],
+				request_id: '42',
+				status: 'failed',
+				error_code: 'recommendation_failed',
+				flavor_groups: null
+			})
+		});
+		vi.stubGlobal('fetch', fetchMock);
+		const rendered = render(ShortlistPage);
+		await tick();
+		await expect
+			.element(rendered.getByRole('alert'))
+			.toHaveTextContent('[COPY: recommendation-generation-failed-title]');
+		await expect
+			.element(
+				rendered.getByRole('button', {
+					name: '[COPY: recommendation-generation-failed-action]',
+					exact: true
+				})
+			)
+			.toBeVisible();
+		await vi.advanceTimersByTimeAsync(25000);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(document.body.textContent).not.toContain(
+			'Your shortlist is taking longer than expected'
+		);
 		rendered.unmount();
 	});
 
@@ -153,6 +204,7 @@ describe('shortlist page auth loading', () => {
 		authStore.setSession(session('user-1', 'token-1'));
 		recommendationsPageStore.ensureUser('user-1');
 		recommendationsPageStore.setRun('42', {
+			flavor_groups: flavorFixture([{ book_id: 'cached-book', rank: 1 }]),
 			books: [
 				{ id: 'cached-id', book_id: 'cached-book', title: 'Cached first account', author: 'Author' }
 			],
@@ -164,14 +216,12 @@ describe('shortlist page auth loading', () => {
 
 		const rendered = render(ShortlistPage);
 		await expect
-			.element(rendered.getByRole('heading', { name: 'Cached first account', exact: true }))
+			.element(rendered.getByRole('button', { name: /Cached first account/ }))
 			.toBeVisible();
 
 		authStore.setSession(session('user-2', 'token-2'));
 		await expect
-			.element(
-				rendered.getByRole('heading', { name: 'Second account recommendation', exact: true })
-			)
+			.element(rendered.getByRole('button', { name: /Second account recommendation/ }))
 			.toBeVisible();
 		expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/recommendations?request_id=42', {
 			headers: { Authorization: 'Bearer token-2' },
@@ -195,55 +245,19 @@ describe('shortlist page auth loading', () => {
 		rendered.unmount();
 	});
 
-	it('preserves a dismissal and its replacement option during retry and after refresh', async () => {
+	it('grays out a dismissed book without replacement or removing its group', async () => {
 		authStore.setSession(session('user-1', 'token-1'));
 		markAuthInitReady();
 		librarySaves.activateOwner('user-1');
 		libraryLoads.markSnapshot('user-1', ['ratings', 'bookmarks', 'dismissals']);
-		recommendationsPageStore.ensureUser('user-1');
-		const books = Array.from({ length: 8 }, (_, index) => ({
-			id: `book-${index}`,
-			book_id: `ulid-${index}`,
-			title: `Book ${index}`,
-			author: 'Author'
-		}));
-		recommendationsPageStore.setRun('42', {
-			books,
-			likedBookPrecedentsByBookId: {},
-			authorRelationshipAuthorsByBookId: {},
-			dimensionMatchSnapshotsByBookId: {}
-		});
-		pageState.url.searchParams.set('from', 'history');
-		let resolveRetry!: (response: { ok: boolean; json: () => Promise<unknown> }) => void;
-		const retryResponse = new Promise<{ ok: boolean; json: () => Promise<unknown> }>((resolve) => {
-			resolveRetry = resolve;
-		});
-		const fetchMock = vi
-			.fn()
-			.mockResolvedValueOnce({ ok: false, status: 500 })
-			.mockReturnValueOnce(retryResponse);
-		vi.stubGlobal('fetch', fetchMock);
-
+		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(recommendationsResponse('Dismiss me')));
 		const rendered = render(ShortlistPage);
-		await expect
-			.element(rendered.getByRole('alert'))
-			.toHaveTextContent('Couldn’t load your recommendations.');
+		await rendered.getByRole('button', { name: /Dismiss me/ }).click();
 		await rendered.getByRole('button', { name: 'Not interested', exact: true }).click();
-		await expect
-			.element(rendered.getByRole('button', { name: 'Get another book', exact: true }))
-			.toBeVisible();
-		await rendered.getByRole('button', { name: 'Retry', exact: true }).click();
-		await expect.poll(() => fetchMock.mock.calls.length).toBe(2);
-		await expect
-			.element(rendered.getByRole('button', { name: 'Get another book', exact: true }))
-			.toBeVisible();
-
-		resolveRetry({ ok: true, json: async () => ({ books, request_id: '42' }) });
-		await expect.element(rendered.getByRole('alert')).not.toBeInTheDocument();
-		await expect
-			.element(rendered.getByRole('button', { name: 'Get another book', exact: true }))
-			.toBeVisible();
-		expect(notInterestedStore.has('ulid-0')).toBe(true);
+		expect(notInterestedStore.has('Dismiss me-book')).toBe(true);
+		expect(document.body.textContent).not.toContain('Get another book');
+		expect(document.querySelectorAll('.group-track > .group-slide')).toHaveLength(12);
+		expect(document.querySelector('.book-card__media-inner--not-interested')).not.toBeNull();
 		rendered.unmount();
 		notInterestedStore.reset();
 		libraryLoads.reset();
@@ -298,7 +312,7 @@ describe('shortlist page auth loading', () => {
 			.toHaveTextContent('Couldn’t load your recommendations.');
 		await rendered.getByRole('button', { name: 'Retry', exact: true }).click();
 		await expect
-			.element(rendered.getByRole('heading', { name: 'Retried recommendation', exact: true }))
+			.element(rendered.getByRole('button', { name: /Retried recommendation/ }))
 			.toBeVisible();
 		expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/recommendations?request_id=42', {
 			headers: { Authorization: 'Bearer token-1' },
@@ -312,6 +326,7 @@ describe('shortlist page auth loading', () => {
 		authStore.setSession(session('user-1', 'token-1'));
 		recommendationsPageStore.ensureUser('user-1');
 		recommendationsPageStore.setRun('42', {
+			flavor_groups: flavorFixture([{ book_id: 'cached-book', rank: 1 }]),
 			books: [
 				{ id: 'cached-id', book_id: 'cached-book', title: 'Cached shortlist', author: 'Author' }
 			],
@@ -334,21 +349,124 @@ describe('shortlist page auth loading', () => {
 		await expect
 			.element(rendered.getByRole('alert'))
 			.toHaveTextContent('Couldn’t load your recommendations.');
-		await expect
-			.element(rendered.getByRole('heading', { name: 'Cached shortlist', exact: true }))
-			.toBeVisible();
+		await expect.element(rendered.getByRole('button', { name: /Cached shortlist/ })).toBeVisible();
 		expect(recommendationsPageStore.getRun('42')?.books[0]?.title).toBe('Cached shortlist');
 
 		await rendered.getByRole('button', { name: 'Retry', exact: true }).click();
 		await expect.poll(() => fetchMock.mock.calls.length).toBe(2);
-		await expect
-			.element(rendered.getByRole('heading', { name: 'Cached shortlist', exact: true }))
-			.toBeVisible();
+		await expect.element(rendered.getByRole('button', { name: /Cached shortlist/ })).toBeVisible();
 		resolveRetry(recommendationsResponse('Refreshed shortlist'));
 		await expect
-			.element(rendered.getByRole('heading', { name: 'Refreshed shortlist', exact: true }))
+			.element(rendered.getByRole('button', { name: /Refreshed shortlist/ }))
 			.toBeVisible();
 		await expect.element(rendered.getByRole('alert')).not.toBeInTheDocument();
 		rendered.unmount();
 	});
+	it('keeps empty groups navigable and loops between the first and last group', async () => {
+		authStore.setSession(session('user-1', 'token-1'));
+		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(recommendationsResponse('Overall book')));
+		const rendered = render(ShortlistPage);
+		await expect.element(rendered.getByRole('button', { name: /Overall book/ })).toBeVisible();
+		await rendered.getByRole('button', { name: '[COPY: previous-group]', exact: true }).click();
+		await expect
+			.element(rendered.getByRole('heading', { name: '[COPY: group-label:lighter]', exact: true }))
+			.toBeVisible();
+		await expect
+			.element(rendered.getByRole('group', { name: '[COPY: group-position] 10/10', exact: true }))
+			.toBeVisible();
+		expect(document.querySelector('.group-slide[aria-hidden="false"]')?.textContent).toContain(
+			'[COPY: empty-group]'
+		);
+		await rendered.getByRole('button', { name: '[COPY: next-group]', exact: true }).click();
+		await expect.element(rendered.getByRole('button', { name: /Overall book/ })).toBeVisible();
+		await expect
+			.element(rendered.getByRole('group', { name: '[COPY: group-position] 1/10', exact: true }))
+			.toBeVisible();
+		rendered.unmount();
+	});
+	it.each([
+		[1280, 800],
+		[1920, 1080],
+		[375, 740]
+	])(
+		'keeps panels and covers consistent at %s by %s with visible inactive neighbors',
+		async (width, height) => {
+			await browserPage.viewport(width, height);
+			authStore.setSession(session('user-1', 'token-1'));
+			const books = Array.from({ length: 9 }, (_, i) => ({
+				id: 'book-' + i,
+				book_id: 'book-' + i,
+				title: 'Book ' + i,
+				author: 'Author'
+			}));
+			vi.stubGlobal(
+				'fetch',
+				vi.fn().mockResolvedValue({
+					ok: true,
+					json: async () => ({
+						books,
+						request_id: '42',
+						status: 'completed',
+						flavor_groups: flavorFixture(
+							books.map((book, i) => ({ book_id: book.book_id, rank: i + 1 }))
+						)
+					})
+				})
+			);
+			const rendered = render(ShortlistPage);
+			await expect.element(rendered.getByRole('button', { name: /Book 0 by/ })).toBeVisible();
+			const root = document.querySelector('.shortlist-page') as HTMLElement;
+			root.style.height = height + 'px';
+			await new Promise(requestAnimationFrame);
+			const active = () => document.querySelector('.group-slide--active') as HTMLElement;
+			const panelHeight = active().querySelector('.group-panel')!.getBoundingClientRect().height;
+			const coverWidth = active().querySelector('.book-card')!.getBoundingClientRect().width;
+			const track = document.querySelector('.group-track')!.getBoundingClientRect();
+			const current = active().getBoundingClientRect();
+			expect(current.left).toBeGreaterThan(track.left);
+			expect(current.right).toBeLessThan(track.right);
+			expect(document.querySelectorAll('.group-slide[inert]')).toHaveLength(11);
+			expect(root.querySelector('.shortlist-page__title')).toBeNull();
+			expect(root.querySelector('[data-copy-placeholder="grouped-description"]')).toBeNull();
+			expect(root.querySelector('.group-controls .shortlist-position')).not.toBeNull();
+			expect(root.querySelector('.group-peek')).toBeNull();
+			if (width >= 1024) {
+				expect(coverWidth).toBeGreaterThan(140);
+				expect(current.width).toBeLessThan(track.width * 0.75);
+			}
+			await rendered.getByRole('button', { name: '[COPY: next-group]', exact: true }).click();
+
+			await expect.element(rendered.getByRole('button', { name: /Book 7 by/ })).toBeVisible();
+			await expect
+				.poll(() =>
+					Math.abs(
+						active().querySelector('.group-panel')!.getBoundingClientRect().height - panelHeight
+					)
+				)
+				.toBeLessThan(1);
+			await expect
+				.poll(() =>
+					Math.abs(active().querySelector('.book-card')!.getBoundingClientRect().width - coverWidth)
+				)
+				.toBeLessThan(1);
+			await rendered.getByRole('button', { name: '[COPY: next-group]', exact: true }).click();
+			await expect
+				.element(
+					rendered.getByRole('heading', {
+						name: '[COPY: group-label:something_different]',
+						exact: true
+					})
+				)
+				.toBeVisible();
+			await expect
+				.poll(() =>
+					Math.abs(
+						active().querySelector('.group-panel')!.getBoundingClientRect().height - panelHeight
+					)
+				)
+				.toBeLessThan(1);
+			rendered.unmount();
+			await browserPage.viewport(1280, 900);
+		}
+	);
 });

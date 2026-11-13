@@ -1,3 +1,4 @@
+import { flavorFixture } from '$lib/recommendations/flavorGroups.fixture';
 import { createClient } from '@supabase/supabase-js';
 import type { RequestEvent } from '@sveltejs/kit';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -27,8 +28,23 @@ const fetcher: typeof fetch = async (input) => {
 		case 'recommendation_requests':
 			return Response.json(
 				url.searchParams.has('id') && url.searchParams.get('id') === 'eq.1'
-					? { id: '1', status: 'completed', result_count: 3 }
-					: [{ id: '1', filters: null, status: 'completed', result_count: 3 }]
+					? {
+							id: '1',
+							filters: { genres: { all_of: ['Africa'] } },
+							status: 'completed',
+							result_count: 3
+						}
+					: [
+							{
+								id: '1',
+								filters: null,
+								request_type: null,
+								output_format: 'flavors_v1',
+								flavor_groups: flavorFixture(ids.map((book_id, i) => ({ book_id, rank: i + 1 }))),
+								status: 'completed',
+								result_count: 3
+							}
+						]
 			);
 		case 'recommendation_items':
 			return Response.json(
@@ -82,13 +98,9 @@ describe('recommendation exclusion read failures', () => {
 	afterEach(() => vi.restoreAllMocks());
 
 	it.each(['user_ratings', 'user_not_interested'])(
-		'rejects latest and combined recommendations when %s cannot be read',
+		'rejects combined recommendations when %s cannot be read',
 		async (table) => {
 			failedTable = table;
-			await expect(getRun(event('/api/recommendations'))).rejects.toMatchObject({
-				status: 500,
-				body: { message: 'Failed to load recommendations' }
-			});
 			await expect(getUnique(event('/api/recommendations/unique'))).rejects.toMatchObject({
 				status: 500,
 				body: { message: 'Failed to load recommendations' }

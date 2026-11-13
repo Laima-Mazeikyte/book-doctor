@@ -1,3 +1,4 @@
+import { flavorFixture } from '$lib/recommendations/flavorGroups.fixture';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createClient } from '@supabase/supabase-js';
 import { GET as getRun } from '../../routes/api/recommendations/+server';
@@ -41,6 +42,11 @@ function client() {
 										id: 42,
 										public_id,
 										filters: null,
+										request_type: null,
+										output_format: 'flavors_v1',
+										flavor_groups: flavorFixture([
+											{ book_id: 'book', rank: 1, dimension_matches: [] }
+										]),
 										status: 'completed',
 										result_count: 1,
 										error_message: null
@@ -97,11 +103,7 @@ it.each(['K7mQ2xBa', '42'])(
 		).json();
 		expect(payload.request_id).toBe('K7mQ2xBa');
 		expect(payload.dimensionMatchSnapshotsByBookId.book.request_id).toBe('K7mQ2xBa');
-		expect(
-			reads
-				.find((url) => url.pathname.endsWith('/recommendation_items'))
-				?.searchParams.get('request_id')
-		).toBe('eq.42');
+		expect(reads.some((url) => url.pathname.endsWith('/recommendation_items'))).toBe(false);
 	}
 );
 
@@ -116,11 +118,7 @@ it('returns public IDs in recommendation history and combined dimension evidence
 	expect(
 		metadataReads.every((url) => url.searchParams.get('select')?.includes('status,result_count'))
 	).toBe(true);
-	expect(
-		reads
-			.find((url) => url.pathname.endsWith('/recommendation_items'))
-			?.searchParams.get('request_id')
-	).toBe('in.(42)');
+	expect(reads.some((url) => url.pathname.endsWith('/recommendation_items'))).toBe(false);
 });
 
 it('reuses the latest run metadata while querying its results by the internal ID', async () => {
@@ -128,11 +126,7 @@ it('reuses the latest run metadata while querying its results by the internal ID
 	expect(payload.request_id).toBe('K7mQ2xBa');
 	expect(payload.dimensionMatchSnapshotsByBookId.book.request_id).toBe('K7mQ2xBa');
 	expect(reads.filter((url) => url.pathname.endsWith('/recommendation_requests'))).toHaveLength(1);
-	expect(
-		reads
-			.find((url) => url.pathname.endsWith('/recommendation_items'))
-			?.searchParams.get('request_id')
-	).toBe('eq.42');
+	expect(reads.some((url) => url.pathname.endsWith('/recommendation_items'))).toBe(false);
 });
 
 it.each([

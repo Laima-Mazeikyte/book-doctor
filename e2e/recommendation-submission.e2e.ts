@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { loadEnv } from 'vite';
+import { flavorFixture } from '../src/lib/recommendations/flavorGroups.fixture';
 
 test.setTimeout(90_000);
 const base = 'http://127.0.0.1:4173';
@@ -46,7 +47,7 @@ async function setup(page: Page, create: (route: Route, attempt: number) => Prom
 		},
 		{ authKey, session }
 	);
-	const state = { inserts: 0, bodies: [] as unknown[] };
+	const state = { inserts: 0, bodies: [] as unknown[], failedRequestId: null as string | null };
 	await page.route('**/auth/v1/**', (route) => route.fulfill({ json: session }));
 	await page.route('**/rest/v1/**', async (route) => {
 		const request = route.request();
@@ -88,7 +89,17 @@ async function setup(page: Page, create: (route: Route, attempt: number) => Prom
 		if (url.pathname === '/api/recommendations')
 			return route.fulfill({
 				json: {
-					books: [books[10]],
+					books: url.searchParams.get('request_id') === state.failedRequestId ? [] : [books[10]],
+					status:
+						url.searchParams.get('request_id') === state.failedRequestId ? 'failed' : 'completed',
+					error_code:
+						url.searchParams.get('request_id') === state.failedRequestId
+							? 'recommendation_failed'
+							: null,
+					flavor_groups:
+						url.searchParams.get('request_id') === state.failedRequestId
+							? null
+							: flavorFixture([{ book_id: books[10].book_id, rank: 1 }]),
 					request_id: url.searchParams.get('request_id')
 				}
 			});
@@ -137,9 +148,11 @@ test('rapid clicks and keyboard activation create one request and keep a stable,
 	expect(Math.abs(busyBounds!.height - bounds!.height)).toBeLessThan(1);
 	pending.release();
 	await expect(page).toHaveURL(/shortlist\?request_id=K7mQ2xBa/);
-	await expect(page.getByRole('heading', { name: books[10].title, exact: true })).toBeVisible();
+	await expect(
+		page.locator('.group-slide--active').getByRole('button', { name: /Submission Book 11 by/ })
+	).toBeVisible();
 	expect(state.inserts).toBe(1);
-	expect(state.bodies).toEqual([{ user_id: userId }]);
+	expect(state.bodies).toEqual([{ user_id: userId, output_format: 'flavors_v1' }]);
 });
 
 test('creation failure stays on Browse and manual Retry preserves focus until it opens the shortlist', async ({
@@ -193,9 +206,7 @@ test('leaving Browse while creation is pending prevents its response from redire
 	await expect(page).toHaveURL(`${base}/discover`);
 });
 
-test('shortlist submission exposes errors, retains its books, and uses the same guarded Retry flow', async ({
-	page
-}, testInfo) => {
+test('failed grouped requests use the guarded submission retry flow', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 844 });
 	const pending = gate();
 	const state = await setup(page, async (route, attempt) => {
@@ -204,35 +215,29 @@ test('shortlist submission exposes errors, retains its books, and uses the same 
 		await pending.promise;
 		await route.fulfill({ json: { public_id: 'NextRun3' } });
 	});
+	state.failedRequestId = '42';
 	await page.goto(`${base}/rate/recommendations/shortlist?request_id=42`, {
 		waitUntil: 'domcontentloaded'
 	});
-	const book = page.getByRole('article', { name: `${books[10].title}, book 1 of 1`, exact: true });
-	await expect(book).toBeVisible({
-		timeout: 45_000
+	const button = page.getByRole('button', {
+		name: '[COPY: recommendation-generation-failed-action]',
+		exact: true
 	});
-	await page.getByRole('button', { name: 'Not interested', exact: true }).click();
-	const button = page.getByRole('button', { name: 'Get new recommendations', exact: true });
 	await expect(button).toBeEnabled();
-	const bounds = await button.boundingBox();
 	await button.click();
 	const notice = page.getByTestId('recommendation-submission-error');
-	await expect(notice).toContainText('Couldn’t start recommendations');
+	await expect(notice).toContainText('start recommendations');
 	await expect(page).toHaveURL(/shortlist\?request_id=42/);
-	await expect(book).toBeVisible();
-	await page.screenshot({ path: testInfo.outputPath('shortlist-submission-error.png') });
+	await expect(button).toBeEnabled();
 	await notice.getByRole('button', { name: 'Retry', exact: true }).click();
-	const busy = page.getByRole('button', { name: 'Starting recommendations…', exact: true });
-	await expect(busy).toHaveAttribute('aria-disabled', 'true');
-	const busyBounds = await busy.boundingBox();
-	expect(Math.abs(busyBounds!.width - bounds!.width)).toBeLessThan(1);
-	expect(Math.abs(busyBounds!.height - bounds!.height)).toBeLessThan(1);
+	await expect(button).toBeDisabled();
 	await expect.poll(() => state.inserts).toBe(2);
-	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+	await button.evaluate((el: HTMLButtonElement) => el.click());
+	expect(state.inserts).toBe(2);
 	pending.release();
 	await expect(page).toHaveURL(/shortlist\?request_id=NextRun3/);
 	await expect(
-		page.getByRole('button', { name: 'Starting recommendations…', exact: true })
-	).toHaveCount(0);
+		page.locator('.group-slide--active').getByRole('button', { name: /Submission Book 11 by/ })
+	).toBeVisible();
 	expect(state.inserts).toBe(2);
 });

@@ -1,399 +1,182 @@
 <script lang="ts">
-	import { withTimeout, wait } from '$lib/requests/timeout';
+	import { onDestroy, untrack } from 'svelte';
+	import { browser } from '$app/environment';
+	import { page } from '$app/state';
+	import { beforeNavigate, goto, invalidateAll } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import { get } from 'svelte/store';
+	import { withTimeout, wait, RequestTimeoutError } from '$lib/requests/timeout';
 	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
 	import RecommendationLoadNotice from '$lib/components/RecommendationLoadNotice.svelte';
-	import type { DimensionMatchSnapshotsByBookId } from '$lib/recommendations/dimensionMatches';
-	import { get } from 'svelte/store';
-	import { browser } from '$app/environment';
-	import { beforeNavigate, goto } from '$app/navigation';
-	import { onDestroy } from 'svelte';
-	import { resolve } from '$app/paths';
-	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-	import { page } from '$app/state';
-	import ShortlistCarousel from '$lib/components/shortlist/ShortlistCarousel.svelte';
-	import {
-		overlayForDismissedBook,
-		insertBookAfterIndex,
-		splitShortlistBooks,
-		type NotInterestedOverlay
-	} from '$lib/components/shortlist/shortlist-books';
-	import ShortlistError from '$lib/components/shortlist/ShortlistError.svelte';
 	import ShortlistLoading from '$lib/components/shortlist/ShortlistLoading.svelte';
-	import ShortlistPositionIndicator from '$lib/components/shortlist/ShortlistPositionIndicator.svelte';
+	import ShortlistError from '$lib/components/shortlist/ShortlistError.svelte';
 	import ShortlistFailed from '$lib/components/shortlist/ShortlistFailed.svelte';
+	import GroupedCarousel from '$lib/components/shortlist/GroupedCarousel.svelte';
+	import RecommendationSubmissionNotice from '$lib/components/RecommendationSubmissionNotice.svelte';
 	import {
 		fetchRecommendations,
+		RecommendationsHttpError,
 		RECOMMENDATIONS_POLL_INTERVAL_MS,
 		RECOMMENDATIONS_POLL_TIMEOUT_MS
 	} from '$lib/recommendations/fetchRecommendations';
-	import { isSelectionType } from '$lib/recommendations/bookSelection';
+	import { hydrateFlavorGroups, parseFlavorGroups } from '$lib/recommendations/flavorGroups';
 	import { createRecommendationSubmission } from '$lib/recommendations/requestRecommendations';
-	import RecommendationSubmissionNotice from '$lib/components/RecommendationSubmissionNotice.svelte';
+	import {
+		recommendationsPageStore,
+		type RecommendationRunData
+	} from '$lib/stores/recommendationsPage';
 	import { refreshRecommendationsCountFromApi } from '$lib/stores/recommendationsCount';
 	import { authStore } from '$lib/stores/auth';
+	import { ratingsStore } from '$lib/stores/ratings';
 	import { notInterestedStore } from '$lib/stores/notInterested';
 	import { planToReadStore } from '$lib/stores/planToRead';
-	import { ratingsStore } from '$lib/stores/ratings';
+	import {
+		toggleBookmarked,
+		toggleNotInterested,
+		setBookRating,
+		removeBookRating
+	} from '$lib/stores/libraryActions';
 	import {
 		buildCleanLikedAuthorSet,
-		filterAuthorRelationshipAuthors,
-		type AuthorRelationshipAuthorsByBookId
+		filterAuthorRelationshipAuthors
 	} from '$lib/recommendations/authorRelationships';
 	import { filterRatedLikedBookPrecedents } from '$lib/recommendations/likedBookPrecedents';
-	import { recommendationsPageStore } from '$lib/stores/recommendationsPage';
 	import { t } from '$lib/copy';
 	import { X } from 'lucide-svelte';
-	import type { Book, RatingValue } from '$lib/types/book';
 
-	type ViewState = 'loading' | 'ready' | 'failed' | 'error' | 'empty';
-	const SLOW_LOADING_MS = 6000;
-
-	let visibleBooks = $state<Book[]>([]);
-	let reserveBooks = $state<Book[]>([]);
-	let likedBookPrecedentsByBookId = $state<Record<string, Book[]>>({});
-	let authorRelationshipAuthorsByBookId = $state<AuthorRelationshipAuthorsByBookId>({});
-	let dimensionMatchSnapshotsByBookId = $state<DimensionMatchSnapshotsByBookId>({});
-	let activeUserId: string | null = null;
-	let viewState = $state<ViewState>('loading');
+	let run = $state<RecommendationRunData>({
+		books: [],
+		likedBookPrecedentsByBookId: {},
+		authorRelationshipAuthorsByBookId: {},
+		dimensionMatchSnapshotsByBookId: {}
+	});
+	const groups = $derived(
+		run.flavor_groups ? hydrateFlavorGroups(run.flavor_groups, run.books) : []
+	);
+	let viewState = $state<'loading' | 'ready' | 'failed' | 'backend-failed' | 'error'>('loading');
 	let error = $state<string | null>(null);
 	let slowLoading = $state(false);
-	let loadController: AbortController | null = null;
-	let slowLoadingTimer: ReturnType<typeof setTimeout> | null = null;
-	let activeLoadId = 0;
 	let activeIndex = $state(0);
+	let generation = 0;
+	let loadController: AbortController | null = null;
 	const recommendationSubmission = createRecommendationSubmission();
-	const requestingRecommendations = $derived($recommendationSubmission.status === 'submitting');
 	beforeNavigate(({ to }) => recommendationSubmission.leave(to?.url ?? null));
-	onDestroy(() => recommendationSubmission.destroy());
-	let sessionNiCount = $state(0);
-	let insertionsUsed = $state(0);
-	const insertedBookIds = new SvelteSet<string>();
-	const dismissalOrdinals = new SvelteMap<string, number>();
-	const replaceUsedBookIds = new SvelteSet<string>();
-	let shortlistLayoutChanged = $state(false);
-	let scrollToBookIndex: ((index: number) => void) | undefined;
-
+	onDestroy(() => {
+		recommendationSubmission.destroy();
+		loadController?.abort();
+	});
 	const ratedBooksStore = ratingsStore.ratedBooks;
 	const cleanLikedAuthorNames = $derived(buildCleanLikedAuthorSet($ratedBooksStore));
-	const authorRelationshipAuthorsForDisplay = $derived.by((): AuthorRelationshipAuthorsByBookId => {
-		const filtered: AuthorRelationshipAuthorsByBookId = {};
-		for (const [bookId, candidates] of Object.entries(authorRelationshipAuthorsByBookId)) {
-			filtered[bookId] = filterAuthorRelationshipAuthors(candidates, cleanLikedAuthorNames);
-		}
-		return filtered;
-	});
-	const likedBookPrecedentsForDisplay = $derived.by(() => {
-		const filtered: Record<string, Book[]> = {};
-		for (const [bookId, precedents] of Object.entries(likedBookPrecedentsByBookId)) {
-			filtered[bookId] = filterRatedLikedBookPrecedents(precedents, $ratingsStore);
-		}
-		return filtered;
-	});
-
-	function resetShortlistSession() {
-		sessionNiCount = 0;
-		insertionsUsed = 0;
-		insertedBookIds.clear();
-		dismissalOrdinals.clear();
-		replaceUsedBookIds.clear();
-		shortlistLayoutChanged = false;
-	}
-
-	function applyBooksFromRun(
-		all: Book[],
-		precedentsByBookId: Record<string, Book[]> = {},
-		authorRelationshipAuthors: AuthorRelationshipAuthorsByBookId = {},
-		dimensionSnapshots: DimensionMatchSnapshotsByBookId = {}
-	) {
-		const { visible, reserve } = splitShortlistBooks(all);
-		visibleBooks = visible;
-		reserveBooks = reserve;
-		likedBookPrecedentsByBookId = precedentsByBookId;
-		authorRelationshipAuthorsByBookId = authorRelationshipAuthors;
-		dimensionMatchSnapshotsByBookId = dimensionSnapshots;
-		resetShortlistSession();
-	}
-
-	function isActiveLoad(loadId: number, requestId: string | null): boolean {
-		return (
-			loadId === activeLoadId &&
-			activeUserId === (get(authStore).user?.id ?? null) &&
-			(page.url.searchParams.get('request_id')?.trim() ?? null) === requestId
-		);
-	}
-
-	function clearLoadTimers() {
-		loadController?.abort();
-		loadController = null;
-		if (slowLoadingTimer != null) clearTimeout(slowLoadingTimer);
-		slowLoadingTimer = null;
-	}
-
-	function handleNotInterested(book: Book) {
-		const bid = book.book_id;
-		const wasNotInterested = notInterestedStore.has(bid);
-		const nowNotInterested = notInterestedStore.toggle(bid, book);
-		shortlistLayoutChanged = true;
-		if (nowNotInterested && !wasNotInterested) {
-			sessionNiCount += 1;
-			dismissalOrdinals.set(bid, sessionNiCount);
-			if (planToReadStore.has(book.id)) {
-				planToReadStore.toggle(book.id, book.book_id, book);
-			}
-			if (get(ratingsStore).has(book.id)) {
-				ratingsStore.removeRating(book.id, book.book_id);
-			}
-		} else if (wasNotInterested && !nowNotInterested) {
-			if (!insertedBookIds.has(bid)) {
-				sessionNiCount = Math.max(0, sessionNiCount - 1);
-			}
-			dismissalOrdinals.delete(bid);
-			replaceUsedBookIds.delete(bid);
-		}
-	}
-
-	function handleBookmark(book: Book) {
-		const wasBookmarked = planToReadStore.has(book.id);
-		planToReadStore.toggle(book.id, book.book_id, book);
-		if (!wasBookmarked) {
-			const bid = book.book_id;
-			if (notInterestedStore.has(bid)) {
-				notInterestedStore.remove(bid);
-				if (!insertedBookIds.has(bid)) {
-					sessionNiCount = Math.max(0, sessionNiCount - 1);
-				}
-				dismissalOrdinals.delete(bid);
-				replaceUsedBookIds.delete(bid);
-			}
-		}
-	}
-
-	function handleRate(book: Book, value: RatingValue) {
-		ratingsStore.setRating(book.id, value, book.book_id, book);
-	}
-
-	function handleRemoveRating(book: Book) {
-		ratingsStore.removeRating(book.id, book.book_id);
-	}
-
-	async function handleRequestNewRecommendations() {
-		await recommendationSubmission.submit();
-	}
-
-	function getNotInterestedOverlay(bookId: string): NotInterestedOverlay {
-		if (!$notInterestedStore.has(bookId)) return null;
-		return overlayForDismissedBook(
-			dismissalOrdinals.get(bookId),
-			reserveBooks.length,
-			insertionsUsed,
-			sessionNiCount,
-			replaceUsedBookIds.has(bookId)
-		);
-	}
-
-	function handleOfferAnotherBook(book: Book, index: number) {
-		const result = insertBookAfterIndex(visibleBooks, index, reserveBooks);
-		if (!result.incoming) return;
-		shortlistLayoutChanged = true;
-		visibleBooks = result.visible;
-		reserveBooks = result.reserve;
-		insertionsUsed += 1;
-		insertedBookIds.add(result.incoming.book_id);
-		replaceUsedBookIds.add(book.book_id);
-		const nextIndex = index + 1;
-		activeIndex = nextIndex;
-		queueMicrotask(() => scrollToBookIndex?.(nextIndex));
-	}
+	const authorRelationshipAuthorsForDisplay = $derived(
+		Object.fromEntries(
+			Object.entries(run.authorRelationshipAuthorsByBookId).map(([id, authors]) => [
+				id,
+				filterAuthorRelationshipAuthors(authors, cleanLikedAuthorNames)
+			])
+		)
+	);
+	const likedBookPrecedentsForDisplay = $derived(
+		Object.fromEntries(
+			Object.entries(run.likedBookPrecedentsByBookId).map(([id, books]) => [
+				id,
+				filterRatedLikedBookPrecedents(books, $ratingsStore)
+			])
+		)
+	);
 
 	function startPoll(
 		userId: string | null,
-		accessToken: string | null,
+		token: string | null,
 		requestId: string,
-		loadId: number,
-		preserveCurrent = false
+		preserve = false
 	) {
-		clearLoadTimers();
+		loadController?.abort();
 		const controller = new AbortController();
 		loadController = controller;
-		slowLoading = false;
-		activeUserId = userId;
-		recommendationsPageStore.ensureUser(activeUserId);
-		error = null;
-		const fromHistory = page.url.searchParams.get('from') === 'history';
-		const cachedRun = recommendationsPageStore.getRun(requestId);
-
-		if ((fromHistory || preserveCurrent) && cachedRun && cachedRun.books.length > 0) {
-			if (!preserveCurrent) {
-				applyBooksFromRun(
-					cachedRun.books,
-					cachedRun.likedBookPrecedentsByBookId,
-					cachedRun.authorRelationshipAuthorsByBookId,
-					cachedRun.dimensionMatchSnapshotsByBookId
-				);
-			}
-			viewState = 'ready';
-			void refreshRecommendationsCountFromApi(accessToken);
-			void fetchRecommendations(accessToken, requestId, { signal: controller.signal })
-				.then(
-					({
-						books: next,
-						request_type: requestType,
-						likedBookPrecedentsByBookId: nextPrecedents,
-						authorRelationshipAuthorsByBookId: nextAuthorRelationshipAuthors,
-						dimensionMatchSnapshotsByBookId: nextDimensionMatches
-					}) => {
-						if (controller.signal.aborted || !isActiveLoad(loadId, requestId)) return;
-						if (isSelectionType(requestType)) {
-							void goto(resolve(`/choose-books?request_id=${encodeURIComponent(requestId)}`), {
-								replaceState: true
-							});
-							return;
-						}
-						recommendationsPageStore.setRun(requestId, {
-							books: next,
-							likedBookPrecedentsByBookId: nextPrecedents,
-							authorRelationshipAuthorsByBookId: nextAuthorRelationshipAuthors,
-							dimensionMatchSnapshotsByBookId: nextDimensionMatches
-						});
-						if (!shortlistLayoutChanged) {
-							applyBooksFromRun(
-								next,
-								nextPrecedents,
-								nextAuthorRelationshipAuthors,
-								nextDimensionMatches
-							);
-							viewState = next.length > 0 ? 'ready' : 'empty';
-						}
-					}
-				)
-				.catch((cause) => {
-					if (controller.signal.aborted || !isActiveLoad(loadId, requestId)) return;
-					console.error('[shortlist] Failed to refresh recommendations:', cause);
-					error = t('recommendations.failedToLoad');
-				});
-			return;
-		}
-
-		visibleBooks = [];
-		reserveBooks = [];
-		likedBookPrecedentsByBookId = {};
-		authorRelationshipAuthorsByBookId = {};
-		dimensionMatchSnapshotsByBookId = {};
-		resetShortlistSession();
-		viewState = 'loading';
-
-		const start = Date.now();
-		slowLoadingTimer = setTimeout(() => {
-			slowLoadingTimer = null;
-			if (isActiveLoad(loadId, requestId)) slowLoading = true;
-		}, SLOW_LOADING_MS);
-
-		const schedule = async (signal: AbortSignal) => {
-			while (true) {
-				signal.throwIfAborted();
-				if (!isActiveLoad(loadId, requestId)) return;
-				let done = false;
-				try {
-					const {
-						books: nextBooks,
-						request_type: requestType,
-						likedBookPrecedentsByBookId: nextPrecedents,
-						authorRelationshipAuthorsByBookId: nextAuthorRelationshipAuthors,
-						dimensionMatchSnapshotsByBookId: nextDimensionMatches
-					} = await fetchRecommendations(accessToken, requestId, { signal });
-					signal.throwIfAborted();
-					if (!isActiveLoad(loadId, requestId)) return;
-					if (isSelectionType(requestType)) {
-						await goto(resolve(`/choose-books?request_id=${encodeURIComponent(requestId)}`), {
-							replaceState: true
-						});
-						return;
-					}
-					if (nextBooks.length > 0) {
-						applyBooksFromRun(
-							nextBooks,
-							nextPrecedents,
-							nextAuthorRelationshipAuthors,
-							nextDimensionMatches
-						);
-						recommendationsPageStore.setRun(requestId, {
-							books: nextBooks,
-							likedBookPrecedentsByBookId: nextPrecedents,
-							authorRelationshipAuthorsByBookId: nextAuthorRelationshipAuthors,
-							dimensionMatchSnapshotsByBookId: nextDimensionMatches
-						});
-						viewState = 'ready';
-						void refreshRecommendationsCountFromApi(accessToken);
-						done = true;
-					} else if (Date.now() - start >= RECOMMENDATIONS_POLL_TIMEOUT_MS) {
-						viewState = 'failed';
-						done = true;
-					}
-				} catch (e) {
-					signal.throwIfAborted();
-					if (!isActiveLoad(loadId, requestId)) return;
-					console.error('[shortlist] Failed to load recommendations:', e);
-					error = t('recommendations.failedToLoad');
-					viewState = 'error';
-					done = true;
-				}
-
-				if (!isActiveLoad(loadId, requestId)) return;
-				if (done) {
-					clearLoadTimers();
-					return;
-				} else {
-					await wait(RECOMMENDATIONS_POLL_INTERVAL_MS, signal);
-				}
-			}
-		};
-
-		void withTimeout(schedule, {
-			signal: controller.signal,
-			timeoutMs: RECOMMENDATIONS_POLL_TIMEOUT_MS
-		}).catch(() => {
-			if (controller.signal.aborted || !isActiveLoad(loadId, requestId)) return;
-			clearLoadTimers();
-			viewState = 'failed';
-		});
-	}
-
-	function retryLoad() {
-		const requestId = page.url.searchParams.get('request_id')?.trim() ?? null;
-		if (!requestId) return;
-		const loadId = ++activeLoadId;
-		const userId = $authStore.user?.id ?? null;
-		const preserveCurrent = viewState === 'ready' && activeUserId === userId;
-		startPoll(userId, $authStore.session?.access_token ?? null, requestId, loadId, preserveCurrent);
-	}
-
-	$effect(() => {
+		const attempt = ++generation;
+		const current = () =>
+			!controller.signal.aborted &&
+			attempt === generation &&
+			get(authStore).user?.id === (userId ?? undefined);
+		recommendationsPageStore.ensureUser(userId);
+		const cached = recommendationsPageStore.getRun(requestId);
+		if (cached?.flavor_groups && !preserve) run = cached;
+		viewState = preserve || cached?.flavor_groups ? 'ready' : 'loading';
 		if (viewState === 'loading') {
+			run = {
+				books: [],
+				likedBookPrecedentsByBookId: {},
+				authorRelationshipAuthorsByBookId: {},
+				dimensionMatchSnapshotsByBookId: {}
+			};
 			activeIndex = 0;
 		}
-	});
-
+		error = null;
+		slowLoading = false;
+		const timer = setTimeout(() => {
+			if (current()) slowLoading = true;
+		}, 6000);
+		void withTimeout(
+			async (signal) => {
+				while (current()) {
+					const next = await fetchRecommendations(token, requestId, { signal });
+					if (!current()) return;
+					if (next.status === 'failed') {
+						console.warn('[shortlist] Recommendation generation failed', {
+							request_id: next.request_id,
+							error_code: next.error_code
+						});
+						viewState = 'backend-failed';
+						return;
+					}
+					if (next.flavor_groups) {
+						const flavor_groups = parseFlavorGroups(next.flavor_groups);
+						run = { ...next, flavor_groups };
+						recommendationsPageStore.setRun(requestId, run);
+						viewState = 'ready';
+						void refreshRecommendationsCountFromApi(token);
+						return;
+					}
+					if (next.status === 'completed') throw new Error('Missing grouped results');
+					await wait(RECOMMENDATIONS_POLL_INTERVAL_MS, signal);
+				}
+			},
+			{ signal: controller.signal, timeoutMs: RECOMMENDATIONS_POLL_TIMEOUT_MS }
+		)
+			.catch(async (cause) => {
+				if (!current()) return;
+				if (cause instanceof RecommendationsHttpError && cause.status === 404) {
+					await invalidateAll();
+					return;
+				}
+				error = t('recommendations.failedToLoad');
+				if (viewState !== 'ready')
+					viewState = cause instanceof RequestTimeoutError ? 'failed' : 'error';
+			})
+			.finally(() => clearTimeout(timer));
+	}
+	function retryLoad() {
+		const id = page.url.searchParams.get('request_id')?.trim();
+		if (id)
+			startPoll(
+				get(authStore).user?.id ?? null,
+				get(authStore).session?.access_token ?? null,
+				id,
+				viewState === 'ready'
+			);
+	}
 	$effect(() => {
 		if (!browser) return;
-		const requestId = page.url.searchParams.get('request_id')?.trim() ?? null;
-
-		clearLoadTimers();
-
-		if (!requestId) {
+		const id = page.url.searchParams.get('request_id')?.trim();
+		const userId = $authStore.user?.id ?? null;
+		if (!id) {
 			void goto(resolve('/rate/recommendations'), { replaceState: true });
 			return;
 		}
-
-		const userId = $authStore.user?.id ?? null;
-		const loadId = ++activeLoadId;
-		const accessToken = get(authStore).session?.access_token ?? null;
-		startPoll(userId, accessToken, requestId, loadId);
-
-		return clearLoadTimers;
+		untrack(() => startPoll(userId, get(authStore).session?.access_token ?? null, id));
+		return () => loadController?.abort();
 	});
-
 	const backHref = resolve('/rate/recommendations');
-
 	function handleClose() {
 		void goto(backHref);
 	}
@@ -414,19 +197,8 @@
 		>
 			<X size={18} aria-hidden="true" />
 		</button>
-		<div class="shortlist-page__heading">
-			<h1 class="shortlist-page__title typ-display2 typ-display2--content">
-				{t('recommendations.shortlist.title')}
-			</h1>
-			<p class="shortlist-page__description">{t('recommendations.shortlist.description')}</p>
-			<RecommendationSubmissionNotice submission={recommendationSubmission} />
-			{#if viewState === 'ready' && visibleBooks.length > 1}
-				<div class="shortlist-page__position">
-					<ShortlistPositionIndicator position={activeIndex + 1} total={visibleBooks.length} />
-				</div>
-			{/if}
-		</div>
 	</header>
+	<RecommendationSubmissionNotice submission={recommendationSubmission} />
 
 	<LibraryLoadNotice collections={['ratings', 'bookmarks', 'dismissals']} />
 	{#if error && viewState === 'ready'}
@@ -438,33 +210,40 @@
 				slowLoading ? 'recommendations.shortlist.takingLonger' : 'recommendations.shortlist.loading'
 			)}
 		/>
+	{:else if viewState === 'backend-failed'}
+		<ShortlistFailed
+			kind="backend"
+			busy={$recommendationSubmission.status === 'submitting'}
+			onRetry={() => void recommendationSubmission.submit()}
+		/>
 	{:else if viewState === 'failed'}
 		<ShortlistFailed onRetry={retryLoad} />
 	{:else if viewState === 'error'}
 		<ShortlistError onRetry={retryLoad} />
-	{:else if viewState === 'empty'}
-		<div class="shortlist-page__empty typ-body">{t('recommendations.emptyRun')}</div>
 	{:else}
-		<ShortlistCarousel
-			books={visibleBooks}
+		<GroupedCarousel
+			{groups}
 			bind:activeIndex
-			registerScrollController={(controller) => {
-				scrollToBookIndex = controller.scrollToIndex;
-			}}
-			getBookmarked={(id) => $planToReadStore.has(id)}
-			getLikedBookPrecedents={(bookId) => likedBookPrecedentsForDisplay[bookId] ?? []}
-			getAuthorRelationshipAuthors={(bookId) => authorRelationshipAuthorsForDisplay[bookId] ?? []}
-			getDimensionMatches={(bookId) => dimensionMatchSnapshotsByBookId[bookId]?.matches ?? []}
-			getNotInterested={(bookId) => $notInterestedStore.has(bookId)}
-			{getNotInterestedOverlay}
-			getRating={(id) => $ratingsStore.get(id) ?? null}
-			onBookmark={handleBookmark}
-			onNotInterested={handleNotInterested}
-			onOfferAnotherBook={handleOfferAnotherBook}
-			onRequestNewRecommendations={handleRequestNewRecommendations}
-			{requestingRecommendations}
-			onRate={handleRate}
-			onRemoveRating={handleRemoveRating}
+			bookProps={(book, group) => ({
+				bookmarked: $planToReadStore.has(book.id),
+				likedBookPrecedents: likedBookPrecedentsForDisplay[book.book_id] ?? [],
+				authorRelationshipAuthors: authorRelationshipAuthorsForDisplay[book.book_id] ?? [],
+				dimensionMatches: run.dimensionMatchSnapshotsByBookId[book.book_id]?.matches ?? [],
+				flavorEvidence: group.items.find((item) => item.book_id === book.book_id)?.flavor_evidence,
+				flavorReferenceBook:
+					run.flavorReferenceBooksById?.[
+						String(
+							group.items.find((item) => item.book_id === book.book_id)?.flavor_evidence
+								?.reference_book_id ?? ''
+						)
+					],
+				notInterested: $notInterestedStore.has(book.book_id),
+				currentRating: $ratingsStore.get(book.id) ?? null,
+				onBookmark: () => toggleBookmarked(book),
+				onNotInterested: () => toggleNotInterested(book),
+				onRate: (_id, value) => setBookRating(book, value),
+				onRemoveRating: () => removeBookRating(book)
+			})}
 		/>
 	{/if}
 </div>
@@ -482,7 +261,7 @@
 	.shortlist-page__header {
 		position: relative;
 		flex-shrink: 0;
-		padding: calc(var(--space-4) + env(safe-area-inset-top, 0px)) var(--space-6) var(--space-3);
+		min-height: calc(var(--min-tap) + var(--space-4) + env(safe-area-inset-top, 0px));
 	}
 	.shortlist-page__close {
 		position: absolute;
@@ -511,62 +290,5 @@
 	.shortlist-page__close:focus-visible {
 		outline: 2px solid var(--color-focus);
 		outline-offset: 2px;
-	}
-	.shortlist-page__heading {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-2);
-		width: 100%;
-		padding-top: 0;
-	}
-	.shortlist-page__title {
-		display: flex;
-		flex-direction: column;
-		gap: 0;
-		margin: 0;
-		width: 100%;
-		text-align: center;
-	}
-	.shortlist-page__description {
-		display: flex;
-		flex-direction: column;
-		margin: 0;
-		width: 100%;
-		padding-inline: var(--space-6);
-		text-align: center;
-		color: var(--color-text-muted);
-		font-family: var(--typ-caption-font-family);
-		font-size: var(--typ-caption-font-size);
-		font-weight: var(--typ-caption-font-weight);
-		line-height: var(--typ-caption-line-height);
-		letter-spacing: var(--typ-caption-letter-spacing);
-	}
-	.shortlist-page__position {
-		display: none;
-		justify-content: center;
-		width: 100%;
-		padding-top: var(--space-1);
-	}
-	.shortlist-page__empty {
-		flex: 1;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: var(--space-8) var(--space-4);
-		color: var(--color-text-muted);
-		text-align: center;
-	}
-
-	@media (max-width: 767px) {
-		.shortlist-page__header {
-			padding-bottom: var(--space-2);
-		}
-		.shortlist-page__title {
-			font-size: 1.5rem;
-			line-height: var(--primitive-line-height-display);
-		}
-		.shortlist-page__position {
-			display: flex;
-		}
 	}
 </style>

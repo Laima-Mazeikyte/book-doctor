@@ -1,3 +1,4 @@
+import type { FlavorGroups } from './flavorGroups';
 import { withTimeout } from '$lib/requests/timeout';
 import {
 	normalizeDimensionMatchSnapshots,
@@ -11,6 +12,10 @@ export const RECOMMENDATIONS_POLL_TIMEOUT_MS = 20_000;
 
 export type FetchRecommendationsResult = {
 	books: Book[];
+	flavor_groups?: FlavorGroups | null;
+	status?: string;
+	error_code?: string | null;
+	flavorReferenceBooksById?: Record<string, Book>;
 	request_id: string | null;
 	request_type?: string | null;
 	likedBookPrecedentsByBookId: Record<string, Book[]>;
@@ -18,6 +23,12 @@ export type FetchRecommendationsResult = {
 	authorRelationshipAuthorsByBookId: AuthorRelationshipAuthorsByBookId;
 	dimensionMatchSnapshotsByBookId: DimensionMatchSnapshotsByBookId;
 };
+
+export class RecommendationsHttpError extends Error {
+	constructor(public status: number) {
+		super(`HTTP ${status}`);
+	}
+}
 
 export async function fetchRecommendations(
 	accessToken: string | null,
@@ -38,9 +49,13 @@ export async function fetchRecommendations(
 				headers['Authorization'] = `Bearer ${accessToken}`;
 			}
 			const res = await fetch(url, { headers, signal });
-			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			if (!res.ok) throw new RecommendationsHttpError(res.status);
 			const data: {
 				books: Book[];
+				flavor_groups?: FlavorGroups | null;
+				status?: string;
+				error_code?: string | null;
+				flavorReferenceBooksById?: Record<string, Book>;
 				request_id: string | null;
 				request_type?: string | null;
 				likedBookPrecedentsByBookId?: Record<string, Book[]>;
@@ -50,6 +65,10 @@ export async function fetchRecommendations(
 			} = await res.json();
 			return {
 				books: data.books ?? [],
+				flavor_groups: data.flavor_groups ?? null,
+				status: data.status,
+				error_code: data.error_code ?? null,
+				flavorReferenceBooksById: data.flavorReferenceBooksById ?? {},
 				request_id: data.request_id ?? null,
 				request_type: data.request_type ?? null,
 				likedBookPrecedentsByBookId: data.likedBookPrecedentsByBookId ?? {},

@@ -1,9 +1,13 @@
+import type { FlavorEvidence } from '$lib/recommendations/flavorGroups';
+import type { FlavorGroups } from '$lib/recommendations/flavorGroups';
 import type { DimensionMatchSnapshotsByBookId } from '$lib/recommendations/dimensionMatches';
 import { get, writable } from 'svelte/store';
 import type { Book } from '$lib/types/book';
 import type { AuthorRelationshipAuthorsByBookId } from '$lib/recommendations/authorRelationships';
 
 export type RecommendationRunData = {
+	flavor_groups?: FlavorGroups | null;
+	flavorReferenceBooksById?: Record<string, Book>;
 	books: Book[];
 	likedBookPrecedentsByBookId: Record<string, Book[]>;
 	selectionSeedBookIds?: string[];
@@ -12,11 +16,11 @@ export type RecommendationRunData = {
 };
 
 export type RecommendationsUniquePayload = {
+	flavorEvidenceByBookId?: Record<string, FlavorEvidence>;
+	flavorReferenceBooksById?: Record<string, Book>;
 	books: Book[];
 	hasRuns: boolean;
 	lastRecommendedAt: Record<string, number>;
-	recommendationAppearanceCount: Record<string, number>;
-	bestRecommendationRank: Record<string, number>;
 	likedBookPrecedentsByBookId: Record<string, Book[]>;
 	selectionSeedBookIds?: string[];
 	authorRelationshipAuthorsByBookId: AuthorRelationshipAuthorsByBookId;
@@ -28,8 +32,6 @@ export function createEmptyRecommendationsUniquePayload(): RecommendationsUnique
 		books: [],
 		hasRuns: false,
 		lastRecommendedAt: {},
-		recommendationAppearanceCount: {},
-		bestRecommendationRank: {},
 		likedBookPrecedentsByBookId: {},
 		authorRelationshipAuthorsByBookId: {},
 		dimensionMatchSnapshotsByBookId: {}

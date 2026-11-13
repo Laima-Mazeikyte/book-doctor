@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { FlavorEvidence } from '$lib/recommendations/flavorGroups';
 	import type { DimensionMatch } from '$lib/recommendations/dimensionMatches';
 	import { onDestroy, tick, type Snippet } from 'svelte';
 	import { browser } from '$app/environment';
@@ -20,6 +21,10 @@
 
 	interface Props {
 		state: BookSummarySheetState;
+		likedBookPrecedents?: Book[];
+		authorRelationshipAuthors?: string[];
+		flavorEvidence?: FlavorEvidence;
+		flavorReferenceBook?: Book;
 		dimensionMatches?: DimensionMatch[];
 		/** Restore focus to the triggering cover or feed button after closing. */
 		restoreFocus?: boolean;
@@ -45,6 +50,10 @@
 
 	let {
 		state: sheetState,
+		likedBookPrecedents = [],
+		authorRelationshipAuthors = [],
+		flavorEvidence,
+		flavorReferenceBook,
 		dimensionMatches = [],
 		restoreFocus = true,
 		currentRating = null,
@@ -441,6 +450,10 @@
 
 			{#if sheetState.kind === 'ready'}
 				<BookSummarySheetBody
+					{likedBookPrecedents}
+					{authorRelationshipAuthors}
+					{flavorEvidence}
+					{flavorReferenceBook}
 					{dimensionMatches}
 					bind:summaryContentEl
 					onSummaryPointerDown={handleSummarySheetPointerDown}

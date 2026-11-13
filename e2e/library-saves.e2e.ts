@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { loadEnv } from 'vite';
+import { flavorFixture } from '../src/lib/recommendations/flavorGroups.fixture';
 
 test.setTimeout(60_000);
 
@@ -117,7 +118,16 @@ async function setup(page: Page, guest = false, initialRatings = 10) {
 			return route.fulfill({ json: { books, nextOffset: 40, hasMore: false } });
 		if (path === '/api/recommendations/count') return route.fulfill({ json: { count: 1 } });
 		if (path === '/api/recommendations')
-			return route.fulfill({ json: { books: books.slice(0, 10), request_id: '42' } });
+			return route.fulfill({
+				json: {
+					books: books.slice(0, 9),
+					request_id: new URL(route.request().url()).searchParams.get('request_id'),
+					status: 'completed',
+					flavor_groups: flavorFixture(
+						books.slice(0, 9).map((book, i) => ({ book_id: book.book_id, rank: i + 1 }))
+					)
+				}
+			});
 		if (path === '/api/feed') return route.fulfill({ json: { status: 'completed', books: [] } });
 		return route.fulfill({
 			json: { books: [], request_id: null, rated_count: 0, interaction_count: 0 }
@@ -408,7 +418,7 @@ test('all three failures are counted together and remain actionable on the short
 		waitUntil: 'domcontentloaded'
 	});
 	await expect(notice).toContainText('1 rating, 1 bookmark, and 1 “Not interested” change');
-	await expect(page.locator('.shortlist-carousel')).toBeVisible();
+	await expect(page.locator('.group-carousel')).toBeVisible();
 	await page.setViewportSize({ width: 390, height: 844 });
 	const bounds = await notice.boundingBox();
 	expect(bounds!.x).toBeGreaterThanOrEqual(0);
@@ -443,61 +453,41 @@ test('a quick bookmark undo waits for the add request and finishes unbookmarked'
 	await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), pendingKey)).toBeNull();
 });
 
-test('shortlist dismissal, replacement, and reset stay reactive through a new recommendation run', async ({
+test('grouped shortlist dismissal and bookmarking stay reactive without replacing books', async ({
 	page
 }) => {
-	test.setTimeout(45_000);
 	await page.emulateMedia({ reducedMotion: 'reduce' });
 	const state = await setup(page);
 	state.status = 200;
 	await page.goto(`${base}/rate/recommendations/shortlist?request_id=42`, {
 		waitUntil: 'domcontentloaded'
 	});
-	const active = page.locator('.shortlist-slide--active:not([id*="clone"])');
+	const active = page.locator('.group-slide--active');
+	const card = active.locator('.book-card').first();
 	const dots = page.locator('.shortlist-position__dot');
-	const dismiss = () => active.getByRole('button', { name: 'Not interested', exact: true }).click();
-	const undo = () =>
-		active.getByRole('button', { name: 'Remove from not interested', exact: true }).click();
-	const another = () => active.getByRole('button', { name: 'Get another book', exact: true });
-	const expectBook = (index: number) =>
-		expect(active.getByRole('heading', { name: books[index].title, exact: true })).toBeVisible();
-
-	await expectBook(0);
-	await expect(dots).toHaveCount(7);
-	await dismiss();
-	await expect(another()).toBeEnabled();
-	await undo();
-	await expect(another()).toHaveCount(0);
-	await dismiss();
-	await another().click();
-	await expectBook(7);
-	await expect(dots).toHaveCount(8);
-
-	// Returning to a dismissed book must not offer the same replacement twice.
-	await active.getByRole('button', { name: 'Previous book', exact: true }).click();
-	await expectBook(0);
-	await expect(another()).toHaveCount(0);
-	// Bookmarking undoes the dismissal and clears its replacement bookkeeping.
-	await active.getByRole('button', { name: 'Add to Bookmarks', exact: true }).click();
-	await dismiss();
-	await expect(another()).toBeEnabled();
-	await another().click();
-	await expectBook(8);
-	await dismiss();
-	await another().click();
-	await expectBook(9);
 	await expect(dots).toHaveCount(10);
-	await dismiss();
-	await active.getByRole('button', { name: 'Get new recommendations', exact: true }).click();
-	await expect(page).toHaveURL(/shortlist\?request_id=SaveRun1$/);
-	await expectBook(0);
-	await expect(dots).toHaveCount(7);
-	expect(state.recommendations).toBe(1);
-
-	// The new run resets the replacement limits and per-book dismissal state.
-	await undo();
-	await dismiss();
-	await expect(another()).toBeEnabled();
-	await page.getByRole('button', { name: 'Close', exact: true }).click();
-	await expect(page).toHaveURL(`${base}/rate/recommendations`);
+	await expect(active.locator('.book-card')).toHaveCount(7);
+	await card.getByRole('button', { name: /Save Test Book 1 by/ }).click();
+	const sheet = page.getByRole('dialog');
+	await sheet.getByRole('button', { name: 'Not interested', exact: true }).click();
+	await expect(card.locator('.book-card__media-inner--not-interested')).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Get another book', exact: true })).toHaveCount(0);
+	await expect(dots).toHaveCount(10);
+	await expect(active.locator('.book-card')).toHaveCount(7);
+	await sheet.getByRole('button', { name: 'Remove from not interested', exact: true }).click();
+	await expect(card.locator('.book-card__media-inner--not-interested')).toHaveCount(0);
+	await sheet.getByRole('button', { name: 'Add to Bookmarks', exact: true }).click();
+	await expect(
+		sheet.getByRole('button', { name: 'Remove from Bookmarks', exact: true })
+	).toBeVisible();
+	await expect.poll(() => state.bookmarks.size).toBe(1);
+	expect(state.recommendations).toBe(0);
+	await page.reload();
+	await page
+		.locator('.group-slide--active')
+		.getByRole('button', { name: /Save Test Book 1 by/ })
+		.click();
+	await expect(
+		page.getByRole('dialog').getByRole('button', { name: 'Remove from Bookmarks', exact: true })
+	).toBeVisible();
 });

@@ -23,7 +23,6 @@
 	titleContent={notFound ? quoteTitle : undefined}
 	wide={notFound}
 	eyebrow={notFound ? t('errors.notFoundLabel') : t('errors.status', { status })}
-	description={notFound ? undefined : t('errors.unavailableDescription')}
 >
 	<Button href="/" variant="primary" pill>{t('errors.backHome')}</Button>
 </LandingHero>

@@ -4,16 +4,30 @@
 
 	interface Props {
 		onRetry?: () => void;
+		kind?: 'timeout' | 'backend';
+		busy?: boolean;
 	}
 
-	let { onRetry }: Props = $props();
+	let { onRetry, kind = 'timeout', busy = false }: Props = $props();
 </script>
 
 <div class="shortlist-state" role="alert">
-	<p class="shortlist-state__title typ-h3">{t('recommendations.shortlist.failureTitle')}</p>
-	<p class="shortlist-state__message typ-body">{t('recommendations.shortlist.failureMessage')}</p>
+	<p class="shortlist-state__title typ-h3">
+		{#if kind === 'backend'}[COPY: recommendation-generation-failed-title]{:else}{t(
+				'recommendations.shortlist.failureTitle'
+			)}{/if}
+	</p>
+	<p class="shortlist-state__message typ-body">
+		{#if kind === 'backend'}[COPY: recommendation-generation-failed-message]{:else}{t(
+				'recommendations.shortlist.failureMessage'
+			)}{/if}
+	</p>
 	{#if onRetry}
-		<Button variant="primary" onclick={onRetry}>{t('recommendations.shortlist.retry')}</Button>
+		<Button variant="primary" onclick={onRetry} disabled={busy}
+			>{#if kind === 'backend'}[COPY: recommendation-generation-failed-action]{:else}{t(
+					'recommendations.shortlist.retry'
+				)}{/if}</Button
+		>
 	{/if}
 </div>
 

@@ -1,3 +1,4 @@
+import { flavorFixture } from '$lib/recommendations/flavorGroups.fixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createClient } from '@supabase/supabase-js';
 import type { RequestEvent } from '@sveltejs/kit';
@@ -42,7 +43,7 @@ const fetcher: typeof fetch = async (input) => {
 		if (failRequests || offset === failedLogOffset)
 			return Response.json({ message: 'Requests unavailable' }, { status: 503 });
 		expect(url.searchParams.get('status')).toBe('eq.completed');
-		expect(url.searchParams.get('result_count')).toBe('gt.0');
+		expect(url.searchParams.get('output_format')).toBe('eq.flavors_v1');
 		const ordered = [...logs].sort((a, b) => {
 			if (a.created_at !== b.created_at) {
 				if (a.created_at === null) return 1;
@@ -56,6 +57,14 @@ const fetcher: typeof fetch = async (input) => {
 				...row,
 				status: 'completed',
 				result_count: 10,
+				output_format: 'flavors_v1',
+				flavor_groups: flavorFixture([
+					{ book_id: 'shared', rank: 1 },
+					...Array.from({ length: 8 }, (_, i) => ({
+						book_id: 'book-' + row.request_id + '-' + i,
+						rank: i + 2
+					}))
+				]),
 				request_type: selectionTypes.get(row.request_id) ?? null,
 				filters: filteredIds.has(row.request_id) ? { genres: { all_of: ['Africa'] } } : null,
 				public_id: publicIds.get(row.request_id) ?? null
@@ -137,34 +146,19 @@ describe('50-run recommendation history', () => {
 			expect.any(AbortSignal)
 		);
 	});
-	it('includes both selection modes in the existing 50-run For you window', async () => {
+	it('excludes both selection modes from grouped history and combined results', async () => {
 		selectionTypes = new Map([
 			['55', 'rank_selection'],
 			['54', 'recommend_from_selection']
 		]);
-		publicIds = new Map([
-			['55', 'ChooseA1'],
-			['54', 'ChooseA2']
-		]);
 		const history = await (await getHistory(event('/api/recommendations/history'))).json();
 		expect(history.runs).toHaveLength(50);
-		expect(history.runs.slice(0, 2).map((row: { request_id: string }) => row.request_id)).toEqual([
-			'ChooseA1',
-			'ChooseA2'
-		]);
-		await getUnique(event('/api/recommendations/unique'));
-		expect(itemWindows[0]).toEqual(logs.slice(0, 50).map((log) => log.request_id));
-	});
-
-	it('keeps inspiration provenance from the newest appearance rather than an older run', async () => {
-		selectionTypes.set('55', 'recommend_from_selection');
-		let payload = await (await getUnique(event('/api/recommendations/unique'))).json();
-		expect(payload.selectionSeedBookIds).toContain('shared');
-		selectionTypes.delete('55');
-		selectionTypes.set('54', 'recommend_from_selection');
-		payload = await (await getUnique(event('/api/recommendations/unique'))).json();
-		expect(payload.selectionSeedBookIds).not.toContain('shared');
-		expect(payload.selectionSeedBookIds).toContain('book-54-0');
+		expect(history.runs[0].request_id).toBe('53');
+		const payload = await (await getUnique(event('/api/recommendations/unique'))).json();
+		expect(payload.selectionSeedBookIds).toEqual([]);
+		expect(payload.books.some((book: { book_id: string }) => book.book_id === 'book-55-0')).toBe(
+			false
+		);
 	});
 
 	it('fills the same 50-run window for both endpoints when recent runs are filtered', async () => {
@@ -182,26 +176,22 @@ describe('50-run recommendation history', () => {
 		expect(requestReads).toHaveLength(3);
 
 		const unique = await (await getUnique(event('/api/recommendations/unique'))).json();
-		expect(itemWindows).toEqual([expectedIds]);
-		expect(unique.recommendationAppearanceCount.shared).toBe(50);
-		expect(unique.books).toHaveLength(451);
+		expect(itemWindows).toEqual([]);
+		expect(unique.books).toHaveLength(401);
 		expect(unique.dimensionMatchSnapshotsByBookId.shared.request_id).toBe(
 			publicIds.get(expectedIds[0])
 		);
 		expect(requestReads).toHaveLength(6);
 	});
 
-	it('calculates book history, recency, appearance counts, and best ranks within the retained window', async () => {
+	it('calculates book history and recency within the retained window', async () => {
 		const payload = await (await getUnique(event('/api/recommendations/unique'))).json();
-		expect(itemWindows[0]).toEqual(logs.slice(0, 50).map((log) => log.request_id));
-		expect(payload.recommendationAppearanceCount.shared).toBe(50);
-		expect(payload.bestRecommendationRank.shared).toBe(2);
+		expect(itemWindows).toEqual([]);
 		expect(payload.lastRecommendedAt.shared).toBe(Date.parse(logs[0].created_at!));
-		expect(payload.recommendationAppearanceCount['book-1-0']).toBeUndefined();
 		expect(payload.books.some((book: { book_id: string }) => book.book_id === 'book-1-0')).toBe(
 			false
 		);
-		expect(payload.books).toHaveLength(451);
+		expect(payload.books).toHaveLength(401);
 	});
 
 	it('returns lightweight selection identities and recency without querying synopsis or recommendation evidence', async () => {
@@ -218,8 +208,7 @@ describe('50-run recommendation history', () => {
 			full.books.map((book: { book_id: string }) => book.book_id).sort()
 		);
 		expect(lean.lastRecommendedAt).toEqual(full.lastRecommendedAt);
-		expect(itemReads).toHaveLength(1);
-		expect(itemReads[0].searchParams.get('select')).toBe('book_id,request_id,rank');
+		expect(itemReads).toHaveLength(0);
 		expect(
 			catalogReads.every(
 				(url) => url.searchParams.get('select') === 'id,book_id,slug,book_name,author,year'

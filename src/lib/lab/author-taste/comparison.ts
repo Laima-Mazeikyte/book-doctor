@@ -2,7 +2,7 @@ import { withTimeout } from '$lib/requests/timeout';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { env } from '$env/dynamic/public';
 import { ensureAnonymousSessionStarted } from '$lib/auth/anonymous-session';
-import type { AsymmetryEstimate, DirectionalityStatus } from './types';
+import type { DirectionalityStatus } from './types';
 
 /**
  * Arbitrary two-author comparisons, computed on demand by the private backend.
@@ -15,7 +15,8 @@ import type { AsymmetryEstimate, DirectionalityStatus } from './types';
  * only, and the `private` schema is deliberately outside the Data API: this must always go
  * through the Edge Function, never through a browser table query.
  *
- * The two tiers of answer are not interchangeable and `mode` says which one this is:
+ * The two tiers of answer are not interchangeable. `validated_relationship.present`
+ * identifies which tier the pair belongs to:
  *
  * - **release** — the pair is in the release's held-out analysis, so its q-values are
  *   globally multiple-testing corrected and its directionality verdict is authoritative.
@@ -28,23 +29,9 @@ import type { AsymmetryEstimate, DirectionalityStatus } from './types';
 export const COMPARE_AUTHORS_FUNCTION =
 	env.PUBLIC_AUTHOR_COMPARISON_FUNCTION?.trim() || 'compare-authors';
 
-/** Why a direction is or is not usable, before any question of significance. */
-export type EvidenceStatus =
-	| 'no_comparable_readers'
-	| 'below_author_thresholds'
-	| 'below_pair_information'
-	| 'eligible_unadjusted';
-
-export const EVIDENCE_STATUS_KEYS: Record<EvidenceStatus, string> = {
-	no_comparable_readers: 'noComparableReaders',
-	below_author_thresholds: 'belowAuthorThresholds',
-	below_pair_information: 'belowPairInformation',
-	eligible_unadjusted: 'eligible'
-};
-
 export type ComparisonMode = 'release' | 'on_demand';
 
-/** Backend-owned display states. The two non-validated states intentionally share visible copy. */
+/** Display states derived from backend eligibility and selection flags. */
 export type ComparisonDisplayState =
 	| 'validated'
 	| 'evidence_threshold_not_met'
@@ -68,8 +55,6 @@ const STATUS_CODES: Record<string, DirectionalityStatus> = {
 };
 
 interface EdgeDirection {
-	mode: ComparisonMode;
-	display_state: ComparisonDisplayState;
 	like_rate: number | null;
 	baseline_rate: number | null;
 	rate_difference: number | null;
@@ -79,7 +64,6 @@ interface EdgeDirection {
 	evidence_score: number | null;
 	p_value: number | null;
 	q_value: number | null;
-	evidence_status: EvidenceStatus;
 	eligible_for_production_test: boolean;
 }
 
@@ -108,15 +92,10 @@ interface EdgeResponse {
 /** One pair, in the shape the panel already renders, plus which tier it came from. */
 export interface PairComparison {
 	mode: ComparisonMode;
-	validated: boolean;
-	/** Only meaningful when `validated`; a dynamic result makes no directional claim. */
+	/** Only meaningful in release mode; a dynamic result makes no directional claim. */
 	status: DirectionalityStatus | null;
 	self: ComparisonDirectionEstimate;
 	reverse: ComparisonDirectionEstimate;
-	selfStatus: EvidenceStatus;
-	reverseStatus: EvidenceStatus;
-	/** The backend returns no gap estimate; a validated pair can be enriched from the buckets. */
-	asymmetry: AsymmetryEstimate | null;
 	datasetVersion: string;
 }
 
@@ -137,23 +116,6 @@ function finiteOrNull(value: number | null | undefined): number | null {
 	return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-function requireMode(value: unknown): ComparisonMode {
-	if (value === 'release' || value === 'on_demand') return value;
-	throw new ComparisonError('comparison response returned an invalid mode');
-}
-
-function requireDisplayState(value: unknown): ComparisonDisplayState {
-	if (
-		value === 'validated' ||
-		value === 'evidence_threshold_not_met' ||
-		value === 'on_demand_not_formally_validated' ||
-		value === 'not_enough_data'
-	) {
-		return value;
-	}
-	throw new ComparisonError('comparison response returned an invalid display state');
-}
-
 export interface ComparisonDirectionEstimate {
 	selected: boolean;
 	mode: ComparisonMode;
@@ -171,11 +133,19 @@ export interface ComparisonDirectionEstimate {
 
 function toEstimate(
 	direction: EdgeDirection,
+	mode: ComparisonMode,
 	selected: boolean,
 	qValue: number | null | undefined
 ): ComparisonDirectionEstimate {
-	const mode = requireMode(direction.mode);
-	const displayState = requireDisplayState(direction.display_state);
+	// Match the display rules without recalculating eligibility or statistical thresholds.
+	let displayState: ComparisonDisplayState;
+	if (!direction.eligible_for_production_test) {
+		displayState = 'not_enough_data';
+	} else if (mode === 'release') {
+		displayState = selected ? 'validated' : 'evidence_threshold_not_met';
+	} else {
+		displayState = 'on_demand_not_formally_validated';
+	}
 	return {
 		selected,
 		mode,
@@ -237,30 +207,24 @@ export async function compareAuthorsEdge(
 			present: false,
 			directionality_status: ''
 		};
-		const selfMode = requireMode(payload.a_to_b.mode);
-		const reverseMode = requireMode(payload.b_to_a.mode);
-		if (selfMode !== reverseMode) {
-			throw new ComparisonError('comparison response returned mismatched modes');
-		}
-		const isRelease = selfMode === 'release';
+		const isRelease = validated.present === true;
+		const mode: ComparisonMode = isRelease ? 'release' : 'on_demand';
 
 		return {
-			mode: selfMode,
-			validated: isRelease,
+			mode,
 			status: isRelease ? (STATUS_CODES[validated.directionality_status] ?? null) : null,
 			self: toEstimate(
 				payload.a_to_b,
+				mode,
 				isRelease ? validated.a_to_b_selected === true : false,
 				isRelease ? validated.a_to_b_q_value : null
 			),
 			reverse: toEstimate(
 				payload.b_to_a,
+				mode,
 				isRelease ? validated.b_to_a_selected === true : false,
 				isRelease ? validated.b_to_a_q_value : null
 			),
-			selfStatus: payload.a_to_b.evidence_status,
-			reverseStatus: payload.b_to_a.evidence_status,
-			asymmetry: null,
 			datasetVersion: payload.dataset_version
 		};
 	});

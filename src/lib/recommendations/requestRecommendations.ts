@@ -60,7 +60,7 @@ export function createRecommendationSubmission() {
 					const { data, error } = await withTimeout((signal) =>
 						supabase
 							.from('recommendation_requests')
-							.insert({ user_id: userId })
+							.insert({ user_id: userId, output_format: 'flavors_v1' })
 							.select('public_id')
 							.abortSignal(signal)
 							.single()

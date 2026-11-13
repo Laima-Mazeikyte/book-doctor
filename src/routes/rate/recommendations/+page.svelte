@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { FlavorEvidence } from '$lib/recommendations/flavorGroups';
 	import { withTimeout } from '$lib/requests/timeout';
 	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
 	import RecommendationLoadNotice from '$lib/components/RecommendationLoadNotice.svelte';
@@ -50,14 +51,14 @@
 	const LS_SORT_KEY = 'book-doctor:recommendations-sort';
 
 	function readRecSortFromLs(): RecSortId {
-		if (!browser) return 'best-fit';
+		if (!browser) return 'newest';
 		try {
 			const s = localStorage.getItem(LS_SORT_KEY);
 			if (isValidRecSortId(s)) return s;
 		} catch {
 			// ignore
 		}
-		return 'best-fit';
+		return 'newest';
 	}
 
 	const initialAuthRestorePending = browser && get(authRestorePending);
@@ -111,13 +112,7 @@
 	);
 
 	const recommendedTabBooks = $derived.by(() =>
-		sortRecHistoryBooks(
-			recommendedRawList,
-			sortOrder,
-			uniquePayload.lastRecommendedAt,
-			uniquePayload.recommendationAppearanceCount,
-			uniquePayload.bestRecommendationRank
-		)
+		sortRecHistoryBooks(recommendedRawList, sortOrder, uniquePayload.lastRecommendedAt)
 	);
 
 	const sortOptionLabel = $derived.by((): string => {
@@ -126,8 +121,6 @@
 				return t('recommendations.sort.newest');
 			case 'oldest':
 				return t('recommendations.sort.oldest');
-			case 'best-fit':
-				return t('recommendations.sort.bestFit');
 			default: {
 				const _x: never = sortOrder;
 				return _x;
@@ -162,10 +155,10 @@
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
 			const data: {
 				books?: Book[];
+				flavorEvidenceByBookId?: Record<string, FlavorEvidence>;
+				flavorReferenceBooksById?: Record<string, Book>;
 				hasRuns?: boolean;
 				lastRecommendedAt?: Record<string, number>;
-				recommendationAppearanceCount?: Record<string, number>;
-				bestRecommendationRank?: Record<string, number>;
 				likedBookPrecedentsByBookId?: Record<string, Book[]>;
 				selectionSeedBookIds?: string[];
 				authorRelationshipAuthorsByBookId?: AuthorRelationshipAuthorsByBookId;
@@ -176,10 +169,10 @@
 			}
 			return {
 				books: data.books,
+				flavorEvidenceByBookId: data.flavorEvidenceByBookId ?? {},
+				flavorReferenceBooksById: data.flavorReferenceBooksById ?? {},
 				hasRuns: data.hasRuns,
 				lastRecommendedAt: data.lastRecommendedAt ?? {},
-				recommendationAppearanceCount: data.recommendationAppearanceCount ?? {},
-				bestRecommendationRank: data.bestRecommendationRank ?? {},
 				likedBookPrecedentsByBookId: data.likedBookPrecedentsByBookId ?? {},
 				selectionSeedBookIds: data.selectionSeedBookIds ?? [],
 				authorRelationshipAuthorsByBookId: data.authorRelationshipAuthorsByBookId ?? {},
@@ -395,7 +388,6 @@
 				>
 					<option value="newest">{t('recommendations.sort.newest')}</option>
 					<option value="oldest">{t('recommendations.sort.oldest')}</option>
-					<option value="best-fit">{t('recommendations.sort.bestFit')}</option>
 				</select>
 				<span class="recommendations-page__sort-chevron" aria-hidden="true">
 					<ChevronDown size={18} strokeWidth={2} />
@@ -421,6 +413,12 @@
 						<li>
 							<BookCard
 								context="recommendations"
+								flavorEvidence={uniquePayload.flavorEvidenceByBookId?.[book.book_id]}
+								flavorReferenceBook={uniquePayload.flavorReferenceBooksById?.[
+									String(
+										uniquePayload.flavorEvidenceByBookId?.[book.book_id]?.reference_book_id ?? ''
+									)
+								]}
 								{book}
 								coverPriority={coverPriorityFor(i, gridColumns)}
 								likedBookPrecedents={likedBookPrecedentsForDisplay[book.book_id] ?? []}

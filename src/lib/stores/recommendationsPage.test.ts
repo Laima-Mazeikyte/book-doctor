@@ -27,8 +27,6 @@ it('isolates request snapshots, preserves cache for the same user, and clears on
 		books: [],
 		hasRuns: true,
 		lastRecommendedAt: {},
-		recommendationAppearanceCount: {},
-		bestRecommendationRank: {},
 		likedBookPrecedentsByBookId: {},
 		authorRelationshipAuthorsByBookId: {},
 		dimensionMatchSnapshotsByBookId: second

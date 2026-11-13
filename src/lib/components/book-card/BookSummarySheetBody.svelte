@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { FlavorEvidence } from '$lib/recommendations/flavorGroups';
 	import type { Snippet } from 'svelte';
 	import { authStore, authReady } from '$lib/stores/auth';
 	import { canUseLibraryAction, userLibraryHydrationStore } from '$lib/stores/userLibrary';
@@ -7,12 +8,8 @@
 	import RecommendationDimensionMatches from '$lib/components/RecommendationDimensionMatches.svelte';
 	import type { DimensionMatch } from '$lib/recommendations/dimensionMatches';
 	import { Bookmark, ThumbsDown, Search, Star } from 'lucide-svelte';
-	import Button from '$lib/components/Button.svelte';
-	import RecommendationSubmitLabel from '$lib/components/RecommendationSubmitLabel.svelte';
-	import BookQualityEvidence from '$lib/components/BookQualityEvidence.svelte';
 	import LibrarySaveIndicator from '$lib/components/LibrarySaveIndicator.svelte';
 	import LibraryLoadNotice from '$lib/components/LibraryLoadNotice.svelte';
-	import { librarySaves } from '$lib/stores/librarySaves';
 	import RecommendationAuthorRelationships from '$lib/components/RecommendationAuthorRelationships.svelte';
 	import RecommendationPrecedents from '$lib/components/RecommendationPrecedents.svelte';
 	import { t } from '$lib/copy';
@@ -22,6 +19,8 @@
 
 	interface Props {
 		book: Book;
+		flavorEvidence?: FlavorEvidence;
+		flavorReferenceBook?: Book;
 		summaryTitleId: string;
 		displaySummary: string;
 		summaryStatus?: Snippet;
@@ -47,13 +46,8 @@
 		 */
 		reserveSummaryRemoveLayoutSlot?: boolean;
 		showRatingStars?: boolean;
-		/** Author and year share caption typography with a middle dot (shortlist detail). */
-		inlineAuthorYearMeta?: boolean;
 		showBookmarkAction: boolean;
 		showNotInterestedAction: boolean;
-		showReadItAction?: boolean;
-		readItActive?: boolean;
-		onReadItClick?: (e: MouseEvent) => void;
 		bookmarked: boolean;
 		onBookmarkClick: (e: MouseEvent) => void;
 		onNotInterestedClick: (e: MouseEvent) => void;
@@ -61,25 +55,17 @@
 		onSummaryPointerDown?: (e: PointerEvent) => void;
 		/** When bound, parents can read the scroll root (e.g. mobile drag-to-dismiss). */
 		summaryContentEl?: HTMLElement | undefined;
-		/** Shortlist detail: large cover beside a scrollable details column on desktop. */
-		layout?: 'default' | 'shortlist-side-by-side';
-		/** Shortlist detail: stars sit under the action row instead of in the details column. */
-		ratingPlacement?: 'default' | 'below-actions';
-		/** Shortlist: centered CTA when the book is marked not interested. */
-		notInterestedOverlay?: 'replace' | 'new-rec' | null;
-		onNotInterestedOverlayClick?: () => void;
-		notInterestedOverlayBusy?: boolean;
 		/** Resolved rated-history books that explain this recommendation, strongest first. */
 		likedBookPrecedents?: Book[];
 		/** Ordered author candidates that explain this recommendation after rating-based filtering. */
 		authorRelationshipAuthors?: string[];
 		dimensionMatches?: DimensionMatch[];
-		/** Top-10 shortlist only: show global catalog evidence below the personalized explanation. */
-		showQualityEvidence?: boolean;
 	}
 
 	let {
 		book,
+		flavorEvidence,
+		flavorReferenceBook,
 		summaryTitleId,
 		displaySummary,
 		summaryStatus,
@@ -100,46 +86,23 @@
 		onRemoveRatingClick,
 		reserveSummaryRemoveLayoutSlot = false,
 		showRatingStars = true,
-		inlineAuthorYearMeta = false,
 		showBookmarkAction,
 		showNotInterestedAction,
-		showReadItAction = false,
-		readItActive = false,
-		onReadItClick,
 		bookmarked,
 		onBookmarkClick,
 		onNotInterestedClick,
 		onSummaryPointerDown,
 		summaryContentEl = $bindable(undefined),
-		layout = 'default',
-		ratingPlacement = 'default',
-		notInterestedOverlay = null,
-		onNotInterestedOverlayClick,
-		notInterestedOverlayBusy = false,
 		likedBookPrecedents = [],
 		authorRelationshipAuthors = [],
-		dimensionMatches = [],
-		showQualityEvidence = false
+		dimensionMatches = []
 	}: Props = $props();
-	const overlaySaveBlocked = $derived(
-		notInterestedOverlay === 'new-rec' && $librarySaves.failedCount > 0
-	);
-	const overlayBusy = $derived(notInterestedOverlayBusy || overlaySaveBlocked);
-
 	const showSummaryRemoveSlot = $derived(canRemoveRatingInSheet || reserveSummaryRemoveLayoutSlot);
 	const summaryRemoveLayoutOnly = $derived(
 		reserveSummaryRemoveLayoutSlot && !canRemoveRatingInSheet
 	);
 	const labeledActionCount = $derived(
-		[showBookmarkAction, showNotInterestedAction, showReadItAction].filter(Boolean).length
-	);
-	const isShortlistSideBySide = $derived(layout === 'shortlist-side-by-side');
-	const showRatingBelowActions = $derived(
-		showRatingStars && isShortlistSideBySide && ratingPlacement === 'below-actions'
-	);
-	const showRatingInDetails = $derived(showRatingStars && !showRatingBelowActions);
-	const showNotInterestedOverlay = $derived(
-		notInterested && notInterestedOverlay != null && onNotInterestedOverlayClick != null
+		[showBookmarkAction, showNotInterestedAction].filter(Boolean).length
 	);
 	function actionReady(action: 'rating' | 'bookmark' | 'dismissal'): boolean {
 		return (
@@ -187,53 +150,35 @@
 		</h3>
 
 		{#if showAuthorInSheetMeta || book.year}
-			<div
-				class="book-card__summary-meta-row"
-				class:book-card__summary-meta-row--inline-caption={inlineAuthorYearMeta}
-			>
-				{#if inlineAuthorYearMeta}
-					{#if showAuthorInSheetMeta && book.year}
-						<span class="book-card__summary-meta-inline typ-caption">
-							{book.author} · {book.year}
+			<div class="book-card__summary-meta-row">
+				{#if showAuthorInSheetMeta}
+					{#if showSearchAuthorInOverlay && onAuthorPillClick}
+						<button
+							type="button"
+							class="book-card__summary-author-pill"
+							aria-label={t('shared.bookCard.searchThisAuthorAriaLabel', { author: book.author })}
+							onclick={onAuthorPillClick}
+						>
+							<Search size={14} aria-hidden="true" />
+							<span>{book.author}</span>
+						</button>
+					{:else}
+						<span class="book-card__summary-author-pill book-card__summary-author-pill--text">
+							{book.author}
 						</span>
-					{:else if showAuthorInSheetMeta}
-						<span class="book-card__summary-meta-inline typ-caption">{book.author}</span>
-					{:else if book.year}
-						<span class="book-card__summary-meta-inline typ-caption">{book.year}</span>
 					{/if}
-				{:else}
-					{#if showAuthorInSheetMeta}
-						{#if showSearchAuthorInOverlay && onAuthorPillClick}
-							<button
-								type="button"
-								class="book-card__summary-author-pill"
-								aria-label={t('shared.bookCard.searchThisAuthorAriaLabel', { author: book.author })}
-								onclick={onAuthorPillClick}
-							>
-								<Search size={14} aria-hidden="true" />
-								<span>{book.author}</span>
-							</button>
-						{:else}
-							<span class="book-card__summary-author-pill book-card__summary-author-pill--text">
-								{book.author}
-							</span>
-						{/if}
-					{/if}
-					{#if book.year}
-						<span class="book-card__summary-year typ-caption">{book.year}</span>
-					{/if}
+				{/if}
+				{#if book.year}
+					<span class="book-card__summary-year typ-caption">{book.year}</span>
 				{/if}
 			</div>
 		{/if}
 	</div>
 {/snippet}
 
-{#snippet ratingBlock(belowActions = false)}
-	{#if (belowActions && showRatingBelowActions) || (!belowActions && showRatingInDetails)}
-		<div
-			class="book-card__rating-wrap book-card__rating-wrap--summary-sheet"
-			class:book-card__rating-wrap--below-actions={belowActions}
-		>
+{#snippet ratingBlock()}
+	{#if showRatingStars}
+		<div class="book-card__rating-wrap book-card__rating-wrap--summary-sheet">
 			<div
 				class="book-card__rating"
 				role="group"
@@ -302,24 +247,25 @@
 		<RecommendationPrecedents books={likedBookPrecedents} />
 		<RecommendationAuthorRelationships authors={authorRelationshipAuthors} />
 		<RecommendationDimensionMatches matches={dimensionMatches} />
-		{#if showQualityEvidence}
-			<BookQualityEvidence {book} />
+		{#if flavorEvidence}
+			<p data-copy-placeholder="flavor-evidence">
+				[COPY: flavor-evidence:{String(flavorEvidence.dimension ?? 'comparison')}] {flavorReferenceBook?.title ??
+					''}
+			</p>
 		{/if}
 	</div>
 {/snippet}
 
-{#snippet actionsBlock(iconOnly = false)}
-	{#if showBookmarkAction || showNotInterestedAction || showReadItAction}
+{#snippet actionsBlock()}
+	{#if showBookmarkAction || showNotInterestedAction}
 		<div
 			class="book-card__summary-actions"
 			class:book-card__summary-actions--single={labeledActionCount === 1}
-			class:book-card__summary-actions--icon-only={iconOnly}
 		>
 			{#if showBookmarkAction}
 				<button
 					type="button"
-					class="book-card__action"
-					class:book-card__action--labeled={!iconOnly || bookmarked}
+					class="book-card__action book-card__action--labeled"
 					class:book-card__action--saved={bookmarked}
 					aria-pressed={bookmarked}
 					aria-label={bookmarked
@@ -330,39 +276,17 @@
 				>
 					<Bookmark size={14} aria-hidden="true" />
 					<LibrarySaveIndicator bookUlid={book.book_id} kind="bookmark" />
-					{#if !iconOnly || bookmarked}
-						<span class="book-card__action-label">
-							{bookmarked
-								? t('shared.recommendationCard.saved')
-								: t('shared.recommendationCard.bookmark')}
-						</span>
-					{/if}
-				</button>
-			{/if}
-			{#if showReadItAction}
-				<button
-					type="button"
-					class="book-card__action"
-					class:book-card__action--labeled={!iconOnly || readItActive}
-					class:book-card__action--read-it-active={readItActive}
-					aria-pressed={readItActive}
-					aria-label={readItActive
-						? t('recommendations.shortlist.removeIveReadIt')
-						: t('recommendations.shortlist.iveReadIt')}
-					disabled={!actionReady('rating')}
-					onclick={(e) => onReadItClick?.(e)}
-				>
-					<Star size={14} aria-hidden="true" fill="none" />
-					{#if !iconOnly || readItActive}
-						<span class="book-card__action-label">{t('recommendations.shortlist.iveReadIt')}</span>
-					{/if}
+					<span class="book-card__action-label">
+						{bookmarked
+							? t('shared.recommendationCard.saved')
+							: t('shared.recommendationCard.bookmark')}
+					</span>
 				</button>
 			{/if}
 			{#if showNotInterestedAction}
 				<button
 					type="button"
-					class="book-card__action"
-					class:book-card__action--labeled={!iconOnly || notInterested}
+					class="book-card__action book-card__action--labeled"
 					class:book-card__action--not-interested-active={notInterested}
 					aria-pressed={notInterested}
 					aria-label={notInterested
@@ -373,11 +297,8 @@
 				>
 					<ThumbsDown size={14} aria-hidden="true" />
 					<LibrarySaveIndicator bookUlid={book.book_id} kind="dismissal" />
-					{#if !iconOnly || notInterested}
-						<span class="book-card__action-label"
-							>{t('shared.recommendationCard.notInterested')}</span
-						>
-					{/if}
+					<span class="book-card__action-label">{t('shared.recommendationCard.notInterested')}</span
+					>
 				</button>
 			{/if}
 		</div>
@@ -386,87 +307,23 @@
 
 <div
 	class="book-card__summary-content"
-	class:book-card__summary-content--shortlist-side-by-side={isShortlistSideBySide}
 	bind:this={summaryContentEl}
 	onpointerdown={onSummaryPointerDown}
 	role={onSummaryPointerDown ? 'region' : undefined}
 	aria-labelledby={onSummaryPointerDown ? summaryTitleId : undefined}
 >
-	{#if !isShortlistSideBySide}
-		<LibraryLoadNotice collections={['ratings', 'bookmarks', 'dismissals']} />
-	{/if}
-	{#if isShortlistSideBySide}
-		<div class="book-card__summary-shortlist-main">
-			<div class="book-card__summary-side-layout">
-				<div class="book-card__summary-cover-column">
-					<div class="book-card__summary-cover-muted">
-						{#if showNotInterestedOverlay}
-							<div class="book-card__summary-not-interested-overlay" aria-live="polite">
-								<Button
-									variant="primary"
-									pill
-									aria-disabled={overlayBusy ? 'true' : undefined}
-									aria-busy={notInterestedOverlayBusy ? 'true' : undefined}
-									onclick={(e) => {
-										if (overlayBusy) {
-											e.preventDefault();
-											return;
-										}
-										onNotInterestedOverlayClick?.();
-									}}
-								>
-									{#if notInterestedOverlay === 'replace'}
-										{t('recommendations.shortlist.offerAnotherBook')}
-									{:else}
-										<RecommendationSubmitLabel
-											busy={notInterestedOverlayBusy}
-											label={t('recommendations.shortlist.getNewRecommendations')}
-										/>
-									{/if}
-								</Button>
-							</div>
-						{/if}
-						<div class:book-card__summary-muted--not-interested={notInterested}>
-							{@render coverBlock()}
-						</div>
-					</div>
-					<div class="book-card__summary-cover-actions">
-						{@render actionsBlock(true)}
-						<div class="book-card__summary-cover-rating">
-							{@render ratingBlock(true)}
-						</div>
-					</div>
-				</div>
-				<div class="book-card__summary-details-column">
-					<div class:book-card__summary-muted--not-interested={notInterested}>
-						{@render headerTextBlock()}
-					</div>
-					{@render ratingBlock()}
-					{@render summaryBodyBlock()}
-				</div>
-			</div>
-			<div class="book-card__summary-shortlist-footer">
-				<div class="book-card__summary-footer-actions">
-					{@render actionsBlock(false)}
-				</div>
-				<div class="book-card__summary-footer-rating">
-					{@render ratingBlock(true)}
-				</div>
-			</div>
+	<LibraryLoadNotice collections={['ratings', 'bookmarks', 'dismissals']} />
+	<div
+		class="book-card__summary-muted"
+		class:book-card__summary-muted--not-interested={notInterested}
+	>
+		<div class="book-card__summary-header">
+			{@render coverBlock()}
+			{@render headerTextBlock()}
 		</div>
-	{:else}
-		<div
-			class="book-card__summary-muted"
-			class:book-card__summary-muted--not-interested={notInterested}
-		>
-			<div class="book-card__summary-header">
-				{@render coverBlock()}
-				{@render headerTextBlock()}
-			</div>
-		</div>
+	</div>
 
-		{@render ratingBlock()}
-		{@render summaryBodyBlock()}
-		{@render actionsBlock()}
-	{/if}
+	{@render ratingBlock()}
+	{@render summaryBodyBlock()}
+	{@render actionsBlock()}
 </div>

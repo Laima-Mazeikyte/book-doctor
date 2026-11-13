@@ -3,10 +3,11 @@
 
 	interface Props {
 		position: number;
+		grouped?: boolean;
 		total: number;
 	}
 
-	let { position, total }: Props = $props();
+	let { position, total, grouped = false }: Props = $props();
 </script>
 
 <div
@@ -14,7 +15,9 @@
 	role="group"
 	aria-live="polite"
 	aria-atomic="true"
-	aria-label={t('recommendations.shortlist.positionAriaLabel', { position, total })}
+	aria-label={grouped
+		? `[COPY: group-position] ${position}/${total}`
+		: t('recommendations.shortlist.positionAriaLabel', { position, total })}
 >
 	{#each { length: total }, index (index)}
 		<span

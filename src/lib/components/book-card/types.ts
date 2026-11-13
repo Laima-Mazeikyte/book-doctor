@@ -1,3 +1,4 @@
+import type { FlavorEvidence } from '$lib/recommendations/flavorGroups';
 import type { DimensionMatch } from '$lib/recommendations/dimensionMatches';
 import type { Book, RatingValue } from '$lib/types/book';
 import type { CoverPriority } from './coverPriority';
@@ -17,6 +18,9 @@ export type BookCardContext = 'rate' | 'bookmarks' | 'rated' | 'not-interested' 
 
 export type BookCardListProps = {
 	book: Book;
+	coverOnly?: boolean;
+	flavorEvidence?: FlavorEvidence;
+	flavorReferenceBook?: Book;
 	context: BookCardContext;
 	/**
 	 * Summary sheet: search by author. When omitted, navigates to `/rate?q=…`.

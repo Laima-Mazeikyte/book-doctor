@@ -18,14 +18,6 @@
 </script>
 
 <svelte:head>
-	<!-- These faces belong to the empty state, rather than every recommendations visit. -->
-	<link
-		rel="preload"
-		href="/fonts/beth-ellen/fonts/BethEllen-Regular.woff2"
-		as="font"
-		type="font/woff2"
-		crossorigin="anonymous"
-	/>
 	<link
 		rel="preload"
 		href="/fonts/bespoke-serif/fonts/BespokeSerif-Regular.woff2"
@@ -36,7 +28,7 @@
 </svelte:head>
 
 <div class="recommendations-empty">
-	<h1 class="recommendations-empty__title typ-display2">{title}</h1>
+	<h1 class="recommendations-empty__title typ-display2 typ-display2--content">{title}</h1>
 	<p class="recommendations-empty__message typ-body">{message}</p>
 	<p class="recommendations-empty__count typ-caption">
 		{t('shared.recommendationsEmpty.youRatedCount', { count: ratedCount })}{ratedCount === 1

@@ -37,6 +37,9 @@
 
 	let {
 		book,
+		coverOnly = false,
+		flavorEvidence,
+		flavorReferenceBook,
 		context,
 		onSearchAuthor,
 		bookmarked = false,
@@ -266,6 +269,7 @@
 
 <article
 	class="book-card"
+	class:book-card--cover-only={coverOnly}
 	data-book-id={book.id}
 	data-context={context}
 	aria-label={bookIdentityAriaLabel}
@@ -424,6 +428,10 @@
 </article>
 
 <BookSummarySheet
+	{likedBookPrecedents}
+	{authorRelationshipAuthors}
+	{flavorEvidence}
+	{flavorReferenceBook}
 	dimensionMatches={context === 'recommendations' ? dimensionMatches : []}
 	state={summaryState}
 	restoreFocus={summaryRestoreFocus}
@@ -442,6 +450,17 @@
 />
 
 <style>
+	.book-card--cover-only {
+		height: auto;
+	}
+	.book-card--cover-only .book-card__body,
+	.book-card--cover-only .book-card__cover-actions {
+		display: none;
+	}
+	.book-card--cover-only .book-card__media {
+		padding: 0;
+	}
+
 	/* Shell + media: tokens in app.css (--book-card-*) */
 	.book-card {
 		position: relative;
@@ -628,8 +647,11 @@
 		gap: var(--space-2);
 	}
 
+	.book-card[data-context='recommendations'] .book-card__body {
+		align-items: center;
+	}
+
 	.book-card[data-context='rate'] .book-card__body,
-	.book-card[data-context='recommendations'] .book-card__body,
 	.book-card[data-context='bookmarks'] .book-card__body,
 	.book-card[data-context='rated'] .book-card__body,
 	.book-card[data-context='not-interested'] .book-card__body {
